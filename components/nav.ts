@@ -1,0 +1,30 @@
+import {
+  LayoutDashboard,
+  Users,
+  Handshake,
+  FolderKanban,
+  Receipt,
+  Sparkles,
+  Settings,
+  type LucideIcon,
+} from "lucide-react"
+
+export type NavItem = {
+  title: string
+  href: string
+  icon: LucideIcon
+}
+
+/**
+ * Single source of truth for the app's primary navigation and routes.
+ * Every module route is registered here so the sidebar stays in sync.
+ */
+export const NAV_ITEMS: NavItem[] = [
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Clients", href: "/clients", icon: Users },
+  { title: "Deals", href: "/deals", icon: Handshake },
+  { title: "Projects", href: "/projects", icon: FolderKanban },
+  { title: "Finance", href: "/finance", icon: Receipt },
+  { title: "Templates", href: "/templates", icon: Sparkles },
+  { title: "Settings", href: "/settings", icon: Settings },
+]

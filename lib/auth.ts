@@ -10,6 +10,7 @@ export type OrgContext = {
   userId: string
   email: string | null
   orgId: string
+  orgName: string
   role: Role
 }
 
@@ -36,10 +37,17 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
 
   if (!membership) return null
 
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name")
+    .eq("id", membership.org_id)
+    .maybeSingle()
+
   return {
     userId: user.id,
     email: user.email ?? null,
     orgId: membership.org_id,
+    orgName: org?.name ?? "Workspace",
     role: membership.role,
   }
 })
