@@ -72,7 +72,7 @@ export async function updateDeal(
   id: string,
   input: DealInput
 ): Promise<{ error?: string }> {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const parsed = DealInput.safeParse(input)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
   const d = parsed.data
@@ -91,6 +91,7 @@ export async function updateDeal(
       notes: nullableText(d.notes),
     })
     .eq("id", id)
+    .eq("org_id", ctx.orgId)
 
   if (error) return { error: error.message }
 
@@ -105,7 +106,7 @@ export async function updateDealStage(
   id: string,
   stage: string
 ): Promise<{ error?: string }> {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const parsed = StageInput.safeParse(stage)
   if (!parsed.success) return { error: "Invalid stage" }
 
@@ -114,6 +115,7 @@ export async function updateDealStage(
     .from("deals")
     .update({ stage: parsed.data })
     .eq("id", id)
+    .eq("org_id", ctx.orgId)
 
   if (error) return { error: error.message }
 
@@ -132,8 +134,16 @@ export async function deleteDeal(id: string): Promise<{ error?: string }> {
 
   const supabase = await createSupabaseClient()
   // Detach activities so the deal can be removed without FK errors.
-  await supabase.from("activities").update({ deal_id: null }).eq("deal_id", id)
-  const { error } = await supabase.from("deals").delete().eq("id", id)
+  await supabase
+    .from("activities")
+    .update({ deal_id: null })
+    .eq("deal_id", id)
+    .eq("org_id", ctx.orgId)
+  const { error } = await supabase
+    .from("deals")
+    .delete()
+    .eq("id", id)
+    .eq("org_id", ctx.orgId)
   if (error) return { error: error.message }
 
   revalidatePath("/deals")
@@ -182,9 +192,13 @@ export async function toggleActivityDone(
   done: boolean,
   dealId: string
 ): Promise<{ error?: string }> {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createSupabaseClient()
-  const { error } = await supabase.from("activities").update({ done }).eq("id", id)
+  const { error } = await supabase
+    .from("activities")
+    .update({ done })
+    .eq("id", id)
+    .eq("org_id", ctx.orgId)
   if (error) return { error: error.message }
 
   revalidatePath(`/deals/${dealId}`)

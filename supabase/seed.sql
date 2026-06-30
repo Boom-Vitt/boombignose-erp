@@ -11,6 +11,10 @@
 -- fictional. No real personal data.
 -- ════════════════════════════════════════════════════════════════════════════
 
+-- Evaluate current_date / now() in the app's timezone so the seed's "today" and
+-- "this month" line up with the dashboard (which reckons in Asia/Bangkok).
+set time zone 'Asia/Bangkok';
+
 -- ── Auth users (email + password, pre-confirmed) ────────────────────────────
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -127,18 +131,18 @@ on conflict (id) do nothing;
 
 -- ── Finance: payments ───────────────────────────────────────────────────────
 insert into payments (org_id, invoice_id, amount_satang, paid_at, method, notes) values
-  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000001', 9000000, now() - interval '9 days',  'transfer','Paid in full'),
-  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000004', 4000000, now() - interval '2 days',  'promptpay','Partial — 50%')
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000001', 9000000, date_trunc('month', now()) + interval '9 hours',  'transfer','Paid in full'),
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000004', 4000000, now(),  'promptpay','Partial — 50%')
 on conflict do nothing;
 
 -- ── Finance: costs (this month + history) ───────────────────────────────────
 insert into costs (org_id, project_id, category, amount_satang, incurred_on, vendor, notes) values
-  ('a0000000-0000-0000-0000-000000000001',null,                                   'salary',     12000000, current_date - 1,  'Payroll','Junior dev salaries (2)'),
-  ('a0000000-0000-0000-0000-000000000001',null,                                   'software',    1500000, current_date - 4,  'OpenAI / Anthropic','LLM API usage'),
-  ('a0000000-0000-0000-0000-000000000001',null,                                   'infra',        800000, current_date - 6,  'Supabase / Vercel','Hosting'),
-  ('a0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','contractor',  2500000, current_date - 9,  'Freelance designer','Bot UI/UX'),
-  ('a0000000-0000-0000-0000-000000000001',null,                                   'marketing',   2000000, current_date - 12, 'Meta Ads','Lead-gen campaign'),
-  ('a0000000-0000-0000-0000-000000000001',null,                                   'salary',     12000000, current_date - 32, 'Payroll','Junior dev salaries (last month)')
+  ('a0000000-0000-0000-0000-000000000001',null,                                   'salary',     12000000, date_trunc('month', current_date)::date,        'Payroll','Junior dev salaries (2)'),
+  ('a0000000-0000-0000-0000-000000000001',null,                                   'software',    1500000, current_date,                                   'OpenAI / Anthropic','LLM API usage'),
+  ('a0000000-0000-0000-0000-000000000001',null,                                   'infra',        800000, current_date,                                   'Supabase / Vercel','Hosting'),
+  ('a0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','contractor',  2500000, date_trunc('month', current_date)::date,        'Freelance designer','Bot UI/UX'),
+  ('a0000000-0000-0000-0000-000000000001',null,                                   'marketing',   2000000, current_date,                                   'Meta Ads','Lead-gen campaign'),
+  ('a0000000-0000-0000-0000-000000000001',null,                                   'salary',     12000000, (date_trunc('month', current_date) - interval '10 days')::date, 'Payroll','Junior dev salaries (last month)')
 on conflict do nothing;
 
 -- ── Templates: categories + automation templates ───────────────────────────

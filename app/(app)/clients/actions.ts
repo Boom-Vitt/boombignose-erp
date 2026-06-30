@@ -5,7 +5,7 @@ import { redirect } from "next/navigation"
 import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext } from "@/lib/auth"
+import { requireOrgContext, requireRole } from "@/lib/auth"
 
 const ClientInput = z.object({
   name: z.string().min(1, "Name is required"),
@@ -84,6 +84,11 @@ export async function updateClient(
 
 export async function deleteClient(id: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try {
+    requireRole(ctx, ["owner", "admin"])
+  } catch {
+    return { error: "Only owners and admins can delete clients." }
+  }
 
   const supabase = await createSupabaseClient()
   const { error } = await supabase
@@ -126,6 +131,11 @@ export async function deleteContact(
   clientId: string
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try {
+    requireRole(ctx, ["owner", "admin"])
+  } catch {
+    return { error: "Only owners and admins can delete contacts." }
+  }
 
   const supabase = await createSupabaseClient()
   const { error } = await supabase

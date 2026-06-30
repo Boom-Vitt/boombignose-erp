@@ -5,7 +5,7 @@ import { redirect } from "next/navigation"
 import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext } from "@/lib/auth"
+import { requireOrgContext, requireRole } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
 
 const INVOICE_STATUSES = [
@@ -276,6 +276,11 @@ export async function deleteCost(
   input: z.input<typeof DeleteCost>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try {
+    requireRole(ctx, ["owner", "admin"])
+  } catch {
+    return { error: "Only owners and admins can delete costs." }
+  }
   const parsed = DeleteCost.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
 
