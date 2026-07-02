@@ -1,8 +1,9 @@
 import { FileText, Receipt, FolderKanban, Lock } from "lucide-react"
+import { formatInTimeZone } from "date-fns-tz"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { formatTHB } from "@/lib/money"
-import { todayISO } from "@/lib/dates"
+import { todayISO, APP_TZ } from "@/lib/dates"
 import {
   deriveInvoiceStatus,
   outstandingSatang,
@@ -31,6 +32,11 @@ import { MarkInvoicePaidButton } from "./_components/mark-invoice-paid-button"
 // PUBLIC route (no session). Served with the service-role admin client, scoped
 // strictly to the one client resolved from the opaque token. Never cache.
 export const dynamic = "force-dynamic"
+
+/** Format a signed_at timestamptz for display in the app timezone. */
+function formatSignedDate(iso: string): string {
+  return formatInTimeZone(new Date(iso), APP_TZ, "d MMM yyyy")
+}
 
 function Unavailable() {
   return (
@@ -78,7 +84,7 @@ export default async function ClientPortalPage({
       .maybeSingle(),
     supabase
       .from("quotes")
-      .select("id, number, status, total_satang")
+      .select("id, number, status, total_satang, signed_name, signed_at")
       .eq("client_id", client.id)
       .eq("org_id", client.org_id)
       .order("created_at", { ascending: false }),
@@ -196,6 +202,13 @@ export default async function ClientPortalPage({
                     <TableCell className="text-right">
                       {q.status === "sent" ? (
                         <AcceptQuoteButton token={token} quoteId={q.id} />
+                      ) : q.status === "accepted" && q.signed_name ? (
+                        <span className="text-muted-foreground text-xs">
+                          Signed by {q.signed_name}
+                          {q.signed_at
+                            ? ` on ${formatSignedDate(q.signed_at)}`
+                            : null}
+                        </span>
                       ) : null}
                     </TableCell>
                   </TableRow>

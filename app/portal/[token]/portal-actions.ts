@@ -42,6 +42,9 @@ async function resolveClient(
 const AcceptQuote = z.object({
   token: TokenSchema,
   quoteId: z.string().min(1),
+  // Typed-name e-signature: the client types their full name as intent to
+  // accept. Not a cryptographic signature — just an auditable record of consent.
+  signerName: z.string().trim().min(1).max(200),
 })
 
 export async function portalAcceptQuote(
@@ -49,7 +52,7 @@ export async function portalAcceptQuote(
 ): Promise<{ error?: string }> {
   const parsed = AcceptQuote.safeParse(input)
   if (!parsed.success) return { error: "Invalid request" }
-  const { token, quoteId } = parsed.data
+  const { token, quoteId, signerName } = parsed.data
 
   const supabase = createAdminClient()
   const client = await resolveClient(supabase, token)
@@ -57,9 +60,14 @@ export async function portalAcceptQuote(
 
   // Only a 'sent' quote that belongs to THIS client can be accepted. The
   // client_id + status filters make the update a no-op for anything else.
+  // Record the typed signature (name + timestamp) atomically with the accept.
   const { data, error } = await supabase
     .from("quotes")
-    .update({ status: "accepted" })
+    .update({
+      status: "accepted",
+      signed_name: signerName,
+      signed_at: new Date().toISOString(),
+    })
     .eq("id", quoteId)
     .eq("client_id", client.id)
     .eq("org_id", client.org_id)
