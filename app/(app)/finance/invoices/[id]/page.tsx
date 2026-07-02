@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, PlugZap, Wallet } from "lucide-react"
+import { ArrowLeft, FileText, PlugZap, Wallet } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -33,11 +33,16 @@ import {
 } from "@/components/ui/table"
 
 import { updateInvoice } from "../../actions"
+import { addInvoiceItem, deleteInvoiceItem } from "../../invoice-items-actions"
 import {
   InvoiceForm,
   type InvoiceFormValues,
   type InvoiceFormSubmitValues,
 } from "../../_components/invoice-form"
+import {
+  InvoiceItemsEditor,
+  type InvoiceItemRow,
+} from "../../_components/invoice-items-editor"
 import { PaymentForm } from "../../_components/payment-form"
 import { SyncInvoiceButton } from "../../_components/sync-invoice-button"
 import type { Option } from "../../_components/form-fields"
@@ -80,6 +85,7 @@ export default async function InvoiceDetailPage({
 
   const [
     invoiceRes,
+    itemsRes,
     paymentsRes,
     clientsRes,
     projectsRes,
@@ -93,6 +99,11 @@ export default async function InvoiceDetailPage({
       )
       .eq("id", id)
       .maybeSingle(),
+    supabase
+      .from("invoice_items")
+      .select("id, description, quantity, unit_price_satang, amount_satang")
+      .eq("invoice_id", id)
+      .order("position", { ascending: true }),
     supabase
       .from("payments")
       .select("id, amount_satang, paid_at, method, notes")
@@ -160,6 +171,19 @@ export default async function InvoiceDetailPage({
     return updateInvoice({ id: invoiceId, ...values })
   }
 
+  const itemRows: InvoiceItemRow[] = (itemsRes.data ?? []).map((it) => ({
+    id: it.id,
+    description: it.description,
+    quantity: String(Number(it.quantity)),
+    unitPrice: formatTHB(it.unit_price_satang),
+    amount: formatTHB(it.amount_satang),
+  }))
+
+  async function removeInvoiceItem(input: { id: string }) {
+    "use server"
+    return deleteInvoiceItem(input)
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -173,6 +197,18 @@ export default async function InvoiceDetailPage({
             <PlugZap /> Connect accounting
           </Button>
         )}
+        <Button
+          variant="outline"
+          render={
+            <Link
+              href={`/finance/invoices/${invoice.id}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+            />
+          }
+        >
+          <FileText /> Download PDF
+        </Button>
         <Button variant="outline" render={<Link href="/finance" />}>
           <ArrowLeft /> Back
         </Button>
@@ -246,6 +282,20 @@ export default async function InvoiceDetailPage({
                   <Field label="Notes" value={invoice.notes} />
                 </>
               ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Line items</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InvoiceItemsEditor
+                invoiceId={invoice.id}
+                items={itemRows}
+                addAction={addInvoiceItem}
+                deleteAction={removeInvoiceItem}
+              />
             </CardContent>
           </Card>
 

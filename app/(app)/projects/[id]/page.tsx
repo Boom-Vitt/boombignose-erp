@@ -9,12 +9,19 @@ import {
   CalendarClock,
   User,
   Building2,
+  Clock,
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
 import { projectProfit } from "@/lib/metrics/projects"
+import {
+  totalMinutes,
+  minutesToHours,
+  billableValueSatang,
+} from "@/lib/metrics/timesheets"
+import { todayISO } from "@/lib/dates"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
@@ -29,6 +36,7 @@ import { StatusSelect } from "../_components/status-select"
 import { TaskToggle, MilestoneToggle } from "../_components/toggle-check"
 import { AddTaskForm } from "../_components/add-task-form"
 import { AddMilestoneForm } from "../_components/add-milestone-form"
+import { LogTimeForm } from "@/app/(app)/timesheets/_components/log-time-form"
 
 export const dynamic = "force-dynamic"
 
@@ -78,29 +86,38 @@ export default async function ProjectDetailPage({
     client: { name: string } | null
   }
 
-  const [{ data: tasksData }, { data: milestonesData }, { data: invoicesData }, { data: costsData }] =
-    await Promise.all([
-      supabase
-        .from("project_tasks")
-        .select("id, title, status, assignee, due_date, done")
-        .eq("project_id", id)
-        .order("done", { ascending: true })
-        .order("due_date", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("milestones")
-        .select("id, title, due_date, done")
-        .eq("project_id", id)
-        .order("done", { ascending: true })
-        .order("due_date", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("invoices")
-        .select("status, amount_satang")
-        .eq("project_id", id)
-        .in("status", ["sent", "partially_paid", "paid", "overdue"]),
-      supabase.from("costs").select("amount_satang").eq("project_id", id),
-    ])
+  const [
+    { data: tasksData },
+    { data: milestonesData },
+    { data: invoicesData },
+    { data: costsData },
+    { data: timeData },
+  ] = await Promise.all([
+    supabase
+      .from("project_tasks")
+      .select("id, title, status, assignee, due_date, done")
+      .eq("project_id", id)
+      .order("done", { ascending: true })
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("milestones")
+      .select("id, title, due_date, done")
+      .eq("project_id", id)
+      .order("done", { ascending: true })
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("invoices")
+      .select("status, amount_satang")
+      .eq("project_id", id)
+      .in("status", ["sent", "partially_paid", "paid", "overdue"]),
+    supabase.from("costs").select("amount_satang").eq("project_id", id),
+    supabase
+      .from("time_entries")
+      .select("project_id, minutes, billable, rate_satang")
+      .eq("project_id", id),
+  ])
 
   const tasks = (tasksData ?? []) as Array<{
     id: string
@@ -121,6 +138,15 @@ export default async function ProjectDetailPage({
     amount_satang: number
   }>
   const costs = (costsData ?? []) as Array<{ amount_satang: number }>
+  const timeEntries = (timeData ?? []) as Array<{
+    project_id: string
+    minutes: number
+    billable: boolean
+    rate_satang: number | null
+  }>
+
+  const loggedMinutes = totalMinutes(timeEntries)
+  const loggedBillable = billableValueSatang(timeEntries)
 
   const dl = deadlineMeta(p.deadline)
   const doneTasks = tasks.filter((t) => t.done).length
@@ -304,6 +330,40 @@ export default async function ProjectDetailPage({
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Time logged */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Clock className="size-4" /> Time logged
+            <span className="text-muted-foreground text-sm font-normal">
+              {minutesToHours(loggedMinutes).toFixed(1)}h
+              {loggedBillable > 0
+                ? ` · ${formatTHB(loggedBillable)} billable`
+                : ""}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <StatCard
+              label="Hours logged"
+              value={`${minutesToHours(loggedMinutes).toFixed(1)}h`}
+            />
+            <StatCard
+              label="Billable value"
+              value={formatTHB(loggedBillable)}
+              tone="positive"
+            />
+          </div>
+          <LogTimeForm
+            projects={[{ value: p.id, label: p.name }]}
+            defaultProjectId={p.id}
+            defaultWorkDate={todayISO()}
+            lockProject
+          />
         </CardContent>
       </Card>
     </div>
