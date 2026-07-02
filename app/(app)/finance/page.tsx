@@ -17,7 +17,7 @@ import { formatTHB } from "@/lib/money"
 import {
   revenueForMonth,
   costsForMonth,
-  mrr,
+  subscriptionMrr,
   unpaidTotal,
   unpaidCount,
 } from "@/lib/metrics/finance"
@@ -85,31 +85,37 @@ export default async function FinancePage({
     ? statusParam!
     : ""
 
-  const [invoicesRes, paymentsRes, costsRes, viewsRes] = await Promise.all([
-    supabase
-      .from("invoices")
-      .select(
-        "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name)"
-      )
-      .order("issue_date", { ascending: false }),
-    supabase.from("payments").select("invoice_id, amount_satang, paid_at"),
-    supabase
-      .from("costs")
-      .select(
-        "id, category, amount_satang, incurred_on, vendor, project_id, projects(name)"
-      )
-      .order("incurred_on", { ascending: false }),
-    supabase
-      .from("saved_views")
-      .select("id, name, config")
-      .eq("module", "finance")
-      .eq("user_id", ctx.userId)
-      .order("created_at", { ascending: true }),
-  ])
+  const [invoicesRes, paymentsRes, costsRes, viewsRes, subscriptionsRes] =
+    await Promise.all([
+      supabase
+        .from("invoices")
+        .select(
+          "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name)"
+        )
+        .order("issue_date", { ascending: false }),
+      supabase.from("payments").select("invoice_id, amount_satang, paid_at"),
+      supabase
+        .from("costs")
+        .select(
+          "id, category, amount_satang, incurred_on, vendor, project_id, projects(name)"
+        )
+        .order("incurred_on", { ascending: false }),
+      supabase
+        .from("saved_views")
+        .select("id, name, config")
+        .eq("module", "finance")
+        .eq("user_id", ctx.userId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("subscriptions")
+        .select("status, amount_satang, interval")
+        .eq("status", "active"),
+    ])
 
   const invoices = invoicesRes.data ?? []
   const payments = paymentsRes.data ?? []
   const costs = costsRes.data ?? []
+  const activeSubscriptions = subscriptionsRes.data ?? []
 
   const savedViews: SavedView[] = (viewsRes.data ?? []).map((v) => ({
     id: v.id,
@@ -151,14 +157,9 @@ export default async function FinancePage({
   const openCount = unpaidCount(invoicesWithPaid)
   const revenueSatang = revenueForMonth(payments, month)
   const costsSatang = costsForMonth(costs, month)
-  const mrrSatang = mrr(
-    invoices.map((inv) => ({
-      status: inv.status,
-      amount_satang: inv.amount_satang,
-      is_recurring: inv.is_recurring,
-      recurring_interval: inv.recurring_interval,
-    }))
-  )
+  // MRR is derived from active subscriptions (source of truth) for consistency
+  // with the dashboard.
+  const mrrSatang = subscriptionMrr(activeSubscriptions)
 
   return (
     <div className="space-y-6">
