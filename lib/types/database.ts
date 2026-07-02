@@ -1139,6 +1139,343 @@ export type Database = {
           },
         ]
       }
+      quotes: {
+        Row: {
+          client_id: string
+          converted_invoice_id: string | null
+          created_at: string
+          discount_satang: number
+          id: string
+          issue_date: string
+          notes: string | null
+          number: string
+          org_id: string
+          owner: string | null
+          project_id: string | null
+          status: Database["public"]["Enums"]["quote_status"]
+          subtotal_satang: number
+          total_satang: number
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          client_id: string
+          converted_invoice_id?: string | null
+          created_at?: string
+          discount_satang?: number
+          id?: string
+          issue_date?: string
+          notes?: string | null
+          number: string
+          org_id: string
+          owner?: string | null
+          project_id?: string | null
+          status?: Database["public"]["Enums"]["quote_status"]
+          subtotal_satang?: number
+          total_satang?: number
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          client_id?: string
+          converted_invoice_id?: string | null
+          created_at?: string
+          discount_satang?: number
+          id?: string
+          issue_date?: string
+          notes?: string | null
+          number?: string
+          org_id?: string
+          owner?: string | null
+          project_id?: string | null
+          status?: Database["public"]["Enums"]["quote_status"]
+          subtotal_satang?: number
+          total_satang?: number
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_invoice_id_fkey"
+            columns: ["converted_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_items: {
+        Row: {
+          amount_satang: number
+          created_at: string
+          description: string
+          id: string
+          org_id: string
+          position: number
+          quantity: number
+          quote_id: string
+          unit_price_satang: number
+          updated_at: string
+        }
+        Insert: {
+          amount_satang?: number
+          created_at?: string
+          description: string
+          id?: string
+          org_id: string
+          position?: number
+          quantity?: number
+          quote_id: string
+          unit_price_satang?: number
+          updated_at?: string
+        }
+        Update: {
+          amount_satang?: number
+          created_at?: string
+          description?: string
+          id?: string
+          org_id?: string
+          position?: number
+          quantity?: number
+          quote_id?: string
+          unit_price_satang?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_items_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_items_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_items: {
+        Row: {
+          amount_satang: number
+          created_at: string
+          description: string
+          id: string
+          invoice_id: string
+          org_id: string
+          position: number
+          quantity: number
+          unit_price_satang: number
+          updated_at: string
+        }
+        Insert: {
+          amount_satang?: number
+          created_at?: string
+          description: string
+          id?: string
+          invoice_id: string
+          org_id: string
+          position?: number
+          quantity?: number
+          unit_price_satang?: number
+          updated_at?: string
+        }
+        Update: {
+          amount_satang?: number
+          created_at?: string
+          description?: string
+          id?: string
+          invoice_id?: string
+          org_id?: string
+          position?: number
+          quantity?: number
+          unit_price_satang?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      time_entries: {
+        Row: {
+          billable: boolean
+          created_at: string
+          id: string
+          minutes: number
+          notes: string | null
+          org_id: string
+          project_id: string
+          rate_satang: number | null
+          task_id: string | null
+          updated_at: string
+          user_id: string | null
+          work_date: string
+        }
+        Insert: {
+          billable?: boolean
+          created_at?: string
+          id?: string
+          minutes: number
+          notes?: string | null
+          org_id: string
+          project_id: string
+          rate_satang?: number | null
+          task_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+          work_date?: string
+        }
+        Update: {
+          billable?: boolean
+          created_at?: string
+          id?: string
+          minutes?: number
+          notes?: string | null
+          org_id?: string
+          project_id?: string
+          rate_satang?: number | null
+          task_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_entries_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "project_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          amount_satang: number
+          auto_generate: boolean
+          client_id: string
+          created_at: string
+          id: string
+          interval: Database["public"]["Enums"]["recurring_interval"]
+          last_generated_on: string | null
+          name: string
+          next_run_date: string
+          notes: string | null
+          org_id: string
+          project_id: string | null
+          start_date: string
+          status: Database["public"]["Enums"]["subscription_status"]
+          updated_at: string
+        }
+        Insert: {
+          amount_satang?: number
+          auto_generate?: boolean
+          client_id: string
+          created_at?: string
+          id?: string
+          interval?: Database["public"]["Enums"]["recurring_interval"]
+          last_generated_on?: string | null
+          name: string
+          next_run_date?: string
+          notes?: string | null
+          org_id: string
+          project_id?: string | null
+          start_date?: string
+          status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+        }
+        Update: {
+          amount_satang?: number
+          auto_generate?: boolean
+          client_id?: string
+          created_at?: string
+          id?: string
+          interval?: Database["public"]["Enums"]["recurring_interval"]
+          last_generated_on?: string | null
+          name?: string
+          next_run_date?: string
+          notes?: string | null
+          org_id?: string
+          project_id?: string | null
+          start_date?: string
+          status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1190,10 +1527,18 @@ export type Database = {
         | "support"
         | "paused"
         | "cancelled"
+      quote_status:
+        | "draft"
+        | "sent"
+        | "accepted"
+        | "declined"
+        | "expired"
+        | "converted"
       recurring_interval: "weekly" | "monthly" | "quarterly" | "yearly"
       reminder_channel: "line" | "email" | "inapp"
       reminder_status: "pending" | "sent" | "cancelled"
       role_enum: "owner" | "admin" | "member"
+      subscription_status: "active" | "paused" | "cancelled"
       task_status: "todo" | "in_progress" | "done"
     }
     CompositeTypes: {
@@ -1361,10 +1706,19 @@ export const Constants = {
         "paused",
         "cancelled",
       ],
+      quote_status: [
+        "draft",
+        "sent",
+        "accepted",
+        "declined",
+        "expired",
+        "converted",
+      ],
       recurring_interval: ["weekly", "monthly", "quarterly", "yearly"],
       reminder_channel: ["line", "email", "inapp"],
       reminder_status: ["pending", "sent", "cancelled"],
       role_enum: ["owner", "admin", "member"],
+      subscription_status: ["active", "paused", "cancelled"],
       task_status: ["todo", "in_progress", "done"],
     },
   },
