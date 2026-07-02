@@ -5,7 +5,7 @@ import { redirect } from "next/navigation"
 import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang, formatTHBWhole } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
@@ -328,7 +328,7 @@ export async function deleteCost(
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "cost:delete")
   } catch {
     return { error: "Only owners and admins can delete costs." }
   }

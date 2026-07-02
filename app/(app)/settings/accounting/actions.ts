@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
 
 const PROVIDERS = ["flowaccount", "peak", "xero"] as const
@@ -27,7 +27,7 @@ export async function connectAccounting(
   const ctx = await requireOrgContext()
 
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "accounting:manage")
   } catch {
     return { error: "Only an owner or admin can change the accounting connection." }
   }
@@ -69,7 +69,7 @@ export async function disconnectAccounting(): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
 
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "accounting:manage")
   } catch {
     return { error: "Only an owner or admin can change the accounting connection." }
   }

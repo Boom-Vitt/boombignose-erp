@@ -45,10 +45,10 @@ inventory, or payroll.
 - [x] Resolve "active org" from a cookie (`active_org`) instead of "first membership" in `getOrgContext`
 - [x] Backfill RLS for invitations (accept runs service-role after token validation)
 
-### Advanced RBAC — **M**
-- [ ] Per-module permission matrix beyond owner/admin/member
-- [ ] Gate sensitive actions (delete, convert, generate-invoice) consistently
-- [ ] Record-level rules (e.g. members see only their own deals) — evaluate need
+### Advanced RBAC — **M** ✅
+- [x] Per-capability permission matrix (`lib/permissions.ts`, tested) — single source of truth
+- [x] Gate sensitive actions via `requireCapability` (every `requireRole` call migrated to a named capability)
+- [ ] Record-level rules (e.g. members see only their own deals) — *evaluated: not needed for MVP; RLS is org-level and capabilities cover per-member action gating*
 
 ---
 

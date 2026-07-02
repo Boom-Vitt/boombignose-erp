@@ -5,7 +5,7 @@ import { redirect } from "next/navigation"
 import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang, formatTHBWhole } from "@/lib/money"
 import {
   lineAmountSatang,
@@ -210,7 +210,7 @@ export async function deleteQuote(
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "quote:delete")
   } catch {
     return { error: "Only owners and admins can delete quotes." }
   }
@@ -404,7 +404,7 @@ export async function convertQuoteToInvoice(
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "quote:convert")
   } catch {
     return { error: "Only owners and admins can convert quotes." }
   }

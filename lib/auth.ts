@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/server"
 import type { Enums } from "@/lib/types/database"
+import { can, type Capability } from "@/lib/permissions"
 
 export type Role = Enums<"role_enum">
 
@@ -109,6 +110,17 @@ export async function requireOrgContext(): Promise<OrgContext> {
 /** Throws when the context's role is not in the allowed set. Defense-in-depth on top of RLS. */
 export function requireRole(ctx: OrgContext, allowed: Role[]): void {
   if (!allowed.includes(ctx.role)) {
+    throw new Error("Forbidden: your role does not permit this action.")
+  }
+}
+
+/**
+ * Capability-based gate (preferred over requireRole). Throws when the context's
+ * role does not hold `capability` per the matrix in lib/permissions. Kept here
+ * so every action can import a single auth surface.
+ */
+export function requireCapability(ctx: OrgContext, capability: Capability): void {
+  if (!can(ctx.role, capability)) {
     throw new Error("Forbidden: your role does not permit this action.")
   }
 }

@@ -7,7 +7,7 @@ import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { requireOrgContext, requireRole, ACTIVE_ORG_COOKIE } from "@/lib/auth"
+import { requireOrgContext, requireCapability, ACTIVE_ORG_COOKIE } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
 
 /**
@@ -71,7 +71,7 @@ export async function inviteMember(
   input: z.input<typeof InviteMember>
 ): Promise<{ error?: string; token?: string }> {
   const ctx = await requireOrgContext()
-  requireRole(ctx, ["owner", "admin"])
+  requireCapability(ctx, "team:manage")
 
   const parsed = InviteMember.safeParse(input)
   if (!parsed.success) {
@@ -119,7 +119,7 @@ export async function revokeInvitation(
   input: z.input<typeof RevokeInvitation>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  requireRole(ctx, ["owner", "admin"])
+  requireCapability(ctx, "team:manage")
 
   const parsed = RevokeInvitation.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
