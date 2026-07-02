@@ -346,6 +346,8 @@ export type Database = {
           notes: string | null
           org_id: string
           owner: string | null
+          portal_enabled: boolean
+          portal_token: string | null
           source: string | null
           updated_at: string
         }
@@ -357,6 +359,8 @@ export type Database = {
           notes?: string | null
           org_id: string
           owner?: string | null
+          portal_enabled?: boolean
+          portal_token?: string | null
           source?: string | null
           updated_at?: string
         }
@@ -368,6 +372,8 @@ export type Database = {
           notes?: string | null
           org_id?: string
           owner?: string | null
+          portal_enabled?: boolean
+          portal_token?: string | null
           source?: string | null
           updated_at?: string
         }
