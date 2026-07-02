@@ -49,6 +49,7 @@ export function InvoiceItemsEditor({
   items,
   addAction,
   deleteAction,
+  locked = false,
 }: {
   invoiceId: string
   items: InvoiceItemRow[]
@@ -59,6 +60,8 @@ export function InvoiceItemsEditor({
     unitPriceBaht: number
   }) => Promise<{ error?: string }>
   deleteAction: (input: { id: string }) => Promise<{ error?: string }>
+  /** When true (invoice paid), render items read-only: no add row, no delete. */
+  locked?: boolean
 }) {
   const router = useRouter()
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -93,7 +96,7 @@ export function InvoiceItemsEditor({
               <TableHead className="text-right">Qty</TableHead>
               <TableHead className="text-right">Unit price</TableHead>
               <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="w-10" />
+              {locked ? null : <TableHead className="w-10" />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -109,30 +112,36 @@ export function InvoiceItemsEditor({
                 <TableCell className="text-right tabular-nums">
                   {item.amount}
                 </TableCell>
-                <TableCell>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Delete line item"
-                    disabled={deletingId === item.id}
-                    onClick={() => onDelete(item.id)}
-                  >
-                    <Trash2 className="text-muted-foreground" />
-                  </Button>
-                </TableCell>
+                {locked ? null : (
+                  <TableCell>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Delete line item"
+                      disabled={deletingId === item.id}
+                      onClick={() => onDelete(item.id)}
+                    >
+                      <Trash2 className="text-muted-foreground" />
+                    </Button>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
         </Table>
       ) : (
         <p className="text-muted-foreground text-sm">
-          No line items yet. Add one below to itemize this invoice — the invoice
-          total is then derived from the items.
+          {locked
+            ? "No line items."
+            : "No line items yet. Add one below to itemize this invoice — the invoice total is then derived from the items."}
         </p>
       )}
 
-      <Form {...form}>
+      {locked ? (
+        <p className="text-muted-foreground text-sm">Locked (paid)</p>
+      ) : (
+        <Form {...form}>
         <form
           onSubmit={form.handleSubmit(async (values) => {
             const res = await addAction({ invoice_id: invoiceId, ...values })
@@ -213,7 +222,8 @@ export function InvoiceItemsEditor({
             </Button>
           </div>
         </form>
-      </Form>
+        </Form>
+      )}
     </div>
   )
 }

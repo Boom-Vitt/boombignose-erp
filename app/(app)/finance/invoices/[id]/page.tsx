@@ -295,6 +295,7 @@ export default async function InvoiceDetailPage({
                 items={itemRows}
                 addAction={addInvoiceItem}
                 deleteAction={removeInvoiceItem}
+                locked={invoice.status === "paid"}
               />
             </CardContent>
           </Card>

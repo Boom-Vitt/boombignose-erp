@@ -64,6 +64,20 @@ export async function addInvoiceItem(
 
   const supabase = await createSupabaseClient()
 
+  // A paid invoice is locked: its items are frozen so the derived amount can't drift.
+  const { data: parent, error: parentErr } = await supabase
+    .from("invoices")
+    .select("status")
+    .eq("id", d.invoice_id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+
+  if (parentErr) return { error: parentErr.message }
+  if (!parent) return { error: "Invoice not found" }
+  if (parent.status === "paid") {
+    return { error: "This invoice is paid and locked" }
+  }
+
   // Position = current item count (org-scoped, this invoice).
   const { count, error: countErr } = await supabase
     .from("invoice_items")
@@ -126,6 +140,19 @@ export async function deleteInvoiceItem(
 
   if (findErr) return { error: findErr.message }
   if (!item) return { error: "Line item not found" }
+
+  // A paid invoice is locked: items cannot be removed.
+  const { data: parent, error: parentErr } = await supabase
+    .from("invoices")
+    .select("status")
+    .eq("id", item.invoice_id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+
+  if (parentErr) return { error: parentErr.message }
+  if (parent?.status === "paid") {
+    return { error: "This invoice is paid and locked" }
+  }
 
   const { error: delErr } = await supabase
     .from("invoice_items")

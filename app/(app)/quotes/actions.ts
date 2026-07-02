@@ -14,6 +14,7 @@ import {
 } from "@/lib/metrics/line-items"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
+import { nextDocumentNumber } from "@/lib/documents/numbering"
 
 const QUOTE_STATUSES = [
   "draft",
@@ -89,7 +90,7 @@ async function recomputeQuoteTotals(
 const CreateQuote = z.object({
   client_id: z.string().min(1, "Client is required"),
   project_id: optionalId,
-  number: z.string().trim().min(1, "Quote number is required"),
+  number: optionalString,
   issue_date: optionalDate,
   valid_until: optionalDate,
   discountBaht: z.coerce.number().min(0, "Discount must be 0 or more").default(0),
@@ -105,13 +106,32 @@ export async function createQuote(
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
+
+  // Auto-generate the quote number when none was provided. Scans the org's
+  // existing numbers for the current year and continues the running counter.
+  // Manual numbers are used verbatim; a rare unique(org_id, number) collision
+  // surfaces as the DB error below, exactly as before.
+  let number = d.number
+  if (!number) {
+    const year = Number(todayISO().slice(0, 4))
+    const { data: existing } = await supabase
+      .from("quotes")
+      .select("number")
+      .eq("org_id", ctx.orgId)
+    number = nextDocumentNumber(
+      "QUO",
+      (existing ?? []).map((r) => r.number),
+      year
+    )
+  }
+
   const { data, error } = await supabase
     .from("quotes")
     .insert({
       org_id: ctx.orgId,
       client_id: d.client_id,
       project_id: d.project_id,
-      number: d.number,
+      number,
       status: "draft",
       issue_date: d.issue_date ?? undefined,
       valid_until: d.valid_until,
@@ -129,7 +149,7 @@ export async function createQuote(
     entity: "quote",
     entityId: data.id,
     action: "created",
-    summary: `Created quote ${d.number}`,
+    summary: `Created quote ${number}`,
   })
 
   revalidatePath("/quotes")
@@ -140,7 +160,9 @@ const UpdateQuote = z.object({
   id: z.string().min(1),
   client_id: z.string().min(1, "Client is required"),
   project_id: optionalId,
-  number: z.string().trim().min(1, "Quote number is required"),
+  // The shared form marks number optional (create auto-numbers). On edit the
+  // field is prefilled, so a blank number simply leaves the stored one untouched.
+  number: optionalString,
   issue_date: optionalDate,
   valid_until: optionalDate,
   discountBaht: z.coerce.number().min(0, "Discount must be 0 or more"),
@@ -161,7 +183,7 @@ export async function updateQuote(
     .update({
       client_id: d.client_id,
       project_id: d.project_id,
-      number: d.number,
+      ...(d.number ? { number: d.number } : {}),
       issue_date: d.issue_date ?? undefined,
       valid_until: d.valid_until,
       discount_satang: bahtToSatang(d.discountBaht),
@@ -236,6 +258,20 @@ export async function addQuoteItem(
 
   const supabase = await createSupabaseClient()
 
+  // A converted quote is locked: its items are frozen (they've become an invoice).
+  const { data: parent, error: parentErr } = await supabase
+    .from("quotes")
+    .select("status")
+    .eq("id", d.quote_id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+
+  if (parentErr) return { error: parentErr.message }
+  if (!parent) return { error: "Quote not found" }
+  if (parent.status === "converted") {
+    return { error: "This quote is converted and locked" }
+  }
+
   // Next position = current item count (stable append order).
   const { count } = await supabase
     .from("quote_items")
@@ -274,25 +310,45 @@ export async function deleteQuoteItem(
 
   const supabase = await createSupabaseClient()
 
-  // Delete and recover the parent quote id in one round-trip so we can recompute.
-  const { data: deleted, error } = await supabase
+  // Resolve the parent quote first so a converted (locked) quote can't be edited.
+  const { data: item, error: findErr } = await supabase
     .from("quote_items")
-    .delete()
+    .select("id, quote_id")
     .eq("id", parsed.data.id)
     .eq("org_id", ctx.orgId)
-    .select("quote_id")
-    .single()
+    .maybeSingle()
+
+  if (findErr) return { error: findErr.message }
+  if (!item) return { error: "Line item not found" }
+
+  const { data: parent, error: parentErr } = await supabase
+    .from("quotes")
+    .select("status")
+    .eq("id", item.quote_id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+
+  if (parentErr) return { error: parentErr.message }
+  if (parent?.status === "converted") {
+    return { error: "This quote is converted and locked" }
+  }
+
+  const { error } = await supabase
+    .from("quote_items")
+    .delete()
+    .eq("id", item.id)
+    .eq("org_id", ctx.orgId)
 
   if (error) return { error: error.message }
 
   const recomputeErr = await recomputeQuoteTotals(
     supabase,
     ctx.orgId,
-    deleted.quote_id
+    item.quote_id
   )
   if (recomputeErr) return { error: recomputeErr }
 
-  revalidatePath(`/quotes/${deleted.quote_id}`)
+  revalidatePath(`/quotes/${item.quote_id}`)
   return {}
 }
 

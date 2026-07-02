@@ -42,7 +42,7 @@ const Schema = z
   .object({
     client_id: z.string().min(1, "Choose a client"),
     project_id: z.string().optional(),
-    number: z.string().min(1, "Invoice number is required"),
+    number: z.string().optional(),
     status: z.enum([
       "draft",
       "sent",
@@ -152,8 +152,11 @@ export function InvoiceForm({
               <FormItem>
                 <FormLabel>Invoice number</FormLabel>
                 <FormControl>
-                  <Input placeholder="INV-2026-001" {...field} />
+                  <Input placeholder="Auto (INV-2026-00X)" {...field} />
                 </FormControl>
+                <FormDescription>
+                  Leave blank to auto-number.
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}

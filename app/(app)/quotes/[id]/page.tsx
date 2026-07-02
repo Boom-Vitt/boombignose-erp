@@ -75,6 +75,7 @@ export default async function QuoteDetailPage({
   const items = itemsRes.data ?? []
   const canConvert = ctx.role === "owner" || ctx.role === "admin"
   const editable = quote.status === "draft" || quote.status === "sent"
+  const locked = quote.status === "converted"
 
   const clients: Option[] = (clientsRes.data ?? []).map((c) => ({
     value: c.id,
@@ -190,7 +191,9 @@ export default async function QuoteDetailPage({
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unit price</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="w-10" aria-label="Actions" />
+                  {locked ? null : (
+                    <TableHead className="w-10" aria-label="Actions" />
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -206,9 +209,11 @@ export default async function QuoteDetailPage({
                     <TableCell className="text-right tabular-nums">
                       {formatTHB(it.amount_satang)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <DeleteQuoteItemButton id={it.id} label={it.description} />
-                    </TableCell>
+                    {locked ? null : (
+                      <TableCell className="text-right">
+                        <DeleteQuoteItemButton id={it.id} label={it.description} />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -216,7 +221,11 @@ export default async function QuoteDetailPage({
           )}
 
           <Separator />
-          <QuoteItemForm quoteId={quote.id} />
+          {locked ? (
+            <p className="text-muted-foreground text-sm">Converted (locked)</p>
+          ) : (
+            <QuoteItemForm quoteId={quote.id} />
+          )}
         </CardContent>
       </Card>
 
