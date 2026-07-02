@@ -441,6 +441,9 @@ export type Database = {
       costs: {
         Row: {
           amount_satang: number
+          approval_status: Database["public"]["Enums"]["cost_approval_status"]
+          approved_at: string | null
+          approved_by: string | null
           category: Database["public"]["Enums"]["cost_category"]
           created_at: string
           id: string
@@ -453,6 +456,9 @@ export type Database = {
         }
         Insert: {
           amount_satang: number
+          approval_status?: Database["public"]["Enums"]["cost_approval_status"]
+          approved_at?: string | null
+          approved_by?: string | null
           category?: Database["public"]["Enums"]["cost_category"]
           created_at?: string
           id?: string
@@ -465,6 +471,9 @@ export type Database = {
         }
         Update: {
           amount_satang?: number
+          approval_status?: Database["public"]["Enums"]["cost_approval_status"]
+          approved_at?: string | null
+          approved_by?: string | null
           category?: Database["public"]["Enums"]["cost_category"]
           created_at?: string
           id?: string
@@ -759,6 +768,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          lead_capture_enabled: boolean
           name: string
           slug: string
           updated_at: string
@@ -766,6 +776,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          lead_capture_enabled?: boolean
           name: string
           slug: string
           updated_at?: string
@@ -773,6 +784,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          lead_capture_enabled?: boolean
           name?: string
           slug?: string
           updated_at?: string
@@ -1145,6 +1157,50 @@ export type Database = {
           },
         ]
       }
+      products: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          kind: Database["public"]["Enums"]["product_kind"]
+          name: string
+          org_id: string
+          unit_price_satang: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          kind?: Database["public"]["Enums"]["product_kind"]
+          name: string
+          org_id: string
+          unit_price_satang?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          kind?: Database["public"]["Enums"]["product_kind"]
+          name?: string
+          org_id?: string
+          unit_price_satang?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quotes: {
         Row: {
           client_id: string
@@ -1158,6 +1214,8 @@ export type Database = {
           org_id: string
           owner: string | null
           project_id: string | null
+          signed_at: string | null
+          signed_name: string | null
           status: Database["public"]["Enums"]["quote_status"]
           subtotal_satang: number
           total_satang: number
@@ -1176,6 +1234,8 @@ export type Database = {
           org_id: string
           owner?: string | null
           project_id?: string | null
+          signed_at?: string | null
+          signed_name?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
           subtotal_satang?: number
           total_satang?: number
@@ -1194,6 +1254,8 @@ export type Database = {
           org_id?: string
           owner?: string | null
           project_id?: string | null
+          signed_at?: string | null
+          signed_name?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
           subtotal_satang?: number
           total_satang?: number
@@ -1545,6 +1607,7 @@ export type Database = {
       accounting_sync_status: "pending" | "synced" | "error"
       activity_type: "note" | "call" | "email" | "meeting" | "follow_up"
       ai_output_kind: "deal_summary" | "followup_draft" | "meeting_intake"
+      cost_approval_status: "pending" | "approved" | "rejected"
       cost_category:
         | "software"
         | "contractor"
@@ -1576,6 +1639,7 @@ export type Database = {
         | "promptpay"
         | "cheque"
         | "other"
+      product_kind: "service" | "good"
       project_status:
         | "not_started"
         | "in_progress"
@@ -1720,6 +1784,7 @@ export const Constants = {
       accounting_sync_status: ["pending", "synced", "error"],
       activity_type: ["note", "call", "email", "meeting", "follow_up"],
       ai_output_kind: ["deal_summary", "followup_draft", "meeting_intake"],
+      cost_approval_status: ["pending", "approved", "rejected"],
       cost_category: [
         "software",
         "contractor",
@@ -1755,6 +1820,7 @@ export const Constants = {
         "cheque",
         "other",
       ],
+      product_kind: ["service", "good"],
       project_status: [
         "not_started",
         "in_progress",
