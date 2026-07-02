@@ -8,9 +8,12 @@ import {
   Activity as ActivityIcon,
   Mail,
   Phone,
+  Share2,
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { DealStageBadge } from "@/components/status-badge"
@@ -26,6 +29,7 @@ import { formatDate } from "../_lib/format"
 import { AddContactDialog } from "../_components/add-contact-dialog"
 import { DeleteContactButton } from "../_components/delete-contact-button"
 import { DeleteClientButton } from "../_components/delete-client-button"
+import { PortalShareCard } from "../_components/portal-share-card"
 
 export default async function ClientDetailPage({
   params,
@@ -33,15 +37,19 @@ export default async function ClientDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const { data: client } = await supabase
     .from("clients")
-    .select("id, name, industry, source, notes, created_at")
+    .select("id, name, industry, source, notes, created_at, portal_enabled, portal_token")
     .eq("id", id)
     .maybeSingle()
 
   if (!client) notFound()
+
+  const canManagePortal = can(ctx.role, "settings:manage")
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
 
   const [contactsRes, dealsRes, activitiesRes] = await Promise.all([
     supabase
@@ -98,6 +106,26 @@ export default async function ClientDetailPage({
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Client portal (owner/admin only) */}
+      {canManagePortal ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Share2 className="size-4" />
+              Client portal
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PortalShareCard
+              clientId={client.id}
+              portalEnabled={client.portal_enabled}
+              portalToken={client.portal_token}
+              appUrl={appUrl}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Contacts */}
       <Card>
