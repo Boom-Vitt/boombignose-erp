@@ -69,3 +69,38 @@ export async function updateOrgSettings(
   revalidatePath("/dashboard")
   return {}
 }
+
+/**
+ * Toggle public web-to-lead capture for the current org. Owner/admin only.
+ * When enabled, the org's public form at `/lead/{slug}` starts accepting
+ * submissions.
+ */
+export async function setLeadCapture(
+  enabled: boolean
+): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+
+  try {
+    requireCapability(ctx, "settings:manage")
+  } catch {
+    return { error: "Only an owner or admin can update settings." }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("organizations")
+    .update({ lead_capture_enabled: enabled })
+    .eq("id", ctx.orgId)
+  if (error) return { error: error.message }
+
+  await writeAudit(ctx, {
+    entity: "settings",
+    entityId: ctx.orgId,
+    action: "updated",
+    summary: enabled ? "Enabled lead capture" : "Disabled lead capture",
+    meta: { lead_capture_enabled: enabled },
+  })
+
+  revalidatePath("/settings")
+  return {}
+}

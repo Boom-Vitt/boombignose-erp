@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { SettingsForm } from "./_components/settings-form"
 import { TeamInvitations } from "./_components/team-invitations"
+import { LeadCaptureCard } from "./_components/lead-capture-card"
 import { updateOrgSettings } from "./actions"
 
 export const dynamic = "force-dynamic"
@@ -77,6 +78,15 @@ export default async function SettingsPage() {
     : { data: [] as { id: string; email: string; role: string; token: string }[] }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
+
+  // Public web-to-lead capture opt-in (owner/admin manage below).
+  const { data: orgRow } = canEdit
+    ? await supabase
+        .from("organizations")
+        .select("slug, lead_capture_enabled")
+        .eq("id", ctx.orgId)
+        .maybeSingle()
+    : { data: null as { slug: string; lead_capture_enabled: boolean } | null }
 
   const team = (members ?? []).map((m) => ({
     userId: m.user_id,
@@ -233,6 +243,25 @@ export default async function SettingsPage() {
                 role: i.role,
                 token: i.token,
               }))}
+              appUrl={appUrl}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {canEdit && orgRow ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Lead capture</CardTitle>
+            <CardDescription>
+              Share a public form that turns submissions into clients and
+              lead-stage deals.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <LeadCaptureCard
+              enabled={orgRow.lead_capture_enabled}
+              slug={orgRow.slug}
               appUrl={appUrl}
             />
           </CardContent>

@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import type { Database } from "@/lib/types/database"
 
 /** Public route prefixes that do not require an authenticated session. */
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/api/webhooks", "/api/cron", "/portal"]
+const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/api/webhooks", "/api/cron", "/portal", "/lead"]
 
 function isPublic(pathname: string): boolean {
   if (pathname === "/") return true
