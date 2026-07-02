@@ -70,12 +70,12 @@ inventory, or payroll.
 
 ---
 
-## P3 — Nice-to-have (evaluate before building)
+## P3 — Nice-to-have ✅
 
-- [ ] Web-to-lead capture form → `deals` (M)
-- [ ] Expense approval workflow on `costs` (M)
-- [ ] E-signature on accepted quotes (L)
-- [ ] Product/service catalog to speed up line-item entry (M)
+- [x] Web-to-lead capture form → `deals` (M) — public `/lead/[slug]`, opt-in, honeypot
+- [x] Expense approval workflow on `costs` (M) — approve/reject; rejected excluded from burn
+- [x] E-signature on accepted quotes (L) — typed-name signature on portal acceptance
+- [x] Product/service catalog to speed up line-item entry (M) — `/products` + line-item picker
 
 ---
 
