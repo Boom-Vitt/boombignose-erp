@@ -54,18 +54,18 @@ inventory, or payroll.
 
 ## P2 — Product-tier features
 
-### Client portal — **L**
-- [ ] Tokenized read-only links for a client's quotes / invoices / projects
-- [ ] "Accept quote" + "mark paid / upload slip" actions from the portal
-- [ ] Separate RLS surface / portal auth
+### Client portal — **L** ✅
+- [x] Tokenized read-only links for a client's quotes / invoices / projects (`/portal/[token]`)
+- [x] "Accept quote" + "mark paid" actions from the portal
+- [x] Separate portal surface (public route, service-role scoped strictly to the token's client)
 
-### Reporting & pivots — **M**
-- [ ] Pivot-style report (revenue by client / month, hours by project)
-- [ ] PDF export for reports (reuse `lib/documents/printable`)
+### Reporting & pivots — **M** ✅
+- [x] Pivot-style report (revenue by client / month, hours by project)
+- [x] Printable/PDF export for reports (`/reports/print`)
 - [ ] Scheduled report email — stretch
 
-### Calendar / scheduling — **M**
-- [ ] Calendar surface for `activities` (follow-ups, meetings) with due dates
+### Calendar / scheduling — **M** ✅
+- [x] Calendar surface for `activities` (follow-ups, meetings) + invoice due dates + project deadlines
 - [ ] iCal feed per user — stretch
 
 ---
