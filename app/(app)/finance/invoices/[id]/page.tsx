@@ -92,6 +92,7 @@ export default async function InvoiceDetailPage({
     projectsRes,
     connRes,
     syncRes,
+    productsRes,
   ] = await Promise.all([
     supabase
       .from("invoices")
@@ -126,6 +127,11 @@ export default async function InvoiceDetailPage({
       .eq("local_id", id)
       .order("last_synced_at", { ascending: false, nullsFirst: false })
       .limit(1),
+    supabase
+      .from("products")
+      .select("id, name, description, unit_price_satang")
+      .eq("active", true)
+      .order("name"),
   ])
 
   const invoice = invoiceRes.data
@@ -146,6 +152,12 @@ export default async function InvoiceDetailPage({
   const projects: Option[] = (projectsRes.data ?? []).map((p) => ({
     value: p.id,
     label: p.name,
+  }))
+  const products = (productsRes.data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    unitPriceBaht: satangToBaht(p.unit_price_satang),
   }))
 
   const defaultValues: InvoiceFormValues = {
@@ -298,6 +310,7 @@ export default async function InvoiceDetailPage({
                 addAction={addInvoiceItem}
                 deleteAction={removeInvoiceItem}
                 locked={invoice.status === "paid"}
+                products={products}
               />
             </CardContent>
           </Card>

@@ -17,8 +17,23 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 import { addQuoteItem } from "../actions"
+
+/** An active catalog product offered as a quick-fill for a line item. */
+export type CatalogOption = {
+  id: string
+  name: string
+  description: string | null
+  unitPriceBaht: number
+}
 
 const Schema = z.object({
   description: z.string().min(1, "Description is required"),
@@ -28,7 +43,14 @@ const Schema = z.object({
 
 type Values = z.infer<typeof Schema>
 
-export function QuoteItemForm({ quoteId }: { quoteId: string }) {
+export function QuoteItemForm({
+  quoteId,
+  products = [],
+}: {
+  quoteId: string
+  /** Active catalog products; picking one prefills description + unit price. */
+  products?: CatalogOption[]
+}) {
   const router = useRouter()
   const form = useForm<z.input<typeof Schema>, unknown, Values>({
     resolver: zodResolver(Schema),
@@ -39,8 +61,36 @@ export function QuoteItemForm({ quoteId }: { quoteId: string }) {
     },
   })
 
+  function applyProduct(productId: string) {
+    const product = products.find((p) => p.id === productId)
+    if (!product) return
+    form.setValue("description", product.description || product.name, {
+      shouldValidate: true,
+    })
+    form.setValue("unitPriceBaht", product.unitPriceBaht, {
+      shouldValidate: true,
+    })
+  }
+
   return (
     <Form {...form}>
+      {products.length > 0 ? (
+        <div className="mb-3 sm:max-w-xs">
+          <label className="text-sm font-medium">Add from catalog</label>
+          <Select onValueChange={(v: string | null) => v && applyProduct(v)}>
+            <SelectTrigger className="mt-1 w-full">
+              <SelectValue placeholder="Pick a product or service…" />
+            </SelectTrigger>
+            <SelectContent>
+              {products.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
       <form
         onSubmit={form.handleSubmit(async (values) => {
           const res = await addQuoteItem({ quote_id: quoteId, ...values })

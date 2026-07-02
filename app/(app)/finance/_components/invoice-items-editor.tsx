@@ -19,6 +19,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Table,
   TableHeader,
   TableBody,
@@ -36,6 +43,14 @@ export type InvoiceItemRow = {
   amount: string
 }
 
+/** An active catalog product offered as a quick-fill for a line item. */
+export type CatalogOption = {
+  id: string
+  name: string
+  description: string | null
+  unitPriceBaht: number
+}
+
 const Schema = z.object({
   description: z.string().min(1, "Description is required"),
   quantity: z.coerce.number().positive("Quantity must be greater than 0"),
@@ -50,6 +65,7 @@ export function InvoiceItemsEditor({
   addAction,
   deleteAction,
   locked = false,
+  products = [],
 }: {
   invoiceId: string
   items: InvoiceItemRow[]
@@ -62,6 +78,8 @@ export function InvoiceItemsEditor({
   deleteAction: (input: { id: string }) => Promise<{ error?: string }>
   /** When true (invoice paid), render items read-only: no add row, no delete. */
   locked?: boolean
+  /** Active catalog products; picking one prefills description + unit price. */
+  products?: CatalogOption[]
 }) {
   const router = useRouter()
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -73,6 +91,17 @@ export function InvoiceItemsEditor({
       unitPriceBaht: 0,
     },
   })
+
+  function applyProduct(productId: string) {
+    const product = products.find((p) => p.id === productId)
+    if (!product) return
+    form.setValue("description", product.description || product.name, {
+      shouldValidate: true,
+    })
+    form.setValue("unitPriceBaht", product.unitPriceBaht, {
+      shouldValidate: true,
+    })
+  }
 
   async function onDelete(id: string) {
     setDeletingId(id)
@@ -142,6 +171,23 @@ export function InvoiceItemsEditor({
         <p className="text-muted-foreground text-sm">Locked (paid)</p>
       ) : (
         <Form {...form}>
+        {products.length > 0 ? (
+          <div className="mb-4 sm:max-w-xs">
+            <label className="text-sm font-medium">Add from catalog</label>
+            <Select onValueChange={(v: string | null) => v && applyProduct(v)}>
+              <SelectTrigger className="mt-1 w-full">
+                <SelectValue placeholder="Pick a product or service…" />
+              </SelectTrigger>
+              <SelectContent>
+                {products.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <form
           onSubmit={form.handleSubmit(async (values) => {
             const res = await addAction({ invoice_id: invoiceId, ...values })

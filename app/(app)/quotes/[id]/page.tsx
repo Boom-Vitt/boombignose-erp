@@ -53,7 +53,8 @@ export default async function QuoteDetailPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [quoteRes, itemsRes, clientsRes, projectsRes] = await Promise.all([
+  const [quoteRes, itemsRes, clientsRes, projectsRes, productsRes] =
+    await Promise.all([
     supabase
       .from("quotes")
       .select(
@@ -68,6 +69,11 @@ export default async function QuoteDetailPage({
       .order("position", { ascending: true }),
     supabase.from("clients").select("id, name").order("name"),
     supabase.from("projects").select("id, name").order("name"),
+    supabase
+      .from("products")
+      .select("id, name, description, unit_price_satang")
+      .eq("active", true)
+      .order("name"),
   ])
 
   const quote = quoteRes.data
@@ -85,6 +91,12 @@ export default async function QuoteDetailPage({
   const projects: Option[] = (projectsRes.data ?? []).map((p) => ({
     value: p.id,
     label: p.name,
+  }))
+  const products = (productsRes.data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    unitPriceBaht: satangToBaht(p.unit_price_satang),
   }))
 
   const defaultValues: QuoteFormValues = {
@@ -226,7 +238,7 @@ export default async function QuoteDetailPage({
           {locked ? (
             <p className="text-muted-foreground text-sm">Converted (locked)</p>
           ) : (
-            <QuoteItemForm quoteId={quote.id} />
+            <QuoteItemForm quoteId={quote.id} products={products} />
           )}
         </CardContent>
       </Card>
