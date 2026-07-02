@@ -12,11 +12,13 @@ import {
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { currentMonthKey, todayISO } from "@/lib/dates"
 import { formatTHB } from "@/lib/money"
+import { cn } from "@/lib/utils"
 import {
   revenueForMonth,
-  costsForMonth,
+  countableCostsForMonth,
   subscriptionMrr,
   unpaidTotal,
   unpaidCount,
@@ -31,7 +33,10 @@ import { Constants } from "@/lib/types/database"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
-import { InvoiceStatusBadge } from "@/components/status-badge"
+import {
+  InvoiceStatusBadge,
+  CostApprovalStatusBadge,
+} from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -45,6 +50,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 import { DeleteCostButton } from "./_components/delete-cost-button"
+import { CostApprovalControls } from "./_components/cost-approval-controls"
 import { FinanceToolbar } from "./_components/finance-toolbar"
 import type { SavedView } from "@/app/(app)/views/saved-views-menu"
 import type { ViewConfig } from "@/app/(app)/views/view-config"
@@ -97,7 +103,7 @@ export default async function FinancePage({
       supabase
         .from("costs")
         .select(
-          "id, category, amount_satang, incurred_on, vendor, project_id, projects(name)"
+          "id, category, amount_satang, incurred_on, vendor, project_id, approval_status, projects(name)"
         )
         .order("incurred_on", { ascending: false }),
       supabase
@@ -156,7 +162,9 @@ export default async function FinancePage({
   const unpaidSatang = unpaidTotal(invoicesWithPaid)
   const openCount = unpaidCount(invoicesWithPaid)
   const revenueSatang = revenueForMonth(payments, month)
-  const costsSatang = costsForMonth(costs, month)
+  // Rejected costs drop out of the money total; pending + approved still count.
+  const costsSatang = countableCostsForMonth(costs, month)
+  const canManageCosts = can(ctx.role, "settings:manage")
   // MRR is derived from active subscriptions (source of truth) for consistency
   // with the dashboard.
   const mrrSatang = subscriptionMrr(activeSubscriptions)
@@ -325,12 +333,19 @@ export default async function FinancePage({
                       <TableHead>Date</TableHead>
                       <TableHead>Vendor</TableHead>
                       <TableHead>Project</TableHead>
+                      <TableHead>Approval</TableHead>
                       <TableHead className="w-10" aria-label="Actions" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {costs.map((c) => (
-                      <TableRow key={c.id}>
+                      <TableRow
+                        key={c.id}
+                        className={cn(
+                          c.approval_status === "rejected" &&
+                            "opacity-55 [&_td]:line-through"
+                        )}
+                      >
                         <TableCell className="font-medium">
                           {COST_CATEGORY_LABEL[c.category]}
                         </TableCell>
@@ -342,6 +357,17 @@ export default async function FinancePage({
                         </TableCell>
                         <TableCell>{c.vendor ?? "—"}</TableCell>
                         <TableCell>{c.projects?.name ?? "—"}</TableCell>
+                        <TableCell className="[&]:no-underline">
+                          {canManageCosts ? (
+                            <CostApprovalControls
+                              id={c.id}
+                              label={`${COST_CATEGORY_LABEL[c.category]} cost`}
+                              status={c.approval_status}
+                            />
+                          ) : (
+                            <CostApprovalStatusBadge status={c.approval_status} />
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
                           <DeleteCostButton
                             id={c.id}

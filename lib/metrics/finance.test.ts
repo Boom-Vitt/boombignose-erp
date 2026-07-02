@@ -3,6 +3,8 @@ import { describe, it, expect } from "vitest"
 import {
   revenueForMonth,
   costsForMonth,
+  isCountableCost,
+  countableCostsForMonth,
   mrr,
   subscriptionMrr,
   unpaidTotal,
@@ -11,6 +13,7 @@ import {
   runwayMonths,
   type PaymentLike,
   type CostLike,
+  type CostWithApproval,
   type RecurringInvoiceLike,
   type InvoiceWithPaid,
   type SubscriptionLike,
@@ -38,6 +41,38 @@ describe("costsForMonth", () => {
       { amount_satang: 10_000, incurred_on: "2026-07-01" },
     ]
     expect(costsForMonth(costs, "2026-06")).toBe(50_000)
+  })
+})
+
+describe("isCountableCost", () => {
+  it("counts pending and approved, excludes rejected", () => {
+    expect(isCountableCost("pending")).toBe(true)
+    expect(isCountableCost("approved")).toBe(true)
+    expect(isCountableCost("rejected")).toBe(false)
+  })
+})
+
+describe("countableCostsForMonth", () => {
+  const costs: CostWithApproval[] = [
+    { amount_satang: 30_000, incurred_on: "2026-06-05", approval_status: "pending" },
+    { amount_satang: 20_000, incurred_on: "2026-06-25", approval_status: "approved" },
+    { amount_satang: 99_000, incurred_on: "2026-06-15", approval_status: "rejected" },
+    { amount_satang: 10_000, incurred_on: "2026-07-01", approval_status: "approved" },
+  ]
+
+  it("sums pending + approved costs within the month, ignoring rejected", () => {
+    expect(countableCostsForMonth(costs, "2026-06")).toBe(50_000)
+  })
+
+  it("excludes costs outside the target month", () => {
+    expect(countableCostsForMonth(costs, "2026-07")).toBe(10_000)
+  })
+
+  it("is zero when every cost in the month is rejected", () => {
+    const rejected: CostWithApproval[] = [
+      { amount_satang: 40_000, incurred_on: "2026-06-10", approval_status: "rejected" },
+    ]
+    expect(countableCostsForMonth(rejected, "2026-06")).toBe(0)
   })
 })
 

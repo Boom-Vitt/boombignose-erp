@@ -59,6 +59,15 @@ const TASK_STATUS: Record<Enums<"task_status">, { label: string; tone: Tone }> =
   done: { label: "Done", tone: "success" },
 }
 
+const COST_APPROVAL_STATUS: Record<
+  Enums<"cost_approval_status">,
+  { label: string; tone: Tone }
+> = {
+  pending: { label: "Pending", tone: "warning" },
+  approved: { label: "Approved", tone: "success" },
+  rejected: { label: "Rejected", tone: "danger" },
+}
+
 export function DealStageBadge({ stage }: { stage: Enums<"deal_stage"> }) {
   const { label, tone } = DEAL_STAGE[stage]
   return <Pill label={label} tone={tone} />
@@ -76,5 +85,14 @@ export function InvoiceStatusBadge({ status }: { status: Enums<"invoice_status">
 
 export function TaskStatusBadge({ status }: { status: Enums<"task_status"> }) {
   const { label, tone } = TASK_STATUS[status]
+  return <Pill label={label} tone={tone} />
+}
+
+export function CostApprovalStatusBadge({
+  status,
+}: {
+  status: Enums<"cost_approval_status">
+}) {
+  const { label, tone } = COST_APPROVAL_STATUS[status]
   return <Pill label={label} tone={tone} />
 }

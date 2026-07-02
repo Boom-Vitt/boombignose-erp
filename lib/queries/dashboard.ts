@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { currentMonthKey, todayISO, isPastDue } from "@/lib/dates"
 import {
   revenueForMonth,
-  costsForMonth,
+  countableCostsForMonth,
   mrr,
   subscriptionMrr,
   unpaidTotal,
@@ -90,7 +90,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       .from("invoices")
       .select("id,status,amount_satang,is_recurring,recurring_interval,due_date"),
     supabase.from("payments").select("invoice_id,amount_satang,paid_at"),
-    supabase.from("costs").select("amount_satang,incurred_on"),
+    supabase.from("costs").select("amount_satang,incurred_on,approval_status"),
     supabase.from("projects").select("status"),
     supabase.from("activities").select("id,body,type,due_date,done"),
     supabase
@@ -152,7 +152,8 @@ export async function getDashboardData(): Promise<DashboardData> {
   const utilizationThisMonth = utilization(timeEntries)
 
   const monthlyRevenueSatang = revenueForMonth(payments, month)
-  const computedBurn = costsForMonth(costs, month)
+  // Rejected costs are excluded from burn; pending + approved still count.
+  const computedBurn = countableCostsForMonth(costs, month)
   const monthlyBurnSatang = settings?.monthly_burn_satang ?? computedBurn
   const net = netBurnSatang(monthlyBurnSatang, monthlyRevenueSatang)
   const cashSatang = settings?.cash_balance_satang ?? 0

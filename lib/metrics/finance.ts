@@ -6,6 +6,12 @@ import type { Enums } from "@/lib/types/database"
 export type PaymentLike = { amount_satang: number; paid_at: string }
 export type CostLike = { amount_satang: number; incurred_on: string }
 
+export type CostApprovalStatus = Enums<"cost_approval_status">
+/** A cost carrying its approval status, for approvals-aware spend/burn. */
+export type CostWithApproval = CostLike & {
+  approval_status: CostApprovalStatus
+}
+
 export type RecurringInvoiceLike = {
   status: Enums<"invoice_status">
   amount_satang: number
@@ -47,6 +53,35 @@ export function costsForMonth(
   return sumSatang(
     costs
       .filter((c) => monthKey(c.incurred_on, tz) === monthKeyStr)
+      .map((c) => c.amount_satang)
+  )
+}
+
+/**
+ * Whether a cost counts toward spend/burn totals. Only `rejected` costs are
+ * excluded; `pending` and `approved` still count (dashboards stay unchanged
+ * until something is explicitly rejected).
+ */
+export function isCountableCost(status: CostApprovalStatus): boolean {
+  return status !== "rejected"
+}
+
+/**
+ * Like {@link costsForMonth} but approvals-aware: rejected costs are dropped
+ * before summing. Pending and approved costs still count.
+ */
+export function countableCostsForMonth(
+  costs: CostWithApproval[],
+  monthKeyStr: string,
+  tz?: string
+): Satang {
+  return sumSatang(
+    costs
+      .filter(
+        (c) =>
+          isCountableCost(c.approval_status) &&
+          monthKey(c.incurred_on, tz) === monthKeyStr
+      )
       .map((c) => c.amount_satang)
   )
 }
