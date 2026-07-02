@@ -6,7 +6,8 @@ import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireRole } from "@/lib/auth"
-import { bahtToSatang } from "@/lib/money"
+import { bahtToSatang, formatTHBWhole } from "@/lib/money"
+import { writeAudit } from "@/lib/audit"
 
 const INVOICE_STATUSES = [
   "draft",
@@ -102,6 +103,13 @@ export async function createInvoice(
 
   if (error) return { error: error.message }
 
+  await writeAudit(ctx, {
+    entity: "invoice",
+    entityId: data.id,
+    action: "created",
+    summary: `Created invoice ${d.number} for ${formatTHBWhole(bahtToSatang(d.amountBaht))}`,
+  })
+
   revalidatePath("/finance")
   redirect(`/finance/invoices/${data.id}`)
 }
@@ -178,7 +186,7 @@ export async function recordPayment(
   // Load the invoice (amount + current stored status) to recompute after insert.
   const { data: invoice, error: invErr } = await supabase
     .from("invoices")
-    .select("id, amount_satang, status")
+    .select("id, number, amount_satang, status")
     .eq("id", d.invoice_id)
     .eq("org_id", ctx.orgId)
     .single()
@@ -227,6 +235,14 @@ export async function recordPayment(
     }
   }
 
+  await writeAudit(ctx, {
+    entity: "payment",
+    entityId: d.invoice_id,
+    action: "payment_recorded",
+    summary: `Recorded ${formatTHBWhole(bahtToSatang(d.amountBaht))} payment on invoice ${invoice.number}`,
+    meta: { invoiceId: d.invoice_id, method: d.method },
+  })
+
   revalidatePath("/finance")
   revalidatePath(`/finance/invoices/${d.invoice_id}`)
   return {}
@@ -254,17 +270,29 @@ export async function createCost(
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
-  const { error } = await supabase.from("costs").insert({
-    org_id: ctx.orgId,
-    category: d.category,
-    amount_satang: bahtToSatang(d.amountBaht),
-    incurred_on: d.incurred_on ?? undefined,
-    vendor: d.vendor,
-    project_id: d.project_id,
-    notes: d.notes,
-  })
+  const { data: cost, error } = await supabase
+    .from("costs")
+    .insert({
+      org_id: ctx.orgId,
+      category: d.category,
+      amount_satang: bahtToSatang(d.amountBaht),
+      incurred_on: d.incurred_on ?? undefined,
+      vendor: d.vendor,
+      project_id: d.project_id,
+      notes: d.notes,
+    })
+    .select("id")
+    .single()
 
   if (error) return { error: error.message }
+
+  await writeAudit(ctx, {
+    entity: "cost",
+    entityId: cost.id,
+    action: "created",
+    summary: `Recorded ${formatTHBWhole(bahtToSatang(d.amountBaht))} ${d.category} cost`,
+    meta: { category: d.category, vendor: d.vendor ?? null },
+  })
 
   revalidatePath("/finance")
   redirect("/finance")

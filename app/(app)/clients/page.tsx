@@ -14,13 +14,27 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { formatDate } from "./_lib/format"
+import { ClientsToolbar } from "./_components/clients-toolbar"
 
-export default async function ClientsPage() {
+export const dynamic = "force-dynamic"
+
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>
+}) {
   const supabase = await createClient()
-  const { data: clients } = await supabase
+  const { q: qParam } = await searchParams
+  const q = (qParam ?? "").trim()
+
+  let query = supabase
     .from("clients")
     .select("id, name, industry, source, created_at")
     .order("name", { ascending: true })
+  if (q) query = query.ilike("name", `%${q}%`)
+
+  const { data: clients } = await query
+  const hasClients = (clients?.length ?? 0) > 0
 
   return (
     <div className="space-y-6">
@@ -34,18 +48,28 @@ export default async function ClientsPage() {
         </Button>
       </PageHeader>
 
+      {hasClients || q ? <ClientsToolbar q={q} /> : null}
+
       {!clients || clients.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title="No clients yet"
-          description="Add your first client to start tracking contacts, deals, and work."
-          action={
-            <Button render={<Link href="/clients/new" />}>
-              <Plus />
-              New client
-            </Button>
-          }
-        />
+        q ? (
+          <EmptyState
+            icon={Users}
+            title="No matching clients"
+            description="No clients match your search. Try a different name."
+          />
+        ) : (
+          <EmptyState
+            icon={Users}
+            title="No clients yet"
+            description="Add your first client to start tracking contacts, deals, and work."
+            action={
+              <Button render={<Link href="/clients/new" />}>
+                <Plus />
+                New client
+              </Button>
+            }
+          />
+        )
       ) : (
         <div className="rounded-xl ring-1 ring-foreground/10">
           <Table>

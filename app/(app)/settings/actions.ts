@@ -6,6 +6,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireRole } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
+import { writeAudit } from "@/lib/audit"
 
 const UpdateOrgSettings = z.object({
   orgName: z.string().min(1, "Workspace name is required"),
@@ -56,6 +57,13 @@ export async function updateOrgSettings(
     .update({ name: orgName })
     .eq("id", ctx.orgId)
   if (orgError) return { error: orgError.message }
+
+  await writeAudit(ctx, {
+    entity: "settings",
+    entityId: ctx.orgId,
+    action: "updated",
+    summary: "Updated workspace settings",
+  })
 
   revalidatePath("/settings")
   revalidatePath("/dashboard")

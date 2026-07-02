@@ -27,6 +27,7 @@ import {
 } from "@/lib/metrics/invoice-status"
 import type { Enums } from "@/lib/types/database"
 
+import { Constants } from "@/lib/types/database"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
@@ -44,8 +45,19 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 import { DeleteCostButton } from "./_components/delete-cost-button"
+import { FinanceToolbar } from "./_components/finance-toolbar"
+import type { SavedView } from "@/app/(app)/views/saved-views-menu"
+import type { ViewConfig } from "@/app/(app)/views/view-config"
 
 export const dynamic = "force-dynamic"
+
+const INVOICE_STATUSES = Constants.public.Enums.invoice_status
+
+/** Pull the known filter keys out of a saved-view config row. */
+function toViewConfig(config: unknown): ViewConfig {
+  const c = (config ?? {}) as Record<string, unknown>
+  return typeof c.status === "string" ? { status: c.status } : {}
+}
 
 const COST_CATEGORY_LABEL: Record<Enums<"cost_category">, string> = {
   software: "Software",
@@ -56,13 +68,24 @@ const COST_CATEGORY_LABEL: Record<Enums<"cost_category">, string> = {
   other: "Other",
 }
 
-export default async function FinancePage() {
-  await requireOrgContext()
+export default async function FinancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>
+}) {
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const month = currentMonthKey()
   const today = todayISO()
 
-  const [invoicesRes, paymentsRes, costsRes] = await Promise.all([
+  const { status: statusParam } = await searchParams
+  const status = (INVOICE_STATUSES as readonly string[]).includes(
+    statusParam ?? ""
+  )
+    ? statusParam!
+    : ""
+
+  const [invoicesRes, paymentsRes, costsRes, viewsRes] = await Promise.all([
     supabase
       .from("invoices")
       .select(
@@ -76,11 +99,23 @@ export default async function FinancePage() {
         "id, category, amount_satang, incurred_on, vendor, project_id, projects(name)"
       )
       .order("incurred_on", { ascending: false }),
+    supabase
+      .from("saved_views")
+      .select("id, name, config")
+      .eq("module", "finance")
+      .eq("user_id", ctx.userId)
+      .order("created_at", { ascending: true }),
   ])
 
   const invoices = invoicesRes.data ?? []
   const payments = paymentsRes.data ?? []
   const costs = costsRes.data ?? []
+
+  const savedViews: SavedView[] = (viewsRes.data ?? []).map((v) => ({
+    id: v.id,
+    name: v.name,
+    config: toViewConfig(v.config),
+  }))
 
   // Sum payments per invoice.
   const paidByInvoice = new Map<string, number>()
@@ -100,6 +135,11 @@ export default async function FinancePage() {
       effectiveStatus: deriveInvoiceStatus(inv, paid, today),
     }
   })
+
+  // Status filter applies to the stored `status` column (mirrors the export).
+  const filteredInvoiceRows = status
+    ? invoiceRows.filter((inv) => inv.status === status)
+    : invoiceRows
 
   // Metrics.
   const invoicesWithPaid = invoices.map((inv) => ({
@@ -164,6 +204,8 @@ export default async function FinancePage() {
         />
       </div>
 
+      <FinanceToolbar status={status} savedViews={savedViews} />
+
       <Tabs defaultValue="invoices" className="gap-4">
         <TabsList>
           <TabsTrigger value="invoices">
@@ -192,6 +234,13 @@ export default async function FinancePage() {
                   }
                   className="border-0"
                 />
+              ) : filteredInvoiceRows.length === 0 ? (
+                <EmptyState
+                  icon={ReceiptText}
+                  title="No matching invoices"
+                  description="No invoices match the selected status."
+                  className="border-0"
+                />
               ) : (
                 <Table>
                   <TableHeader>
@@ -205,7 +254,7 @@ export default async function FinancePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {invoiceRows.map((inv) => (
+                    {filteredInvoiceRows.map((inv) => (
                       <TableRow key={inv.id}>
                         <TableCell className="font-medium">
                           <Link

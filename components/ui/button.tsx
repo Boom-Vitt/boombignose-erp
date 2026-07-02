@@ -49,6 +49,10 @@ function Button({
   return (
     <ButtonPrimitive
       data-slot="button"
+      // When `render` swaps in a non-button element (e.g. a Next.js <Link>/<a>),
+      // Base UI warns unless nativeButton is false. Default it off in that case;
+      // an explicit nativeButton in props still wins via the spread below.
+      nativeButton={props.render ? false : undefined}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

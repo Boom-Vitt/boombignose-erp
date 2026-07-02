@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Plus, Target, CalendarClock } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
 import {
@@ -9,12 +10,17 @@ import {
   weightedPipelineValue,
   type DealStage,
 } from "@/lib/metrics/pipeline"
+import { Constants } from "@/lib/types/database"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+
+import { DealsToolbar } from "./_components/deals-toolbar"
+import type { SavedView } from "@/app/(app)/views/saved-views-menu"
+import type { ViewConfig } from "@/app/(app)/views/view-config"
 
 export const dynamic = "force-dynamic"
 
@@ -30,11 +36,33 @@ const COLUMNS: BoardColumn[] = [
   { stage: "lost", label: "Lost" },
 ]
 
-export default async function DealsPage() {
+const DEAL_STAGES = Constants.public.Enums.deal_stage
+
+/** Pull the known filter keys out of a saved-view config row. */
+function toViewConfig(config: unknown): ViewConfig {
+  const c = (config ?? {}) as Record<string, unknown>
+  const out: ViewConfig = {}
+  if (typeof c.stage === "string") out.stage = c.stage
+  if (typeof c.q === "string") out.q = c.q
+  return out
+}
+
+export default async function DealsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ stage?: string; q?: string }>
+}) {
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const today = todayISO()
 
-  const [dealsRes, clientsRes] = await Promise.all([
+  const { stage: stageParam, q: qParam } = await searchParams
+  const stage = (DEAL_STAGES as readonly string[]).includes(stageParam ?? "")
+    ? (stageParam as DealStage)
+    : ""
+  const q = (qParam ?? "").trim()
+
+  const [dealsRes, clientsRes, viewsRes] = await Promise.all([
     supabase
       .from("deals")
       .select(
@@ -42,14 +70,40 @@ export default async function DealsPage() {
       )
       .order("created_at", { ascending: false }),
     supabase.from("clients").select("id,name"),
+    supabase
+      .from("saved_views")
+      .select("id, name, config")
+      .eq("module", "deals")
+      .eq("user_id", ctx.userId)
+      .order("created_at", { ascending: true }),
   ])
 
-  const deals = dealsRes.data ?? []
+  const allDeals = dealsRes.data ?? []
   const clients = clientsRes.data ?? []
   const clientName = new Map(clients.map((c) => [c.id, c.name]))
 
-  const openValue = pipelineValue(deals)
-  const weighted = weightedPipelineValue(deals)
+  const savedViews: SavedView[] = (viewsRes.data ?? []).map((v) => ({
+    id: v.id,
+    name: v.name,
+    config: toViewConfig(v.config),
+  }))
+
+  // Apply filters in-memory (board stays a server component).
+  const qLower = q.toLowerCase()
+  const deals = allDeals.filter((d) => {
+    if (stage && d.stage !== stage) return false
+    if (qLower && !d.title.toLowerCase().includes(qLower)) return false
+    return true
+  })
+
+  // When a stage is selected, only show that column.
+  const visibleColumns = stage
+    ? COLUMNS.filter((col) => col.stage === stage)
+    : COLUMNS
+
+  // Headline KPIs summarize the whole pipeline, independent of the active filter.
+  const openValue = pipelineValue(allDeals)
+  const weighted = weightedPipelineValue(allDeals)
 
   const byStage = new Map<DealStage, typeof deals>()
   for (const col of COLUMNS) byStage.set(col.stage, [])
@@ -79,7 +133,11 @@ export default async function DealsPage() {
         />
       </div>
 
-      {deals.length === 0 ? (
+      {allDeals.length === 0 ? null : (
+        <DealsToolbar stage={stage} q={q} savedViews={savedViews} />
+      )}
+
+      {allDeals.length === 0 ? (
         <EmptyState
           icon={Target}
           title="No deals yet"
@@ -91,10 +149,16 @@ export default async function DealsPage() {
             </Button>
           }
         />
+      ) : deals.length === 0 ? (
+        <EmptyState
+          icon={Target}
+          title="No matching deals"
+          description="No deals match the current filters. Try clearing the search or stage filter."
+        />
       ) : (
         <div className="-mx-4 overflow-x-auto px-4 pb-2 md:-mx-6 md:px-6">
           <div className="flex min-w-max gap-4">
-            {COLUMNS.map((col) => {
+            {visibleColumns.map((col) => {
               const colDeals = byStage.get(col.stage) ?? []
               const colTotal = colDeals.reduce(
                 (acc, d) => acc + d.value_satang,
