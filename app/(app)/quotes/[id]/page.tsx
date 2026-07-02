@@ -30,6 +30,7 @@ import { QuoteItemForm } from "../_components/quote-item-form"
 import { DeleteQuoteItemButton } from "../_components/delete-quote-item-button"
 import { QuoteStatusControls } from "../_components/quote-status-controls"
 import { QuoteStatusBadge } from "../_components/quote-status-badge"
+import { EmailQuoteButton } from "../_components/email-quote-button"
 import type { Option } from "../_components/form-fields"
 
 export const dynamic = "force-dynamic"
@@ -116,6 +117,7 @@ export default async function QuoteDetailPage({
         >
           <Download /> Download PDF
         </Button>
+        <EmailQuoteButton quoteId={quote.id} />
         <Button variant="outline" render={<Link href="/quotes" />}>
           <ArrowLeft /> Back
         </Button>

@@ -1,4 +1,4 @@
-import { requireOrgContext } from "@/lib/auth"
+import { requireOrgContext, getUserOrgs } from "@/lib/auth"
 import { AppSidebar } from "@/components/app-sidebar"
 import {
   SidebarInset,
@@ -13,10 +13,16 @@ export default async function AppLayout({
   children: React.ReactNode
 }) {
   const ctx = await requireOrgContext()
+  const orgs = await getUserOrgs()
 
   return (
     <SidebarProvider>
-      <AppSidebar email={ctx.email} role={ctx.role} orgName={ctx.orgName} />
+      <AppSidebar
+        email={ctx.email}
+        role={ctx.role}
+        orgs={orgs}
+        currentOrgId={ctx.orgId}
+      />
       <SidebarInset>
         <header className="bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex h-14 items-center gap-2 border-b px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" />

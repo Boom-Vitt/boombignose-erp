@@ -45,6 +45,7 @@ import {
 } from "../../_components/invoice-items-editor"
 import { PaymentForm } from "../../_components/payment-form"
 import { SyncInvoiceButton } from "../../_components/sync-invoice-button"
+import { EmailInvoiceButton } from "../../_components/email-invoice-button"
 import type { Option } from "../../_components/form-fields"
 
 export const dynamic = "force-dynamic"
@@ -209,6 +210,7 @@ export default async function InvoiceDetailPage({
         >
           <FileText /> Download PDF
         </Button>
+        <EmailInvoiceButton invoiceId={invoice.id} />
         <Button variant="outline" render={<Link href="/finance" />}>
           <ArrowLeft /> Back
         </Button>

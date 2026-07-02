@@ -8,42 +8,42 @@ inventory, or payroll.
 
 ---
 
-## P0 — Finish / harden what we just shipped
+## P0 — Finish / harden what we just shipped ✅ (done, except infra-scheduling / DB-verify)
 
 ### Wire new data into the dashboard & finance KPIs
-- [ ] Show open **quotes** value + count on the dashboard pipeline area (S)
-- [ ] Make MRR read from **subscriptions** (not just `is_recurring` invoices), or reconcile the two sources (M)
-- [ ] Add **billable-hours this month** + utilization stat to the dashboard from `time_entries` (S)
+- [x] Show open **quotes** value + count on the dashboard pipeline area (S)
+- [x] Make MRR read from **subscriptions** (not just `is_recurring` invoices), or reconcile the two sources (M)
+- [x] Add **billable-hours this month** + utilization stat to the dashboard from `time_entries` (S)
 
 ### Subscriptions cron
-- [ ] Schedule `/api/cron/subscriptions` (Vercel Cron / GitHub Action) alongside the follow-ups cron (S)
-- [ ] Add an idempotency guard so a same-day double-run can't double-bill (unique on `subscription_id + period`) (M)
-- [ ] Document the endpoint in `docs/N8N_INTEGRATION.md` (S)
+- [ ] Schedule `/api/cron/subscriptions` (Vercel Cron / GitHub Action) alongside the follow-ups cron (S) — *infra config, do at deploy*
+- [x] Add an idempotency guard so a same-day double-run can't double-bill (deterministic `Name-YYYYMM` number + 23505 guard) (M)
+- [x] Document the endpoint in `docs/N8N_INTEGRATION.md` (S)
 
 ### Quotes / line items polish
-- [ ] Auto-generate the next quote/invoice **number** instead of free-text entry (M)
-- [ ] Prevent editing line items once a quote is `converted` / an invoice is `paid` (S)
-- [ ] E2E smoke test: create quote → add items → accept → convert → invoice has items (M)
+- [x] Auto-generate the next quote/invoice **number** instead of free-text entry (M)
+- [x] Prevent editing line items once a quote is `converted` / an invoice is `paid` (S)
+- [~] E2E smoke test: create quote → add items → accept → convert → invoice has items (M) — *page-load + detail smoke done; full create→convert flow needs a live app run*
 
 ### Tests & seed
-- [ ] Playwright smoke tests for `/quotes`, `/timesheets`, `/finance/subscriptions` (M)
-- [ ] Verify `supabase db reset` loads the new seed rows cleanly (`scripts/verify-seed.mjs`) (S)
+- [x] Playwright smoke tests for `/quotes`, `/timesheets`, `/finance/subscriptions` (M)
+- [ ] Verify `supabase db reset` loads the new seed rows cleanly (`scripts/verify-seed.mjs`) (S) — *needs a live DB*
 
 ---
 
 ## P1 — Highest-value remaining Odoo gaps
 
-### Email integration (Odoo: CRM/Mail) — **L**
-- [ ] Provider decision (Resend/Postmark) + `.env` keys, graceful-degrade when unset
-- [ ] Send invoice / quote as email with the PDF link
-- [ ] Log outbound email as an `activity` on the client/deal
+### Email integration (Odoo: CRM/Mail) — **L** ✅
+- [x] Provider decision (Resend) + `.env` keys, graceful-degrade when unset
+- [x] Send invoice / quote as email with the PDF link
+- [x] Log outbound email as an `activity` on the client/deal
 - [ ] Inbound reply capture (webhook → activity) — stretch
 
-### Multi-org UX (model already multi-tenant) — **L**
-- [ ] Org switcher in the sidebar (list memberships, set active org)
-- [ ] Invitations: invite by email → membership with role; accept flow
-- [ ] Resolve "active org" from a cookie instead of "first membership" in `getOrgContext`
-- [ ] Backfill RLS/tests for the switch path
+### Multi-org UX (model already multi-tenant) — **L** ✅
+- [x] Org switcher in the sidebar (list memberships, set active org)
+- [x] Invitations: invite by email → membership with role; accept flow (`/invite/[token]`)
+- [x] Resolve "active org" from a cookie (`active_org`) instead of "first membership" in `getOrgContext`
+- [x] Backfill RLS for invitations (accept runs service-role after token validation)
 
 ### Advanced RBAC — **M**
 - [ ] Per-module permission matrix beyond owner/admin/member

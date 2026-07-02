@@ -1400,6 +1400,56 @@ export type Database = {
           },
         ]
       }
+      invitations: {
+        Row: {
+          accepted_by: string | null
+          created_at: string
+          email: string
+          expires_at: string | null
+          id: string
+          invited_by: string | null
+          org_id: string
+          role: Database["public"]["Enums"]["role_enum"]
+          status: Database["public"]["Enums"]["invitation_status"]
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_by?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string | null
+          org_id: string
+          role?: Database["public"]["Enums"]["role_enum"]
+          status?: Database["public"]["Enums"]["invitation_status"]
+          token: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_by?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string | null
+          org_id?: string
+          role?: Database["public"]["Enums"]["role_enum"]
+          status?: Database["public"]["Enums"]["invitation_status"]
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           amount_satang: number
@@ -1504,6 +1554,7 @@ export type Database = {
         | "negotiation"
         | "won"
         | "lost"
+      invitation_status: "pending" | "accepted" | "revoked" | "expired"
       invoice_status:
         | "draft"
         | "sent"
@@ -1680,6 +1731,7 @@ export const Constants = {
         "won",
         "lost",
       ],
+      invitation_status: ["pending", "accepted", "revoked", "expired"],
       invoice_status: [
         "draft",
         "sent",
