@@ -10,7 +10,12 @@ import { bahtToSatang, formatTHBWhole } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
 import { nextRunAfter } from "@/lib/billing/recurring"
-import { buildGeneratedInvoice } from "@/lib/billing/generate"
+import {
+  alreadyGeneratedForPeriod,
+  buildGeneratedInvoice,
+  invoiceNumberFor,
+  isUniqueViolation,
+} from "@/lib/billing/generate"
 
 const RECURRING_INTERVALS = ["weekly", "monthly", "quarterly", "yearly"] as const
 const SUBSCRIPTION_STATUSES = ["active", "paused", "cancelled"] as const
@@ -251,6 +256,28 @@ export async function generateInvoiceNow(
   if (!sub) return { error: "Subscription not found" }
 
   const today = todayISO()
+
+  // Idempotency: the invoice number is deterministic per period ("Name-YYYYMM")
+  // and `invoices` has unique(org_id, number). If this period was already billed,
+  // don't create a second invoice — surface a friendly message instead.
+  const number = invoiceNumberFor(sub.name, today)
+  const { data: existing, error: existErr } = await supabase
+    .from("invoices")
+    .select("number")
+    .eq("org_id", sub.org_id)
+    .eq("number", number)
+
+  if (existErr) return { error: existErr.message }
+  if (
+    alreadyGeneratedForPeriod(
+      (existing ?? []).map((r) => r.number),
+      sub.name,
+      today
+    )
+  ) {
+    return { error: "An invoice for this period already exists" }
+  }
+
   const invoice = buildGeneratedInvoice(
     {
       org_id: sub.org_id,
@@ -269,7 +296,13 @@ export async function generateInvoiceNow(
     .select("id")
     .single()
 
-  if (insErr) return { error: insErr.message }
+  if (insErr) {
+    // Belt-and-suspenders for a race past the check above.
+    if (isUniqueViolation(insErr)) {
+      return { error: "An invoice for this period already exists" }
+    }
+    return { error: insErr.message }
+  }
 
   const { error: advErr } = await supabase
     .from("subscriptions")

@@ -3,6 +3,8 @@ import { describe, it, expect } from "vitest"
 import {
   invoiceNumberFor,
   buildGeneratedInvoice,
+  alreadyGeneratedForPeriod,
+  isUniqueViolation,
   type GeneratableSubscription,
 } from "./generate"
 
@@ -45,5 +47,46 @@ describe("buildGeneratedInvoice", () => {
     expect(buildGeneratedInvoice(sub({ project_id: "proj1" }), "2026-07-02").project_id).toBe(
       "proj1"
     )
+  })
+})
+
+describe("alreadyGeneratedForPeriod", () => {
+  it("is true when the period's computed number is present", () => {
+    expect(
+      alreadyGeneratedForPeriod(["Retainer-202607"], "Retainer", "2026-07-02")
+    ).toBe(true)
+  })
+  it("is false when only other periods/subs are present", () => {
+    expect(
+      alreadyGeneratedForPeriod(
+        ["Retainer-202606", "Hosting-202607"],
+        "Retainer",
+        "2026-07-02"
+      )
+    ).toBe(false)
+  })
+  it("is false for an empty set", () => {
+    expect(alreadyGeneratedForPeriod([], "Retainer", "2026-07-02")).toBe(false)
+  })
+  it("accepts any iterable of numbers (e.g. a Set)", () => {
+    expect(
+      alreadyGeneratedForPeriod(
+        new Set(["Retainer-202607"]),
+        "Retainer",
+        "2026-07-02"
+      )
+    ).toBe(true)
+  })
+})
+
+describe("isUniqueViolation", () => {
+  it("is true for Postgres unique-violation code 23505", () => {
+    expect(isUniqueViolation({ code: "23505" })).toBe(true)
+  })
+  it("is false for other codes and for null/undefined", () => {
+    expect(isUniqueViolation({ code: "23503" })).toBe(false)
+    expect(isUniqueViolation({})).toBe(false)
+    expect(isUniqueViolation(null)).toBe(false)
+    expect(isUniqueViolation(undefined)).toBe(false)
   })
 })

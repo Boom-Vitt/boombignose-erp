@@ -133,6 +133,67 @@ curl -X POST http://localhost:3000/api/cron/followups \
 3. (Separately) poll or subscribe to the `outbound_events` queue to deliver the
    messages — see below.
 
+## Cron scan: `/api/cron/subscriptions`
+
+Generates invoices from **due recurring subscriptions**. A scheduler (n8n, Vercel
+Cron, or any timer) POSTs it on a cadence (suggested: **daily**, e.g. 09:00
+Asia/Bangkok). On each run it:
+
+1. Loads **active, auto-generating** subscriptions whose `next_run_date` is on or
+   before today (Bangkok "today"), re-checking each with the `isDue` rule.
+2. For each due subscription, builds a deterministic invoice number
+   (`Name-YYYYMM` for the period) and **checks whether an invoice with that number
+   already exists** for the org. If it does, it **skips** creation (no second
+   invoice) but still advances the schedule.
+3. Otherwise inserts one `invoices` row and advances `last_generated_on` /
+   `next_run_date`.
+
+### Idempotency (no double-billing)
+
+The invoice number is deterministic per period and `invoices` has
+`unique(org_id, number)`, so **re-running on the same day bills nothing new**:
+
+- A pre-insert existence check skips subscriptions already billed for the period.
+- As a belt-and-suspenders guard, a unique-constraint violation (`23505`) on
+  insert is treated as a benign **skip**, not a failure.
+- Either way the subscription's schedule is still advanced, so a duplicate run
+  never leaves the cadence stuck re-scanning the same row.
+
+The scan is resilient: a single failing subscription is logged and skipped; the
+scan continues to the next row.
+
+### Contract
+
+| | |
+|---|---|
+| **Method** | `POST` (also `GET`, identical behaviour, for health-check triggers) |
+| **Auth header** | `X-Cron-Secret: <CRON_SECRET>` |
+| **Body** | none required (ignored) |
+| **Success** | `200 { "ok": true, "generated": n, "skipped": n }` |
+| **Bad/missing secret** | `401 { "error": "unauthorized" }` |
+| **Scan failure** | `500 { "error": "<message>" }` |
+
+`generated` counts newly-created invoices; `skipped` counts due subscriptions
+whose period was already billed (the idempotency path). The secret is validated in
+constant time against `CRON_SECRET` (the same variable the followups scan uses) via
+`lib/webhooks/verify.ts`, and `/api/cron` is public at the middleware level — see
+the note under the followups scan above.
+
+### Example call
+
+```bash
+curl -X POST http://localhost:3000/api/cron/subscriptions \
+  -H "X-Cron-Secret: $CRON_SECRET"
+# → 200 { "ok": true, "generated": 3, "skipped": 0 }
+# Re-run immediately → { "ok": true, "generated": 0, "skipped": 3 }  (idempotent)
+```
+
+### Wiring in n8n
+
+1. **Schedule** node → daily (e.g. 09:00 Asia/Bangkok).
+2. **HTTP Request** node → `POST /api/cron/subscriptions` with the `X-Cron-Secret`
+   header. Safe to run more than once a day — extra runs generate nothing.
+
 ## Outbound queue contract (`outbound_events`)
 
 The app records intent-to-notify in `outbound_events`; the delivery side

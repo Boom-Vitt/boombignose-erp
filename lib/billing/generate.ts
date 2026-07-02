@@ -53,3 +53,34 @@ export function buildGeneratedInvoice(
     issue_date: todayISO,
   }
 }
+
+/**
+ * Idempotency check: has the invoice for this subscription's period already been
+ * generated? The invoice number is deterministic per period ("Name-YYYYMM"), and
+ * `invoices` has `unique(org_id, number)`, so a matching number means a prior run
+ * already billed this period. Pure — the caller fetches the existing numbers for
+ * the org (a DB read) and passes them in; no I/O happens here.
+ */
+export function alreadyGeneratedForPeriod(
+  existingNumbers: Iterable<string>,
+  subName: string,
+  dateISO: string
+): boolean {
+  const target = invoiceNumberFor(subName, dateISO)
+  for (const n of existingNumbers) {
+    if (n === target) return true
+  }
+  return false
+}
+
+/**
+ * True when a Postgres/PostgREST error is a unique-constraint violation (code
+ * `23505`). Used as a belt-and-suspenders guard: if two runs race past the
+ * pre-insert existence check, the `unique(org_id, number)` index still rejects the
+ * duplicate and we treat that rejection as a benign skip rather than a failure.
+ */
+export function isUniqueViolation(
+  error: { code?: string | null } | null | undefined
+): boolean {
+  return error?.code === "23505"
+}
