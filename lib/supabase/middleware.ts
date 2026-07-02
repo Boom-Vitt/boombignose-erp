@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import type { Database } from "@/lib/types/database"
 
 /** Public route prefixes that do not require an authenticated session. */
-const PUBLIC_PREFIXES = ["/login", "/auth", "/api/webhooks"]
+const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/api/webhooks", "/api/cron"]
 
 function isPublic(pathname: string): boolean {
   if (pathname === "/") return true
@@ -15,8 +15,8 @@ function isPublic(pathname: string): boolean {
 
 /**
  * Refreshes the Supabase session cookie on every request and guards app routes.
- * Must be invoked from `middleware.ts`. Do NOT run logic between
- * `createServerClient` and `auth.getUser()`.
+ * Must be invoked from `proxy.ts` (Next.js 16 proxy convention). Do NOT run
+ * logic between `createServerClient` and `auth.getUser()`.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })

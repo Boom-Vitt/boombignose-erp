@@ -49,7 +49,10 @@ export function AppSidebar({
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.map((item) => {
+              {NAV_ITEMS.filter(
+                (item) =>
+                  !item.ownerAdminOnly || role === "owner" || role === "admin"
+              ).map((item) => {
                 const active =
                   pathname === item.href || pathname.startsWith(`${item.href}/`)
                 const Icon = item.icon

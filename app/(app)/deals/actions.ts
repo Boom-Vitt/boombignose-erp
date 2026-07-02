@@ -7,6 +7,7 @@ import { z } from "zod"
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireRole } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
+import { writeAudit } from "@/lib/audit"
 
 const STAGES = [
   "lead",
@@ -63,6 +64,13 @@ export async function createDeal(input: DealInput): Promise<{ error?: string }> 
 
   if (error) return { error: error.message }
 
+  await writeAudit(ctx, {
+    entity: "deal",
+    entityId: data.id,
+    action: "created",
+    summary: `Created deal "${d.title.trim()}"`,
+  })
+
   revalidatePath("/deals")
   // redirect throws NEXT_REDIRECT — must stay outside any try/catch.
   redirect(`/deals/${data.id}`)
@@ -111,6 +119,14 @@ export async function updateDealStage(
   if (!parsed.success) return { error: "Invalid stage" }
 
   const supabase = await createSupabaseClient()
+  // Capture the prior stage + title for the audit summary before we overwrite.
+  const { data: before } = await supabase
+    .from("deals")
+    .select("title, stage")
+    .eq("id", id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+
   const { error } = await supabase
     .from("deals")
     .update({ stage: parsed.data })
@@ -118,6 +134,16 @@ export async function updateDealStage(
     .eq("org_id", ctx.orgId)
 
   if (error) return { error: error.message }
+
+  if (before && before.stage !== parsed.data) {
+    await writeAudit(ctx, {
+      entity: "deal",
+      entityId: id,
+      action: "stage_changed",
+      summary: `Moved deal "${before.title}" from ${before.stage} → ${parsed.data}`,
+      meta: { from: before.stage, to: parsed.data },
+    })
+  }
 
   revalidatePath("/deals")
   revalidatePath(`/deals/${id}`)
@@ -133,6 +159,14 @@ export async function deleteDeal(id: string): Promise<{ error?: string }> {
   }
 
   const supabase = await createSupabaseClient()
+  // Read the title before deletion so the audit summary can name the deal.
+  const { data: before } = await supabase
+    .from("deals")
+    .select("title")
+    .eq("id", id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+
   // Detach activities so the deal can be removed without FK errors.
   await supabase
     .from("activities")
@@ -145,6 +179,13 @@ export async function deleteDeal(id: string): Promise<{ error?: string }> {
     .eq("id", id)
     .eq("org_id", ctx.orgId)
   if (error) return { error: error.message }
+
+  await writeAudit(ctx, {
+    entity: "deal",
+    entityId: id,
+    action: "deleted",
+    summary: before ? `Deleted deal "${before.title}"` : "Deleted a deal",
+  })
 
   revalidatePath("/deals")
   redirect("/deals")

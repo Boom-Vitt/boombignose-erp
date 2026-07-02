@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, Wallet } from "lucide-react"
+import { ArrowLeft, PlugZap, Wallet } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -36,8 +36,10 @@ import { updateInvoice } from "../../actions"
 import {
   InvoiceForm,
   type InvoiceFormValues,
+  type InvoiceFormSubmitValues,
 } from "../../_components/invoice-form"
 import { PaymentForm } from "../../_components/payment-form"
+import { SyncInvoiceButton } from "../../_components/sync-invoice-button"
 import type { Option } from "../../_components/form-fields"
 
 export const dynamic = "force-dynamic"
@@ -49,6 +51,12 @@ const PAYMENT_METHOD_LABEL: Record<Enums<"payment_method">, string> = {
   promptpay: "PromptPay",
   cheque: "Cheque",
   other: "Other",
+}
+
+const ACCOUNTING_PROVIDER_LABEL: Record<Enums<"accounting_provider">, string> = {
+  flowaccount: "FlowAccount",
+  peak: "PEAK",
+  xero: "Xero",
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -70,7 +78,14 @@ export default async function InvoiceDetailPage({
   const supabase = await createClient()
   const today = todayISO()
 
-  const [invoiceRes, paymentsRes, clientsRes, projectsRes] = await Promise.all([
+  const [
+    invoiceRes,
+    paymentsRes,
+    clientsRes,
+    projectsRes,
+    connRes,
+    syncRes,
+  ] = await Promise.all([
     supabase
       .from("invoices")
       .select(
@@ -85,6 +100,20 @@ export default async function InvoiceDetailPage({
       .order("paid_at", { ascending: false }),
     supabase.from("clients").select("id, name").order("name"),
     supabase.from("projects").select("id, name").order("name"),
+    supabase
+      .from("accounting_connections")
+      .select("provider, status")
+      .maybeSingle(),
+    // One sync-map row exists PER PROVIDER (the unique key includes provider),
+    // so after a provider switch there can be several rows for this invoice.
+    // Take the most recently synced rather than assuming a single row.
+    supabase
+      .from("accounting_sync_map")
+      .select("external_id, provider, status, last_synced_at")
+      .eq("local_entity", "invoice")
+      .eq("local_id", id)
+      .order("last_synced_at", { ascending: false, nullsFirst: false })
+      .limit(1),
   ])
 
   const invoice = invoiceRes.data
@@ -94,6 +123,9 @@ export default async function InvoiceDetailPage({
   const paid = payments.reduce((acc, p) => acc + p.amount_satang, 0)
   const outstanding = outstandingSatang(invoice.amount_satang, paid)
   const effectiveStatus = deriveInvoiceStatus(invoice, paid, today)
+
+  const accountingConnected = connRes.data?.status === "connected"
+  const sync = syncRes.data?.[0] ?? null
 
   const clients: Option[] = (clientsRes.data ?? []).map((c) => ({
     value: c.id,
@@ -117,12 +149,30 @@ export default async function InvoiceDetailPage({
     notes: invoice.notes ?? "",
   }
 
+  // Bind the invoice id into a real server action. The "use client" InvoiceForm
+  // can't receive a plain closure across the RSC boundary — it must be a server
+  // action reference (like the /new page passes `createInvoice` directly).
+  // Capture the narrowed id in a const so the closure doesn't see `invoice` as
+  // possibly-null (control-flow narrowing doesn't cross into nested functions).
+  const invoiceId = invoice.id
+  async function saveInvoice(values: InvoiceFormSubmitValues) {
+    "use server"
+    return updateInvoice({ id: invoiceId, ...values })
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={invoice.number}
         description={invoice.clients?.name ?? "Invoice"}
       >
+        {accountingConnected ? (
+          <SyncInvoiceButton invoiceId={invoice.id} />
+        ) : (
+          <Button variant="outline" size="sm" render={<Link href="/settings/accounting" />}>
+            <PlugZap /> Connect accounting
+          </Button>
+        )}
         <Button variant="outline" render={<Link href="/finance" />}>
           <ArrowLeft /> Back
         </Button>
@@ -168,6 +218,26 @@ export default async function InvoiceDetailPage({
                 <Field
                   label="Stored status"
                   value={<InvoiceStatusBadge status={invoice.status} />}
+                />
+                <Field
+                  label="Accounting sync"
+                  value={
+                    sync?.external_id ? (
+                      <span className="space-y-0.5">
+                        <span className="block font-medium">
+                          {ACCOUNTING_PROVIDER_LABEL[sync.provider]} ·{" "}
+                          {sync.external_id}
+                        </span>
+                        {sync.last_synced_at ? (
+                          <span className="text-muted-foreground block text-xs">
+                            Synced {sync.last_synced_at.slice(0, 10)}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Not synced</span>
+                    )
+                  }
                 />
               </dl>
               {invoice.notes ? (
@@ -247,7 +317,7 @@ export default async function InvoiceDetailPage({
             projects={projects}
             defaultValues={defaultValues}
             submitLabel="Save changes"
-            action={(values) => updateInvoice({ id: invoice.id, ...values })}
+            action={saveInvoice}
           />
         </CardContent>
       </Card>
