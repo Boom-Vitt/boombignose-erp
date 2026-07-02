@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { ChangeStageSelect } from "../_components/change-stage-select"
 import { ActivitiesSection } from "../_components/activities-section"
+import { AiPanel } from "../_components/ai-panel"
 
 export const dynamic = "force-dynamic"
 
@@ -127,6 +128,8 @@ export default async function DealDetailPage({
               ) : null}
             </CardContent>
           </Card>
+
+          <AiPanel dealId={deal.id} />
         </div>
 
         <div className="lg:col-span-2">

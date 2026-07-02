@@ -1,4 +1,5 @@
-import { Wallet, Flame, Users, Lock } from "lucide-react"
+import Link from "next/link"
+import { Wallet, Flame, Users, Lock, PlugZap, ChevronRight } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -201,6 +202,32 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Integrations</CardTitle>
+          <CardDescription>
+            Connect BoomBigNose to the tools you already use.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link
+            href="/settings/accounting"
+            className="hover:bg-accent flex items-center gap-3 rounded-lg border p-3 transition-colors"
+          >
+            <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-md">
+              <PlugZap className="size-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Accounting sync</p>
+              <p className="text-muted-foreground truncate text-xs">
+                Scaffold invoice syncing to FlowAccount, PEAK or Xero.
+              </p>
+            </div>
+            <ChevronRight className="text-muted-foreground size-4 shrink-0" />
+          </Link>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -66,6 +66,9 @@ const Schema = z
   })
 
 type Values = z.infer<typeof Schema>
+/** The exact payload shape `action` receives on submit (Zod output of the form
+ * schema — note `project_id` is optional here, unlike `InvoiceFormValues`). */
+export type InvoiceFormSubmitValues = Values
 
 export type InvoiceFormValues = {
   client_id: string
