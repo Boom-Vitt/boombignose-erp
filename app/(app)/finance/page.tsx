@@ -166,6 +166,9 @@ export default async function FinancePage({
         title="Finance"
         description="Invoices, payments, and operating costs at a glance."
       >
+        <Button variant="outline" render={<Link href="/finance/subscriptions" />}>
+          <Repeat /> Subscriptions
+        </Button>
         <Button variant="outline" render={<Link href="/finance/costs/new" />}>
           <Coins /> New cost
         </Button>
