@@ -2,9 +2,10 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LogOut, Sparkles } from "lucide-react"
+import { LogOut } from "lucide-react"
 
 import { NAV_ITEMS } from "@/components/nav"
+import { OrgSwitcher, type OrgOption } from "@/components/org-switcher"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,26 +24,20 @@ import {
 export function AppSidebar({
   email,
   role,
-  orgName,
+  orgs,
+  currentOrgId,
 }: {
   email: string | null
   role: string
-  orgName: string
+  orgs: OrgOption[]
+  currentOrgId: string
 }) {
   const pathname = usePathname()
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-1 py-1.5">
-          <div className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md">
-            <Sparkles className="size-4" />
-          </div>
-          <div className="grid leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-sm font-semibold">{orgName}</span>
-            <span className="text-muted-foreground text-xs">Company OS</span>
-          </div>
-        </div>
+        <OrgSwitcher orgs={orgs} currentOrgId={currentOrgId} />
       </SidebarHeader>
 
       <SidebarContent>

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation"
 import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
 
 /** Turn a free-text name into a url-safe, lowercased, hyphenated slug. */
@@ -99,7 +99,7 @@ export async function updateTemplate(
 export async function deleteTemplate(id: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "template:manage")
   } catch {
     return { error: "Only owners and admins can delete templates." }
   }

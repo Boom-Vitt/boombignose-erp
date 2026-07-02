@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
 
@@ -25,7 +25,7 @@ export async function updateOrgSettings(
 
   // Only owners/admins may change financials and the workspace name.
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "settings:manage")
   } catch {
     return { error: "Only an owner or admin can update settings." }
   }

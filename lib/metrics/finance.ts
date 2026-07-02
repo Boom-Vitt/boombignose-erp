@@ -19,6 +19,12 @@ export type InvoiceWithPaid = {
   paid_satang: number
 }
 
+export type SubscriptionLike = {
+  status: Enums<"subscription_status">
+  amount_satang: number
+  interval: Enums<"recurring_interval">
+}
+
 /** Sum of payments received in the given 'YYYY-MM' (app timezone). */
 export function revenueForMonth(
   payments: PaymentLike[],
@@ -71,6 +77,18 @@ export function mrr(invoices: RecurringInvoiceLike[]): Satang {
         acc + i.amount_satang * MONTHLY_FACTOR[i.recurring_interval!],
       0
     )
+  return Math.round(total)
+}
+
+/**
+ * Monthly Recurring Revenue from subscriptions (the source of truth for MRR).
+ * Only `active` subscriptions count; each amount is normalized to a monthly
+ * figure using the same per-interval factors as {@link mrr}.
+ */
+export function subscriptionMrr(subs: SubscriptionLike[]): Satang {
+  const total = subs
+    .filter((s) => s.status === "active")
+    .reduce((acc, s) => acc + s.amount_satang * MONTHLY_FACTOR[s.interval], 0)
   return Math.round(total)
 }
 

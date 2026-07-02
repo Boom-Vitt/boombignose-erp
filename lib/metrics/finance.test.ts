@@ -4,6 +4,7 @@ import {
   revenueForMonth,
   costsForMonth,
   mrr,
+  subscriptionMrr,
   unpaidTotal,
   unpaidCount,
   netBurnSatang,
@@ -12,6 +13,7 @@ import {
   type CostLike,
   type RecurringInvoiceLike,
   type InvoiceWithPaid,
+  type SubscriptionLike,
 } from "@/lib/metrics/finance"
 
 describe("revenueForMonth", () => {
@@ -58,6 +60,44 @@ describe("mrr", () => {
     ]
     // 10000 * 52/12 = 43333.33 -> 43333
     expect(mrr(invoices)).toBe(43_333)
+  })
+})
+
+describe("subscriptionMrr", () => {
+  it("normalizes each interval to a monthly figure for active subs", () => {
+    const subs: SubscriptionLike[] = [
+      { status: "active", amount_satang: 120_000, interval: "monthly" },
+      { status: "active", amount_satang: 1_200_000, interval: "yearly" },
+      { status: "active", amount_satang: 300_000, interval: "quarterly" },
+    ]
+    // 120000 + 100000 + 100000 = 320000
+    expect(subscriptionMrr(subs)).toBe(320_000)
+  })
+
+  it("rounds weekly normalization", () => {
+    const subs: SubscriptionLike[] = [
+      { status: "active", amount_satang: 10_000, interval: "weekly" },
+    ]
+    // 10000 * 52/12 = 43333.33 -> 43333
+    expect(subscriptionMrr(subs)).toBe(43_333)
+  })
+
+  it("excludes paused and cancelled subscriptions", () => {
+    const subs: SubscriptionLike[] = [
+      { status: "active", amount_satang: 120_000, interval: "monthly" },
+      { status: "paused", amount_satang: 500_000, interval: "monthly" },
+      { status: "cancelled", amount_satang: 900_000, interval: "monthly" },
+    ]
+    expect(subscriptionMrr(subs)).toBe(120_000)
+  })
+
+  it("is zero with no active subscriptions", () => {
+    expect(subscriptionMrr([])).toBe(0)
+    expect(
+      subscriptionMrr([
+        { status: "paused", amount_satang: 100_000, interval: "monthly" },
+      ])
+    ).toBe(0)
   })
 })
 

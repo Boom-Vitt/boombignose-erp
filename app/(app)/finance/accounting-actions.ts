@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
 import { invoiceToExternalPayload } from "@/lib/accounting/mapping"
 import { getProvider } from "@/lib/accounting/provider"
@@ -22,7 +22,7 @@ export async function syncInvoiceToAccounting(
   const ctx = await requireOrgContext()
 
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "accounting:manage")
   } catch {
     return { error: "Only an owner or admin can sync to accounting." }
   }

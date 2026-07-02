@@ -9,6 +9,8 @@ import {
   Briefcase,
   CalendarClock,
   AlertTriangle,
+  FileText,
+  Clock,
 } from "lucide-react"
 
 import { getDashboardData } from "@/lib/queries/dashboard"
@@ -74,10 +76,22 @@ export default async function DashboardPage() {
           hint={`Weighted ${formatTHBWhole(d.weightedPipelineSatang)}`}
         />
         <StatCard
+          label="Open quotes"
+          value={formatTHBWhole(d.openQuotesValueSatang)}
+          icon={FileText}
+          hint={`${d.openQuotesCount} open quote${d.openQuotesCount === 1 ? "" : "s"}`}
+        />
+        <StatCard
           label="MRR"
           value={formatTHB(d.mrrSatang)}
           icon={Repeat}
-          hint="Recurring revenue / month"
+          hint="Active subscriptions / month"
+        />
+        <StatCard
+          label="Billable hours"
+          value={`${d.billableHoursThisMonth.toFixed(1)} h`}
+          icon={Clock}
+          hint={`${Math.round(d.utilizationThisMonth * 100)}% utilization · this month`}
         />
         <StatCard
           label="Unpaid invoices"

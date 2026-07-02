@@ -1,7 +1,7 @@
 import { ScrollText } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { auditSentence, relativeTime } from "@/lib/audit/format"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
@@ -18,7 +18,7 @@ function entityLabel(entity: string): string {
 export default async function AuditPage() {
   const ctx = await requireOrgContext()
   // Activity history is settings-class data: owners/admins only.
-  requireRole(ctx, ["owner", "admin"])
+  requireCapability(ctx, "audit:view")
 
   const supabase = await createClient()
   const { data: rows } = await supabase

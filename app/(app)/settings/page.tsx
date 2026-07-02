@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { SettingsForm } from "./_components/settings-form"
+import { TeamInvitations } from "./_components/team-invitations"
 import { updateOrgSettings } from "./actions"
 
 export const dynamic = "force-dynamic"
@@ -64,6 +65,18 @@ export default async function SettingsPage() {
   const nameById = new Map(
     (profiles ?? []).map((p) => [p.id, p.full_name] as const)
   )
+
+  // Pending invitations (owner/admin manage these).
+  const { data: pendingInvites } = canEdit
+    ? await supabase
+        .from("invitations")
+        .select("id, email, role, token")
+        .eq("org_id", ctx.orgId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+    : { data: [] as { id: string; email: string; role: string; token: string }[] }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
 
   const team = (members ?? []).map((m) => ({
     userId: m.user_id,
@@ -202,6 +215,29 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {canEdit ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Invitations</CardTitle>
+            <CardDescription>
+              Invite teammates by email. They join this workspace when they
+              accept the link.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TeamInvitations
+              invites={(pendingInvites ?? []).map((i) => ({
+                id: i.id,
+                email: i.email,
+                role: i.role,
+                token: i.token,
+              }))}
+              appUrl={appUrl}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

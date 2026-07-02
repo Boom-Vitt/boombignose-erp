@@ -5,9 +5,11 @@ import { redirect } from "next/navigation"
 import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang, formatTHBWhole } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
+import { todayISO } from "@/lib/dates"
+import { nextDocumentNumber } from "@/lib/documents/numbering"
 
 const INVOICE_STATUSES = [
   "draft",
@@ -64,7 +66,7 @@ const optionalDate = z
 const CreateInvoice = z.object({
   client_id: z.string().min(1, "Client is required"),
   project_id: optionalId,
-  number: z.string().trim().min(1, "Invoice number is required"),
+  number: optionalString,
   status: z.enum(INVOICE_STATUSES).default("draft"),
   issue_date: optionalDate,
   due_date: optionalDate,
@@ -83,13 +85,32 @@ export async function createInvoice(
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
+
+  // Auto-generate the invoice number when none was provided. Scans the org's
+  // existing numbers for the current year and continues the running counter.
+  // Manual numbers are used verbatim; a rare unique(org_id, number) collision
+  // surfaces as the DB error below, exactly as before.
+  let number = d.number
+  if (!number) {
+    const year = Number(todayISO().slice(0, 4))
+    const { data: existing } = await supabase
+      .from("invoices")
+      .select("number")
+      .eq("org_id", ctx.orgId)
+    number = nextDocumentNumber(
+      "INV",
+      (existing ?? []).map((r) => r.number),
+      year
+    )
+  }
+
   const { data, error } = await supabase
     .from("invoices")
     .insert({
       org_id: ctx.orgId,
       client_id: d.client_id,
       project_id: d.project_id,
-      number: d.number,
+      number,
       status: d.status,
       issue_date: d.issue_date ?? undefined,
       due_date: d.due_date,
@@ -107,7 +128,7 @@ export async function createInvoice(
     entity: "invoice",
     entityId: data.id,
     action: "created",
-    summary: `Created invoice ${d.number} for ${formatTHBWhole(bahtToSatang(d.amountBaht))}`,
+    summary: `Created invoice ${number} for ${formatTHBWhole(bahtToSatang(d.amountBaht))}`,
   })
 
   revalidatePath("/finance")
@@ -118,7 +139,9 @@ const UpdateInvoice = z.object({
   id: z.string().min(1),
   client_id: z.string().min(1, "Client is required"),
   project_id: optionalId,
-  number: z.string().trim().min(1, "Invoice number is required"),
+  // The shared form marks number optional (create auto-numbers). On edit the
+  // field is prefilled, so a blank number simply leaves the stored one untouched.
+  number: optionalString,
   status: z.enum(INVOICE_STATUSES),
   issue_date: optionalDate,
   due_date: optionalDate,
@@ -142,7 +165,7 @@ export async function updateInvoice(
     .update({
       client_id: d.client_id,
       project_id: d.project_id,
-      number: d.number,
+      ...(d.number ? { number: d.number } : {}),
       status: d.status,
       issue_date: d.issue_date ?? undefined,
       due_date: d.due_date,
@@ -305,7 +328,7 @@ export async function deleteCost(
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try {
-    requireRole(ctx, ["owner", "admin"])
+    requireCapability(ctx, "cost:delete")
   } catch {
     return { error: "Only owners and admins can delete costs." }
   }
