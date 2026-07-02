@@ -74,7 +74,7 @@ BoomBigNose Company OS เป็น **Company OS / ERP แบบเบา ที
 - 🔗 **Webhook อัตโนมัติ** — endpoint ขาเข้าจาก n8n ที่ตรวจ `X-Webhook-Secret`
 - 🔐 **Auth & สิทธิ์** — Supabase Auth; บทบาท owner / admin / member; single-org (พร้อมโครงสร้าง multi-tenant)
 
-### ใหม่ใน V2 🆕 *(อยู่บนเบรนช์ [`feat/company-os-v2`](https://github.com/Boom-Vitt/boombignose-erp/tree/feat/company-os-v2))*
+### ใหม่ใน V2 🆕 *(รวมเข้า `main` แล้ว)*
 
 - 📝 **Audit log + ประวัติกิจกรรม** — บันทึกการเปลี่ยนแปลงสำคัญทุกอย่าง เห็นได้ที่หน้า `/audit` (จำกัดเฉพาะ owner/admin)
 - 📤 **รายงาน & Export CSV** — ใบแจ้งหนี้ / ต้นทุน / ดีล (เป็นบาท, ป้องกัน CSV formula injection) + **saved views** + ตัวกรองผ่าน URL
