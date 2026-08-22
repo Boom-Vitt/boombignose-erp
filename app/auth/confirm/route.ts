@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { safeRedirectPath } from "@/lib/auth/redirect"
 
 /**
  * Email-confirmation callback for signups (and other email OTP links).
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
   const tokenHash = searchParams.get("token_hash")
   const type = searchParams.get("type") as EmailOtpType | null
   const code = searchParams.get("code")
+  const requestedNext = safeRedirectPath(searchParams.get("next"), "/onboarding")
 
   const supabase = await createClient()
 
@@ -29,11 +31,11 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      return NextResponse.redirect(new URL("/dashboard", request.url), {
+      return NextResponse.redirect(new URL(requestedNext, request.url), {
         status: 303,
       })
     }
-    return failure(request, error.message)
+    return failure(request)
   }
 
   // OTP flow: verify the email token hash.
@@ -43,19 +45,24 @@ export async function GET(request: NextRequest) {
       token_hash: tokenHash,
     })
     if (!error) {
-      return NextResponse.redirect(new URL("/dashboard", request.url), {
+      const destination = type === "recovery"
+        ? safeRedirectPath(searchParams.get("next"), "/reset-password")
+        : type === "signup"
+          ? "/onboarding"
+          : requestedNext
+      return NextResponse.redirect(new URL(destination, request.url), {
         status: 303,
       })
     }
-    return failure(request, error.message)
+    return failure(request)
   }
 
-  return failure(request, "Invalid or expired confirmation link.")
+  return failure(request)
 }
 
-/** Redirect to /login with a human-readable error message in the query. */
-function failure(request: NextRequest, message: string) {
+/** Redirect to /login without exposing provider-specific auth failures. */
+function failure(request: NextRequest) {
   const url = new URL("/login", request.url)
-  url.searchParams.set("error", message)
+  url.searchParams.set("error", "That link is invalid or expired. Request a new one and try again.")
   return NextResponse.redirect(url, { status: 303 })
 }

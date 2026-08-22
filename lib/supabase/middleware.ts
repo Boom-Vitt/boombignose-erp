@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import type { Database } from "@/lib/types/database"
 
 /** Public route prefixes that do not require an authenticated session. */
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/api/webhooks", "/api/cron", "/portal"]
+const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/reset-password", "/auth", "/api/webhooks", "/api/cron", "/portal"]
 
 function isPublic(pathname: string): boolean {
   if (pathname === "/") return true
@@ -16,7 +16,7 @@ function isPublic(pathname: string): boolean {
 /**
  * Refreshes the Supabase session cookie on every request and guards app routes.
  * Must be invoked from `proxy.ts` (Next.js 16 proxy convention). Do NOT run
- * logic between `createServerClient` and `auth.getUser()`.
+ * logic between `createServerClient` and `auth.getClaims()`.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -43,23 +43,22 @@ export async function updateSession(request: NextRequest) {
   )
 
   // IMPORTANT: refreshes tokens; keep this immediately after client creation.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: claimsResult } = await supabase.auth.getClaims()
+  const claims = claimsResult?.claims
 
   const { pathname } = request.nextUrl
 
-  if (!user && !isPublic(pathname)) {
+  if (!claims && !isPublic(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
     url.searchParams.set("redirect", pathname)
     return NextResponse.redirect(url)
   }
 
-  // Signed-in users hitting /login go to the dashboard.
-  if (user && pathname === "/login") {
+  // Signed-in users hitting an entry screen complete workspace setup first.
+  if (claims && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone()
-    url.pathname = "/dashboard"
+    url.pathname = "/onboarding"
     url.search = ""
     return NextResponse.redirect(url)
   }
