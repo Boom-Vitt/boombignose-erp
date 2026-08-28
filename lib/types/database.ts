@@ -1537,7 +1537,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_workspace_for_current_user: {
+        Args: {
+          workspace_name: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       accounting_conn_status: "disconnected" | "connected" | "error"
