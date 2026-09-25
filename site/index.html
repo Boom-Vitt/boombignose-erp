@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BoomBigNose Company OS</title>
+  <meta name="description" content="ระบบปฏิบัติการธุรกิจสำหรับสตูดิโอสาย AI — CRM · ดีล · โปรเจกต์ · การเงิน · ระบบอัตโนมัติ · แดชบอร์ดผู้ก่อตั้ง" />
+  <meta property="og:title" content="BoomBigNose Company OS" />
+  <meta property="og:description" content="The operating layer for a small AI studio — CRM, deals, projects, finance, automation and a founder dashboard in one place." />
+  <link rel="icon" href="favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #fbf8f3;
+      --surface: #ffffff;
+      --surface-2: #f3eee6;
+      --text: #1d1b18;
+      --muted: #6b655c;
+      --border: #e6dfd3;
+      --accent: #e0562b;
+      --accent-soft: #fbe3d9;
+      --good: #1f8a5b;
+      --warn: #b7791f;
+      --bad: #c2412d;
+      --shadow: 0 1px 2px rgb(0 0 0 / .04), 0 8px 24px rgb(0 0 0 / .06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14130f;
+        --surface: #1d1b17;
+        --surface-2: #26231e;
+        --text: #f2eee7;
+        --muted: #a39c90;
+        --border: #34302a;
+        --accent: #ff7a4d;
+        --accent-soft: #3a2219;
+        --good: #4cc38a;
+        --warn: #e2b04a;
+        --bad: #ff8a73;
+        --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px rgb(0 0 0 / .35);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans Thai", system-ui, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+    /* nav */
+    header.nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--bg) 85%, transparent);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; }
+    .brand .logo {
+      width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+      background: var(--accent); color: #fff; font-size: 18px;
+    }
+    .nav nav { display: flex; gap: 22px; font-size: 15px; }
+    .nav nav a { text-decoration: none; color: var(--muted); }
+    .nav nav a:hover { color: var(--text); }
+    @media (max-width: 720px) { .nav nav { display: none; } }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px;
+      text-decoration: none; border: 1px solid transparent; transition: transform .15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost { border-color: var(--border); background: var(--surface); }
+
+    /* hero */
+    .hero { padding: 72px 0 40px; text-align: center; }
+    .pill {
+      display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+      background: var(--accent-soft); color: var(--accent);
+    }
+    .hero h1 {
+      font-size: clamp(34px, 6vw, 60px); line-height: 1.15; margin: 18px auto 14px; max-width: 820px;
+      letter-spacing: -.01em;
+    }
+    .hero h1 em { font-style: normal; color: var(--accent); }
+    .hero p.lead { font-size: clamp(16px, 2.2vw, 19px); color: var(--muted); max-width: 680px; margin: 0 auto 28px; }
+    .hero .en { display: block; font-size: 15px; margin-top: 6px; }
+    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+    /* mockup */
+    .mock {
+      margin: 48px auto 0; max-width: 1000px; text-align: left;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      box-shadow: var(--shadow); overflow: hidden;
+    }
+    .mock-bar { display: flex; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+    .mock-bar span { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+    .mock-body { display: grid; grid-template-columns: 180px 1fr; min-height: 340px; }
+    .mock-side { border-right: 1px solid var(--border); padding: 16px 12px; font-size: 14px; color: var(--muted); }
+    .mock-side div { padding: 7px 10px; border-radius: 8px; }
+    .mock-side .on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .mock-main { padding: 20px; }
+    .mock-main h3 { margin: 0 0 14px; font-size: 18px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .stat { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+    .stat .k { font-size: 12.5px; color: var(--muted); }
+    .stat .v { font-family: "IBM Plex Mono", monospace; font-size: 20px; margin-top: 2px; }
+    .stat .d { font-size: 12px; }
+    .up { color: var(--good); } .down { color: var(--bad); }
+    .rows { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; margin-top: 12px; }
+    .panel { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+    .panel .t { font-weight: 600; margin-bottom: 8px; }
+    .bars { display: flex; align-items: flex-end; gap: 8px; height: 110px; }
+    .bars div { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; opacity: .85; }
+    .bars div:nth-child(odd) { opacity: .55; }
+    .li { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px dashed var(--border); }
+    .li:first-of-type { border-top: 0; }
+    .tag { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+    .tag.warn { color: var(--warn); } .tag.bad { color: var(--bad); }
+    @media (max-width: 820px) {
+      .mock-body { grid-template-columns: 1fr; }
+      .mock-side { display: none; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .rows { grid-template-columns: 1fr; }
+    }
+
+    /* sections */
+    section { padding: 72px 0; }
+    .sec-head { max-width: 640px; margin-bottom: 36px; }
+    .sec-head .eyebrow { color: var(--accent); font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; }
+    .sec-head h2 { font-size: clamp(26px, 4vw, 36px); line-height: 1.25; margin: 6px 0 10px; }
+    .sec-head p { color: var(--muted); margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+    }
+    .card .ic { font-size: 24px; }
+    .card h3 { margin: 10px 0 6px; font-size: 18px; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+    .card .ver { float: right; font-size: 12px; }
+
+    .alt { background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+    /* roadmap */
+    .road { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 820px) { .road { grid-template-columns: 1fr; } }
+    .road .card h3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .road ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 15px; }
+    .road li { margin: 3px 0; }
+    .done { color: var(--good); } .next { color: var(--accent); }
+
+    /* stack */
+    .stack { display: flex; flex-wrap: wrap; gap: 10px; }
+    .stack span {
+      padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+      font-size: 15px;
+    }
+    .principles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 28px; }
+    @media (max-width: 720px) { .principles { grid-template-columns: 1fr; } }
+
+    .note {
+      border-left: 4px solid var(--accent); background: var(--surface); border-radius: 10px;
+      padding: 16px 18px; color: var(--muted);
+    }
+    .note strong { color: var(--text); }
+
+    footer { padding: 36px 0 48px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); }
+    footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="#top"><span class="logo">🐘</span> BoomBigNose Company OS</a>
+      <nav>
+        <a href="#features">ฟีเจอร์</a>
+        <a href="#roadmap">โรดแมป</a>
+        <a href="#tech">เทคโนโลยี</a>
+      </nav>
+      <a class="btn btn-ghost" href="https://github.com/Boom-Vitt/boombignose-erp">GitHub</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="wrap hero">
+      <span class="pill">Internal MVP · Made in Bangkok 🇹🇭</span>
+      <h1>ระบบปฏิบัติการของบริษัท<br />สำหรับ<em>สตูดิโอสาย AI</em></h1>
+      <p class="lead">
+        CRM · ดีล · โปรเจกต์ · การเงิน · ระบบอัตโนมัติ · แดชบอร์ดผู้ก่อตั้ง — ทุกอย่างของธุรกิจอยู่ในที่เดียว
+        <span class="en">The operating layer for a small AI studio: see and run the whole company from one place.</span>
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#features">ดูฟีเจอร์ทั้งหมด →</a>
+        <a class="btn btn-ghost" href="#roadmap">โรดแมป</a>
+      </div>
+
+      <div class="mock" role="img" aria-label="ตัวอย่างหน้าแดชบอร์ดผู้ก่อตั้ง (ข้อมูลจำลอง)">
+        <div class="mock-bar"><span></span><span></span><span></span></div>
+        <div class="mock-body">
+          <div class="mock-side">
+            <div class="on">📊 แดชบอร์ด</div>
+            <div>👥 ลูกค้า</div>
+            <div>🤝 ดีล</div>
+            <div>📁 โปรเจกต์</div>
+            <div>💰 การเงิน</div>
+            <div>🧩 เทมเพลต</div>
+            <div>📅 ปฏิทิน</div>
+            <div>📈 รายงาน</div>
+          </div>
+          <div class="mock-main">
+            <h3>สวัสดีตอนเช้า 👋</h3>
+            <div class="stats">
+              <div class="stat"><div class="k">เงินสด</div><div class="v">฿1.24M</div><div class="d up">▲ 8% เดือนนี้</div></div>
+              <div class="stat"><div class="k">Burn / เดือน</div><div class="v">฿185K</div><div class="d down">▲ 3%</div></div>
+              <div class="stat"><div class="k">Runway</div><div class="v">6.7 ด.</div><div class="d up">ปลอดภัย</div></div>
+              <div class="stat"><div class="k">Pipeline</div><div class="v">฿2.9M</div><div class="d up">12 ดีล</div></div>
+            </div>
+            <div class="rows">
+              <div class="panel">
+                <div class="t">รายได้ 6 เดือนล่าสุด</div>
+                <div class="bars">
+                  <div style="height:42%"></div><div style="height:55%"></div><div style="height:48%"></div>
+                  <div style="height:70%"></div><div style="height:64%"></div><div style="height:88%"></div>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="t">งานติดตามวันนี้</div>
+                <div class="li"><span>โทรติดตามใบเสนอราคา</span><span class="tag warn">วันนี้</span></div>
+                <div class="li"><span>ส่ง workshop outline</span><span class="tag">พรุ่งนี้</span></div>
+                <div class="li"><span>ใบแจ้งหนี้ INV-0142</span><span class="tag bad">เกินกำหนด</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin-top:10px">* ภาพจำลองพร้อมข้อมูลตัวอย่าง</p>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="sec-head">
+          <div class="eyebrow">Features</div>
+          <h2>ครบทุกอย่างที่สตูดิโอเล็ก ๆ ต้องใช้ทุกวัน</h2>
+          <p>ออกแบบให้ผู้ก่อตั้งเห็นทั้ง pipeline การส่งมอบงาน และกระแสเงินสดในหน้าเดียว — ส่วนทีมเห็น “งานของฉัน” ชัดเจน</p>
+        </div>
+        <div class="grid">
+          <div class="card"><span class="tag ver">V1</span><div class="ic">📊</div><h3>แดชบอร์ดผู้ก่อตั้ง</h3><p>เงินสด, burn, รายได้, ใบแจ้งหนี้ค้าง, MRR, pipeline, runway และงานที่เกินกำหนด</p></div>
+          <div class="card"><span class="tag ver">V1</span><div class="ic">👥</div><h3>CRM &amp; ดีล</h3><p>ลูกค้า ผู้ติดต่อ บอร์ด pipeline ของดีล และกิจกรรม/การติดตาม</p></div>
+          <div class="card"><span class="tag ver">V1</span><div class="ic">📁</div><h3>โปรเจกต์</h3><p>บอร์ดส่งมอบงาน งานย่อย milestones และสร้างโปรเจกต์จากดีลที่ปิดได้</p></div>
+          <div class="card"><span class="tag ver">V1</span><div class="ic">💰</div><h3>การเงินเชิงปฏิบัติการ</h3><p>ใบแจ้งหนี้ การชำระเงิน ต้นทุน กำไรขั้นต้น และ MRR — เงินเก็บเป็นสตางค์ ไม่ใช้ float</p></div>
+          <div class="card"><span class="tag ver">V1</span><div class="ic">🧩</div><h3>คลังเทมเพลตอัตโนมัติ</h3><p>เวิร์กโฟลว์ที่นำกลับมาใช้ซ้ำได้ พร้อมเช็กลิสต์และราคา + webhook ขาเข้าจาก n8n</p></div>
+          <div class="card"><span class="tag ver">V2</span><div class="ic">🤖</div><h3>ผู้ช่วย AI</h3><p>สรุปดีล ร่างข้อความติดตาม และสรุปโน้ตประชุม ขับเคลื่อนด้วย Claude</p></div>
+          <div class="card"><span class="tag ver">V2</span><div class="ic">⏰</div><h3>ติดตามอัตโนมัติ</h3><p>สแกนงานถึงกำหนดทุกวัน สร้าง reminder และส่งต่อให้ n8n แจ้งเตือนทาง LINE</p></div>
+          <div class="card"><span class="tag ver">V2</span><div class="ic">📝</div><h3>Audit log &amp; รายงาน</h3><p>บันทึกทุกการเปลี่ยนแปลงสำคัญ, export CSV, saved views และรายงานแบบ pivot</p></div>
+          <div class="card"><span class="tag ver">V2</span><div class="ic">🔗</div><h3>พอร์ทัลลูกค้า &amp; ปฏิทิน</h3><p>ลิงก์อ่านอย่างเดียวสำหรับลูกค้า, ใบเสนอราคา, timesheet และมุมมองปฏิทิน</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="roadmap" class="alt">
+      <div class="wrap">
+        <div class="sec-head">
+          <div class="eyebrow">Roadmap</div>
+          <h2>ใช้ภายในก่อน แล้วต่อยอดเป็นสินค้า open-core</h2>
+          <p>ทุกตารางมี <code>org_id</code> และขอบเขตโมดูลชัดเจนตั้งแต่วันแรก จึงขยายเป็น Community + Pro ได้โดยไม่ต้องเขียนใหม่</p>
+        </div>
+        <div class="road">
+          <div class="card">
+            <h3>V1 — MVP ภายใน <span class="done">✓ เสร็จแล้ว</span></h3>
+            <ul><li>Auth + บทบาท owner/admin/member</li><li>แดชบอร์ด, CRM, โปรเจกต์, การเงิน</li><li>คลังเทมเพลต + webhook n8n</li><li>ข้อมูลเดโม SME ไทยจำลอง</li></ul>
+          </div>
+          <div class="card">
+            <h3>V2 — คมขึ้น <span class="done">✓ เสร็จแล้ว</span></h3>
+            <ul><li>โครงเชื่อม FlowAccount / PEAK / Xero</li><li>รายงาน, export, saved views</li><li>ผู้ช่วย AI + ติดตามอัตโนมัติ</li><li>Audit log + auth พร้อมใช้จริง</li></ul>
+          </div>
+          <div class="card">
+            <h3>V3 — ทำเป็นสินค้า <span class="next">กำลังจะมา</span></h3>
+            <ul><li>Multi-org จริง (org switcher, คำเชิญ)</li><li>Self-host + deploy คำสั่งเดียว</li><li>Community Edition (AGPL)</li><li>Pro: SaaS, SSO, RBAC, white-label</li></ul>
+          </div>
+        </div>
+        <div class="note" style="margin-top:24px">
+          <strong>ตั้งใจไม่ทำ:</strong> สต็อก, จัดซื้อ, เงินเดือน และการออกใบกำกับภาษี — บัญชีตามกฎหมายยังอยู่กับ FlowAccount / PEAK / Xero ระบบนี้คือ <em>ชั้นปฏิบัติการ</em> ไม่ใช่สมุดบัญชีหลัก
+        </div>
+      </div>
+    </section>
+
+    <section id="tech">
+      <div class="wrap">
+        <div class="sec-head">
+          <div class="eyebrow">Built with</div>
+          <h2>สแตกสมัยใหม่ ปลอดภัยตั้งแต่ชั้นฐานข้อมูล</h2>
+        </div>
+        <div class="stack">
+          <span>Next.js 16</span><span>React 19</span><span>TypeScript</span><span>Supabase Postgres</span>
+          <span>Row Level Security</span><span>Tailwind CSS v4</span><span>shadcn/ui</span><span>Zod v4</span>
+          <span>Claude (Anthropic SDK)</span><span>Vitest</span><span>Playwright</span><span>n8n</span>
+        </div>
+        <div class="principles">
+          <div class="card"><div class="ic">🛡️</div><h3>แยกข้อมูลด้วย RLS</h3><p>ทุกตารางมี <code>org_id</code> และ policy แบบ force — service-role key ไม่เคยอยู่ใน request path หรือฝั่ง client</p></div>
+          <div class="card"><div class="ic">💵</div><h3>ตัวเลขการเงินเป๊ะ</h3><p>เก็บเงินเป็นสตางค์จำนวนเต็ม (bigint) ฟอร์แมตเป็นบาทที่ขอบเท่านั้น</p></div>
+          <div class="card"><div class="ic">🧪</div><h3>Business logic แบบ pure</h3><p>ตรรกะหลักอยู่ใน <code>lib/</code> และมี unit test ครบ รันได้โดยไม่ต้องมีฐานข้อมูล</p></div>
+          <div class="card"><div class="ic">🌏</div><h3>ออกแบบสำหรับไทย</h3><p>สกุลเงิน THB, เขตเวลา Asia/Bangkok และคำนึงถึง PDPA ตั้งแต่ต้น</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>© BoomBigNose · Bangkok</span>
+      <span>ยังเป็นซอฟต์แวร์ภายใน (proprietary) · มีแผนเปิดเป็น open-core</span>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,36 @@
+# Publishes the static showcase page in site/ to GitHub Pages.
+# The app itself needs a server (Server Actions, Supabase auth, API routes),
+# so it can't run on Pages. Only the marketing page is deployed here.
+name: Deploy showcase to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy favicon
+        run: cp app/favicon.ico site/favicon.ico
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
