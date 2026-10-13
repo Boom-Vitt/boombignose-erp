@@ -19,11 +19,12 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 
 import { addQuoteItem } from "../actions"
+import { serviceMoneyInput, serviceQuantityInput } from "@/lib/workflows/service"
 
 const Schema = z.object({
   description: z.string().min(1, "Description is required"),
-  quantity: z.coerce.number().positive("Quantity must be greater than 0"),
-  unitPriceBaht: z.coerce.number().min(0, "Unit price must be 0 or more"),
+  quantity: serviceQuantityInput,
+  unitPriceBaht: serviceMoneyInput,
 })
 
 type Values = z.infer<typeof Schema>
@@ -77,7 +78,7 @@ export function QuoteItemForm({ quoteId }: { quoteId: string }) {
                 <Input
                   type="number"
                   min={0}
-                  step="0.01"
+                  step="0.001"
                   inputMode="decimal"
                   name={field.name}
                   ref={field.ref}

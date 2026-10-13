@@ -4,7 +4,9 @@
  * Numbers follow the shape `PREFIX-YEAR-NNN`, e.g. `INV-2026-007`, where NNN is a
  * per-year running counter zero-padded to at least three digits. Numbering is a
  * pure function of the existing numbers so it can be unit-tested and called from
- * server actions after loading the org's current numbers.
+ * server actions after loading the org's current numbers. This suggests a display
+ * number only; database uniqueness/transactional commands decide allocation.
+ * Never use this display number as the identity of a retried business command.
  */
 
 /** Zero-pad a positive integer to at least three digits. 1 → "001", 1000 → "1000". */
@@ -28,14 +30,21 @@ export function nextDocumentNumber(
   existingNumbers: string[],
   year: number
 ): string {
-  const pattern = new RegExp(`^${prefix}-${year}-(\\d+)$`)
+  if (!prefix.trim() || !Number.isInteger(year) || year < 1 || year > 9999) {
+    throw new Error("Invalid document series")
+  }
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const pattern = new RegExp(`^${escapedPrefix}-${year}-(\\d+)$`)
 
   let max = 0
   for (const raw of existingNumbers) {
     const match = pattern.exec(raw.trim())
     if (!match) continue
     const counter = Number(match[1])
-    if (Number.isFinite(counter) && counter > max) max = counter
+    if (!Number.isSafeInteger(counter) || counter >= Number.MAX_SAFE_INTEGER) {
+      throw new Error("Document counter exceeds safe bounds")
+    }
+    if (counter > max) max = counter
   }
 
   return `${prefix}-${year}-${padCounter(max + 1)}`

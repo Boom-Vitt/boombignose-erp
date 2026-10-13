@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { serviceMoneyInput } from "@/lib/workflows/service"
 import type { Enums } from "@/lib/types/database"
 
 type ProjectStatus = Enums<"project_status">
@@ -56,7 +57,7 @@ const FormSchema = z.object({
     "cancelled",
   ]),
   deadline: z.string(),
-  budgetBaht: z.coerce.number().min(0, "Budget cannot be negative"),
+  budgetBaht: serviceMoneyInput,
   owner: z.string(),
 })
 

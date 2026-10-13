@@ -16,12 +16,12 @@ import type { Option } from "../_components/form-fields"
 export const dynamic = "force-dynamic"
 
 export default async function NewQuotePage() {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const [clientsRes, projectsRes] = await Promise.all([
-    supabase.from("clients").select("id, name").order("name"),
-    supabase.from("projects").select("id, name").order("name"),
+    supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
+    supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
   ])
 
   const clients: Option[] = (clientsRes.data ?? []).map((c) => ({

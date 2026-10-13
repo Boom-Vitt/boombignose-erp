@@ -52,4 +52,17 @@ describe("nextDocumentNumber", () => {
   it("tolerates surrounding whitespace on stored numbers", () => {
     expect(nextDocumentNumber("INV", ["  INV-2026-002  "], 2026)).toBe("INV-2026-003")
   })
+  it("treats punctuation in a prefix literally", () => {
+    expect(nextDocumentNumber("I.V", ["IAV-2026-099", "I.V-2026-003"], 2026)).toBe("I.V-2026-004")
+    expect(nextDocumentNumber("INV+", ["INV+-2026-003"], 2026)).toBe("INV+-2026-004")
+  })
+  it("rejects counters that cannot be safely incremented", () => {
+    expect(() => nextDocumentNumber("INV", [`INV-2026-${Number.MAX_SAFE_INTEGER}`], 2026)).toThrow()
+    expect(() => nextDocumentNumber("INV", ["INV-2026-9007199254740992"], 2026)).toThrow()
+  })
+  it("rejects invalid series input", () => {
+    expect(() => nextDocumentNumber("", [], 2026)).toThrow()
+    expect(() => nextDocumentNumber("INV", [], NaN)).toThrow()
+    expect(() => nextDocumentNumber("INV", [], 2026.5)).toThrow()
+  })
 })
