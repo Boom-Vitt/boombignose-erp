@@ -159,6 +159,7 @@ test('nextRun across daylight-saving changes (America/New_York)', (t) => {
 
 function harness(t: { after(fn: () => void): void }, o: { store?: Store; start?: Date; onFire?: (job: Job) => Promise<void> } = {}) {
   const store = o.store ?? openStore(':memory:');
+  store.ensureDefaultAgent({ provider: 'mock', model: 'test' });
   if (!o.store) t.after(() => store.close());
   let clock = (o.start ?? at(2026, 10, 13, 10, 2)).getTime();
   const timers: { fn: () => void; ms: number; cancelled: boolean }[] = [];
@@ -188,7 +189,7 @@ const desktop = { kind: 'desktop' } as const;
 
 test('scheduler: arms for the next run, fires onFire, records the last run', async (t) => {
   const h = harness(t); // 10:02
-  const job = h.sched.add({ cron: '*/5 * * * *', prompt: 'ping', delivery: desktop });
+  const job = h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '*/5 * * * *', prompt: 'ping', delivery: desktop });
   assert.equal(h.live().length, 0, 'not started yet: no timer');
   h.sched.start();
   assert.equal(h.live().length, 1);
@@ -217,7 +218,7 @@ test('scheduler: jobs persist and a new Scheduler on the same store reloads them
 
   const store1 = openStore(file);
   const h1 = harness(t, { store: store1, start: at(2026, 10, 13, 8) });
-  const job = h1.sched.add({ cron: '0 9 * * *', prompt: 'brief me', delivery: { kind: 'line', to: 'Cabc' } });
+  const job = h1.sched.add({ agentId: h1.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'brief me', delivery: { kind: 'line', to: 'Cabc' } });
   h1.sched.start();
   h1.sched.stop();
   store1.close();
@@ -234,7 +235,7 @@ test('scheduler: jobs persist and a new Scheduler on the same store reloads them
 
 test('scheduler: runs missed while stopped are skipped, not replayed', async (t) => {
   const h = harness(t, { start: at(2026, 10, 13, 8) });
-  h.sched.add({ cron: '0 9 * * *', prompt: 'daily', delivery: desktop });
+  h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'daily', delivery: desktop });
   h.sched.start();
   h.sched.stop();
   h.setClock(at(2026, 10, 14, 12)); // a day later: the 10-13 09:00 and 10-14 09:00 runs were missed
@@ -248,8 +249,8 @@ test('scheduler: runs missed while stopped are skipped, not replayed', async (t)
 
 test('scheduler: disabled jobs do not fire; enabling and disabling takes effect live', async (t) => {
   const h = harness(t, { start: at(2026, 10, 13, 8) });
-  const a = h.sched.add({ cron: '0 9 * * *', prompt: 'a', delivery: desktop });
-  const b = h.sched.add({ cron: '0 9 * * *', prompt: 'b', delivery: desktop });
+  const a = h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'a', delivery: desktop });
+  const b = h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'b', delivery: desktop });
   assert.equal(h.sched.setEnabled(b.id, false), true);
   assert.equal(h.sched.setEnabled('nope', true), false);
   h.sched.start();
@@ -269,7 +270,7 @@ test('scheduler: disabled jobs do not fire; enabling and disabling takes effect 
   // disabled before start: reload keeps it off
   const store = openStore(':memory:');
   t.after(() => store.close());
-  store.saveJob({ id: 'off', cron: '* * * * *', prompt: 'x', delivery: desktop, enabled: false });
+  store.saveJob({ agentId: store.ensureDefaultAgent({ provider: 'mock', model: 'test' }).id, id: 'off', cron: '* * * * *', prompt: 'x', delivery: desktop, enabled: false });
   const h2 = harness(t, { store });
   h2.sched.start();
   assert.equal(h2.live().length, 0);
@@ -278,7 +279,7 @@ test('scheduler: disabled jobs do not fire; enabling and disabling takes effect 
 test('scheduler: a failing onFire is recorded and does not stop the schedule', async (t) => {
   let calls = 0;
   const h = harness(t, { start: at(2026, 10, 13, 8), onFire: async () => { if (++calls === 1) throw new Error('boom'); } });
-  h.sched.add({ cron: '0 * * * *', prompt: 'x', delivery: desktop });
+  h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 * * * *', prompt: 'x', delivery: desktop });
   h.sched.start();
   await h.advance(at(2026, 10, 13, 9));
   assert.equal(h.store.listJobs()[0]!.lastStatus, 'error: boom');
@@ -291,7 +292,7 @@ test('scheduler: a job that is still running is not started twice, and a removed
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });
   const h = harness(t, { start: at(2026, 10, 13, 8), onFire: () => gate });
-  const job = h.sched.add({ cron: '0 * * * *', prompt: 'slow', delivery: desktop });
+  const job = h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 * * * *', prompt: 'slow', delivery: desktop });
   h.sched.start();
   await h.advance(at(2026, 10, 13, 9));
   assert.equal(h.store.listJobs()[0]!.lastStatus, 'running');
@@ -306,9 +307,9 @@ test('scheduler: a job that is still running is not started twice, and a removed
 
 test('scheduler: every due job fires in one tick', async (t) => {
   const h = harness(t, { start: at(2026, 10, 13, 8) });
-  h.sched.add({ cron: '0 9 * * *', prompt: 'one', delivery: desktop });
-  h.sched.add({ cron: '0 9 * * *', prompt: 'two', delivery: desktop });
-  h.sched.add({ cron: '0 12 * * *', prompt: 'later', delivery: desktop });
+  h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'one', delivery: desktop });
+  h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'two', delivery: desktop });
+  h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 12 * * *', prompt: 'later', delivery: desktop });
   h.sched.start();
   await h.advance(at(2026, 10, 13, 9));
   assert.deepEqual(h.fired.map((j) => j.prompt).sort(), ['one', 'two']);
@@ -317,7 +318,7 @@ test('scheduler: every due job fires in one tick', async (t) => {
 
 test('scheduler: long waits recheck the wall clock at least every minute', async (t) => {
   const h = harness(t, { start: at(2026, 1, 1) });
-  h.sched.add({ cron: '0 0 1 1 *', prompt: 'yearly', delivery: desktop });
+  h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 0 1 1 *', prompt: 'yearly', delivery: desktop });
   h.sched.start();
   assert.ok(h.live()[0]!.ms <= 60_000);
   await h.advance(at(2026, 2, 1)); // timer fires early: nothing is due yet
@@ -329,7 +330,7 @@ test('scheduler: long waits recheck the wall clock at least every minute', async
 
 test('scheduler: waking past a due run fires once and plans from the current wall clock', async (t) => {
   const h = harness(t, { start: at(2026, 10, 13, 7) });
-  h.sched.add({ cron: '0 8 * * *', prompt: 'daily', delivery: desktop });
+  h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 8 * * *', prompt: 'daily', delivery: desktop });
   h.sched.start();
   assert.ok(h.live()[0]!.ms <= 60_000);
   await h.advance(at(2026, 10, 13, 7, 1));
@@ -346,11 +347,11 @@ test('scheduler: waking past a due run fires once and plans from the current wal
 
 test('scheduler: add validates and trims; list reports the next run', (t) => {
   const h = harness(t); // 10:02
-  assert.throws(() => h.sched.add({ cron: 'nope', prompt: 'x', delivery: desktop }), /invalid cron/);
-  assert.throws(() => h.sched.add({ cron: '0 0 31 2 *', prompt: 'x', delivery: desktop }), /never runs/);
-  assert.throws(() => h.sched.add({ cron: '* * * * *', prompt: '  ', delivery: desktop }), /prompt is required/);
+  assert.throws(() => h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: 'nope', prompt: 'x', delivery: desktop }), /invalid cron/);
+  assert.throws(() => h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 0 31 2 *', prompt: 'x', delivery: desktop }), /never runs/);
+  assert.throws(() => h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '* * * * *', prompt: '  ', delivery: desktop }), /prompt is required/);
   assert.deepEqual(h.store.listJobs(), [], 'nothing persisted on failure');
-  const job = h.sched.add({ cron: '  0   9 * *  MON ', prompt: ' hello ', delivery: desktop });
+  const job = h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '  0   9 * *  MON ', prompt: ' hello ', delivery: desktop });
   assert.equal(job.cron, '0 9 * * MON');
   assert.equal(job.prompt, 'hello');
   assert.match(job.id, /^[0-9a-f]{8}$/);
@@ -362,8 +363,8 @@ test('scheduler: add validates and trims; list reports the next run', (t) => {
 test('scheduler: a persisted job with a bad cron is skipped, not fatal', async (t) => {
   const store = openStore(':memory:');
   t.after(() => store.close());
-  store.saveJob({ id: 'bad', cron: 'garbage', prompt: 'x', delivery: desktop, enabled: true });
-  store.saveJob({ id: 'good', cron: '0 9 * * *', prompt: 'ok', delivery: desktop, enabled: true });
+  store.saveJob({ agentId: store.ensureDefaultAgent({ provider: 'mock', model: 'test' }).id, id: 'bad', cron: 'garbage', prompt: 'x', delivery: desktop, enabled: true });
+  store.saveJob({ agentId: store.ensureDefaultAgent({ provider: 'mock', model: 'test' }).id, id: 'good', cron: '0 9 * * *', prompt: 'ok', delivery: desktop, enabled: true });
   const h = harness(t, { store, start: at(2026, 10, 13, 8) });
   h.sched.start();
   await h.advance(at(2026, 10, 13, 9));
@@ -377,7 +378,7 @@ const ctxOf = (origin: ToolContext['origin']): ToolContext => ({ sessionId: 's',
 
 test('schedule tools: create (delivery follows the origin), list, delete', async (t) => {
   const h = harness(t);
-  const [create, list, del] = scheduleTools(h.sched) as [any, any, any];
+  const [create, list, del] = scheduleTools(h.sched, h.store.listAgents()[0]!.id) as [any, any, any];
   assert.deepEqual([create.name, list.name, del.name], ['schedule_create', 'schedule_list', 'schedule_delete']);
   assert.deepEqual([create.defaultPolicy, list.defaultPolicy, del.defaultPolicy], ['ask', 'allow', 'allow']);
   assert.equal((await list.run({}, ctxOf({ kind: 'desktop' }))).content, 'No scheduled jobs.');
@@ -408,7 +409,7 @@ test('schedule tools: create (delivery follows the origin), list, delete', async
 
 test('schedule_create rejects bad input as an error result', async (t) => {
   const h = harness(t);
-  const create = scheduleTools(h.sched)[0]!;
+  const create = scheduleTools(h.sched, h.store.listAgents()[0]!.id)[0]!;
   const ctx = ctxOf({ kind: 'desktop' });
   for (const input of [{}, { cron: 'x', prompt: 'p' }, { cron: '* * * * *' }, { cron: '* * * * *', prompt: ' ' }, { cron: 5, prompt: 'p' }, { cron: '0 0 31 2 *', prompt: 'p' }, { cron: '* * * * *', prompt: 'p', delivery: 'line' }]) {
     const r = await create.run(input, ctx);

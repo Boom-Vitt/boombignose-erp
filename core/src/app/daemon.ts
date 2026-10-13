@@ -52,6 +52,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
     const env = readEnv(home), status = line?.status();
     const webhookUrl = config.line.publicUrl ? config.line.publicUrl.replace(/\/+$/, '') + '/line/webhook' : undefined;
     return { enabled: config.line.enabled, running: status?.running ?? false, port: status?.port ?? config.line.port,
+      agentId: runtime.lineAgent().id,
       publicUrl: config.line.publicUrl, webhookUrl, tokenSet: !!env.LINE_CHANNEL_ACCESS_TOKEN, secretSet: !!env.LINE_CHANNEL_SECRET,
       lastEventAt: status?.lastEventAt, lastError: status?.lastError ?? lineError };
   }

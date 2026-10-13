@@ -34,7 +34,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     const scheduler = new Scheduler({ store, onFire: async () => {} });
     const runtime = new Runtime({ home, store, mcp, scheduler, config: () => config, line: () => undefined });
     const controller = new AbortController();
-    const session = store.createSession({ origin: { kind: 'cli' } });
+    const session = store.createSession({ origin: { kind: 'cli' }, agentId: store.listAgents()[0]!.id });
     const stop = () => { controller.abort(); runtime.interrupt(session.id); void mcp.stop(); };
     process.on('SIGINT', stop); process.on('SIGTERM', stop);
     runtime.subscribe(e => {

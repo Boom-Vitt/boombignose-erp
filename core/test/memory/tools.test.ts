@@ -8,9 +8,10 @@ const ctx: ToolContext = { sessionId: 's', origin: { kind: 'desktop' }, cwd: '/'
 
 function setup(t: { after(fn: () => void): void }) {
   const store = openStore(':memory:');
+  const agentId = store.ensureDefaultAgent({ provider: 'mock', model: 'test' }).id;
   t.after(() => store.close());
-  const [read, write] = memoryTools(store) as [Tool, Tool];
-  return { store, read, write, search: sessionSearchTool(store) };
+  const [read, write] = memoryTools(store, agentId) as [Tool, Tool];
+  return { store, read, write, search: sessionSearchTool(store, agentId) };
 }
 
 test('tool specs: names, policies, schemas', (t) => {
@@ -68,9 +69,9 @@ test('memory_write and memory_read reject bad input without throwing', async (t)
 
 test('session_search finds past conversations in Thai and English', async (t) => {
   const { store, search } = setup(t);
-  const a = store.createSession({ title: 'แผนเที่ยว', origin: { kind: 'desktop' } });
+  const a = store.createSession({ agentId: store.listAgents()[0]!.id, title: 'แผนเที่ยว', origin: { kind: 'desktop' } });
   store.appendMessages(a.id, [{ role: 'user', content: [{ type: 'text', text: 'อยากไปเที่ยวเชียงใหม่ช่วงปีใหม่' }] }]);
-  const b = store.createSession({ title: 'ops', origin: { kind: 'cli' } });
+  const b = store.createSession({ agentId: store.listAgents()[0]!.id, title: 'ops', origin: { kind: 'cli' } });
   store.appendMessages(b.id, [{ role: 'user', content: [{ type: 'text', text: 'restart the nginx container' }] }]);
 
   const th = await search.run({ query: 'เชียงใหม่' }, ctx);
@@ -86,7 +87,7 @@ test('memoryPrompt: empty, grouped by kind, multi-line notes flattened', (t) => 
   const { store } = setup(t);
   assert.equal(memoryPrompt(store), '');
   store.addMemory('user', 'ชื่อบูม');
-  store.addMemory('agent', 'line one\nline two');
+  store.addMemory('agent', 'line one\nline two', store.listAgents()[0]!.id);
   const p = memoryPrompt(store);
   assert.match(p, /^# Memory/);
   assert.match(p, /About the user:\n- ชื่อบูม/);
@@ -95,7 +96,7 @@ test('memoryPrompt: empty, grouped by kind, multi-line notes flattened', (t) => 
 
 test('memoryPrompt is capped at 4000 chars and keeps the newest notes', (t) => {
   const { store } = setup(t);
-  for (let i = 0; i < 60; i++) store.addMemory('agent', `note-${String(i).padStart(2, '0')} ${'x'.repeat(150)}`);
+  for (let i = 0; i < 60; i++) store.addMemory('agent', `note-${String(i).padStart(2, '0')} ${'x'.repeat(150)}`, store.listAgents()[0]!.id);
   const p = memoryPrompt(store);
   assert.ok(p.length <= 4000, `length ${p.length}`);
   assert.match(p, /note-59/);

@@ -27,6 +27,11 @@ export interface Provider { readonly kind: ProviderKind; stream(req: ProviderReq
 
 // ---- tools and permissions
 export type Policy = 'allow' | 'ask' | 'deny';
+export interface Agent {
+  id: string; name: string; icon: string; instructions: string; provider: string; model: string;
+  permissions: Record<string, Policy>; connectors: string[] | null; skills: string[] | null;
+  createdAt: number; updatedAt: number;
+}
 export type Origin = { kind: 'desktop' } | { kind: 'cli' } | { kind: 'line'; to: string } | { kind: 'cron'; jobId: string };
 export type Delivery = { kind: 'desktop' } | { kind: 'line'; to: string };
 export interface ToolContext {
@@ -67,6 +72,7 @@ export type McpServerConfig =
   | { transport: 'http'; url: string; headers?: Record<string, string>; enabled: boolean; tools?: string[] };
 export interface LineConfig {
   enabled: boolean; port: number; publicUrl?: string; slowResponseMs: number;
+  agentId?: string;
   allow: { users: string[]; groups: string[]; rooms: string[] };
 }
 export interface Config {

@@ -91,13 +91,13 @@ test('every section 6 CRUD/status route has the documented JSON shape, auth, Hos
   assert.deepEqual((await call(a, '/api/status')).body, { version: '0.1.0', provider: { id: 'mock', kind: 'openai-compatible', model: 'test-model' }, line: { enabled: false, running: false },
     mcp: [{ name: 'rea', enabled: false, connected: false, tools: 0 }], schedules: 0 });
   const line = (await call(a, '/api/line/status')).body;
-  assert.deepEqual(line, { enabled: false, running: false, port: 0, tokenSet: false, secretSet: false });
+  assert.deepEqual(line, { enabled: false, running: false, port: 0, agentId: a.runtime.store.listAgents()[0]!.id, tokenSet: false, secretSet: false });
   assert.equal('pending' in line, false);
 
   const sid = (await call(a, '/api/sessions', 'POST', { title: 'test title' })).body.id;
-  assert.deepEqual((await call(a, `/api/sessions/${sid}`)).body, { id: sid, title: 'test title', messages: [] });
+  assert.deepEqual((await call(a, `/api/sessions/${sid}`)).body, { id: sid, agentId: a.runtime.store.listAgents()[0]!.id, title: 'test title', messages: [] });
   const sessions = (await call(a, '/api/sessions?limit=1')).body.sessions;
-  assert.equal(sessions.length, 1); assert.deepEqual(Object.keys(sessions[0]).sort(), ['id', 'title', 'updatedAt']); assert.ok(sessions[0].updatedAt > 1e12);
+  assert.equal(sessions.length, 1); assert.deepEqual(Object.keys(sessions[0]).sort(), ['agentId', 'id', 'title', 'updatedAt']); assert.ok(sessions[0].updatedAt > 1e12);
   a.runtime.store.appendMessages(sid, [{ role: 'user', content: [{ type: 'text', text: 'ข้อความค้นหา' }] }]);
   assert.equal((await call(a, '/api/sessions?q=' + encodeURIComponent('ค้นหา'))).body.sessions[0].id, sid);
   assert.equal((await call(a, '/api/sessions?limit=-1')).status, 400);
@@ -143,7 +143,7 @@ test('every section 6 CRUD/status route has the documented JSON shape, auth, Hos
   assert.equal((await call(a, '/api/skills/sample')).status, 404);
   assert.equal((await call(a, '/api/skills/..%2Fescape', 'PUT', { description: 'bad', body: 'bad' })).status, 400);
   const note = (await call(a, '/api/memory', 'POST', { kind: 'user', text: 'ชอบกาแฟ' })).body;
-  assert.deepEqual(Object.keys(note).sort(), ['id', 'kind', 'text', 'updatedAt']); assert.ok(note.updatedAt > 1e12);
+  assert.deepEqual(Object.keys(note).sort(), ['agentId', 'id', 'kind', 'text', 'updatedAt']); assert.ok(note.updatedAt > 1e12);
   assert.equal((await call(a, '/api/memory?kind=user&q=' + encodeURIComponent('กาแฟ'))).body.notes[0].id, note.id);
   assert.equal((await call(a, '/api/memory?kind=agent')).body.notes.length, 0);
   assert.equal((await call(a, `/api/memory/${note.id}`, 'PUT', { text: 'ชา' })).body.text, 'ชา');
@@ -153,7 +153,7 @@ test('every section 6 CRUD/status route has the documented JSON shape, auth, Hos
   assert.deepEqual((await call(a, '/api/schedules')).body, { jobs: [] });
   assert.equal((await call(a, '/api/schedules', 'POST', { cron: 'bad', prompt: 'task', delivery: { kind: 'desktop' } })).status, 400);
   const job = (await call(a, '/api/schedules', 'POST', { cron: '* * * * *', prompt: 'task', delivery: { kind: 'desktop' } })).body;
-  assert.deepEqual(Object.keys(job).sort(), ['cron', 'delivery', 'enabled', 'id', 'prompt']);
+  assert.deepEqual(Object.keys(job).sort(), ['agentId', 'cron', 'delivery', 'enabled', 'id', 'prompt']);
   assert.ok((await call(a, '/api/schedules')).body.jobs[0].nextRunAt > 1e12);
   assert.equal((await call(a, `/api/schedules/${job.id}`, 'PATCH', { enabled: false })).status, 200);
   assert.equal((await call(a, '/api/schedules')).body.jobs[0].nextRunAt, null);
@@ -204,7 +204,7 @@ test('interrupt denies a pending approval, and 10 minute timeout denies without 
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { providerFactory: () => provider });
-  const stream = await events(a, t), id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const stream = await events(a, t), id = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } }).id;
   const first = a.runtime.start(id, 'write');
   const approval = await stream.wait(e => e.type === 'approval_request');
   assert.deepEqual((await call(a, `/api/sessions/${id}/interrupt`, 'POST')).body, { ok: true });
@@ -214,7 +214,7 @@ test('interrupt denies a pending approval, and 10 minute timeout denies without 
   const next = a.runtime.start(id, 'try again');
   // A fresh session forces the scripted tool call again.
   await next.result;
-  const secondId = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const secondId = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } }).id;
   const second = a.runtime.start(secondId, 'write');
   while (!a.runtime.pendingEvents().length) await new Promise(resolve => setImmediate(resolve));
   const pending = a.runtime.pendingEvents()[0]! as any;
@@ -234,7 +234,7 @@ test('nested delegate approvals surface through runtime rather than suppressed a
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { providerFactory: () => provider }), stream = await events(a, t);
-  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const id = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } }).id;
   const run = a.runtime.start(id, 'delegate');
   const approval = await stream.wait(e => e.type === 'approval_request');
   assert.equal(approval.tool, 'write_file'); assert.equal(approval.runId, run.runId);
@@ -295,10 +295,10 @@ test('LINE requires both secrets, reloads live, and raises all allow tools to as
   while (!sent.some(b => b.messages.some((m: any) => m.template?.type === 'confirm'))) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   const confirm = sent.flatMap(b => b.messages).find(m => m.template?.type === 'confirm');
   assert.match(confirm.template.text, /read_file/);
-  assert.equal(a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' })?.title, '');
+  assert.equal(a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' }, a.runtime.store.listAgents()[0]!.id)?.title, '');
   await webhook({ type: 'postback', source: { type: 'group', groupId: 'group', userId: 'owner' }, postback: { data: confirm.template.actions[0].data } });
   while (a.runtime.replay().length) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
-  const session = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' })!;
+  const session = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' }, a.runtime.store.listAgents()[0]!.id)!;
   assert.equal(session.title, 'read evidence'); assert.match(JSON.stringify(a.runtime.store.getMessages(session.id)), /owner evidence/);
   const status = (await call(a, '/api/line/status')).body;
   assert.ok(status.lastEventAt > 1e12); assert.equal('pending' in status, false); assert.equal(status.webhookUrl, 'https://line.invalid/line/webhook');
@@ -323,7 +323,7 @@ test('cron delivers desktop notification/session and redacts persisted scheduler
   } };
   let clock = new Date(2026, 0, 1, 0, 0), tick: (() => void) | undefined;
   const a = await app(t, { home, providerFactory: () => provider, schedulerOptions: { now: () => clock, setTimer: fn => { tick = fn; return () => {}; } } }), stream = await events(a, t);
-  const job = a.scheduler.add({ cron: '* * * * *', prompt: 'task', delivery: { kind: 'desktop' } });
+  const job = a.scheduler.add({ agentId: a.runtime.store.listAgents()[0]!.id, cron: '* * * * *', prompt: 'task', delivery: { kind: 'desktop' } });
   const fire = a.runtime.fireJob(job);
   const ask = await stream.wait(e => e.type === 'approval_request');
   assert.equal((await call(a, `/api/approvals/${ask.approvalId}`, 'POST', { allow: true })).status, 200);
@@ -355,7 +355,7 @@ test('cron LINE delivery is ready before a slow MCP connector and uses confirm b
   const deadline = Date.now() + 3000;
   while (!a.lineStatus().running) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   assert.equal(a.mcp.status().find(s => s.name === 'slow')!.connected, false);
-  const job = a.scheduler.add({ cron: '* * * * *', prompt: 'scheduled task', delivery: { kind: 'line', to: 'owner' } });
+  const job = a.scheduler.add({ agentId: a.runtime.store.listAgents()[0]!.id, cron: '* * * * *', prompt: 'scheduled task', delivery: { kind: 'line', to: 'owner' } });
   const fire = a.runtime.fireJob(job);
   while (!sent.length) await new Promise(resolve => setImmediate(resolve));
   assert.equal(sent[0].to, 'owner'); assert.match(sent[0].url, /message\/push$/);
@@ -385,7 +385,7 @@ test('MCP reference secrets reload live and shutdown denies outstanding approval
   assert.equal((await echo().run({ text: 'ok' }, ctx)).content, 'ok\n••••alue|path');
   await call(a, '/api/secrets', 'PUT', { name: 'VALUE', value: 'long-next-env' });
   assert.equal((await echo().run({ text: 'ok' }, ctx)).content, 'ok\n••••-env|path');
-  const session = a.runtime.store.createSession({ origin: { kind: 'desktop' } });
+  const session = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } });
   const run = a.runtime.start(session.id, 'pending approval');
   while (!a.runtime.pendingEvents().length) await new Promise(resolve => setImmediate(resolve));
   await a.close();
@@ -402,14 +402,14 @@ test('one per-run profile freezes provider/model/system/permissions/tool filter 
   } };
   const a = await app(t, { providerFactory: () => provider });
   a.runtime.store.addMemory('user', 'memory fact');
-  const profile = a.runtime.profile(); profile.model = 'profile-model'; profile.system = 'agent instructions'; profile.toolFilter = tool => tool.name === 'read_file';
-  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const profile = a.runtime.profile(); profile.model = 'profile-model'; profile.system = 'agent instructions'; profile.memory = ''; profile.toolFilter = tool => tool.name === 'read_file';
+  const id = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } }).id;
   const run = a.runtime.start(id, 'hello', { profile });
   profile.model = 'mutated-profile'; profile.system = 'changed instructions';
   const settings = (await call(a, '/api/settings')).body; settings.config.active.model = 'changed-model'; await call(a, '/api/settings', 'PUT', settings);
   assert.equal((await run.result).text, 'profile-model');
   assert.equal(requests[0].model, 'profile-model'); assert.equal(requests[0].system, 'agent instructions'); assert.deepEqual(requests[0].tools.map((t: any) => t.name), ['read_file']);
-  const fresh = a.runtime.profile(); assert.equal(fresh.model, 'changed-model'); assert.match(fresh.system, /memory fact/); assert.match(fresh.system, /Today: \d{4}-\d{2}-\d{2}/);
+  const fresh = a.runtime.profile(); assert.equal(fresh.model, 'changed-model'); assert.match(fresh.memory!, /memory fact/); assert.match(fresh.system, /Today: \d{4}-\d{2}-\d{2}/);
 });
 
 test('chunked oversized requests return 413 without losing the response socket', async t => {
@@ -431,7 +431,7 @@ test('short environment values preserve config, API text, transcript and context
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider });
-  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const id = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } }).id;
   const result = await a.runtime.start(id, ordinary).result;
   assert.equal(result.text, ordinary + ': ' + maskSecret(sensitive));
   const transcript = a.runtime.store.getMessages(id);
@@ -489,7 +489,7 @@ test('SSE masks secrets split across deltas and flushes text before tool activit
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider }), stream = await events(a, t);
-  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const id = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } }).id;
   const done = a.runtime.start(id, 'echo'); await done.result;
   await stream.wait(e => e.type === 'run_end' && e.runId === done.runId);
   await stream.wait(e => e.type === 'session_updated' && e.sessionId === id);
@@ -533,7 +533,7 @@ test('non-owner LINE context keeps visible chat text and drops owner tool turns 
   } };
   const a = await app(t, { home, providerFactory: () => provider });
   assert.equal(await a.runtime.lineMessage({ to: 'group', userId: 'owner', text: 'read file' }), 'File checked.');
-  const session = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' })!;
+  const session = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' }, a.runtime.store.listAgents()[0]!.id)!;
   assert.ok(JSON.stringify(a.runtime.store.getSession(session.id)!.context).includes(marker));
   const prior = a.runtime.store.getSession(session.id)!.context;
   a.runtime.store.setContext(session.id, [{ role: 'user', content: [{ type: 'text', text: `[Summary of earlier conversation]\n${marker}` }] }, ...prior]);
@@ -544,7 +544,7 @@ test('non-owner LINE context keeps visible chat text and drops owner tool turns 
   assert.equal(a.runtime.store.listSessions().length, 1);
 });
 
-test('settings round trip preserves every masked config string and still accepts explicit changes', async t => {
+test('literal MCP paths and URLs are masked in their own fields while ordinary config text remains intact', async t => {
   const home = testHome(t), baseUrl = 'https://mock.invalid/v1';
   const original = configured(home, baseUrl, c => {
     c.agent.systemPrompt = `Work under ${home}`;
@@ -553,12 +553,13 @@ test('settings round trip preserves every masked config string and still accepts
     c.mcp.servers.local = { ...fakeMcp, args: [home], env: { ROOT: home, URL: baseUrl }, enabled: false };
   });
   const a = await app(t, { home }), settings = (await call(a, '/api/settings')).body;
-  assert.equal(settings.config.agent.workspace, maskSecret(home));
-  assert.equal(settings.config.agent.systemPrompt, `Work under ${maskSecret(home)}`);
-  assert.equal(settings.config.hooks.preTool[0].command, `cd ${maskSecret(home)}`);
-  assert.equal(settings.config.providers[0].baseUrl, maskSecret(baseUrl));
-  assert.equal(settings.config.line.publicUrl, maskSecret(baseUrl));
-  assert.deepEqual(settings.config.mcp.servers.local.args, [maskSecret(home)]);
+  assert.equal(settings.config.agent.workspace, home);
+  assert.equal(settings.config.agent.systemPrompt, `Work under ${home}`);
+  assert.equal(settings.config.hooks.preTool[0].command, `cd ${home}`);
+  assert.equal(settings.config.providers[0].baseUrl, baseUrl);
+  assert.equal(settings.config.line.publicUrl, baseUrl);
+  assert.deepEqual(settings.config.mcp.servers.local.args, [home]);
+  assert.deepEqual(settings.config.mcp.servers.local.env, { ROOT: maskSecret(home), URL: maskSecret(baseUrl) });
   assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
   assert.deepEqual(loadConfig(home), original);
   const changed = structuredClone(settings);
@@ -577,6 +578,7 @@ test('settings round trip preserves every masked config string and still accepts
 
 test('settings restore deleted/reordered array elements and reject edited masks without saving', async t => {
   const home = testHome(t);
+  setSecret('WORK_ROOT', home, home);
   const original = configured(home, undefined, c => {
     c.hooks.preTool = [{ command: 'echo first' }, { command: `cd ${home} && ./check.sh` }];
     c.mcp.servers.local = { ...fakeMcp, args: ['first', home], env: { ROOT: home }, enabled: false };
@@ -609,7 +611,7 @@ test('scheduled session titles redact known values before the 60-character cut',
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider });
-  await a.runtime.fireJob({ id: 'title', cron: '* * * * *', prompt, delivery: { kind: 'desktop' }, enabled: true });
+  await a.runtime.fireJob({ agentId: a.runtime.store.listAgents()[0]!.id, id: 'title', cron: '* * * * *', prompt, delivery: { kind: 'desktop' }, enabled: true });
   const title = a.runtime.store.listSessions()[0]!.title;
   assert.equal(title, `Scheduled: ${('a'.repeat(40) + maskSecret(sensitive) + ' tail').slice(0, 60)}`);
   assert.ok(!title.includes('z'.repeat(8)));
@@ -630,7 +632,7 @@ test('session titles and truncated tool previews never leak a secret crossing th
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider }), stream = await events(a, t);
-  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const id = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } }).id;
   assert.equal((await a.runtime.start(id, input).result).status, 'done');
   const title = a.runtime.store.getSession(id)!.title;
   assert.equal(title, ('a'.repeat(60) + maskSecret(sensitive) + ' suffix').slice(0, 80));
@@ -655,7 +657,7 @@ test('rotated secrets remain masked in tool events, stored/replayed approvals an
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider }), stream = await events(a, t);
-  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const id = a.runtime.store.createSession({ agentId: a.runtime.store.listAgents()[0]!.id, origin: { kind: 'desktop' } }).id;
   const run = a.runtime.start(id, 'rotate and write');
   const approval = await stream.wait(e => e.type === 'approval_request');
   assert.equal(stream.values.find(e => e.type === 'tool_start').input.content, maskSecret(sensitive));

@@ -4,7 +4,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { VERSION, paths, maskSecret, setSecret } from '../config.ts';
 import { deleteSkill, listSkills, loadSkill, saveSkill } from '../skills/index.ts';
-import { isObject, restoreMaskedConfig, safeValue, settingsResponse, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
+import { isObject, restoreMaskedConfig, safeValue, settingsResponse, validateAgent, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
+import type { AgentInput } from '../store/index.ts';
 import type { Runtime } from '../app/runtime.ts';
 import type { Config, Delivery } from '../types.ts';
 import type { Scheduler } from '../cron/index.ts';
@@ -13,7 +14,7 @@ import type { McpManager } from '../mcp/manager.ts';
 export interface ApiOptions {
   home: string; token: string; runtime: Runtime; mcp: McpManager; scheduler: Scheduler;
   config: () => Config; updateSettings: (config: Config | ((current: Config) => Config)) => Promise<void>; reloadSecrets: () => Promise<void>;
-  lineStatus: () => { enabled: boolean; running: boolean; port: number; publicUrl?: string; webhookUrl?: string; tokenSet: boolean; secretSet: boolean; lastEventAt?: number; lastError?: string };
+  lineStatus: () => { enabled: boolean; running: boolean; port: number; agentId: string; publicUrl?: string; webhookUrl?: string; tokenSet: boolean; secretSet: boolean; lastEventAt?: number; lastError?: string };
 }
 class HttpError extends Error {
   status: number;
@@ -58,6 +59,11 @@ export function createApiServer(opts: ApiOptions) {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(safeValue(value, runtime.cleaner())));
   };
+  const agentId = (value: unknown, optional = false): string => {
+    if (value === undefined && optional) return store.listAgents()[0]!.id;
+    check(typeof value === 'string' && !!store.getAgent(value), 'unknown agent');
+    return value as string;
+  };
   async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       const origin = req.headers.origin;
@@ -97,21 +103,45 @@ export function createApiServer(opts: ApiOptions) {
           line: { enabled: l.enabled, running: l.running, webhookUrl: l.webhookUrl },
           mcp: mcp.status().map(s => ({ name: s.name, enabled: s.enabled, connected: s.connected, tools: s.tools.length })), schedules: scheduler.list().length });
       }
+      if (area === 'agents' && !action) {
+        if (!id && method === 'GET') return send(res, { agents: store.listAgents() });
+        if (!id && method === 'POST') {
+          const b = await body(req), c = opts.config(); validate(() => validateAgent(b, c));
+          return send(res, store.createAgent({ ...c.active, ...b } as AgentInput), 201);
+        }
+        if (!id || !store.getAgent(id)) return missing();
+        if (method === 'GET') return send(res, store.getAgent(id));
+        if (method === 'PATCH') {
+          const b = await body(req); validate(() => validateAgent(b, opts.config(), true));
+          const agent = store.updateAgent(id, b); if (!agent) return missing();
+          return send(res, agent);
+        }
+        if (method === 'DELETE') {
+          if (store.listAgents().length === 1) throw new HttpError(409, 'cannot delete the last agent');
+          try { if (!await runtime.deleteAgent(id)) return missing(); }
+          catch (e) { if (e instanceof Error && e.message === 'cannot delete the last agent') throw new HttpError(409, e.message); throw e; }
+          await opts.updateSettings(c => {
+            if (c.line.agentId === id) delete c.line.agentId;
+            return c;
+          });
+          return send(res, { ok: true });
+        }
+      }
       if (area === 'sessions') {
         if (!id && method === 'GET') {
           const limit = Number(url.searchParams.get('limit') ?? 100);
           check(Number.isSafeInteger(limit) && limit > 0 && limit <= 1000, 'limit must be 1-1000');
-          const q = url.searchParams.get('q');
-          const sessions = q ? store.searchMessages(q, limit).map(h => ({ id: h.sessionId, title: h.title, updatedAt: store.getSession(h.sessionId)!.updatedAt, snippet: h.snippet }))
-            : store.listSessions({ limit }).map(s => ({ id: s.id, title: s.title, updatedAt: s.updatedAt }));
+          const q = url.searchParams.get('q'), agent = url.searchParams.get('agent') ?? undefined;
+          const sessions = q ? store.searchMessages(q, limit, agent).map(h => ({ id: h.sessionId, agentId: store.getSession(h.sessionId)!.agentId, title: h.title, updatedAt: store.getSession(h.sessionId)!.updatedAt, snippet: h.snippet }))
+            : store.listSessions({ limit, agentId: agent }).map(s => ({ id: s.id, agentId: s.agentId, title: s.title, updatedAt: s.updatedAt }));
           return send(res, { sessions });
         }
         if (!id && method === 'POST') {
           const b = await body(req); check(b.title === undefined || typeof b.title === 'string', 'invalid title');
-          return send(res, { id: store.createSession({ title: b.title as string | undefined, origin: { kind: 'desktop' } }).id });
+          return send(res, { id: store.createSession({ title: b.title as string | undefined, origin: { kind: 'desktop' }, agentId: agentId(b.agentId, true) }).id });
         }
         const s = id && store.getSession(id); if (!s) return missing();
-        if (!action && method === 'GET') return send(res, { id: s.id, title: s.title, messages: store.getMessages(s.id) });
+        if (!action && method === 'GET') return send(res, { id: s.id, agentId: s.agentId, title: s.title, messages: store.getMessages(s.id) });
         if (!action && method === 'DELETE') {
           if (runtime.isRunning(s.id)) throw new HttpError(409, 'session is running');
           store.deleteSession(s.id); runtime.emit({ type: 'session_updated', sessionId: s.id }); return send(res, { ok: true });
@@ -135,7 +165,9 @@ export function createApiServer(opts: ApiOptions) {
           const b = await body(req);
           await opts.updateSettings(c => validate(() => {
             const next = restoreMaskedConfig(b.config as Config, c, runtime.cleaner());
-            validateConfig(next); return next;
+            validateConfig(next);
+            if (next.line.agentId !== undefined) agentId(next.line.agentId);
+            return next;
           }));
         } else if (method !== 'GET') return missing();
         return send(res, settingsResponse(opts.config(), opts.home));
@@ -192,15 +224,16 @@ export function createApiServer(opts: ApiOptions) {
         if (id && method === 'DELETE') { if (!validate(() => deleteSkill(dir, id))) return missing(); return send(res, { ok: true }); }
       }
       if (area === 'memory' && !action) {
-        const noteShape = (n: { id: number; kind: string; text: string; updatedAt: number }) => ({ id: n.id, kind: n.kind, text: n.text, updatedAt: n.updatedAt });
+        const noteShape = (n: { id: number; agentId: string | null; kind: string; text: string; updatedAt: number }) => ({ id: n.id, agentId: n.agentId, kind: n.kind, text: n.text, updatedAt: n.updatedAt });
         if (!id && method === 'GET') {
-          const kind = url.searchParams.get('kind') || undefined, q = url.searchParams.get('q');
+          const kind = url.searchParams.get('kind') || undefined, q = url.searchParams.get('q'), agent = url.searchParams.get('agent') ?? undefined;
           check(kind === undefined || kind === 'user' || kind === 'agent', 'invalid kind');
-          return send(res, { notes: (q ? store.searchMemory(q, 100, kind as 'user' | 'agent' | undefined) : store.listMemory(kind as 'user' | 'agent' | undefined)).map(noteShape) });
+          return send(res, { notes: (q ? store.searchMemory(q, 100, kind as 'user' | 'agent' | undefined, agent) : store.listMemory(kind as 'user' | 'agent' | undefined, agent)).map(noteShape) });
         }
         if (!id && method === 'POST') {
           const b = await body(req); check(b.kind === 'user' || b.kind === 'agent', 'invalid kind');
-          return send(res, noteShape(store.addMemory(b.kind as 'user' | 'agent', text(b.text, 'text'))));
+          const owner = b.kind === 'agent' ? agentId(b.agentId) : undefined;
+          return send(res, noteShape(store.addMemory(b.kind as 'user' | 'agent', text(b.text, 'text'), owner)));
         }
         if (id && method === 'PUT') {
           const b = await body(req), n = store.updateMemory(positiveId(id), text(b.text, 'text')); if (!n) return missing(); return send(res, noteShape(n));
@@ -208,10 +241,13 @@ export function createApiServer(opts: ApiOptions) {
         if (id && method === 'DELETE') { if (!store.deleteMemory(positiveId(id))) return missing(); return send(res, { ok: true }); }
       }
       if (area === 'schedules' && !action) {
-        if (!id && method === 'GET') return send(res, { jobs: scheduler.list().map(j => ({ ...j, nextRunAt: j.nextRunAt ?? null })) });
+        if (!id && method === 'GET') {
+          const agent = url.searchParams.get('agent');
+          return send(res, { jobs: scheduler.list().filter(j => agent === null || j.agentId === agent).map(j => ({ ...j, nextRunAt: j.nextRunAt ?? null })) });
+        }
         if (!id && method === 'POST') {
           const b = await body(req), cron = text(b.cron, 'cron'), prompt = text(b.prompt, 'prompt'), to = delivery(b.delivery);
-          return send(res, validate(() => scheduler.add({ cron, prompt, delivery: to })));
+          return send(res, validate(() => scheduler.add({ cron, prompt, delivery: to, agentId: agentId(b.agentId, true) })));
         }
         if (id && method === 'PATCH') {
           const b = await body(req); check(typeof b.enabled === 'boolean', 'enabled must be boolean');

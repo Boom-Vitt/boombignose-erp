@@ -136,12 +136,12 @@ export class Scheduler {
     this.#next.clear();
   }
 
-  add(input: { cron: string; prompt: string; delivery: Delivery }): Job {
+  add(input: { cron: string; prompt: string; delivery: Delivery; agentId: string }): Job {
     const cron = input.cron.trim().split(/\s+/).join(' ');
     const prompt = input.prompt.trim();
     if (!prompt) throw new Error('prompt is required');
     nextRun(cron, this.#now()); // throws on a bad or never-matching expression
-    const job: Job = { id: randomBytes(4).toString('hex'), cron, prompt, delivery: input.delivery, enabled: true };
+    const job: Job = { id: randomBytes(4).toString('hex'), agentId: input.agentId, cron, prompt, delivery: input.delivery, enabled: true };
     this.#opts.store.saveJob(job);
     if (this.#started) { this.#plan(job, this.#now()); this.#arm(); }
     return job;
@@ -220,7 +220,7 @@ const fail = (content: string): ToolResult => ({ content, isError: true });
 const when = (ms: number) => new Date(ms).toLocaleString('sv-SE').slice(0, 16); // local "YYYY-MM-DD HH:mm"
 const where = (d: Delivery) => (d.kind === 'line' ? `line:${d.to}` : 'desktop');
 
-export function scheduleTools(scheduler: Scheduler): Tool[] {
+export function scheduleTools(scheduler: Scheduler, agentId: string): Tool[] {
   const create: Tool = {
     name: 'schedule_create',
     description: 'Schedule a prompt to run on a cron schedule (5 fields: minute hour day-of-month month day-of-week, local time; '
@@ -240,7 +240,7 @@ export function scheduleTools(scheduler: Scheduler): Tool[] {
       if (input.delivery !== undefined && input.delivery !== 'origin' && input.delivery !== 'desktop') return fail('delivery must be "origin" or "desktop"');
       const delivery: Delivery = ctx.origin.kind === 'line' && input.delivery !== 'desktop' ? { kind: 'line', to: ctx.origin.to } : { kind: 'desktop' };
       try {
-        const job = scheduler.add({ cron: input.cron, prompt: input.prompt, delivery });
+        const job = scheduler.add({ cron: input.cron, prompt: input.prompt, delivery, agentId });
         const next = scheduler.list().find((j) => j.id === job.id)?.nextRunAt;
         return { content: `Scheduled job ${job.id}: "${job.cron}" → ${where(delivery)}${next ? `, next run ${when(next)}` : ''}.` };
       } catch (e) { return fail((e as Error).message); }
@@ -252,7 +252,7 @@ export function scheduleTools(scheduler: Scheduler): Tool[] {
     inputSchema: { type: 'object', properties: {} },
     defaultPolicy: 'allow',
     async run() {
-      const jobs = scheduler.list();
+      const jobs = scheduler.list().filter(j => j.agentId === agentId);
       if (!jobs.length) return { content: 'No scheduled jobs.' };
       return {
         content: jobs.map((j) => [
@@ -271,7 +271,7 @@ export function scheduleTools(scheduler: Scheduler): Tool[] {
     defaultPolicy: 'allow',
     async run(input) {
       const id = typeof input.id === 'string' ? input.id.trim() : '';
-      return id && scheduler.remove(id) ? { content: `Deleted job ${id}.` } : fail(`No job with id "${id}".`);
+      return id && scheduler.list().some(j => j.id === id && j.agentId === agentId) && scheduler.remove(id) ? { content: `Deleted job ${id}.` } : fail(`No job with id "${id}".`);
     },
   };
   return [create, list, del];
