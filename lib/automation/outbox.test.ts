@@ -33,8 +33,8 @@ describe("at-least-once outbox delivery", () => {
     expect((await deliverOutbox(client, config, sink)).delivered).toBe(1)
     expect(keys).toEqual([eventId, eventId])
     expect(acknowledgements).toEqual([
-      { p_event_id: eventId, p_lease_token: lease1, p_error: null },
-      { p_event_id: eventId, p_lease_token: lease2, p_error: null },
+      { p_event_id: eventId, p_lease_token: lease1 },
+      { p_event_id: eventId, p_lease_token: lease2 },
     ])
   })
   it("starts every leased send together so later events do not wait through earlier timeouts", async () => {
@@ -71,7 +71,7 @@ describe("at-least-once outbox delivery", () => {
     expect(acceptedBodies).toEqual(Array(2).fill({ version: 1, eventId, orgId, type: "followup.due", payload: { title: "Call client" } }))
     expect(acknowledgements).toEqual([
       { p_event_id: eventId, p_lease_token: lease1, p_error: "Delivery failed" },
-      { p_event_id: eventId, p_lease_token: lease2, p_error: null },
+      { p_event_id: eventId, p_lease_token: lease2 },
     ])
   })
   it("does not count an expired or superseded lease as delivered", async () => {

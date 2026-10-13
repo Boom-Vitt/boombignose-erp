@@ -45,7 +45,8 @@ export async function deliverOutbox(
     // Do not overwrite uncertain acknowledgements with a second error command.
     // An expired lease or transport loss is safely reclaimable from the DB.
     const { data: acknowledged, error: ackError } = await supabase.rpc("finish_outbound_event", {
-      p_event_id: event.id, p_lease_token: event.lease_token, p_error: failure,
+      p_event_id: event.id, p_lease_token: event.lease_token,
+      ...(failure === null ? {} : { p_error: failure }),
     })
     if (ackError) throw new Error("Outbox acknowledgement failed")
     if (acknowledged !== true) result.unacknowledged++
