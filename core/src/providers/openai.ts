@@ -18,7 +18,7 @@ export function openai(cfg: ProviderConfig, apiKey: string | undefined, fetchImp
     }
     try {
       const response = await fetchImpl(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-        method: 'POST', headers, signal: req.signal,
+        method: 'POST', headers, signal: req.signal, redirect: 'error',
         body: JSON.stringify({ model: req.model, messages, stream: true, stream_options: { include_usage: true },
           ...(cfg.maxTokens !== undefined ? { max_tokens: req.maxTokens } : {}),
           ...(req.tools.length ? { tools: req.tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.inputSchema } })) } : {}),

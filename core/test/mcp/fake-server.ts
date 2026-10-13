@@ -10,6 +10,7 @@ for await (const line of createInterface({ input: process.stdin })) {
   if (!m.id) continue;
   const reply = (result: unknown) => write({ jsonrpc: '2.0', id: m.id, result });
   if (m.method === 'initialize') {
+    if (process.argv.includes('--delay-init')) await new Promise(resolve => setTimeout(resolve, 300));
     if (m.params.protocolVersion !== '2025-11-25') process.exit(2);
     write({ jsonrpc: '2.0', id: 'server-ping', method: 'ping' });
     write({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
