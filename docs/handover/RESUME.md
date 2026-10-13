@@ -1,0 +1,15 @@
+# Resume contract for cloud handover
+
+Local feature edits are paused after the current integration/test checkpoint. One coordinator must claim the cloud branch/database before resuming; do not run simultaneous local/cloud writers. Preserve every Mac worktree and its ignored runtime. Main/origin remain at1940f95fa3c1bb951cc2fd44d90634e883e14b90 (read-only ls-remote verified during handover). No ERP GitHub publication was authorized or performed.
+
+The final archive manifest supplies the exact integration branch/head, bundle prerequisite, checksums and test report. Import into a clean clone with that baseline; verify bundle/checksum and checkout the transferred branch without merging main. Inspect pending review findings and failed/unrun checks before customer use. Recreate cloud-local runtime/env/ports with synthetic data; Mac paths are evidence locations, not usable cloud runtime paths. Do not transfer `.env.local`, DB/container volumes, `.local-stack`, node_modules, .next, browser screenshots or Library signed transfer metadata.
+
+Inputs materialized and read on this Mac: Thai_SME_ERP_Blueprint.docx (libfile_4245882b9f9081918e3378d17a33854a), parallel-worktree-plan.md (libfile_09eb429b9cd88191985256042fbb7199). Parent/cloud should materialize through the current Library skill into its own environment if needed. Preserve their acceptance gates and ownership model.
+
+Implemented checkpoint scope: payment security pilot, tenant/role/FK guards, active-org onboarding/invitations, atomic accepted-service conversion, pending-only staff/public claims and verified bank-date/method allocations, retained legacy reconciliation, frozen operational invoice issue snapshots, finance/report filtering/exports, atomic recurring drafts/reminder/outbox and integration receipt dedup. This is not complete Phase1 customer readiness, all Phase2 controls, Phase3 Live campus or a complete ERP/accounting suite.
+
+Remaining mandatory gates: final exact-candidate independent QA/review evidence, production upgrade preflight and authorized real opening-balance/legacy reconciliation, accountant-reviewed Thai tax/withholding/credit/correction/posting cases, restored synthetic install, portable default bootstrap/license decision and actual SME task completion. Current commercial documents are operational, not statutory tax invoice certification. Credits/withholding/corrections and human acceptance remain unfinished. Detailed Odoo/applicability matrices are being researched separately.
+
+User permits a staged lighter stack implementation; first slice/measurements and dependency map are in LIGHTWEIGHT_STACK.md. Keep Next as rollback. No production user/session migration or destructive rewrite is authorized by this transition. Cloud network permission is pending explicit parent approval; do not bypass it.
+
+No deploy, main merge, production migration, real customer import, pilot contact, paid service, new credentials, arbitrary third-party execution, email/cloud integration setup or Orca changes were done/authorized here. Do not infer authorization from unrelated BBN Studio work. Actual customer readiness remains a release gate.
