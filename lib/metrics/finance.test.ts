@@ -68,6 +68,12 @@ describe("mrr", () => {
 })
 
 describe("subscriptionMrr", () => {
+  it("keeps safe integer precision and rejects normalized or aggregate overflow", () => {
+    expect(subscriptionMrr([{ status: "active", amount_satang: Number.MAX_SAFE_INTEGER, interval: "monthly" }])).toBe(Number.MAX_SAFE_INTEGER)
+    expect(() => subscriptionMrr([{ status: "active", amount_satang: Number.MAX_SAFE_INTEGER, interval: "weekly" }])).toThrow()
+    expect(() => subscriptionMrr([{ status: "active", amount_satang: 1.5, interval: "monthly" }])).toThrow()
+    expect(() => subscriptionMrr([{ status: "active", amount_satang: Number.MAX_SAFE_INTEGER, interval: "monthly" }, { status: "active", amount_satang: 1, interval: "monthly" }])).toThrow()
+  })
   it("normalizes each interval to a monthly figure for active subs", () => {
     const subs: SubscriptionLike[] = [
       { status: "active", amount_satang: 120_000, interval: "monthly" },

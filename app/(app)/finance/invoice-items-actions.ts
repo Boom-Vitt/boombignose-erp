@@ -4,60 +4,26 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext } from "@/lib/auth"
-import { bahtToSatang } from "@/lib/money"
-import { lineAmountSatang, subtotalSatang } from "@/lib/metrics/line-items"
+import { requireOrgContext, requireRole } from "@/lib/auth"
+import { invoiceLineAmount, moneyInput } from "@/lib/payments/input"
 import { writeAudit } from "@/lib/audit"
 
-// ---------------------------------------------------------------------------
-// Invoice line items
-//
-// Optional, non-invasive line items on the invoice detail page. When an invoice
-// has ≥1 line item, its authoritative `amount_satang` is DERIVED from the items
-// (recomputed on every add/delete). When it has 0 items the manually-entered
-// amount is left untouched, so the create form and older invoices keep working.
-// ---------------------------------------------------------------------------
-
-/**
- * Recompute and persist the parent invoice `amount_satang` from its remaining
- * items. When no items remain, the manual amount is intentionally left as-is.
- */
-async function recomputeInvoiceAmount(
-  supabase: Awaited<ReturnType<typeof createSupabaseClient>>,
-  orgId: string,
-  invoiceId: string
-): Promise<{ error?: string }> {
-  const { data: items, error } = await supabase
-    .from("invoice_items")
-    .select("amount_satang")
-    .eq("invoice_id", invoiceId)
-    .eq("org_id", orgId)
-
-  if (error) return { error: error.message }
-  if (!items || items.length === 0) return {}
-
-  const total = subtotalSatang(items)
-  const { error: updErr } = await supabase
-    .from("invoices")
-    .update({ amount_satang: total })
-    .eq("id", invoiceId)
-    .eq("org_id", orgId)
-
-  if (updErr) return { error: updErr.message }
-  return {}
-}
+// Invoice item mutation and discounted header recompute are one DB transaction.
+// A separate header write can corrupt discounts or leave a persisted line behind.
 
 const AddInvoiceItem = z.object({
   invoice_id: z.string().min(1),
   description: z.string().trim().min(1, "Description is required"),
-  quantity: z.coerce.number().positive("Quantity must be greater than 0"),
-  unitPriceBaht: z.coerce.number().min(0, "Unit price must be 0 or more"),
+  quantity: z.string().refine(v => { try { invoiceLineAmount(v, 0); return true } catch { return false } }, "Enter a positive quantity with up to three decimals"),
+  unitPriceBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter an exact nonnegative THB price"),
 })
 
 export async function addInvoiceItem(
   input: z.input<typeof AddInvoiceItem>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try { requireRole(ctx, ["owner", "admin"]) }
+  catch { return { error: "Only owners and admins can edit invoice lines." } }
   const parsed = AddInvoiceItem.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
@@ -87,25 +53,21 @@ export async function addInvoiceItem(
 
   if (countErr) return { error: countErr.message }
 
-  const unitPriceSatang = bahtToSatang(d.unitPriceBaht)
+  const unitPriceSatang = moneyInput(d.unitPriceBaht)
+  let amount: number
+  try { amount = invoiceLineAmount(d.quantity, unitPriceSatang) }
+  catch { return { error: "Line total exceeds safe bounds" } }
   const { error: insErr } = await supabase.from("invoice_items").insert({
     org_id: ctx.orgId,
     invoice_id: d.invoice_id,
     description: d.description,
-    quantity: d.quantity,
+    quantity: Number(d.quantity),
     unit_price_satang: unitPriceSatang,
-    amount_satang: lineAmountSatang(d.quantity, unitPriceSatang),
+    amount_satang: amount,
     position: count ?? 0,
   })
 
   if (insErr) return { error: insErr.message }
-
-  const recomputed = await recomputeInvoiceAmount(
-    supabase,
-    ctx.orgId,
-    d.invoice_id
-  )
-  if (recomputed.error) return { error: recomputed.error }
 
   await writeAudit(ctx, {
     entity: "invoice",
@@ -125,6 +87,8 @@ export async function deleteInvoiceItem(
   input: z.input<typeof DeleteInvoiceItem>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try { requireRole(ctx, ["owner", "admin"]) }
+  catch { return { error: "Only owners and admins can edit invoice lines." } }
   const parsed = DeleteInvoiceItem.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
 
@@ -161,13 +125,6 @@ export async function deleteInvoiceItem(
     .eq("org_id", ctx.orgId)
 
   if (delErr) return { error: delErr.message }
-
-  const recomputed = await recomputeInvoiceAmount(
-    supabase,
-    ctx.orgId,
-    item.invoice_id
-  )
-  if (recomputed.error) return { error: recomputed.error }
 
   await writeAudit(ctx, {
     entity: "invoice",

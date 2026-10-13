@@ -126,7 +126,7 @@ function renderHoursTable(hours: ReportHoursSummary): string {
 
 export function renderReportHtml(data: ReportData): string {
   return `<!doctype html>
-<html lang="en">
+<html lang="th">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -169,7 +169,7 @@ export function renderReportHtml(data: ReportData): string {
 
     <div class="stats">
       <div class="stat">
-        <div class="label">Total revenue</div>
+        <div class="label">Verified cash received</div>
         <div class="value">${escapeHtml(formatTHB(data.totalRevenueSatang))}</div>
       </div>
       <div class="stat">
@@ -182,7 +182,7 @@ export function renderReportHtml(data: ReportData): string {
       </div>
     </div>
 
-    <h2>Revenue by client × month</h2>
+    <h2>Verified cash by client × month</h2>
     ${renderRevenueTable(data.revenue)}
 
     <h2>Hours by project</h2>

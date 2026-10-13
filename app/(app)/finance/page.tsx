@@ -13,7 +13,7 @@ import {
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { currentMonthKey, todayISO } from "@/lib/dates"
-import { formatTHB } from "@/lib/money"
+import { formatTHB, sumSatang } from "@/lib/money"
 import {
   revenueForMonth,
   costsForMonth,
@@ -92,26 +92,31 @@ export default async function FinancePage({
         .select(
           "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name)"
         )
+        .eq("org_id", ctx.orgId)
         .order("issue_date", { ascending: false }),
-      supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified"),
+      supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified").eq("org_id", ctx.orgId),
       supabase
         .from("costs")
         .select(
           "id, category, amount_satang, incurred_on, vendor, project_id, projects(name)"
         )
+        .eq("org_id", ctx.orgId)
         .order("incurred_on", { ascending: false }),
       supabase
         .from("saved_views")
         .select("id, name, config")
+        .eq("org_id", ctx.orgId)
         .eq("module", "finance")
         .eq("user_id", ctx.userId)
         .order("created_at", { ascending: true }),
       supabase
         .from("subscriptions")
         .select("status, amount_satang, interval")
+        .eq("org_id", ctx.orgId)
         .eq("status", "active"),
     ])
 
+  if (invoicesRes.error || paymentsRes.error || costsRes.error || viewsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
   const invoices = invoicesRes.data ?? []
   const payments = paymentsRes.data ?? []
   const costs = costsRes.data ?? []
@@ -128,7 +133,7 @@ export default async function FinancePage({
   for (const p of payments) {
     paidByInvoice.set(
       p.invoice_id,
-      (paidByInvoice.get(p.invoice_id) ?? 0) + p.amount_satang
+      sumSatang([paidByInvoice.get(p.invoice_id) ?? 0, p.amount_satang])
     )
   }
 
@@ -142,9 +147,9 @@ export default async function FinancePage({
     }
   })
 
-  // Status filter applies to the stored `status` column (mirrors the export).
+  // Status filter uses the same verified-receipt effective status as the export.
   const filteredInvoiceRows = status
-    ? invoiceRows.filter((inv) => inv.status === status)
+    ? invoiceRows.filter((inv) => inv.effectiveStatus === status)
     : invoiceRows
 
   // Metrics.
@@ -165,11 +170,13 @@ export default async function FinancePage({
     <div className="space-y-6">
       <PageHeader
         title="Finance"
-        description="Invoices, payments, and operating costs at a glance."
+        description="การเงิน / Verified receipts, receivables, and recorded operating costs."
       >
+        <Button variant="outline" render={<Link href="/finance/business-profile" />}>Business profile</Button>
         <Button variant="outline" render={<Link href="/finance/subscriptions" />}>
           <Repeat /> Subscriptions
         </Button>
+        <Button variant="outline" render={<Link href="/finance/payments/export" />}>Receipt evidence CSV</Button>
         <Button variant="outline" render={<Link href="/finance/costs/new" />}>
           <Coins /> New cost
         </Button>
@@ -187,7 +194,7 @@ export default async function FinancePage({
           hint={`${openCount} open invoice${openCount === 1 ? "" : "s"}`}
         />
         <StatCard
-          label="Revenue this month"
+          label="Verified cash this month"
           value={formatTHB(revenueSatang)}
           icon={TrendingUp}
           tone="positive"
@@ -201,7 +208,7 @@ export default async function FinancePage({
           hint="Costs incurred"
         />
         <StatCard
-          label="MRR"
+          label="Monthly recurring forecast"
           value={formatTHB(mrrSatang)}
           icon={Repeat}
           hint="Recurring revenue / month"

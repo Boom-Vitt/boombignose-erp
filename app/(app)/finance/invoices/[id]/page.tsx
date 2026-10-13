@@ -5,7 +5,7 @@ import { ArrowLeft, FileText, PlugZap, Wallet } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
-import { formatTHB, satangToBaht } from "@/lib/money"
+import { formatTHB, satangToBahtString, sumSatang } from "@/lib/money"
 import {
   deriveInvoiceStatus,
   outstandingSatang,
@@ -43,6 +43,8 @@ import {
   InvoiceItemsEditor,
   type InvoiceItemRow,
 } from "../../_components/invoice-items-editor"
+import { IssueInvoiceForm } from "../../_components/issue-invoice-form"
+import { PaymentForm } from "../../_components/payment-form"
 import { ReviewClaimForm } from "../../_components/review-claim-form"
 import { SyncInvoiceButton } from "../../_components/sync-invoice-button"
 import { EmailInvoiceButton } from "../../_components/email-invoice-button"
@@ -96,11 +98,11 @@ export default async function InvoiceDetailPage({
     syncRes,
   ] = await Promise.all([
     supabase.from("payment_claims").select("id, amount_satang, reference, status").eq("org_id", ctx.orgId).eq("invoice_id",id).order("created_at"),
-    supabase.from("payments").select("id, amount_satang, notes").eq("org_id", ctx.orgId).eq("verification_state","legacy_unverified").eq("org_id",ctx.orgId).eq("invoice_id",id),
+    supabase.from("payments").select("id, amount_satang, notes, paid_at, method, verification_state, reconciled_payment_id").eq("org_id", ctx.orgId).neq("verification_state","verified").eq("invoice_id",id),
     supabase
       .from("invoices")
       .select(
-        "id, number, amount_satang, status, issue_date, due_date, is_recurring, recurring_interval, notes, client_id, project_id, clients(name), projects(name)"
+        "id, number, amount_satang, status, issue_date, due_date, is_recurring, recurring_interval, notes, client_id, project_id, discount_satang, source_quote_id, source_milestone_id, version, issued_snapshot_id, clients(name), projects(name)"
       ).eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
@@ -136,7 +138,8 @@ export default async function InvoiceDetailPage({
   if (!invoice) notFound()
 
   const payments = paymentsRes.data ?? []
-  const paid = payments.reduce((acc, p) => acc + p.amount_satang, 0)
+  if (paymentsRes.error || itemsRes.error || legacyRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
+  const paid = sumSatang(payments.map(p => p.amount_satang))
   const outstanding = outstandingSatang(invoice.amount_satang, paid)
   const effectiveStatus = deriveInvoiceStatus(invoice, paid, today)
 
@@ -159,7 +162,7 @@ export default async function InvoiceDetailPage({
     status: invoice.status,
     issue_date: invoice.issue_date ?? "",
     due_date: invoice.due_date ?? "",
-    amountBaht: satangToBaht(invoice.amount_satang),
+    amountBaht: satangToBahtString(invoice.amount_satang),
     is_recurring: invoice.is_recurring,
     recurring_interval: invoice.recurring_interval ?? undefined,
     notes: invoice.notes ?? "",
@@ -212,7 +215,7 @@ export default async function InvoiceDetailPage({
             />
           }
         >
-          <FileText /> Download PDF
+          <FileText /> Print / PDF
         </Button>
         <EmailInvoiceButton invoiceId={invoice.id} />
         <Button variant="outline" render={<Link href="/finance" />}>
@@ -220,6 +223,9 @@ export default async function InvoiceDetailPage({
         </Button>
       </PageHeader>
 
+      <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. Tax classification, credits and withholding require accountant-approved evidence. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
+      {invoice.status === "draft" && ctx.role !== "member" ? <Card><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></CardContent></Card> : null}
+      {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
@@ -230,7 +236,7 @@ export default async function InvoiceDetailPage({
             <CardContent>
               <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <Field label="Amount" value={formatTHB(invoice.amount_satang)} />
-                <Field label="Paid" value={formatTHB(paid)} />
+                <Field label="Verified receipts" value={formatTHB(paid)} />
                 <Field
                   label="Outstanding"
                   value={
@@ -239,6 +245,7 @@ export default async function InvoiceDetailPage({
                     </span>
                   }
                 />
+                <Field label="Discount" value={formatTHB(invoice.discount_satang)} />
                 <Field label="Issue date" value={invoice.issue_date ?? "—"} />
                 <Field label="Due date" value={invoice.due_date ?? "—"} />
                 <Field
@@ -282,6 +289,8 @@ export default async function InvoiceDetailPage({
                   }
                 />
               </dl>
+              {invoice.source_quote_id ? <p className="mt-4 text-sm">Accepted quote terms are authoritative. Linked corrections are needed for changes. Source quote: <Link className="underline" href={`/quotes/${invoice.source_quote_id}`}>View accepted quote</Link></p> : null}
+              {invoice.source_milestone_id && invoice.project_id ? <p className="text-sm">Delivery milestone: <Link className="underline" href={`/projects/${invoice.project_id}`}>View project and milestones</Link></p> : null}
               {invoice.notes ? (
                 <>
                   <Separator className="my-4" />
@@ -301,7 +310,7 @@ export default async function InvoiceDetailPage({
                 items={itemRows}
                 addAction={addInvoiceItem}
                 deleteAction={removeInvoiceItem}
-                locked={paid > 0 || (claimsRes.data ?? []).some(claim => claim.status === "pending")}
+                locked={ctx.role === "member" || !!invoice.source_quote_id || !!invoice.issued_snapshot_id || paid > 0 || (claimsRes.data ?? []).some(claim => claim.status === "pending")}
               />
             </CardContent>
           </Card>
@@ -315,7 +324,7 @@ export default async function InvoiceDetailPage({
                 <EmptyState
                   icon={Wallet}
                   title="No payments yet"
-                  description="Record a payment below as the client pays this invoice."
+                  description="Only verified receipts appear here. Report a payment in the queue before verification."
                   className="border-0"
                 />
               ) : (
@@ -357,15 +366,16 @@ export default async function InvoiceDetailPage({
               <p className="text-sm text-muted-foreground mb-4">Customer reports await verification. Only verified receipts reduce the open balance.</p>
               {claimsRes.error ? <p role="alert">Payment queue unavailable. Reload before approving.</p> : (claimsRes.data ?? []).map(claim => <div key={claim.id} className="space-y-2 border-b py-4">
                 <p>{formatTHB(claim.amount_satang)} · {claim.reference} · {claim.status}</p>
-                {claim.status === "pending" && ctx.role !== "member" ? <ReviewClaimForm claimId={claim.id} invoiceId={invoice.id} suggestedBaht={satangToBaht(claim.amount_satang).toFixed(2)} /> : null}
+                {claim.status === "pending" && ctx.role !== "member" ? <ReviewClaimForm today={today} orgId={ctx.orgId} claimId={claim.id} invoiceId={invoice.id} suggestedBaht={satangToBahtString(claim.amount_satang)} /> : null}
               </div>)}
-              {legacyRes.data?.length ? <p role="alert" className="mt-4 text-sm">Legacy receipts need reconciliation. {legacyRes.data.length} retained receipts are excluded from verified cash and balances until reviewed against bank evidence.</p> : null}
+              {ctx.role !== "member" && outstanding > 0 && !["draft", "cancelled"].includes(invoice.status) && !(claimsRes.data ?? []).some(claim => claim.status === "pending") && !claimsRes.error ? <div className="border-t pt-4"><h3 className="mb-3 text-sm font-medium">แจ้งชำระโดยเจ้าหน้าที่ / Staff report</h3><PaymentForm today={today} orgId={ctx.orgId} invoiceId={invoice.id} suggestedBaht={satangToBahtString(outstanding)} /></div> : null}
+              {legacyRes.data?.length ? <div className="mt-6 space-y-4"><h3 className="text-sm font-medium">ตรวจสอบยอดเดิม / Legacy reconciliation</h3><p className="text-xs text-muted-foreground">Retained records are excluded from verified cash. Match each to bank evidence before creating a linked verified receipt.</p>{legacyRes.data.map(legacy => <div key={legacy.id} className="rounded border p-3 space-y-2"><p className="text-sm">{formatTHB(legacy.amount_satang)} · {legacy.paid_at.slice(0,10)} · {legacy.verification_state}</p><p className="text-xs text-muted-foreground">{legacy.notes ?? "No original reference"}</p>{legacy.reconciled_payment_id ? <p className="text-xs">Linked verified receipt: {legacy.reconciled_payment_id}</p> : null}{legacy.verification_state === "legacy_unverified" && ctx.role !== "member" && outstanding > 0 && !["draft", "cancelled"].includes(invoice.status) ? <PaymentForm today={today} orgId={ctx.orgId} invoiceId={invoice.id} legacyPaymentId={legacy.id} suggestedBaht={satangToBahtString(Math.min(legacy.amount_satang, outstanding))} /> : null}</div>)}</div> : null}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      <Card className="max-w-3xl">
+      {ctx.role !== "member" && invoice.status === "draft" && !invoice.source_quote_id && !invoice.issued_snapshot_id && paid === 0 && !(claimsRes.data ?? []).some(claim => claim.status === "pending") ? <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle className="text-base">Edit invoice</CardTitle>
         </CardHeader>
@@ -378,7 +388,7 @@ export default async function InvoiceDetailPage({
             action={saveInvoice}
           />
         </CardContent>
-      </Card>
+      </Card> : null}
     </div>
   )
 }
