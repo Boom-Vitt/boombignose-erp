@@ -11,7 +11,7 @@ const SignupSchema = z.object({
 })
 
 export type SignupResult =
-  | { ok: true }
+  | { ok: true; requiresConfirmation: boolean }
   | { ok: false; error: string }
 
 /**
@@ -39,7 +39,7 @@ export async function signUp(input: {
   const supabase = await createClient()
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -51,5 +51,5 @@ export async function signUp(input: {
     return { ok: false, error: error.message }
   }
 
-  return { ok: true }
+  return { ok: true, requiresConfirmation: !data.session }
 }

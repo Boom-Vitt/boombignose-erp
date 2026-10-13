@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { requireOrgContext } from "@/lib/auth"
 import { currentMonthKey, todayISO, isPastDue } from "@/lib/dates"
 import {
   revenueForMonth,
@@ -67,8 +68,9 @@ const OPEN_QUOTE_STATUSES: Enums<"quote_status">[] = [
   "accepted",
 ]
 
-/** Fetches the org's data (RLS-scoped to the session) and derives dashboard metrics. */
+/** Membership RLS permits all memberships; explicit org filters choose this workspace. */
 export async function getDashboardData(): Promise<DashboardData> {
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const today = todayISO()
   const month = currentMonthKey()
@@ -85,32 +87,42 @@ export async function getDashboardData(): Promise<DashboardData> {
     quotesRes,
     timeEntriesRes,
   ] = await Promise.all([
-    supabase.from("deals").select("stage,value_satang"),
+    supabase.from("deals").select("stage,value_satang").eq("org_id", ctx.orgId),
     supabase
       .from("invoices")
-      .select("id,status,amount_satang,is_recurring,recurring_interval,due_date"),
-    supabase.from("payments").select("invoice_id,amount_satang,paid_at").eq("verification_state", "verified"),
-    supabase.from("costs").select("amount_satang,incurred_on"),
-    supabase.from("projects").select("status"),
-    supabase.from("activities").select("id,body,type,due_date,done"),
+      .select("id,status,amount_satang,is_recurring,recurring_interval,due_date")
+      .eq("org_id", ctx.orgId),
+    supabase.from("payments").select("invoice_id,amount_satang,paid_at").eq("org_id", ctx.orgId).eq("verification_state", "verified"),
+    supabase.from("costs").select("amount_satang,incurred_on").eq("org_id", ctx.orgId),
+    supabase.from("projects").select("status").eq("org_id", ctx.orgId),
+    supabase.from("activities").select("id,body,type,due_date,done").eq("org_id", ctx.orgId),
     supabase
       .from("org_settings")
       .select("cash_balance_satang,monthly_burn_satang")
+      .eq("org_id", ctx.orgId)
       .maybeSingle(),
     supabase
       .from("subscriptions")
       .select("status,amount_satang,interval")
+      .eq("org_id", ctx.orgId)
       .eq("status", "active"),
     supabase
       .from("quotes")
       .select("status,total_satang")
+      .eq("org_id", ctx.orgId)
       .in("status", OPEN_QUOTE_STATUSES),
     supabase
       .from("time_entries")
       .select("project_id,minutes,billable,rate_satang,work_date")
+      .eq("org_id", ctx.orgId)
       .gte("work_date", `${month}-01`)
       .lt("work_date", nextMonthStart(month)),
   ])
+
+  if ([dealsRes, invoicesRes, paymentsRes, costsRes, projectsRes, activitiesRes,
+    settingsRes, subscriptionsRes, quotesRes, timeEntriesRes].some((result) => result.error)) {
+    throw new Error("Unable to load dashboard data. Please try again.")
+  }
 
   const deals = dealsRes.data ?? []
   const invoices = invoicesRes.data ?? []

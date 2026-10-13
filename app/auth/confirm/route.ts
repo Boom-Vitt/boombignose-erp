@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         status: 303,
       })
     }
-    return failure(request, error.message)
+    return failureOrExistingSession(request, error.message)
   }
 
   // OTP flow: verify the email token hash.
@@ -47,10 +47,18 @@ export async function GET(request: NextRequest) {
         status: 303,
       })
     }
-    return failure(request, error.message)
+    return failureOrExistingSession(request, error.message)
   }
 
-  return failure(request, "Invalid or expired confirmation link.")
+  return failureOrExistingSession(request, "Invalid or expired confirmation link.")
+}
+
+/** Reusing a consumed link must not discard an already authenticated session. */
+async function failureOrExistingSession(request: NextRequest, message: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) return NextResponse.redirect(new URL("/dashboard", request.url), { status: 303 })
+  return failure(request, message)
 }
 
 /** Redirect to /login with a human-readable error message in the query. */

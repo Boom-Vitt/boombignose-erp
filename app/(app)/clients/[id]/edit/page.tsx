@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { requireOrgContext } from "@/lib/auth"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -15,10 +16,12 @@ export default async function EditClientPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const { data: client } = await supabase
     .from("clients")
     .select("id, name, industry, source, notes")
+    .eq("org_id", ctx.orgId)
     .eq("id", id)
     .maybeSingle()
 

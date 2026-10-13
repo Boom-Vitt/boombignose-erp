@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Users, Plus } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { requireOrgContext } from "@/lib/auth"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,7 @@ export default async function ClientsPage({
 }: {
   searchParams: Promise<{ q?: string }>
 }) {
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const { q: qParam } = await searchParams
   const q = (qParam ?? "").trim()
@@ -30,6 +32,7 @@ export default async function ClientsPage({
   let query = supabase
     .from("clients")
     .select("id, name, industry, source, created_at")
+    .eq("org_id", ctx.orgId)
     .order("name", { ascending: true })
   if (q) query = query.ilike("name", `%${q}%`)
 

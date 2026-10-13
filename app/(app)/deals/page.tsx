@@ -68,11 +68,13 @@ export default async function DealsPage({
       .select(
         "id,title,stage,value_satang,client_id,next_follow_up_date,created_at"
       )
+      .eq("org_id", ctx.orgId)
       .order("created_at", { ascending: false }),
-    supabase.from("clients").select("id,name"),
+    supabase.from("clients").select("id,name").eq("org_id", ctx.orgId),
     supabase
       .from("saved_views")
       .select("id, name, config")
+      .eq("org_id", ctx.orgId)
       .eq("module", "deals")
       .eq("user_id", ctx.userId)
       .order("created_at", { ascending: true }),

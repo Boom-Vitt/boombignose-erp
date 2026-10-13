@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
+import { safeReturnPath } from "@/lib/supabase/redirect"
+
 import type { Database } from "@/lib/types/database"
 
 /** Public route prefixes that do not require an authenticated session. */
@@ -49,19 +51,28 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
+  // Redirects must carry token refreshes as well as the ordinary response.
+  function redirectWithSession(url: URL) {
+    const response = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie))
+    return response
+  }
+
   if (!user && !isPublic(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
     url.searchParams.set("redirect", pathname)
-    return NextResponse.redirect(url)
+    return redirectWithSession(url)
   }
 
-  // Signed-in users hitting /login go to the dashboard.
-  if (user && pathname === "/login") {
+  // Preserve local invitation destinations when already signed in.
+  if (user && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone()
-    url.pathname = "/dashboard"
-    url.search = ""
-    return NextResponse.redirect(url)
+    const destination = new URL(safeReturnPath(request.nextUrl.searchParams.get("redirect")), request.url)
+    url.pathname = destination.pathname
+    url.search = destination.search
+    url.hash = destination.hash
+    return redirectWithSession(url)
   }
 
   return supabaseResponse

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { CheckCircle2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/card"
 
 export default function SignupPage() {
+  const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -46,6 +48,11 @@ export default function SignupPage() {
 
     if (!result.ok) {
       toast.error("Sign up failed", { description: result.error })
+      return
+    }
+    if (!result.requiresConfirmation) {
+      router.push("/onboarding")
+      router.refresh()
       return
     }
     setDone(true)
