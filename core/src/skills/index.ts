@@ -2,15 +2,17 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Tool, ToolResult } from '../types.ts';
 
-export interface SkillInfo { name: string; description: string }
+export interface SkillInfo { name: string; description: string; bundled?: boolean }
 export interface LoadedSkill extends SkillInfo { body: string; folder: string; files: string[] }
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_DESCRIPTION = 1024;
 const MAX_BODY = 200_000;
 const MAX_FILES = 200;
+const bundledDir = fileURLToPath(new URL('./bundled/', import.meta.url));
 
 // The "---" fence must be the first line; a body starting with blank lines is normalised so save → load round trips.
 const FRONTMATTER_RE = /^\uFEFF?---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/;
@@ -89,11 +91,16 @@ export function scanSkills(dir: string): { skills: SkillInfo[]; skipped: { folde
   return { skills, skipped };
 }
 
-export const listSkills = (dir: string): SkillInfo[] => scanSkills(dir).skills;
+export function listSkills(dir: string): SkillInfo[] {
+  const user = scanSkills(dir).skills;
+  return [...user, ...scanSkills(bundledDir).skills.filter(s => !user.some(u => u.name === s.name)).map(s => ({ ...s, bundled: true }))]
+    .sort((a, b) => a.name < b.name ? -1 : 1);
+}
 
 /** undefined when there is no such skill folder; throws for an invalid name or a broken SKILL.md. */
 export function loadSkill(dir: string, name: string): LoadedSkill | undefined {
-  const folder = folderOf(dir, name);
+  let folder = folderOf(dir, name);
+  if (!folderExists(folder)) { dir = bundledDir; folder = folderOf(dir, name); }
   if (!folderExists(folder)) return undefined;
   const r = readSkill(dir, name);
   if (!r.ok) throw new Error(`skill "${name}": ${r.reason}`);
@@ -108,6 +115,7 @@ export function loadSkill(dir: string, name: string): LoadedSkill | undefined {
 
 export function saveSkill(dir: string, skill: { name: string; description: string; body: string }): void {
   const folder = folderOf(dir, skill.name);
+  if (folderExists(folderOf(bundledDir, skill.name))) throw new Error('built-in skill');
   const description = skill.description.replace(/\s+/g, ' ').trim();
   if (!description) throw new Error('description is required');
   if (description.length > MAX_DESCRIPTION) throw new Error(`description is over ${MAX_DESCRIPTION} characters`);
@@ -123,6 +131,7 @@ export function saveSkill(dir: string, skill: { name: string; description: strin
 
 export function deleteSkill(dir: string, name: string): boolean {
   const folder = folderOf(dir, name);
+  if (folderExists(folderOf(bundledDir, name))) throw new Error('built-in skill');
   if (!existsSync(folder)) return false;
   rmSync(folder, { recursive: true });
   return true;
@@ -176,6 +185,7 @@ export function skillTools(dir: string, allowed: string[] | null = null): Tool[]
       try {
         const { name, description, body } = input;
         if (typeof name !== 'string' || typeof description !== 'string' || typeof body !== 'string') throw new Error('name, description and body must be strings');
+        if (folderExists(folderOf(bundledDir, name))) throw new Error('built-in skill');
         if (allowed !== null && !allowed.includes(name)) return fail(`Skill "${name}" is not enabled for this agent.`);
         saveSkill(dir, { name, description, body });
         return { content: `Saved skill "${name}".` };

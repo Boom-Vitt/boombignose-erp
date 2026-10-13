@@ -176,3 +176,16 @@ test('streaming holds back newly added longer secrets across deltas, and titles 
   await h.runtime.fireJob({ id: 'title', agentId, cron: '0 9 * * *', prompt: input, delivery: { kind: 'desktop' }, enabled: true });
   assert.equal(h.store.findSessionByOrigin({ kind: 'cron', jobId: 'title' }, agentId)?.title, `Scheduled: Start ${maskSecret(sensitive)} finish`);
 });
+
+test('profile memory always has an agent owner, including a default profile', async t => {
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream() { yield done; } }));
+  const first = h.store.listAgents()[0]!;
+  const second = h.store.createAgent({ name: 'Other', provider: 'mock', model: 'test-model' });
+  h.store.addMemory('user', 'shared fact');
+  h.store.addMemory('agent', 'first-only note', first.id);
+  h.store.addMemory('agent', 'second-only note', second.id);
+  assert.match(h.runtime.profile().memory!, /shared fact|first-only note/);
+  assert.doesNotMatch(h.runtime.profile().memory!, /second-only note/);
+  assert.match(h.runtime.profile(h.config, true, second).memory!, /second-only note/);
+  assert.doesNotMatch(h.runtime.profile(h.config, true, second).memory!, /first-only note/);
+});

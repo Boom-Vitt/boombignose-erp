@@ -1,9 +1,10 @@
 import type { McpServerConfig, Tool } from '../types.ts';
 import type { ToolSpec } from '../types.ts';
 import { createHash } from 'node:crypto';
+import { setTimeout } from 'node:timers/promises';
 import { McpClient } from './client.ts';
 
-interface Entry { client: McpClient; specs: ToolSpec[]; error?: string }
+interface Entry { client: McpClient; specs?: ToolSpec[]; error?: string }
 export class McpManager {
   private servers: Record<string, McpServerConfig>;
   private env: Record<string, string>;
@@ -18,9 +19,24 @@ export class McpManager {
       if (!config.enabled || this.entries.get(name)?.client.connected) continue;
       await this.entries.get(name)?.client.close();
       if (generation !== this.generation) return;
-      const entry: Entry = { client: new McpClient(config, this.env), specs: [] }; this.entries.set(name, entry);
+      const entry: Entry = { client: new McpClient(config, this.env) }; this.entries.set(name, entry);
       try { await entry.client.connect(); entry.specs = await entry.client.listTools(); }
       catch (e) { entry.error = e instanceof Error ? e.message : String(e); await entry.client.close(); }
+    }
+  }
+  async waitFor(names: string[], signal: AbortSignal): Promise<void> {
+    const deadline = Date.now() + 180_000;
+    while (names.length) {
+      signal.throwIfAborted();
+      const statuses = this.status();
+      for (const name of names) {
+        const server = statuses.find(s => s.name === name);
+        if (!server?.enabled) throw new Error(`connector ${name} is off`);
+        if (server.error) throw new Error(`connector ${name}: ${server.error}`);
+      }
+      if (names.every(name => statuses.some(s => s.name === name && s.connected))) return;
+      if (Date.now() >= deadline) throw new Error(`connector startup timeout: ${names.join(', ')}`);
+      await setTimeout(25, undefined, { signal });
     }
   }
   tools(): Tool[] {
@@ -28,7 +44,7 @@ export class McpManager {
     for (const [server, entry] of this.entries) {
       if (!entry.client.connected) continue;
       const selected = this.servers[server]?.tools;
-      for (const spec of entry.specs) {
+      for (const spec of entry.specs ?? []) {
         if (selected && !selected.includes(spec.name)) continue;
         const original = `mcp__${server}__${spec.name}`;
         const raw = original.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -56,7 +72,7 @@ export class McpManager {
   status(): { name: string; transport: 'stdio' | 'http'; enabled: boolean; connected: boolean; tools: { name: string; selected: boolean }[]; error?: string }[] {
     return Object.entries(this.servers).map(([name, config]) => {
       const entry = this.entries.get(name);
-      return { name, transport: config.transport, enabled: config.enabled, connected: entry?.client.connected ?? false,
+      return { name, transport: config.transport, enabled: config.enabled, connected: !!entry?.client.connected && entry.specs !== undefined,
         tools: (entry?.specs ?? []).map(t => ({ name: t.name, selected: !config.tools || config.tools.includes(t.name) })),
         ...(entry?.error ? { error: entry.error } : {}),
       };

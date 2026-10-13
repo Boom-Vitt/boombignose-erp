@@ -135,9 +135,9 @@ test('every section 6 CRUD/status route has the documented JSON shape, auth, Hos
   assert.equal((await call(a, '/api/mcp/fake/test', 'POST')).status, 404);
   assert.equal((await call(a, '/api/mcp/constructor/test', 'POST')).status, 404);
 
-  assert.deepEqual((await call(a, '/api/skills')).body, { skills: [] });
+  assert.deepEqual((await call(a, '/api/skills')).body.skills.filter((s: any) => !s.bundled), []);
   assert.equal((await call(a, '/api/skills/sample', 'PUT', { description: 'Sample skill', body: 'Do a small thing.' })).status, 200);
-  assert.deepEqual((await call(a, '/api/skills')).body, { skills: [{ name: 'sample', description: 'Sample skill' }] });
+  assert.deepEqual((await call(a, '/api/skills')).body.skills.filter((s: any) => !s.bundled), [{ name: 'sample', description: 'Sample skill' }]);
   assert.deepEqual((await call(a, '/api/skills/sample')).body, { name: 'sample', description: 'Sample skill', body: 'Do a small thing.' });
   assert.equal((await call(a, '/api/skills/sample', 'DELETE')).status, 200);
   assert.equal((await call(a, '/api/skills/sample')).status, 404);

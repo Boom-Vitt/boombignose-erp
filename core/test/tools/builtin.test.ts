@@ -70,7 +70,7 @@ test('list globs and regex search skip dependency and git trees', async t => {
 
 test('credential stores are refused through direct, dot-dot and symlink paths, including new files', async t => {
   const { dir, run } = setup(t);
-  const sensitive = ['.env', '.env.local', 'api-token', '.ssh/id_x', '.aws/credentials', '.gnupg/private', '.config/gh/hosts.yml', '.netrc', '.docker/config.json', '.claude.json', '.claude/.credentials.json', '.hermes/.env', '.codex/auth.json'];
+  const sensitive = ['.env', '.env.local', 'api-token', 'config.json', '.ssh/id_x', '.aws/credentials', '.gnupg/private', '.config/gh/hosts.yml', '.netrc', '.docker/config.json', '.claude.json', '.claude/.credentials.json', '.hermes/.env', '.codex/auth.json'];
   mkdirSync(dir + '/work');
   for (const [i, path] of sensitive.entries()) {
     mkdirSync(dir + '/' + path.slice(0, path.lastIndexOf('/') + 1), { recursive: true });
@@ -128,7 +128,7 @@ test('credential symlinks protect their targets directly and are refreshed after
     assert.equal(r.isError, true, name); assert.match(r.content, /protected/);
   }
   mkdirSync(dir + '/.aws'); mkdirSync(dir + '/.claude');
-  for (const [i, source] of ['.env', '.env.local', '.aws/credentials', '.claude/.credentials.json'].entries()) {
+  for (const [i, source] of ['.env', '.env.local', 'config.json', '.aws/credentials', '.claude/.credentials.json'].entries()) {
     const target = outside + '/target' + i; writeFileSync(target, 'hidden'); symlinkSync(target, dir + '/' + source);
     assert.equal((await run('read_file', { path: target })).isError, true, source);
     assert.equal((await run('write_file', { path: target, content: 'bad' })).isError, true, source);

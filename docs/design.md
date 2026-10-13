@@ -208,7 +208,7 @@ export interface Config {
   `edit_file` (ask; unique exact match unless `replaceAll`), `list_files` (allow; optional glob, skips `.git` and
   `node_modules`), `search_files` (allow; regex, `path:line: text`, caps), `web_fetch` (**ask**; http/https GET, 30 s,
   2 MB, HTML to text; the owner can set it to `allow` in `permissions`), `delegate` (allow; uses `ctx.delegate`). Relative paths resolve against `ctx.cwd`.
-  - Secret files: `read_file`, `write_file` and `edit_file` refuse `<home>/.env` and `<home>/api-token` after resolving
+  - Protected files: `read_file`, `write_file` and `edit_file` refuse `<home>/.env`, `<home>/api-token` and `<home>/config.json` after resolving
     the real path (symlinks, `..`); `list_files` and `search_files` never list or read them (also when they walk the
     home dir or follow a symlink to them). The same refusal covers common credential stores of other tools:
     `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.netrc`, `~/.docker/config.json`, `~/.claude.json`,
@@ -230,7 +230,8 @@ export interface Config {
   `start()` connects enabled servers, `tools(): Tool[]` (selected tools only; name `mcp__<server>__<tool>`
   sanitised to 64 chars; defaultPolicy `ask`), `test(name)` → `{ ok, tools: number, error? }` (works for disabled
   servers too), `status()`, `listTools(name)` (cached descriptors, including descriptions),
-  `update(servers, env?)` (reconnect changed configs or secrets), `stop()`.
+  `update(servers, env?)` (reconnect changed configs or secrets), `waitFor(names, signal)` (wait for initialization
+  and tool discovery, up to 180 s, abortable, throws on startup failure), `stop()`.
   Provider and MCP HTTP requests reject redirects (`redirect: 'error'`), including MCP session cleanup, so
   authentication headers never follow a redirect to another origin.
 
@@ -300,6 +301,8 @@ export interface Config {
   connectors cannot delay inbound LINE or cron LINE delivery. Settings writes wait behind an in-flight connector
   initialization (up to the 180 s stdio initialize timeout).
   A failed LINE bind is retried on the next settings/secrets reload, even when those values are unchanged.
+  `line.agentId` is excluded from the LINE listener fingerprint: changing or deleting the chosen agent keeps the
+  same webhook listener; the runtime resolves the current agent on each message.
 - `cli.ts` (`#!/usr/bin/env node`): `bignose daemon`, `bignose chat -q "<prompt>"` (headless single turn without a
   daemon: text to stdout, tool activity to stderr, `ask` tools prompt on a TTY and are denied otherwise; exit 0 when
   done, 1 otherwise), `bignose mcp add <name> (--url <url> | -- <command> [args…])`, `mcp list`, `mcp test <name>`
@@ -356,7 +359,7 @@ export interface Config {
     (no agent filter = all agents; with `q`: scoped FTS search); `POST /api/sessions` `{title?, agentId?}` → `{id}`
     (default first agent; 400 unknown agent); `GET /api/sessions/:id` → `{id, agentId, title, messages: Message[]}`;
     `DELETE /api/sessions/:id`; `POST /api/sessions/:id/messages` `{text}` → `202 {runId}` (`409` while a run is
-    active); `POST /api/sessions/:id/interrupt` → `{ok}`.
+    active; also `409 {error: 'connector <name> is off for this agent', connector: '<name>'}` for a slash command's required connector; invalid slash arguments return 400); `POST /api/sessions/:id/interrupt` → `{ok}`.
   - `POST /api/approvals/:id` `{allow: boolean}` → `{ok}` (`404` unknown or already decided).
   - `GET /api/settings` → `{ config: Config, secrets: { [name]: masked } }`. In the returned `config`, MCP `env` and
     `headers` values are masked unless they are pure `${NAME}` references; `secrets` lists every known secret name
@@ -385,8 +388,9 @@ export interface Config {
     REA restores the built-in disabled entry.
     Connector POST/PATCH/DELETE operations read, validate and mutate the live config inside the daemon's
     serialized settings queue, so concurrent mutations compose instead of overwriting one another.
-  - `GET /api/skills` → `{skills: [{name, description}]}`; `GET /api/skills/:name` → `{name, description, body}`;
-    `PUT /api/skills/:name` `{description, body}`; `DELETE /api/skills/:name`.
+  - `GET /api/commands?agent=<id>` → `{commands: [{name, description, usage, kind}]}`; commands use the agent's skills (no agent = first agent; unknown agent = 400). See section 11 for slash expansion and REA.
+  - `GET /api/skills` → `{skills: [{name, description, bundled?}]}`; `GET /api/skills/:name` → `{name, description, body}`;
+    `PUT /api/skills/:name` `{description, body}`; `DELETE /api/skills/:name`. Bundled names refuse PUT/DELETE with `400 {error: 'built-in skill'}`; user folders with the same name take precedence when listing/loading.
   - `GET /api/memory?kind=&q=&agent=<id>` → `{notes: [{id, agentId, kind, text, updatedAt}]}`;
     `POST /api/memory` `{kind, text, agentId?}` (400 for agent-kind without a known agentId; user notes have
     `agentId:null`). Agent filters include shared user notes and only that agent's notes, subject to the kind filter;
@@ -532,3 +536,67 @@ export interface Agent {
   `core/test/app/agent-runtime.test.ts` (two agents with different instructions, provider/model, permissions,
   connectors and skills: a scripted mock provider records each request and sees the right model, system prompt and
   tool list; agent notes isolated, user notes shared; a LINE message is answered by `line.agentId`).
+
+
+## 11. Slash commands and `/rea` (stream `slash-rea`)
+
+- **Module** `core/src/commands/index.ts`:
+  - `listCommands(skills: SkillInfo[])` → `[{name, description, usage, kind: 'builtin' | 'skill'}]`: the built-in
+    `rea` (`usage: '/rea <app or file path>'`) first, then one per skill (`usage: '/<name> [request]'`); a skill named
+    like a built-in is not listed.
+  - `expandSlash(text, skills, {cwd})` → `null` when the text is not a command: it must match
+    `^\/([a-z0-9][a-z0-9-]{0,63})(?:\s+([\s\S]*))?$` and name a listed command (so `/Users/x …` or `/foo` stay plain
+    text). Otherwise `{command, skills: string[], connectors: string[], prompt: string, target?: string}` or
+    `{error: string}`:
+    - `/rea <path>`: the path (quotes trimmed, `~` expanded, relative to `cwd`) must exist, else `{error: 'not found:
+      <path>'}`; no path → `{error: 'usage: /rea <app or file path>'}`. Result: `connectors: ['rea']`,
+      `skills: ['reverse-engineer-anything']`, `target` = the absolute path, and a prompt that names the target and asks
+      for a Markdown report with evidence (tool + location for each claim): app type, process/bundle layout (for
+      Electron: main / preload / renderer), IPC channels, screens and routes, the local API it calls, and what is
+      unknown. The prompt also says the REA tools are already connected, so no REA setup, doctor or `npx` commands.
+    - `/<skill> [request]`: `skills: [name]`, `connectors: []`, prompt = the request, or `Use the <name> skill.`.
+- **Bundled skill**: `core/src/skills/bundled/reverse-engineer-anything/` = an unmodified copy of
+  `skills/reverse-engineer-anything/` from the `rea-agents@6.1.0` npm package (`SKILL.md` + `references/`) plus that
+  package's MIT `LICENSE` in the same folder. (Under `core/src` so the desktop bundle, which ships `core/src`, carries
+  it.) Skills seen by the app = user skills in `<home>/skills` + bundled skills; a user skill with the same name wins.
+  `skill_load` and `GET /api/skills/:name` load bundled skills; `GET /api/skills` marks them `bundled: true`;
+  `PUT`/`DELETE /api/skills/<bundled name>` and `skill_save` on a bundled name → 400 / error `built-in skill`.
+- **Runtime**: the message path (`POST /api/sessions/:id/messages`, LINE, cron) expands slash commands. Before the run
+  starts, every connector the command needs must be on for the session's agent (server enabled and in
+  `agent.connectors` when that is a list). If one is off, no run starts: the API answers `409 {error: 'connector <name>
+  is off for this agent', connector: '<name>'}` (the desktop asks the user, turns it on, and sends again); LINE gets a
+  short text saying to turn it on in the app. Otherwise the run waits until those servers are connected (a cold `npx`
+  start can take up to 180 s; a failure ends the run with `error`), then sends the model one input message:
+  `<skill name="NAME" folder="ABS_DIR">BODY</skill>` for each skill (plus its other file names), a blank line, then the
+  prompt. The transcript keeps the user's original slash text (that is what the chat shows); the model context keeps
+  the expanded message. REA tools keep their `ask` policy unless the agent's permissions allow them.
+- **Report**: when a `/rea` run ends `done` with non-empty text, save the text to
+  `<home>/reports/rea-<target basename, lowercase, [a-z0-9-] only>-<YYYYMMDD-HHmmss>.md` (dir 0700, file 0600) and emit
+  `{type: 'notification', title: 'Report saved', body: '<absolute path>', sessionId}`.
+- **API**: `GET /api/commands?agent=<id>` → `{commands: [{name, description, usage, kind}]}` (skills limited to the
+  agent's skills; no `agent` = first agent).
+- **Tests**: `core/test/commands/slash.test.ts` (no network: listing; `/rea <path>` → connector `rea` on + skill
+  `reverse-engineer-anything` loaded + the target in the prompt; usage and not-found errors; plain text cases;
+  `/<skill>`; bundled skill listed, loadable, user override wins, write/delete refused; `GET /api/commands`; `POST
+  …/messages` with `/rea` while REA is off → 409 + `connector`; with a fake stdio MCP server configured as `rea` and
+  turned on for the agent, the first provider request carries the skill body and the target, the transcript shows the
+  slash text, the report file is saved and the notification event is sent).
+  `core/test/e2e/rea-flow.test.ts` (network): skipped with `BIGNOSE_SKIP_NETWORK=1`, and skipped when the target is
+  missing; target = `BIGNOSE_REA_TARGET` or
+  `~/.hermes/hermes-agent/apps/desktop/release/mac-arm64/Hermes.app/Contents/Resources/app.asar`. Temp home; an agent
+  "Hermes Reverser" with `connectors: ['rea']` and `permissions: {'mcp__rea__*': 'allow'}`; a mock OpenAI-compatible
+  server scripted to call REA `open_binary` on the target, then `analyze_javascript_application` with
+  `input_path: <target>.unpacked/dist/node_modules/node-pty/lib/shared`, `format: 'directory'` (build arguments from
+  the input schema the real server lists), then answer with an explicitly partial report;
+  BigNose's own MCP client runs the real REA (`npx -y rea-agents@6.1.0 mcp`) through `/rea <target>`. Pass = run
+  status `done`, the session transcript holds both REA tool results, not errors and not empty, and the report file
+  exists.
+  The installed Hermes fixture's whole-ASAR analysis refuses an integrity mismatch in
+  `dist/node_modules/node-pty/prebuilds/darwin-arm64/pty.node` (observed 2026-10-14). REA has no scope/exclusion
+  argument for ASAR analysis. The full node-pty `lib` graph also exceeds REA's 10 MiB stdio response budget.
+  The selected shipped JavaScript scope contains `conout.js`; the test verifies its SHA-256 against the original
+  ASAR header before analysis and asserts actual parsed JavaScript and graph evidence. A real call through
+  BigNose's MCP client verified this scope succeeds. The app is never changed or repackaged, and integrity checks
+  stay enabled. This checks the agent/tool/report flow on a trusted JavaScript entry; it does not establish the
+  full Hermes layout or runtime behavior. The owner's manual run must keep the whole-ASAR integrity limitation
+  explicit rather than treating the native file or unexamined app features as verified.

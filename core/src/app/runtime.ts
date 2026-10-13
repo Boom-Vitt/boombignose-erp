@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { chmodSync, existsSync, lstatSync, mkdirSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { CommandError, expandSlash } from '../commands/index.ts';
 import { runAgent } from '../agent/loop.ts';
 import type { RunResult } from '../agent/loop.ts';
 import { withAbort } from '../agent/abort.ts';
@@ -7,7 +10,7 @@ import { paths, readEnv } from '../config.ts';
 import { createProvider } from '../providers/index.ts';
 import { builtinTools } from '../tools/index.ts';
 import { memoryPrompt, memoryTools, sessionSearchTool } from '../memory/tools.ts';
-import { skillsIndex, skillTools } from '../skills/index.ts';
+import { listSkills, loadSkill, skillsIndex, skillTools } from '../skills/index.ts';
 import { scheduleTools } from '../cron/index.ts';
 import type { Scheduler } from '../cron/index.ts';
 import type { Store, Job } from '../store/index.ts';
@@ -33,6 +36,21 @@ export interface RuntimeOptions {
 }
 interface ActiveRun { runId: string; controller: AbortController; result: Promise<RunResult> }
 interface PendingApproval { event: ApiEvent; decide: (ok: boolean) => void }
+
+function saveReport(home: string, target: string, text: string): string {
+  const dir = join(home, 'reports');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (!lstatSync(dir).isDirectory() || lstatSync(dir).isSymbolicLink()) throw new Error('reports must be a regular directory');
+  chmodSync(dir, 0o700);
+  const name = basename(target).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'target';
+  let time = Date.now(), file: string;
+  do {
+    const stamp = new Date(time).toISOString().slice(0, 19).replace(/[-:T]/g, '').replace(/^(\d{8})(\d{6})$/, '$1-$2');
+    file = join(dir, `rea-${name}-${stamp}.md`); time += 1000;
+  } while (existsSync(file));
+  writeFileSync(file, text, { mode: 0o600, flag: 'wx' });
+  return file;
+}
 
 export class Runtime {
   readonly store: Store;
@@ -87,7 +105,7 @@ export class Runtime {
       provider, model: agent?.model ?? c.active.model,
       system: [(agent ? agent.instructions : c.agent.systemPrompt) || 'You are BigNose, a helpful personal assistant. Use tools carefully and ask when permission is needed.',
         skillsIndex(paths(this.opts.home).skills, agent?.skills), `Today: ${new Date().toLocaleDateString('sv-SE')}`].filter(Boolean).join('\n\n'),
-      memory: includeMemory ? memoryPrompt(this.store, agent?.id) : '',
+      memory: includeMemory ? memoryPrompt(this.store, agent?.id ?? this.store.listAgents()[0]!.id) : '',
       permissions: { ...c.permissions, ...agent?.permissions }, hooks: c.hooks, cwd: c.agent.workspace, maxTurns: c.agent.maxTurns,
       maxTokens: provider.maxTokens ?? 8192, contextWindow: provider.contextWindow ?? 128000, compactAt: c.agent.compactAt,
     };
@@ -128,6 +146,13 @@ export class Runtime {
     if (this.runs.has(sessionId)) throw new Error('session is already running');
     const config = structuredClone(this.opts.config()), origin = options.origin ?? session.origin;
     const agent = this.store.getAgent(session.agentId);
+    const slash = expandSlash(input, listSkills(paths(this.opts.home).skills).filter(s => agent?.skills == null || agent.skills.includes(s.name)),
+      { cwd: options.profile?.cwd ?? config.agent.workspace });
+    if (slash && 'error' in slash) throw new CommandError(slash.error);
+    for (const name of slash?.connectors ?? []) {
+      if (!config.mcp.servers[name]?.enabled || (agent?.connectors != null && !agent.connectors.includes(name)))
+        throw new CommandError(`connector ${name} is off for this agent`, 409, name);
+    }
     const nonOwner = origin.kind === 'line' && !config.line.allow.users.includes(options.userId ?? '');
     const context = nonOwner ? session.context.flatMap(m => {
       if (m.role === 'assistant' && m.content.some(b => b.type === 'tool_use')) return [];
@@ -154,6 +179,17 @@ export class Runtime {
       try {
         if (!agent) throw new Error(`unknown agent: ${session.agentId}`);
         const profile = suppliedProfile ?? this.profile(config, !nonOwner, agent);
+        let modelInput = input;
+        if (slash) {
+          await this.opts.mcp.waitFor(slash.connectors, controller.signal);
+          const bodies = slash.skills.map(name => {
+            const skill = loadSkill(paths(this.opts.home).skills, name);
+            if (!skill) throw new Error(`skill not found: ${name}`);
+            const files = skill.files.length ? `\n\nOther files:\n${skill.files.map(f => `- ${f}`).join('\n')}` : '';
+            return `<skill name="${skill.name}" folder="${skill.folder}">${skill.body}${files}</skill>`;
+          });
+          modelInput = [...bodies, slash.prompt].join('\n\n');
+        }
         const allTools = [...builtinTools(this.opts.home), ...memoryTools(this.store, agent.id), sessionSearchTool(this.store, agent.id),
           ...skillTools(paths(this.opts.home).skills, agent.skills), ...scheduleTools(this.opts.scheduler, agent.id),
           ...this.opts.mcp.tools().filter(t => Object.entries(config.mcp.servers).some(([name, server]) => server.enabled &&
@@ -163,7 +199,7 @@ export class Runtime {
         if (nonOwner) for (const tool of tools) if (effectivePolicy(tool, permissions) === 'allow') permissions[tool.name] = 'ask';
         const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
         raw = await runAgent({ ...profile, system: [profile.system, nonOwner ? '' : profile.memory].filter(Boolean).join('\n\n'), provider, tools, permissions, sessionId, origin, signal: controller.signal,
-          context, input, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
+          context, input: modelInput, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
           onEvent: e => {
             if (e.type === 'text_delta') { streamText(e.text); return; }
             streamText('', true);
@@ -182,9 +218,18 @@ export class Runtime {
           context: [...context, message], added: [message], usage: { inputTokens: 0, outputTokens: 0 } };
       }
       const current = this.cleaner(), clean = (text: string) => current(redaction(text)), completed = safeValue(raw, clean);
-      this.store.appendMessages(sessionId, completed.added);
+      const transcript = slash ? [{ role: 'user' as const, content: [{ type: 'text' as const, text: clean(input) }] }, ...completed.added.slice(1)] : completed.added;
+      this.store.appendMessages(sessionId, transcript);
       this.store.setContext(sessionId, completed.context);
       if (!session.title) this.store.setTitle(sessionId, clean(input).replace(/\s+/g, ' ').slice(0, 80));
+      if (slash?.command === 'rea' && slash.target && completed.status === 'done' && completed.text.trim()) {
+        try {
+          const file = saveReport(this.opts.home, slash.target, completed.text);
+          this.emit({ type: 'notification', title: 'Report saved', body: file, sessionId });
+        } catch (e) {
+          completed.status = 'error'; completed.error = clean(e instanceof Error ? e.message : String(e));
+        }
+      }
       this.runs.delete(sessionId);
       this.emit({ type: 'run_end', status: completed.status, text: completed.text, ...(completed.error ? { error: completed.error } : {}), sessionId, runId });
       this.emit({ type: 'session_updated', sessionId });
@@ -198,7 +243,12 @@ export class Runtime {
     const origin: Origin = { kind: 'line', to: message.to };
     const agentId = this.lineAgent().id;
     const session = this.store.findSessionByOrigin(origin, agentId) ?? this.store.createSession({ origin, agentId });
-    const result = await this.start(session.id, message.text, { origin, userId: message.userId }).result;
+    let result: RunResult;
+    try { result = await this.start(session.id, message.text, { origin, userId: message.userId }).result; }
+    catch (e) {
+      if (e instanceof CommandError && e.connector) return `Turn on the ${e.connector} connector for this agent in the app, then send again.`;
+      throw e;
+    }
     return result.status === 'error' ? `Error: ${result.error}` : result.text || `Run ${result.status}.`;
   }
   async fireJob(job: Job): Promise<void> {

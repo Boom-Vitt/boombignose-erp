@@ -18,6 +18,7 @@ async function realPath(path: string, depth = 0): Promise<string> {
 }
 
 export async function fileGuard(home: string): Promise<(path: string) => Promise<string>> {
+  const configPaths = [resolve(home, 'config.json'), await realPath(resolve(home, 'config.json'))];
   const homes = [resolve(home), homedir(), ...(basename(home) === '.bignose' ? [dirname(resolve(home))] : [])];
   const stores = ['.ssh', '.aws', '.gnupg', '.config/gh', '.env', 'api-token', '.netrc', '.docker/config.json', '.claude.json', '.hermes/.env', '.codex/auth.json'];
   const forbidden = (path: string, root: string) => {
@@ -53,7 +54,8 @@ export async function fileGuard(home: string): Promise<(path: string) => Promise
   const targets = [...seen];
   return async path => {
     const lexical = resolve(path), real = await realPath(lexical);
-    if (roots.some(root => forbidden(lexical, root) || forbidden(real, root))
+    if (configPaths.includes(lexical) || configPaths.includes(real)
+      || roots.some(root => forbidden(lexical, root) || forbidden(real, root))
       || targets.some(target => real === target || real.startsWith(target + '/'))) throw new Error('refused: protected credential path');
     return real;
   };
