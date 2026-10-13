@@ -56,7 +56,9 @@ function review(claimId, amount, key, decision = "verified", ref = "bank-stateme
 test("member cannot insert settlement or forge invoice paid via direct API", async () => {
   const inv = await invoice()
   assert.ok((await member.from("payments").insert({ org_id: orgs[0], invoice_id: inv.id, amount_satang: 10000 })).error)
-  assert.ok((await member.from("invoices").update({ status: "paid" }).eq("id", inv.id)).error)
+  const attempt = await member.from("invoices").update({ status: "paid" }).eq("id", inv.id).select("id, status")
+  assert.ok(attempt.error || attempt.data?.length === 0, "unauthorized invoice update must fail or affect no visible rows")
+  assert.equal(ok(await admin.from("invoices").select("status").eq("id", inv.id).single()).status, "sent")
 })
 test("multi-org member cannot create a cross-org invoice relationship", async () => {
   assert.ok((await owner.from("invoices").insert({ org_id: orgs[0], client_id: foreignClient.id, number: randomUUID(), amount_satang: 1 })).error)
