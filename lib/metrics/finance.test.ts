@@ -1,4 +1,8 @@
 import { describe, it, expect } from "vitest"
+it("a legacy paid flag does not hide an unverified open balance", () => {
+  expect(unpaidTotal([{status:"paid",amount_satang:10000,paid_satang:0}])).toBe(10000)
+  expect(unpaidCount([{status:"paid",amount_satang:10000,paid_satang:0}])).toBe(1)
+})
 
 import {
   revenueForMonth,

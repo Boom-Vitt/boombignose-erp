@@ -99,8 +99,7 @@ export function unpaidTotal(invoices: InvoiceWithPaid[]): Satang {
       .filter(
         (i) =>
           i.status !== "draft" &&
-          i.status !== "cancelled" &&
-          i.status !== "paid"
+          i.status !== "cancelled"
       )
       .map((i) => outstandingSatang(i.amount_satang, i.paid_satang))
   )
@@ -112,7 +111,6 @@ export function unpaidCount(invoices: InvoiceWithPaid[]): number {
     (i) =>
       i.status !== "draft" &&
       i.status !== "cancelled" &&
-      i.status !== "paid" &&
       outstandingSatang(i.amount_satang, i.paid_satang) > 0
   ).length
 }

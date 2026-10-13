@@ -93,7 +93,7 @@ export default async function FinancePage({
           "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name)"
         )
         .order("issue_date", { ascending: false }),
-      supabase.from("payments").select("invoice_id, amount_satang, paid_at"),
+      supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified"),
       supabase
         .from("costs")
         .select(

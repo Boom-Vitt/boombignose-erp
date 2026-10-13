@@ -1,42 +1,31 @@
 "use client"
-
-import { useTransition } from "react"
+import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Wallet } from "lucide-react"
 import { toast } from "sonner"
-
 import { Button } from "@/components/ui/button"
-
+import { Input } from "@/components/ui/input"
 import { portalMarkInvoicePaid } from "../portal-actions"
 
-export function MarkInvoicePaidButton({
-  token,
-  invoiceId,
-}: {
-  token: string
-  invoiceId: string
-}) {
+export function MarkInvoicePaidButton({ token, invoiceId }: { token: string; invoiceId: string }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={pending}
-      onClick={() =>
-        startTransition(async () => {
-          const res = await portalMarkInvoicePaid({ token, invoiceId })
-          if (res?.error) {
-            toast.error(res.error)
-            return
-          }
-          toast.success("Invoice marked as paid")
-          router.refresh()
-        })
-      }
-    >
-      <Wallet /> Mark as paid
-    </Button>
-  )
+  const [amount, setAmount] = useState("")
+  const [reference, setReference] = useState("")
+  const [key, setKey] = useState<string>()
+  return <form className="space-y-2 min-w-48" onSubmit={e => {
+    e.preventDefault()
+    const requestKey = key ?? crypto.randomUUID()
+    setKey(requestKey)
+    startTransition(async () => {
+      const result = await portalMarkInvoicePaid({token, invoiceId, amountBaht:amount, reference, key:requestKey})
+      if (result.error) { toast.error(result.error); return }
+      toast.success("ส่งหลักฐานแล้ว รอตรวจสอบ / Pending verification")
+      router.refresh()
+    })
+  }}>
+    <Input aria-label="Reported payment amount (THB)" inputMode="decimal" placeholder="ยอดโอน (฿)" value={amount} onChange={e=>setAmount(e.target.value)} required />
+    <Input aria-label="Customer payment reference" placeholder="วันที่และเลขอ้างอิงการโอน" value={reference} onChange={e=>setReference(e.target.value)} maxLength={500} required />
+    <Button type="submit" size="sm" variant="outline" disabled={pending}>แจ้งชำระเงิน / Report payment</Button>
+    <p className="text-xs text-muted-foreground">รอผู้ดูแลตรวจสอบก่อนตัดยอด / Subject to receipt verification</p>
+  </form>
 }

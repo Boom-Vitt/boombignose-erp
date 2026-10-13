@@ -89,7 +89,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     supabase
       .from("invoices")
       .select("id,status,amount_satang,is_recurring,recurring_interval,due_date"),
-    supabase.from("payments").select("invoice_id,amount_satang,paid_at"),
+    supabase.from("payments").select("invoice_id,amount_satang,paid_at").eq("verification_state", "verified"),
     supabase.from("costs").select("amount_satang,incurred_on"),
     supabase.from("projects").select("status"),
     supabase.from("activities").select("id,body,type,due_date,done"),

@@ -57,7 +57,7 @@ export async function getReportData(): Promise<ReportAggregates> {
   const [paymentsRes, entriesRes] = await Promise.all([
     supabase
       .from("payments")
-      .select("amount_satang, paid_at, invoices(clients(name))")
+      .select("amount_satang, paid_at, invoices(clients(name))").eq("verification_state", "verified")
       .eq("org_id", ctx.orgId)
       .gte("paid_at", startDate),
     supabase
