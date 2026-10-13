@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { todayISO } from "@/lib/dates"
 import { formatTHB, satangToBaht } from "@/lib/money"
 import type { Enums } from "@/lib/types/database"
 
@@ -56,9 +57,10 @@ export default async function SubscriptionDetailPage({
         "id, name, amount_satang, interval, status, start_date, next_run_date, last_generated_on, auto_generate, notes, client_id, project_id, clients(name), projects(name)"
       )
       .eq("id", id)
+      .eq("org_id", ctx.orgId)
       .maybeSingle(),
-    supabase.from("clients").select("id, name").order("name"),
-    supabase.from("projects").select("id, name").order("name"),
+    supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
+    supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
   ])
 
   const sub = subRes.data
@@ -134,6 +136,8 @@ export default async function SubscriptionDetailPage({
           ) : null}
           <Separator />
           <SubscriptionControls
+            occurrence={sub.next_run_date}
+            isDue={sub.next_run_date <= todayISO()}
             id={sub.id}
             status={sub.status}
             canManage={canManage}
@@ -141,7 +145,7 @@ export default async function SubscriptionDetailPage({
         </CardContent>
       </Card>
 
-      <Card className="max-w-3xl">
+      {canManage ? <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle className="text-base">Edit subscription</CardTitle>
         </CardHeader>
@@ -154,7 +158,7 @@ export default async function SubscriptionDetailPage({
             action={saveSubscription}
           />
         </CardContent>
-      </Card>
+      </Card> : null}
     </div>
   )
 }

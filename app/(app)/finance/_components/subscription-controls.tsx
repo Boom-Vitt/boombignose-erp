@@ -31,10 +31,14 @@ export function SubscriptionControls({
   id,
   status,
   canManage,
+  occurrence,
+  isDue,
 }: {
   id: string
   status: Status
   canManage: boolean
+  occurrence: string
+  isDue: boolean
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -54,7 +58,7 @@ export function SubscriptionControls({
 
   function generate() {
     startTransition(async () => {
-      const res = await generateInvoiceNow({ id })
+      const res = await generateInvoiceNow({ id, occurrence })
       if (res?.error) {
         toast.error(res.error)
         return
@@ -66,7 +70,7 @@ export function SubscriptionControls({
 
   return (
     <div className="flex flex-wrap gap-2">
-      {status !== "active" ? (
+      {canManage && status !== "active" ? (
         <Button
           variant="outline"
           size="sm"
@@ -75,7 +79,7 @@ export function SubscriptionControls({
         >
           <Play /> Activate
         </Button>
-      ) : (
+      ) : canManage ? (
         <Button
           variant="outline"
           size="sm"
@@ -84,9 +88,9 @@ export function SubscriptionControls({
         >
           <Pause /> Pause
         </Button>
-      )}
+      ) : null}
 
-      {status !== "cancelled" ? (
+      {canManage && status !== "cancelled" ? (
         <Button
           variant="outline"
           size="sm"
@@ -99,8 +103,8 @@ export function SubscriptionControls({
 
       {canManage ? (
         <>
-          <Button size="sm" disabled={pending} onClick={generate}>
-            <ReceiptText /> Generate invoice now
+          <Button size="sm" disabled={pending || !isDue || status !== "active"} onClick={generate}>
+            <ReceiptText /> Generate scheduled invoice
           </Button>
 
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

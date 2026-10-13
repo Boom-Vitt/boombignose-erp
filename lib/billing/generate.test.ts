@@ -1,92 +1,40 @@
-import { describe, it, expect } from "vitest"
+import { createClient } from "@supabase/supabase-js"
+import { describe, expect, it } from "vitest"
 
-import {
-  invoiceNumberFor,
-  buildGeneratedInvoice,
-  alreadyGeneratedForPeriod,
-  isUniqueViolation,
-  type GeneratableSubscription,
-} from "./generate"
+import type { Database } from "@/lib/types/database"
+import * as billing from "./generate"
 
-describe("invoiceNumberFor", () => {
-  it("builds Name-YYYYMM", () => {
-    expect(invoiceNumberFor("Acme Retainer", "2026-07-02")).toBe(
-      "Acme Retainer-202607"
-    )
+const subId = "11111111-1111-4111-8111-111111111111"
+const orgId = "22222222-2222-4222-8222-222222222222"
+const invoiceId = "33333333-3333-4333-8333-333333333333"
+
+describe("subscription display number", () => {
+  it("uses immutable subscription identity and the full scheduled date", () => {
+    expect(billing.invoiceNumberFor(subId, "2026-07-02")).toBe("SUB-11111111-1111-4111-8111-111111111111-20260702")
   })
-  it("zero-pads the month from the ISO date", () => {
-    expect(invoiceNumberFor("Hosting", "2026-01-15")).toBe("Hosting-202601")
+  it("keeps weekly occurrences within one month distinct", () => {
+    expect(billing.invoiceNumberFor(subId, "2026-07-02")).not.toBe(billing.invoiceNumberFor(subId, "2026-07-09"))
   })
 })
 
-const sub = (over: Partial<GeneratableSubscription> = {}): GeneratableSubscription => ({
-  org_id: "org1",
-  client_id: "client1",
-  project_id: null,
-  name: "Retainer",
-  amount_satang: 500000,
-  interval: "monthly",
-  ...over,
-})
-
-describe("buildGeneratedInvoice", () => {
-  it("emits a sent, recurring invoice dated today", () => {
-    expect(buildGeneratedInvoice(sub(), "2026-07-02")).toEqual({
-      org_id: "org1",
-      client_id: "client1",
-      project_id: null,
-      number: "Retainer-202607",
-      status: "sent",
-      amount_satang: 500000,
-      is_recurring: true,
-      recurring_interval: "monthly",
-      issue_date: "2026-07-02",
+describe("subscription occurrence command", () => {
+  it("bills the scheduled date through one transaction without issuing client writes", async () => {
+    const requests: { url: string; body: unknown }[] = []
+    const client = createClient<Database>("http://127.0.0.1:55501", "test-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (url, init) => {
+        requests.push({ url: String(url), body: JSON.parse(String(init?.body)) })
+        return Response.json(invoiceId)
+      } },
     })
+    expect(await billing.generateSubscriptionOccurrence(client, orgId, subId, "2026-07-02")).toBe(invoiceId)
+    expect(requests).toEqual([{ url: "http://127.0.0.1:55501/rest/v1/rpc/generate_subscription_occurrence", body: { p_org_id: orgId, p_subscription_id: subId, p_occurrence: "2026-07-02" } }])
   })
-  it("carries the project id through when set", () => {
-    expect(buildGeneratedInvoice(sub({ project_id: "proj1" }), "2026-07-02").project_id).toBe(
-      "proj1"
-    )
-  })
-})
-
-describe("alreadyGeneratedForPeriod", () => {
-  it("is true when the period's computed number is present", () => {
-    expect(
-      alreadyGeneratedForPeriod(["Retainer-202607"], "Retainer", "2026-07-02")
-    ).toBe(true)
-  })
-  it("is false when only other periods/subs are present", () => {
-    expect(
-      alreadyGeneratedForPeriod(
-        ["Retainer-202606", "Hosting-202607"],
-        "Retainer",
-        "2026-07-02"
-      )
-    ).toBe(false)
-  })
-  it("is false for an empty set", () => {
-    expect(alreadyGeneratedForPeriod([], "Retainer", "2026-07-02")).toBe(false)
-  })
-  it("accepts any iterable of numbers (e.g. a Set)", () => {
-    expect(
-      alreadyGeneratedForPeriod(
-        new Set(["Retainer-202607"]),
-        "Retainer",
-        "2026-07-02"
-      )
-    ).toBe(true)
-  })
-})
-
-describe("isUniqueViolation", () => {
-  it("is true for Postgres unique-violation code 23505", () => {
-    expect(isUniqueViolation({ code: "23505" })).toBe(true)
-  })
-  it("is false for other codes and for null/undefined", () => {
-    expect(isUniqueViolation({ code: "23503" })).toBe(false)
-    expect(isUniqueViolation({})).toBe(false)
-    expect(isUniqueViolation(null)).toBe(false)
-    expect(isUniqueViolation(undefined)).toBe(false)
+  it("does not convert a rejected command to benign duplicate success", async () => {
+    const client = createClient<Database>("http://127.0.0.1:55501", "test-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async () => Response.json({ code: "23505", message: "invoice display number conflict", details: null, hint: null }, { status: 400 }) },
+    })
+    await expect(billing.generateSubscriptionOccurrence(client, orgId, subId, "2026-07-02")).rejects.toThrow("invoice display number conflict")
   })
 })

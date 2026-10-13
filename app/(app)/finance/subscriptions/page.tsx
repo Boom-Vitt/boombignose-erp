@@ -31,7 +31,7 @@ const INTERVAL_LABEL: Record<Enums<"recurring_interval">, string> = {
 }
 
 export default async function SubscriptionsPage() {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const { data: subs } = await supabase
@@ -39,6 +39,7 @@ export default async function SubscriptionsPage() {
     .select(
       "id, name, amount_satang, interval, status, next_run_date, clients(name)"
     )
+    .eq("org_id", ctx.orgId)
     .order("created_at", { ascending: false })
 
   const subscriptions = subs ?? []

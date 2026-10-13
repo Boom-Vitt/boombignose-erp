@@ -1,240 +1,66 @@
-# n8n Integration
+# Automation integration and recovery
 
-The Company OS exposes inbound webhook endpoints that **n8n** (or Hermes, or any
-scheduler) can call to drive reminders and alerts. V1 ships validated
-**placeholders** — they authenticate and acknowledge; you wire the actual
-messaging (LINE, email) in n8n.
+Automation requires the coordinator migration that supplies `enqueue_reminders`, `generate_subscription_occurrence`, `claim_outbound_events`, `finish_outbound_event` and `accept_integration_event`. There is no fallback to separate financial or queue writes. Database commands enforce tenant links and owner/admin authorization; cron/integration commands also permit the server service role. Service credentials stay server-side.
 
-## Endpoints
+## Scheduler commands
 
-All are `POST` and require the shared secret header `X-Webhook-Secret`.
+Every cron request requires `X-Cron-Secret` matching `CRON_SECRET`; missing/wrong configuration fails closed. These routes are public at middleware so the scheduler can reach them without a browser session.
 
-| Endpoint | Purpose |
-|---|---|
-| `POST /api/webhooks/n8n/followup` | Trigger follow-up reminders (deals/activities due today) |
-| `POST /api/webhooks/n8n/invoice-overdue` | Trigger overdue-invoice reminders |
-| `POST /api/webhooks/n8n/project-deadline` | Trigger project-deadline alerts |
+| Command | Result | Recovery |
+| --- | --- | --- |
+| POST /api/cron/followups | `{ok,orgsScanned,remindersUpserted,eventsQueued}` | One transaction per org. Reminder identity is org/entity/source/date. Repeating a scan creates no duplicate and repairs a legacy reminder missing its event. |
+| POST /api/cron/subscriptions | `{ok,processed,failed}` | Each subscription invokes one atomic scheduled occurrence. Partial failures return 503 so monitoring can retry. `processed` includes durable retries; it is not a new-invoice count. |
+| POST /api/cron/outbox | `{ok,disabled,attempted,delivered,failed,unacknowledged}` | Claims up to 10 due events with 120-second leases and sends concurrently with 30-second timeouts. Failures and expired leases remain retryable. Partial delivery/acknowledgement failures return 503. |
 
-Each also answers `GET` with a small health JSON. These routes are **public** at
-the middleware level (no user session) — they are protected by the secret header,
-not by auth cookies.
+GET on followups/subscriptions remains a compatibility trigger with the same secret and mutations. Health checks should use the inbound webhook GET endpoints, which perform no work.
 
-## Authentication
+## Scheduled billing identity
 
-Set a long random secret in your environment:
+Billing identity is `(org_id,subscription_id,scheduled_date)`, persisted independently of the display invoice number. The number is `SUB-<full subscription UUID>-YYYYMMDD`; subscription names and renames do not affect billing identity. Two weekly occurrences within one month and same-name subscriptions are separate.
 
-```bash
-# .env.local
-N8N_WEBHOOK_SECRET=use-a-long-random-string
-```
+The command locks the subscription, creates its invoice and occurrence result, advances `next_run_date` by one interval, and records trusted audit in one transaction. A delayed run bills the scheduled date, not the scan date. Each invocation processes one occurrence; repeated scans catch up every missed period without skipping. Weekly cadence adds seven days. Monthly/quarterly/yearly cadence clamps the original start day to the month's end and restores it when possible, including leap day.
 
-Send it from n8n as a header on every request:
+The manual “Generate scheduled invoice” button uses the server-rendered occurrence. A transport failure preserves that same date for retry; loading the advanced next date would incorrectly bill another period. Editing a billed cadence requires the database's correction policy. Invoice issuance/document review is a separate workflow.
 
-```
-X-Webhook-Secret: use-a-long-random-string
-Content-Type: application/json
-```
+## Outbound delivery
 
-The handler validates it in constant time (`lib/webhooks/verify.ts`). A missing or
-wrong secret returns `401 { "error": "unauthorized" }`.
+Delivery is disabled unless both `N8N_OUTBOUND_URL` and `N8N_OUTBOUND_SECRET` are configured. HTTPS is required outside loopback test destinations. Redirects and credentials embedded in the URL are rejected. Do not enable real delivery during local tests or before separately authorized integration setup.
 
-## Example call
+Each request uses `Content-Type: application/json`, `X-Webhook-Secret: <outbound secret>` and `Idempotency-Key: <stable event UUID>`:
 
-```bash
-curl -X POST http://localhost:3000/api/webhooks/n8n/followup \
-  -H "Content-Type: application/json" \
-  -H "X-Webhook-Secret: $N8N_WEBHOOK_SECRET" \
-  -d '{"orgSlug":"boombignose"}'
-# → 200 { "ok": true, "event": "followup", ... }
-```
-
-## Wiring it in n8n
-
-1. **Schedule** node (e.g. daily 09:00 Asia/Bangkok).
-2. **HTTP Request** node → `POST` the endpoint with the `X-Webhook-Secret` header.
-3. Branch on the response and send messages via the **LINE** / **email** nodes.
-
-A typical flow: *Cron 09:00 → POST /followup → for each item → LINE push to the
-deal owner.*
-
-## Extending beyond placeholders
-
-The V1 handlers do **not** read org data, because a webhook has no user session
-and RLS would (correctly) return nothing. To have an endpoint return real rows
-(e.g. "deals with a follow-up due today"), use a **service-role** Supabase client
-**inside the route handler only**, and scope every query by `org_id` yourself
-(derive the org from the secret or the payload). Keep the service-role key
-server-side and never log it. Prefer giving each org its own secret if you expose
-org-specific data.
-
-## Future: outbound + Hermes
-
-Later the app can also **call out** to n8n/Hermes when events happen (deal won,
-invoice overdue) instead of being polled. The same secret pattern applies in
-reverse (sign requests the app sends). LINE-based Hermes notifications are a
-natural Pro-tier automation pack.
-
----
-
-## Cron scan: `/api/cron/followups`
-
-Unlike the `/api/webhooks/n8n/*` placeholders, this endpoint does **real work**.
-A scheduler (n8n, Vercel Cron, or any timer) POSTs it on a cadence (e.g. daily
-09:00 Asia/Bangkok). On each run it:
-
-1. Scans **deals** with a `next_follow_up_date` on or before today (excluding
-   `won`/`lost`) and **activities** that are not done with a `due_date` on or
-   before today (Bangkok "today").
-2. Upserts a `reminders` row per due item — **idempotently**, via the unique
-   index `(org_id, entity, entity_id, due_date)`. Re-running the same day creates
-   nothing new.
-3. Queues one `outbound_events` row (`event_type: "followup.due"`) per
-   **newly-created** reminder. This is the queue n8n / Hermes consumes.
-
-### Contract
-
-| | |
-|---|---|
-| **Method** | `POST` (also `GET`, identical behaviour, for health-check triggers) |
-| **Auth header** | `X-Cron-Secret: <CRON_SECRET>` |
-| **Body** | none required (ignored) |
-| **Success** | `200 { "ok": true, "orgsScanned": n, "remindersUpserted": n, "eventsQueued": n }` |
-| **Bad/missing secret** | `401 { "error": "unauthorized" }` |
-| **Scan failure** | `500 { "error": "<message>" }` |
-
-The secret is validated in constant time against `CRON_SECRET` (separate from
-`N8N_WEBHOOK_SECRET`) using the same `lib/webhooks/verify.ts` helper. Set it in
-your environment:
-
-```bash
-# .env.local
-CRON_SECRET=use-a-long-random-string
-```
-
-> **Middleware:** `/api/cron` must be a public prefix at the middleware level
-> (it carries no auth cookie) — see `PUBLIC_PREFIXES` in
-> `lib/supabase/middleware.ts`. The route then enforces the secret itself, the
-> same public-at-middleware + secret-in-handler model the webhook routes use.
-
-### Example call
-
-```bash
-curl -X POST http://localhost:3000/api/cron/followups \
-  -H "X-Cron-Secret: $CRON_SECRET"
-# → 200 { "ok": true, "orgsScanned": 1, "remindersUpserted": 4, "eventsQueued": 4 }
-# Re-run immediately → { ..., "remindersUpserted": 0, "eventsQueued": 0 }  (idempotent)
-```
-
-### Wiring in n8n
-
-1. **Schedule** node → daily 09:00 Asia/Bangkok.
-2. **HTTP Request** node → `POST /api/cron/followups` with the `X-Cron-Secret`
-   header. This creates the reminders + queues the events.
-3. (Separately) poll or subscribe to the `outbound_events` queue to deliver the
-   messages — see below.
-
-## Cron scan: `/api/cron/subscriptions`
-
-Generates invoices from **due recurring subscriptions**. A scheduler (n8n, Vercel
-Cron, or any timer) POSTs it on a cadence (suggested: **daily**, e.g. 09:00
-Asia/Bangkok). On each run it:
-
-1. Loads **active, auto-generating** subscriptions whose `next_run_date` is on or
-   before today (Bangkok "today"), re-checking each with the `isDue` rule.
-2. For each due subscription, builds a deterministic invoice number
-   (`Name-YYYYMM` for the period) and **checks whether an invoice with that number
-   already exists** for the org. If it does, it **skips** creation (no second
-   invoice) but still advances the schedule.
-3. Otherwise inserts one `invoices` row and advances `last_generated_on` /
-   `next_run_date`.
-
-### Idempotency (no double-billing)
-
-The invoice number is deterministic per period and `invoices` has
-`unique(org_id, number)`, so **re-running on the same day bills nothing new**:
-
-- A pre-insert existence check skips subscriptions already billed for the period.
-- As a belt-and-suspenders guard, a unique-constraint violation (`23505`) on
-  insert is treated as a benign **skip**, not a failure.
-- Either way the subscription's schedule is still advanced, so a duplicate run
-  never leaves the cadence stuck re-scanning the same row.
-
-The scan is resilient: a single failing subscription is logged and skipped; the
-scan continues to the next row.
-
-### Contract
-
-| | |
-|---|---|
-| **Method** | `POST` (also `GET`, identical behaviour, for health-check triggers) |
-| **Auth header** | `X-Cron-Secret: <CRON_SECRET>` |
-| **Body** | none required (ignored) |
-| **Success** | `200 { "ok": true, "generated": n, "skipped": n }` |
-| **Bad/missing secret** | `401 { "error": "unauthorized" }` |
-| **Scan failure** | `500 { "error": "<message>" }` |
-
-`generated` counts newly-created invoices; `skipped` counts due subscriptions
-whose period was already billed (the idempotency path). The secret is validated in
-constant time against `CRON_SECRET` (the same variable the followups scan uses) via
-`lib/webhooks/verify.ts`, and `/api/cron` is public at the middleware level — see
-the note under the followups scan above.
-
-### Example call
-
-```bash
-curl -X POST http://localhost:3000/api/cron/subscriptions \
-  -H "X-Cron-Secret: $CRON_SECRET"
-# → 200 { "ok": true, "generated": 3, "skipped": 0 }
-# Re-run immediately → { "ok": true, "generated": 0, "skipped": 3 }  (idempotent)
-```
-
-### Wiring in n8n
-
-1. **Schedule** node → daily (e.g. 09:00 Asia/Bangkok).
-2. **HTTP Request** node → `POST /api/cron/subscriptions` with the `X-Cron-Secret`
-   header. Safe to run more than once a day — extra runs generate nothing.
-
-## Outbound queue contract (`outbound_events`)
-
-The app records intent-to-notify in `outbound_events`; the delivery side
-(n8n / Hermes) drains it. This decouples "a follow-up is due" from "a LINE/email
-message was sent."
-
-| Column | Meaning |
-|---|---|
-| `event_type` | What happened. V1 emits **`followup.due`**. Reserved for later: `deal.stalled`, `invoice.overdue`. |
-| `payload` | JSON describing the event (see shape below). |
-| `status` | `queued` → `delivered` \| `failed`. The app inserts as `queued`; the consumer flips it. |
-| `attempts` | Delivery attempt counter the consumer increments. |
-| `delivered_at` | Set by the consumer on success. |
-
-### `followup.due` payload shape
-
-```jsonc
+```json
 {
-  "reminderId": "uuid",      // the reminders row this event was raised for
-  "entity": "deal",          // 'deal' | 'activity'
-  "entityId": "uuid",        // the source deal/activity id
-  "title": "Invoice Overdue Reminder System",
-  "dueDate": "2026-06-30",   // YYYY-MM-DD (Bangkok)
-  "summary": "Follow-up due: Invoice Overdue Reminder System"
+  "version": 1,
+  "eventId": "stable event UUID",
+  "orgId": "organization UUID",
+  "type": "followup.due",
+  "payload": {
+    "reminderId": "reminder UUID",
+    "entity": "deal",
+    "entityId": "source UUID",
+    "title": "Follow up",
+    "dueDate": "2026-10-13",
+    "summary": "Follow-up due: Follow up"
+  }
 }
 ```
 
-### Draining the queue from n8n / Hermes
+The receiver must durably deduplicate the event UUID before side effects. Delivery is at least once: a crash after the receiver accepts a message but before the app receives/records its acknowledgement can resend the same event. There is no exactly-once external-delivery guarantee.
 
-A typical consumer flow:
+The DB claims eligible queued/failed events, increments attempts, and assigns a fresh lease token. Acknowledgement must present the current nonexpired token. Success marks delivered; failure records a bounded error and schedules exponential backoff. Expired claims are reclaimable; a stale acknowledgement cannot certify a newer lease. Do not directly update queue status from n8n or a browser.
 
-1. **Schedule** (e.g. every 5 min) → query `outbound_events` where
-   `status = 'queued'` (via the Supabase node or a service-role HTTP call).
-2. For each row, **send** the message — LINE push (Hermes), email, etc. — using
-   the `payload`.
-3. **Mark** the row: `status = 'delivered'`, `delivered_at = now()` on success,
-   or `status = 'failed'` + increment `attempts` on error.
+## Inbound event receipts
 
-> **Future: Hermes (LINE).** Hermes is the planned LINE-based notifier. It slots
-> in as the consumer in step 2: read `followup.due` (and later `invoice.overdue`)
-> events, resolve the deal/activity owner's LINE binding, and push a card. No
-> change to this contract is needed — the queue is the integration seam, so the
-> producer (cron scan) and consumer (n8n/Hermes) evolve independently. LINE-based
-> Hermes delivery is a natural Pro-tier automation pack.
+POST `/api/webhooks/n8n/followup`, `/invoice-overdue` and `/project-deadline` require `X-Webhook-Secret` matching `N8N_WEBHOOK_SECRET`, plus `Idempotency-Key: <UUID>`. Body:
+
+```json
+{ "orgId": "organization UUID", "payload": { "sourceId": "synthetic-example" } }
+```
+
+The body must be valid JSON and no larger than 16 KiB. The handler persists a receipt before acknowledging `{ok:true,event,eventId,duplicate}`. Same org/event/key and equal JSON returns the durable receipt; a changed request conflicts (409). Missing secret returns 401; invalid identity/body returns 400; storage failure returns 503. GET returns only endpoint health.
+
+These endpoints acknowledge authenticated integration receipts. They do not settle invoices, mark payments paid, modify overdue status, or send customer messages. The global secret represents a trusted server integration across orgs; it must never be distributed to tenant browsers or customer integrations. Tenant-specific integration credentials and accountant/document readiness remain separate release gates.
+
+## Local acceptance evidence
+
+Use synthetic tenants and a local sink. Prove concurrent duplicate commands, weekly/month-end/leap boundaries, reminder/event rollback and orphan repair, lease expiry/reclaim, stale acknowledgements, same-key response-loss retries, and unauthorized/replayed webhook rejection. Unit adapter tests prove request shape and retry keys; they do not substitute for direct API/database tests or actual pilot workflow acceptance.
