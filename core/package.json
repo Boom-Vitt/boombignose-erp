@@ -1,0 +1,11 @@
+{
+  "name": "@bignose/core",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "bin": { "bignose": "src/cli.ts" },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\""
+  }
+}
