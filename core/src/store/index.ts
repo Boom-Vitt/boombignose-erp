@@ -46,7 +46,6 @@ CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 `;
 
 type Row = Record<string, any>;
-const MAX_FTS_ROWS = 500;
 
 // Exact-origin key: same fields in any order give the same string.
 const originKey = (o: Origin) => JSON.stringify(o, Object.keys(o).sort());
@@ -133,17 +132,12 @@ export function openStore(file: string) {
     searchMessages(query: string, limit = 20): MessageHit[] {
       const q = query.trim(), m = matcher(q, 'messages_fts', 'm.text');
       if (!m) return [];
-      const sql = `SELECT m.session_id AS sid, s.title, m.text, m.at FROM ${m.fts ? 'messages_fts JOIN messages m ON m.id = messages_fts.rowid' : 'messages m'}
-        JOIN sessions s ON s.id = m.session_id WHERE ${m.where} ORDER BY ${m.fts ? 'rank, ' : ''}m.at DESC LIMIT ?`;
-      const seen = new Set<string>(), out: MessageHit[] = [];
-      // ponytail: fetches up to 500 raw hits then keeps one per session; page/group in SQL if sessions get huge
-      for (const r of all(sql, m.param, MAX_FTS_ROWS)) {
-        if (seen.has(r.sid)) continue;
-        seen.add(r.sid);
-        out.push({ sessionId: r.sid, title: r.title, snippet: snippetOf(r.text, q), at: r.at });
-        if (out.length >= limit) break;
-      }
-      return out;
+      // SQLite takes the bare columns from the min/max row: best FTS hit, or newest LIKE hit, per session.
+      const sql = `SELECT m.session_id AS sid, s.title, m.text, m.at, ${m.fts ? 'min(rank)' : 'max(m.at)'} AS best
+        FROM ${m.fts ? 'messages_fts JOIN messages m ON m.id = messages_fts.rowid' : 'messages m'}
+        JOIN sessions s ON s.id = m.session_id WHERE ${m.where} GROUP BY m.session_id
+        ORDER BY ${m.fts ? 'best, m.at DESC' : 'best DESC'} LIMIT ?`;
+      return all(sql, m.param, limit).map((r) => ({ sessionId: r.sid, title: r.title, snippet: snippetOf(r.text, q), at: r.at }));
     },
 
     // ---- memory notes

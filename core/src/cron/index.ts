@@ -75,6 +75,7 @@ function dayMatches(c: CronSpec, d: Date): boolean {
 /** First matching minute strictly after `after`, in local time. Throws when the expression can never match (e.g. Feb 31). */
 export function nextRun(expr: string, after: Date): Date {
   const c = parseCron(expr);
+  const afterWall = Date.UTC(after.getFullYear(), after.getMonth(), after.getDate(), after.getHours(), after.getMinutes());
   const limitYear = after.getFullYear() + 9; // Feb 29 can be 8 years away (2096 to 2104)
   let d = new Date((Math.floor(after.getTime() / 60_000) + 1) * 60_000);
   while (d.getFullYear() <= limitYear) {
@@ -83,6 +84,9 @@ export function nextRun(expr: string, after: Date): Date {
     else if (!dayMatches(c, d)) d = new Date(y, mo, day + 1);
     else if (!c.hour.has(h)) d = new Date(y, mo, day, h + 1);
     else if (!c.minute.has(d.getMinutes())) d = new Date(d.getTime() + 60_000);
+    // Fall-back repeats wall-clock minutes that have already passed.
+    else if (d.getTimezoneOffset() > after.getTimezoneOffset() && Date.UTC(y, mo, day, h, d.getMinutes()) <= afterWall)
+      d = new Date(d.getTime() + 60_000);
     else return d;
   }
   throw new Error(`cron "${expr}" never runs`);
@@ -97,8 +101,6 @@ export interface SchedulerOptions {
   setTimer?: (fn: () => void, ms: number) => () => void; // returns a cancel function
 }
 export type ScheduledJob = Job & { nextRunAt?: number };
-
-const MAX_DELAY = 2 ** 31 - 1; // setTimeout's limit; a longer wait is re-armed when the timer fires
 
 const defaultSetTimer = (fn: () => void, ms: number) => {
   const t = setTimeout(fn, ms);
@@ -171,12 +173,12 @@ export class Scheduler {
     try { this.#next.set(job.id, nextRun(job.cron, from).getTime()); } catch { this.#next.delete(job.id); }
   }
 
-  // One timer, set for the earliest next run (capped at MAX_DELAY); the tick fires everything that is due.
+  // Recheck wall time at least every minute so machine sleep cannot delay a job for hours after wake.
   #arm(): void {
     this.#cancel?.();
     this.#cancel = undefined;
     if (!this.#started || !this.#next.size) return;
-    const delay = Math.min(Math.max(Math.min(...this.#next.values()) - this.#now().getTime(), 0), MAX_DELAY);
+    const delay = Math.min(Math.max(Math.min(...this.#next.values()) - this.#now().getTime(), 0), 60_000);
     this.#cancel = (this.#opts.setTimer ?? defaultSetTimer)(() => this.#tick(), delay);
   }
 

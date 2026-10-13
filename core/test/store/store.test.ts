@@ -106,6 +106,20 @@ test('searchMessages ranks the better match first', (t) => {
   assert.deepEqual(store.searchMessages('invoice').map((h) => h.title), ['strong', 'weak']);
 });
 
+test('searchMessages limits sessions after grouping, even with 600 hits in one chat', async (t) => {
+  const { store } = tmpStore(t);
+  const other = store.createSession({ title: 'other', origin: { kind: 'desktop' } });
+  const chat = store.createSession({ title: 'long chat', origin: { kind: 'line', to: 'Cchat' } });
+  store.appendMessages(other.id, [user(`${'filler '.repeat(40)} needle`)]);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  store.appendMessages(chat.id, Array.from({ length: 600 }, () => user('needle needle needle')));
+  for (const query of ['needle', 'ne']) { // FTS and short-query LIKE
+    const hits = store.searchMessages(query, 2);
+    assert.deepEqual(new Set(hits.map((h) => h.sessionId)), new Set([chat.id, other.id]), query);
+    assert.equal(store.searchMessages(query, 1).length, 1);
+  }
+});
+
 test('queries with FTS syntax characters are safe', (t) => {
   const { store } = tmpStore(t);
   const s = store.createSession({ origin: { kind: 'desktop' } });

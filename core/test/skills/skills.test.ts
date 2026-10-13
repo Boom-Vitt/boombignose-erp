@@ -136,6 +136,47 @@ test('save then load round trip, update in place, delete', (t) => {
   assert.deepEqual(listSkills(dir), []);
 });
 
+test('load and save refuse a symlinked skill folder, including a dangling link', (t) => {
+  const dir = tmpSkills(t);
+  const outside = path.join(path.dirname(dir), 'outside');
+  write(outside, 'SKILL.md', skillMd('linked', 'outside', 'Keep this body.'));
+  fs.mkdirSync(dir);
+  fs.symlinkSync(outside, path.join(dir, 'linked'));
+  fs.symlinkSync(path.join(outside, 'missing'), path.join(dir, 'dangling'));
+  for (const name of ['linked', 'dangling']) {
+    assert.throws(() => loadSkill(dir, name), /symlink/i);
+    assert.throws(() => saveSkill(dir, { name, description: 'new', body: 'Overwrite.' }), /symlink/i);
+  }
+  assert.equal(fs.readFileSync(path.join(outside, 'SKILL.md'), 'utf8'), skillMd('linked', 'outside', 'Keep this body.'));
+});
+
+test('save cannot overwrite the target of a planted temporary-file symlink', (t) => {
+  const dir = tmpSkills(t);
+  const outside = path.join(path.dirname(dir), 'outside.txt');
+  fs.writeFileSync(outside, 'Keep this text.');
+  fs.mkdirSync(path.join(dir, 'safe'), { recursive: true });
+  fs.symlinkSync(outside, path.join(dir, 'safe', `SKILL.md.${process.pid}.tmp`));
+  saveSkill(dir, { name: 'safe', description: 'safe', body: 'New body.' });
+  assert.equal(fs.readFileSync(outside, 'utf8'), 'Keep this text.');
+  assert.equal(loadSkill(dir, 'safe')!.body, 'New body.');
+});
+
+test('an unreadable SKILL.md is skipped without breaking the index', (t) => {
+  if (process.getuid?.() === 0) { t.skip('root can read chmod 000 files'); return; }
+  const dir = tmpSkills(t);
+  write(dir, 'good/SKILL.md', skillMd('good', 'ok'));
+  write(dir, 'unreadable/SKILL.md', skillMd('unreadable', 'hidden'));
+  const file = path.join(dir, 'unreadable', 'SKILL.md');
+  fs.chmodSync(file, 0);
+  const { skills, skipped } = scanSkills(dir);
+  assert.deepEqual(skills, [{ name: 'good', description: 'ok' }]);
+  assert.equal(skipped[0]!.folder, 'unreadable');
+  assert.match(skipped[0]!.reason, /read.*SKILL\.md/i);
+  assert.deepEqual(listSkills(dir), skills);
+  assert.equal(skillsIndex(dir), '- good: ok');
+  assert.throws(() => loadSkill(dir, 'unreadable'), /read.*SKILL\.md/i);
+});
+
 test('save validates name, description and body', (t) => {
   const dir = tmpSkills(t);
   assert.throws(() => saveSkill(dir, { name: 'ok', description: '  ', body: 'b' }), /description is required/);

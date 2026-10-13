@@ -1,5 +1,6 @@
 // Skills: <dir>/<name>/SKILL.md (agentskills.io): tiny YAML frontmatter (name, description) + a Markdown body.
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
 import type { Tool, ToolResult } from '../types.ts';
 
@@ -41,12 +42,26 @@ function folderOf(dir: string, name: string): string {
   return join(dir, name);
 }
 
+function folderExists(folder: string): boolean {
+  let st;
+  try { st = lstatSync(folder); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw e;
+  }
+  if (st.isSymbolicLink()) throw new Error(`skill folder "${folder}" must not be a symlink`);
+  if (!st.isDirectory()) throw new Error(`skill folder "${folder}" is not a directory`);
+  return true;
+}
+
 function readSkill(dir: string, name: string): Read {
   const file = join(dir, name, 'SKILL.md');
   let st;
   try { st = lstatSync(file); } catch { return { ok: false, reason: 'SKILL.md is missing' }; }
   if (!st.isFile()) return { ok: false, reason: 'SKILL.md is not a regular file' };
-  const parsed = parseSkillFile(readFileSync(file, 'utf8'));
+  let parsed;
+  try { parsed = parseSkillFile(readFileSync(file, 'utf8')); } catch (e) {
+    return { ok: false, reason: `cannot read SKILL.md: ${(e as NodeJS.ErrnoException).code ?? 'read failed'}` };
+  }
   if (!parsed) return { ok: false, reason: 'frontmatter is missing' };
   const { name: fmName, description } = parsed.meta;
   if (!fmName) return { ok: false, reason: 'name is missing' };
@@ -75,7 +90,7 @@ export const listSkills = (dir: string): SkillInfo[] => scanSkills(dir).skills;
 /** undefined when there is no such skill folder; throws for an invalid name or a broken SKILL.md. */
 export function loadSkill(dir: string, name: string): LoadedSkill | undefined {
   const folder = folderOf(dir, name);
-  if (!existsSync(folder)) return undefined;
+  if (!folderExists(folder)) return undefined;
   const r = readSkill(dir, name);
   if (!r.ok) throw new Error(`skill "${name}": ${r.reason}`);
   const files = readdirSync(folder, { recursive: true, withFileTypes: true })
@@ -95,10 +110,11 @@ export function saveSkill(dir: string, skill: { name: string; description: strin
   const body = normBody(skill.body);
   if (!body) throw new Error('body is required');
   if (body.length > MAX_BODY) throw new Error(`body is over ${MAX_BODY} characters`);
+  folderExists(folder); // refuses existing symlinks before mkdir can follow them
   mkdirSync(folder, { recursive: true });
-  const file = join(folder, 'SKILL.md'), tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, `---\nname: ${skill.name}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`);
-  renameSync(tmp, file); // replaces a symlinked SKILL.md instead of writing through it
+  const file = join(folder, 'SKILL.md'), tmp = `${file}.${randomUUID()}.tmp`;
+  writeFileSync(tmp, `---\nname: ${skill.name}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`, { flag: 'wx' });
+  try { renameSync(tmp, file); } finally { rmSync(tmp, { force: true }); } // replaces a symlinked SKILL.md instead of writing through it
 }
 
 export function deleteSkill(dir: string, name: string): boolean {

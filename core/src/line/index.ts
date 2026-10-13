@@ -67,6 +67,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
   const pendings = new Map<string, Pending>();
   const approvals = new Map<string, { to: string; resolve: (ok: boolean) => void; timer: unknown }>();
   const slowTimers = new Set<unknown>();
+  let closed = false;
   let server: Server | undefined;
   let lastEventAt: number | undefined;
   let lastError: string | undefined;
@@ -86,6 +87,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
   // ---- LINE API
 
   async function call(path: string, body: unknown): Promise<void> {
+    if (closed) return;
     const res = await fetchImpl(`${apiBase}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opts.accessToken}` },
@@ -107,6 +109,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
   // (expired, already used), it goes out as a metered push. Further calls are always pushes.
   async function sendMessages(to: string, messages: LineMessage[]): Promise<void> {
     for (let i = 0; i < messages.length; i += MAX_PER_CALL) {
+      if (closed) return;
       const batch = messages.slice(i, i + MAX_PER_CALL);
       const token = i === 0 ? takeToken(to) : undefined;
       if (token) {
@@ -126,12 +129,13 @@ export function createLineGateway(opts: LineGatewayOptions) {
 
   async function drain(chat: Chat): Promise<void> {
     chat.busy = true;
-    while (chat.queue.length) {
+    while (!closed && chat.queue.length) {
       try { await chat.queue.shift()!(); } catch (e) { fail(e); }
     }
     chat.busy = false;
   }
   function enqueue(to: string, job: () => Promise<void>): void {
+    if (closed) return;
     const chat = chatOf(to);
     chat.queue.push(job);
     if (!chat.busy) void drain(chat);
@@ -143,8 +147,9 @@ export function createLineGateway(opts: LineGatewayOptions) {
   }
 
   async function runMessage(to: string, userId: string, text: string): Promise<void> {
+    if (closed) return;
     const answer = Promise.resolve()
-      .then(() => opts.onMessage({ to, userId, text }))
+      .then(() => closed ? '' : opts.onMessage({ to, userId, text }))
       .catch((e) => { fail(e); return 'Sorry, something went wrong.'; });
     let timer: unknown;
     const slow = new Promise<null>((resolve) => {
@@ -154,6 +159,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
     });
     const early = await Promise.race([answer, slow]);
     slowTimers.delete(timer);
+    if (closed) return;
     if (early !== null) {
       timers.clearTimeout(timer);
       await send(to, early);
@@ -178,6 +184,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
   }
 
   function askApproval(to: string, text: string): Promise<boolean> {
+    if (closed) return Promise.resolve(false);
     const id = randomBytes(6).toString('hex');
     // The confirm template only fits 240 characters. Longer prompts go out in full first, so the owner always
     // sees the whole command before tapping Allow.
@@ -229,6 +236,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
   }
 
   function handleEvent(ev: LineEvent): void {
+    if (closed) return;
     if (typeof ev.webhookEventId === 'string') {
       if (seen.has(ev.webhookEventId)) return;
       seen.add(ev.webhookEventId);
@@ -305,6 +313,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
 
     /** Listens on 127.0.0.1; resolves with the bound port (0 = ephemeral). */
     async listen(port: number): Promise<number> {
+      if (closed) throw new Error('LINE gateway is closed');
       if (server) throw new Error('LINE gateway is already listening');
       const s = createServer((req, res) => { void handler(req, res); });
       s.requestTimeout = 30_000;
@@ -317,8 +326,10 @@ export function createLineGateway(opts: LineGatewayOptions) {
       return (s.address() as AddressInfo).port;
     },
 
-    /** Stops the server and the timers; open approvals are denied. */
+    /** Stops new work and sends, drops queued runs, stops timers and denies open approvals. */
     async close(): Promise<void> {
+      closed = true;
+      for (const chat of chats.values()) { chat.queue.length = 0; chat.token = undefined; }
       for (const id of [...approvals.keys()]) settleApproval(id, false);
       for (const t of slowTimers) timers.clearTimeout(t);
       slowTimers.clear();

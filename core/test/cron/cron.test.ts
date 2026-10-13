@@ -148,6 +148,7 @@ test('nextRun across daylight-saving changes (America/New_York)', (t) => {
   assert.equal(fmt(first), '2026-11-01 01:30');
   const secondOccurrence = new Date(first.getTime() + 3_600_000);
   assert.equal(fmt(secondOccurrence), '2026-11-01 01:30');
+  assert.equal(next('30 1 * * *', first), '2026-11-02 01:30', 'the first occurrence must not schedule the repeated one');
   const after = nextRun('30 1 * * *', secondOccurrence);
   assert.ok(after.getTime() > secondOccurrence.getTime());
   assert.equal(fmt(after), '2026-11-02 01:30');
@@ -191,7 +192,7 @@ test('scheduler: arms for the next run, fires onFire, records the last run', asy
   assert.equal(h.live().length, 0, 'not started yet: no timer');
   h.sched.start();
   assert.equal(h.live().length, 1);
-  assert.equal(h.live()[0]!.ms, 3 * 60_000, '10:02 → 10:05');
+  assert.equal(h.live()[0]!.ms, 60_000, 'recheck the wall clock before 10:05');
 
   await h.advance(at(2026, 10, 13, 10, 5));
   assert.equal(h.fired.length, 1);
@@ -201,7 +202,7 @@ test('scheduler: arms for the next run, fires onFire, records the last run', asy
   assert.equal(stored.lastRunAt, at(2026, 10, 13, 10, 5).getTime());
   assert.equal(stored.lastStatus, 'ok');
   assert.equal(h.live().length, 1, 're-armed');
-  assert.equal(h.live()[0]!.ms, 5 * 60_000);
+  assert.equal(h.live()[0]!.ms, 60_000);
 
   await h.advance(at(2026, 10, 13, 10, 10));
   assert.equal(h.fired.length, 2);
@@ -226,7 +227,7 @@ test('scheduler: jobs persist and a new Scheduler on the same store reloads them
   const h2 = harness(t, { store: store2, start: at(2026, 10, 13, 8, 30) });
   assert.deepEqual(h2.sched.list().map((j) => j.id), [job.id], 'persisted');
   h2.sched.start();
-  assert.equal(h2.live()[0]!.ms, 30 * 60_000, 'reloaded and armed for 09:00');
+  assert.equal(h2.live()[0]!.ms, 60_000, 'reloaded and checking the wall clock before 09:00');
   await h2.advance(at(2026, 10, 13, 9));
   assert.deepEqual(h2.fired.map((j) => [j.id, j.prompt, j.delivery]), [[job.id, 'brief me', { kind: 'line', to: 'Cabc' }]]);
 });
@@ -239,7 +240,8 @@ test('scheduler: runs missed while stopped are skipped, not replayed', async (t)
   h.setClock(at(2026, 10, 14, 12)); // a day later: the 10-13 09:00 and 10-14 09:00 runs were missed
   h.sched.start();
   assert.equal(h.fired.length, 0, 'nothing replayed on start');
-  assert.equal(h.live().at(-1)!.ms, 21 * 60 * 60_000, 'next run is 10-15 09:00');
+  assert.equal(h.live().at(-1)!.ms, 60_000);
+  assert.equal(fmt(new Date(h.sched.list()[0]!.nextRunAt!)), '2026-10-15 09:00');
   await h.advance(at(2026, 10, 15, 9));
   assert.equal(h.fired.length, 1);
 });
@@ -310,19 +312,36 @@ test('scheduler: every due job fires in one tick', async (t) => {
   h.sched.start();
   await h.advance(at(2026, 10, 13, 9));
   assert.deepEqual(h.fired.map((j) => j.prompt).sort(), ['one', 'two']);
-  assert.equal(h.live().at(-1)!.ms, 3 * 60 * 60_000, 'next timer is for the 12:00 job');
+  assert.equal(h.live().at(-1)!.ms, 60_000, 'recheck before the 12:00 job');
 });
 
-test('scheduler: delays longer than setTimeout allows are capped and re-armed', async (t) => {
+test('scheduler: long waits recheck the wall clock at least every minute', async (t) => {
   const h = harness(t, { start: at(2026, 1, 1) });
   h.sched.add({ cron: '0 0 1 1 *', prompt: 'yearly', delivery: desktop });
   h.sched.start();
-  assert.equal(h.live()[0]!.ms, 2 ** 31 - 1);
+  assert.ok(h.live()[0]!.ms <= 60_000);
   await h.advance(at(2026, 2, 1)); // timer fires early: nothing is due yet
   assert.equal(h.fired.length, 0);
-  assert.ok(h.live().length === 1 && h.live()[0]!.ms <= 2 ** 31 - 1);
+  assert.ok(h.live().length === 1 && h.live()[0]!.ms <= 60_000);
   await h.advance(at(2027, 1, 1));
   assert.equal(h.fired.length, 1);
+});
+
+test('scheduler: waking past a due run fires once and plans from the current wall clock', async (t) => {
+  const h = harness(t, { start: at(2026, 10, 13, 7) });
+  h.sched.add({ cron: '0 8 * * *', prompt: 'daily', delivery: desktop });
+  h.sched.start();
+  assert.ok(h.live()[0]!.ms <= 60_000);
+  await h.advance(at(2026, 10, 13, 7, 1));
+  assert.equal(h.fired.length, 0);
+  await h.advance(at(2026, 10, 15, 10, 30)); // asleep across several due times
+  assert.equal(h.fired.length, 1, 'one delivery on wake, no replay of each missed run');
+  assert.equal(h.store.listJobs()[0]!.lastRunAt, at(2026, 10, 15, 10, 30).getTime());
+  assert.equal(fmt(new Date(h.sched.list()[0]!.nextRunAt!)), '2026-10-16 08:00');
+  await h.advance(at(2026, 10, 15, 10, 31));
+  assert.equal(h.fired.length, 1);
+  await h.advance(at(2026, 10, 16, 8));
+  assert.equal(h.fired.length, 2);
 });
 
 test('scheduler: add validates and trims; list reports the next run', (t) => {

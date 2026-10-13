@@ -609,6 +609,55 @@ test('a slow run parks its answer and the chat moves on to the next message', as
 
 // ---- push / status / lifecycle
 
+test('close drops queued runs and suppresses the active answer', async (t) => {
+  const answer = deferred();
+  const started: string[] = [];
+  const s = await setup(t, { onMessage: (m) => { started.push(m.text); return answer.promise; } });
+  await s.post([s.text(OWNER, 'active'), s.text(OWNER, 'queued')]);
+  await waitFor(() => started.length === 1);
+  await s.gw.close();
+  answer.resolve('finished after shutdown');
+  await flush();
+  assert.deepEqual(started, ['active']);
+  assert.deepEqual(s.calls, [], 'no LINE API call after shutdown');
+  assert.equal(s.live.length, 0);
+});
+
+test('a closed gateway ignores late webhooks and refuses new sends and approvals', async (t) => {
+  const s = await setup(t);
+  await s.gw.close();
+  // An already mounted handler may still receive a request after the gateway was replaced.
+  const server = http.createServer((req, res) => { void s.gw.handler(req, res); });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const raw = JSON.stringify({ events: [s.text(OWNER, 'late')] });
+  const port = (server.address() as AddressInfo).port;
+  const response = await fetch(`http://127.0.0.1:${port}/line/webhook`, {
+    method: 'POST', body: raw, headers: { 'X-Line-Signature': s.sign(raw) },
+  });
+  assert.equal(response.status, 200);
+  await flush();
+  assert.deepEqual(s.messages, []);
+  await s.gw.push(OWNER, 'late push');
+  assert.deepEqual(s.calls, []);
+  assert.equal(await s.gw.askApproval(OWNER, 'late approval'), false);
+  assert.equal(s.live.length, 0);
+});
+
+test('closing during a failed reply prevents its push fallback', async (t) => {
+  const answer = deferred();
+  const s = await setup(t, {
+    onMessage: () => answer.promise,
+    api: () => { void s.gw.close(); return 400; },
+  });
+  await s.post([s.text(OWNER, 'q')]);
+  await waitFor(() => s.live.length === 1);
+  answer.resolve('answer');
+  await waitFor(() => s.calls.length > 0);
+  await flush();
+  assert.deepEqual(s.calls.map((c) => c.path), ['/v2/bot/message/reply']);
+});
+
 test('push() chunks and sends; status() reports state; close() stops the server', async (t) => {
   const s = await setup(t);
   assert.deepEqual(s.gw.status(), { running: true, port: s.port, lastEventAt: undefined, lastError: undefined, pending: [] });
