@@ -61,7 +61,7 @@ One install on macOS (Apple Silicon) gives you:
 
 ## Non-goals (v1)
 Other messaging platforms, cloud or remote gateways, voice, Windows/Linux builds, code signing, notarisation and
-auto-update, a plugin marketplace, multi-profile, Docker/SSH terminal backends, OAuth MCP servers, and
+auto-update, a plugin marketplace, Docker/SSH terminal backends, OAuth MCP servers, and
 image generation.
 
 ## Success criteria (runnable)
@@ -91,3 +91,49 @@ image generation.
 - Tauri CLI: use the `@tauri-apps/cli` dev dependency (`pnpm tauri …`). Do not install it globally.
 - Node 24.20, pnpm 12, bun 1.4 available. Use pnpm workspaces.
 - Never push, never print or commit secrets, and never use the owner's real API keys or LINE credentials in tests.
+
+## Owner update (2026-10-13): desktop-first, agents, `/rea`
+The owner wrote: "bignose should be desktop app!! that can create agent use /rea to read and reverse hermes desktop app".
+This section overrides anything above that conflicts with it.
+
+- **Desktop-first.** Every v1 feature works from the BigNose desktop app with no terminal. The CLI stays for tests and
+  headless use only.
+- **Agents (new, replaces the "multi-profile" non-goal).** In the desktop app you can create, edit, duplicate and delete
+  agents. Each agent has:
+  - name and icon
+  - instructions (system prompt)
+  - provider and model
+  - tool permissions
+  - enabled connectors (MCP servers) and skills
+  - its own sessions and agent memory; user memory is shared across agents
+  One agent is chosen to answer LINE. A default agent exists on first run.
+- **Slash commands.** Typing `/` in the chat box lists the commands. `/<skill>` loads that skill for the turn.
+- **Built-in `/rea <app or file path>`:**
+  1. Turns on the REA connector for the agent. If it is off, it asks first.
+  2. Loads the REA skill. REA is MIT: bundle `skills/reverse-engineer-anything` from the `rea-agents` package with its
+     LICENSE, or read it from the installed package.
+  3. Runs the agent on the target. The agent reads and reverses the app with REA tools and writes a report with
+     evidence, shown in chat and saved as a file.
+- **Headline use case.** Create an agent "Hermes Reverser", then run `/rea` on Hermes Desktop. The report covers:
+  - the app type (Electron)
+  - the main / preload / renderer layout
+  - IPC channels
+  - screens and routes, including Messaging → LINE
+  - the local API it calls
+  Target: `~/.hermes/hermes-agent/apps/desktop/release/mac-arm64/Hermes.app` (`Contents/Resources/app.asar`). Note
+  that `/Applications/Hermes.app` is only the setup bootstrap. Hermes Desktop is MIT, so reversing it is allowed.
+
+### Added success criteria
+- Agents CRUD through the local API is persisted and covered by tests. The desktop Agents screen lists, creates and
+  edits agents.
+- Slash commands: `/` lists commands, and `/rea <path>` expands to "REA connector on + REA skill loaded + the target
+  in the prompt". There is a unit test for this.
+- REA end to end (network-dependent, `BIGNOSE_SKIP_NETWORK=1` skips it):
+  - Set up a mock provider scripted to call REA `open_binary` on the Hermes Desktop `app.asar`, then a JavaScript
+    analysis tool.
+  - BigNose's own MCP client runs the real REA, and the turn ends with non-empty tool evidence in the session
+    transcript.
+- Desktop e2e: with the daemon and a mock provider, the desktop web UI creates an agent, sends `/rea <path>`, and shows
+  the streamed tool activity and the final message. Use Playwright against the dev web UI, or an equivalent.
+- Owner-run (manual, real model key): BigNose's "Hermes Reverser" produces the Hermes Desktop report. This check is not
+  automated.
