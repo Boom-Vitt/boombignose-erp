@@ -80,20 +80,20 @@ export class Runtime {
       maxTokens: provider.maxTokens ?? 8192, contextWindow: provider.contextWindow ?? 128000, compactAt: c.agent.compactAt,
     };
   }
-  private async approve(req: ApprovalRequest, runId: string, signal: AbortSignal, cliApprove?: Approver): Promise<boolean> {
+  private async approve(req: ApprovalRequest, runId: string, signal: AbortSignal, redaction: (text: string) => string, cliApprove?: Approver): Promise<boolean> {
     const origin = req.origin;
     const delivery = origin.kind === 'cron' ? this.store.listJobs().find(j => j.id === origin.jobId)?.delivery : undefined;
     if (origin.kind === 'line' || delivery?.kind === 'line') {
       const to = origin.kind === 'line' ? origin.to : delivery!.kind === 'line' ? delivery!.to : '';
       const gateway = this.opts.line();
       if (!gateway) return false;
-      return withAbort(gateway.askApproval(to, `${req.tool}\n${this.clean(JSON.stringify(req.input))}`), signal).catch(() => false);
+      return withAbort(gateway.askApproval(to, this.clean(redaction(`${req.tool}\n${JSON.stringify(req.input)}`))), signal).catch(() => false);
     }
     if (origin.kind === 'cli') {
       if (!cliApprove) return false;
-      return withAbort(cliApprove(req), AbortSignal.any([signal, AbortSignal.timeout(600_000)])).catch(() => false);
+      return withAbort(cliApprove(safeValue(req, redaction)), AbortSignal.any([signal, AbortSignal.timeout(600_000)])).catch(() => false);
     }
-    const event: ApiEvent = { type: 'approval_request', approvalId: req.id, sessionId: req.sessionId, runId, tool: req.tool, input: req.input };
+    const event: ApiEvent = safeValue({ type: 'approval_request', approvalId: req.id, sessionId: req.sessionId, runId, tool: req.tool, input: req.input }, redaction);
     const allowed = await new Promise<boolean>(resolve => {
       const decide = (ok: boolean) => {
         if (!this.approvals.delete(req.id)) return;
@@ -115,6 +115,10 @@ export class Runtime {
     if (this.runs.has(sessionId)) throw new Error('session is already running');
     const config = this.opts.config(), origin = options.origin ?? session.origin;
     const nonOwner = origin.kind === 'line' && !config.line.allow.users.includes(options.userId ?? '');
+    const context = nonOwner ? session.context.map(m => ({ ...m, content: m.content.map(b => b.type === 'tool_result'
+      ? { ...b, content: '[earlier tool output hidden from non-owner sender]' }
+      : b.type === 'text' && b.text.startsWith('[Summary of earlier conversation]\n')
+        ? { ...b, text: '[earlier internal summary hidden from non-owner sender]' } : b) })) : session.context;
     const profile = options.profile ? { ...options.profile, provider: structuredClone(options.profile.provider),
       permissions: { ...options.profile.permissions }, hooks: structuredClone(options.profile.hooks) } : this.profile(config, !nonOwner);
     const allTools = [...builtinTools(this.opts.home), ...memoryTools(this.store), sessionSearchTool(this.store),
@@ -137,11 +141,11 @@ export class Runtime {
     // Start after the run is registered, so even an immediate provider completion cannot race the API.
     const result = Promise.resolve().then(async () => {
       const raw = await runAgent({ ...profile, provider, tools, permissions, sessionId, origin, signal: controller.signal,
-        context: session.context, input, approve: req => this.approve(req, runId, controller.signal, options.approve),
+        context, input, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
         onEvent: e => {
           if (e.type === 'text_delta') { streamText(e.text); return; }
           streamText('', true);
-          if (!['approval_request', 'approval_result', 'run_end'].includes(e.type)) this.emit({ ...e, sessionId, runId });
+          if (!['approval_request', 'approval_result', 'run_end'].includes(e.type)) this.emit(safeValue({ ...e, sessionId, runId }, redaction));
         },
       });
       const current = this.cleaner(), clean = (text: string) => current(redaction(text)), completed = safeValue(raw, clean);

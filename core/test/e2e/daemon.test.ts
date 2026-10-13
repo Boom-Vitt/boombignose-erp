@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { cliFile, configured, testHome } from './helpers.ts';
+import { setSecret } from '../../src/config.ts';
 
 test('daemon starts on a bound loopback port, authenticates health, and stops cleanly on SIGTERM', async t => {
   const home = testHome(t); configured(home);
@@ -28,12 +29,14 @@ test('daemon starts on a bound loopback port, authenticates health, and stops cl
   assert.deepEqual(stopped, [0, null]); assert.equal(existsSync(join(home, 'daemon.json')), false);
 });
 
-test('API health and connector status are available during hung MCP initialization, and SIGTERM closes both processes', async t => {
+test('API and LINE are available during hung MCP initialization, and SIGTERM closes both processes', async t => {
   const home = testHome(t), pidFile = join(home, 'mcp-pid');
   configured(home, undefined, c => {
+    c.line.enabled = true;
     c.mcp.servers.waiting = { transport: 'stdio', command: process.execPath,
       args: ['-e', 'require("node:fs").writeFileSync(process.argv[1], String(process.pid));process.stdin.resume()', pidFile], enabled: true };
   });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
   const child = spawn(process.execPath, [cliFile.pathname, 'daemon'], { env: { ...process.env, BIGNOSE_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
   const exit = once(child, 'exit'); child.stdout.resume(); child.stderr.resume();
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exit; } });
@@ -46,6 +49,8 @@ test('API health and connector status are available during hung MCP initializati
   const headers = { Authorization: `Bearer ${readFileSync(join(home, 'api-token'), 'utf8').trim()}` };
   const base = `http://127.0.0.1:${info.port}`;
   assert.equal((await fetch(base + '/api/health', { headers })).status, 200);
+  const line = await (await fetch(base + '/api/line/status', { headers })).json() as any;
+  assert.equal(line.running, true); assert.ok(line.port > 0);
   const connectors = await (await fetch(base + '/api/mcp', { headers })).json() as any;
   assert.equal(connectors.servers.find((s: any) => s.name === 'waiting').connected, false);
   child.kill('SIGTERM');

@@ -4,7 +4,7 @@ import { createHmac } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { request as httpRequest } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import type { TestContext } from 'node:test';
 import { startDaemon } from '../../src/app/daemon.ts';
 import type { DaemonOptions } from '../../src/app/daemon.ts';
@@ -340,10 +340,11 @@ test('cron delivers desktop notification/session and redacts persisted scheduler
   assert.ok(!readFileSync(join(home, 'bignose.db')).includes(Buffer.from(sensitive)));
 });
 
-test('cron LINE delivery uses confirm buttons and pushes the completed answer to the job chat', async t => {
+test('cron LINE delivery is ready before a slow MCP connector and uses confirm buttons then pushes the answer', async t => {
   const home = testHome(t);
-  configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = ['owner']; });
+  configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = ['owner']; c.mcp.servers.slow = { ...fakeMcp, args: [...fakeMcp.args, '--delay-init'] }; });
   setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  setSecret('VALUE', 'test-value', home);
   const sent: any[] = [];
   const provider: Provider = { kind: 'openai-compatible', async *stream(req) {
     if (req.messages.length === 1) yield { type: 'tool_call', id: 'write', name: 'write_file', input: { path: 'scheduled.txt', content: 'approved cron' } };
@@ -353,6 +354,7 @@ test('cron LINE delivery uses confirm buttons and pushes the completed answer to
   const a = await app(t, { home, providerFactory: () => provider, lineOptions: { fetchImpl: async (url, init) => { sent.push({ url: String(url), ...JSON.parse(String(init?.body)) }); return new Response('{}'); } } });
   const deadline = Date.now() + 3000;
   while (!a.lineStatus().running) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
+  assert.equal(a.mcp.status().find(s => s.name === 'slow')!.connected, false);
   const job = a.scheduler.add({ cron: '* * * * *', prompt: 'scheduled task', delivery: { kind: 'line', to: 'owner' } });
   const fire = a.runtime.fireJob(job);
   while (!sent.length) await new Promise(resolve => setImmediate(resolve));
@@ -503,4 +505,76 @@ test('SSE masks secrets split across deltas and flushes text before tool activit
   a.runtime.interrupt(id); assert.equal((await stopped.result).status, 'interrupted');
   await stream.wait(e => e.type === 'run_end' && e.runId === stopped.runId);
   assert.equal(stream.values.filter(e => e.runId === stopped.runId && e.type === 'text_delta').map(e => e.text).join(''), prefix + maskSecret(sensitive) + ' tail');
+});
+
+test('non-owner LINE group context hides earlier owner tool results while preserving the full transcript', async t => {
+  const home = testHome(t), marker = 'owner-file-marker';
+  configured(home, undefined, c => { c.line.allow = { users: ['owner'], groups: ['group'], rooms: ['room'] }; });
+  writeFileSync(join(home, 'owner.txt'), marker);
+  let visitor = false, calls = 0;
+  const provider: Provider = { kind: 'openai-compatible', async *stream(req) {
+    if (visitor) {
+      assert.ok(!JSON.stringify(req.messages).includes(marker), 'private tool result reached the visitor provider request');
+      assert.ok(req.messages.some(m => m.content.some(b => b.type === 'tool_result' && b.content === '[earlier tool output hidden from non-owner sender]')));
+      yield { type: 'text_delta', text: 'Owner approval is required to read that file again.' };
+    } else if (++calls === 1) yield { type: 'tool_call', id: 'read', name: 'read_file', input: { path: 'owner.txt' } };
+    else yield { type: 'text_delta', text: 'File checked.' };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await app(t, { home, providerFactory: () => provider });
+  assert.equal(await a.runtime.lineMessage({ to: 'group', userId: 'owner', text: 'read file' }), 'File checked.');
+  const session = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' })!;
+  assert.ok(JSON.stringify(a.runtime.store.getSession(session.id)!.context).includes(marker));
+  const prior = a.runtime.store.getSession(session.id)!.context;
+  a.runtime.store.setContext(session.id, [{ role: 'user', content: [{ type: 'text', text: `[Summary of earlier conversation]\n${marker}` }] }, ...prior]);
+  visitor = true;
+  assert.equal(await a.runtime.lineMessage({ to: 'group', userId: 'visitor', text: 'what else was in the file?' }), 'Owner approval is required to read that file again.');
+  assert.ok(!JSON.stringify(a.runtime.store.getSession(session.id)!.context).includes(marker));
+  assert.ok(JSON.stringify(a.runtime.store.getMessages(session.id)).includes(marker));
+  assert.equal(a.runtime.store.listSessions().length, 1);
+});
+
+test('rotated secrets remain masked in tool events, stored/replayed approvals and transcript', async t => {
+  const home = testHome(t), sensitive = 'old-' + 'x'.repeat(16);
+  configured(home); setSecret('VALUE', sensitive, home);
+  let calls = 0;
+  const provider: Provider = { kind: 'openai-compatible', async *stream() {
+    if (++calls === 1) {
+      setSecret('VALUE', 'replacement', home);
+      yield { type: 'tool_call', id: 'write', name: 'write_file', input: { path: 'rotated.txt', content: sensitive } };
+    } else if (calls === 2) yield { type: 'tool_call', id: 'read', name: 'read_file', input: { path: 'rotated.txt' } };
+    else yield { type: 'text_delta', text: 'done' };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await app(t, { home, providerFactory: () => provider }), stream = await events(a, t);
+  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const run = a.runtime.start(id, 'rotate and write');
+  const approval = await stream.wait(e => e.type === 'approval_request');
+  assert.equal(stream.values.find(e => e.type === 'tool_start').input.content, maskSecret(sensitive));
+  assert.equal(approval.input.content, maskSecret(sensitive));
+  assert.equal((a.runtime.pendingEvents()[0] as any).input.content, maskSecret(sensitive));
+  const reconnected = await events(a, t);
+  assert.equal((await reconnected.wait(e => e.type === 'approval_request')).input.content, maskSecret(sensitive));
+  assert.equal((await call(a, `/api/approvals/${approval.approvalId}`, 'POST', { allow: true })).status, 200);
+  assert.equal((await run.result).status, 'done');
+  const readEnd = await stream.wait(e => e.type === 'tool_end' && e.name === 'read_file');
+  assert.ok(readEnd.output.includes(maskSecret(sensitive))); assert.ok(!readEnd.output.includes(sensitive));
+  assert.ok(!JSON.stringify(stream.values).includes(sensitive));
+  assert.ok(!JSON.stringify(a.runtime.store.getMessages(id)).includes(sensitive));
+});
+
+test('a failed LINE bind retries after the port is freed and identical secrets are saved', async t => {
+  const blocker = createServer((_req, res) => res.end());
+  await new Promise<void>(resolve => blocker.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>(resolve => { blocker.close(() => resolve()); blocker.closeAllConnections(); }));
+  const port = (blocker.address() as { port: number }).port, home = testHome(t);
+  configured(home, undefined, c => { c.line.enabled = true; c.line.port = port; });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  const a = await app(t, { home });
+  const deadline = Date.now() + 3000;
+  while (!a.lineStatus().lastError) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
+  assert.equal(a.lineStatus().running, false); assert.match(a.lineStatus().lastError!, /EADDRINUSE/);
+  await new Promise<void>(resolve => blocker.close(() => resolve()));
+  assert.equal((await call(a, '/api/secrets', 'PUT', { name: 'LINE_CHANNEL_SECRET', value: 'test-secret' })).status, 200);
+  assert.equal(a.lineStatus().running, true); assert.equal(a.lineStatus().port, port); assert.equal(a.lineStatus().lastError, undefined);
 });

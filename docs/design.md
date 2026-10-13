@@ -267,6 +267,9 @@ export interface Config {
   profiles can supply this snapshot without changing the loop. Nested approvals are surfaced by the runtime's
   approver, since delegated runs intentionally suppress loop events. Non-owner LINE runs omit automatic memory
   injection as well as raising allow policies to ask.
+  Earlier tool-result bodies are replaced by a fixed placeholder in non-owner LINE model context; the saved
+  context keeps those placeholders, while the messages table retains the full transcript for the owner.
+  Internal compaction summaries are also hidden because they can contain earlier private tool output.
 - `app/runtime.ts`: builds the provider (active config + key), the tool list (builtin + memory + session_search +
   skills + schedule + MCP), the system prompt (`agent.systemPrompt` or a short default, + memory notes + skills
   index + today's date), runs `runAgent` per session (one run per session at a time), persists `added` and
@@ -284,6 +287,10 @@ export interface Config {
   The API listens and `daemon.json` is written before connectors finish initializing. Initial connector startup
   runs asynchronously in the same serialized queue as settings writes; pending connectors show `connected:false`.
   Shutdown cancels their initialization and waits for the queue before closing the store.
+  LINE starts before MCP initialization, and the scheduler starts after that LINE startup attempt, so slow
+  connectors cannot delay inbound LINE or cron LINE delivery. Settings writes wait behind an in-flight connector
+  initialization (up to the 180 s stdio initialize timeout).
+  A failed LINE bind is retried on the next settings/secrets reload, even when those values are unchanged.
 - `cli.ts` (`#!/usr/bin/env node`): `bignose daemon`, `bignose chat -q "<prompt>"` (headless single turn without a
   daemon: text to stdout, tool activity to stderr, `ask` tools prompt on a TTY and are denied otherwise; exit 0 when
   done, 1 otherwise), `bignose mcp add <name> (--url <url> | -- <command> [args…])`, `mcp list`, `mcp test <name>`
@@ -321,6 +328,8 @@ export interface Config {
   before releasing its safe prefix, and flushes the remainder before other events or completion/interruption.
   This masks secrets spanning consecutive provider deltas. `run_end` precedes `session_updated` so the desktop
   can reload the final transcript after clearing its running state.
+  Tool activity and stored approval events also use the run-start redaction snapshot, so rotating/deleting a
+  secret mid-run cannot expose its previous value through live events, replay or approval prompts.
 - Routes:
   - `GET /api/health` → `{ ok: true, version, pid }`; `GET /api/status` → `{ version, provider: {id, kind, model},
     line: {enabled, running, webhookUrl}, mcp: [{name, enabled, connected, tools}], schedules: n }`.

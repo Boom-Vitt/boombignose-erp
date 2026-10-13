@@ -33,16 +33,20 @@ export async function startDaemon(options: DaemonOptions = {}) {
   async function reload(): Promise<void> {
     if (closed) return;
     const env = readEnv(home);
-    await mcp.update(config.mcp.servers, env);
-    if (closed) return;
     const fingerprint = JSON.stringify([config.line, env.LINE_CHANNEL_ACCESS_TOKEN, env.LINE_CHANNEL_SECRET]);
-    if (fingerprint === lineFingerprint) return;
-    await line?.close(); line = undefined; lineError = undefined; lineFingerprint = fingerprint;
-    if (!config.line.enabled || !env.LINE_CHANNEL_ACCESS_TOKEN || !env.LINE_CHANNEL_SECRET) return;
-    const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret: env.LINE_CHANNEL_SECRET, accessToken: env.LINE_CHANNEL_ACCESS_TOKEN,
-      onMessage: m => runtime.lineMessage(m), ...options.lineOptions });
-    try { await gateway.listen(config.line.port); line = gateway; }
-    catch (e) { await gateway.close(); lineError = runtime.clean(e instanceof Error ? e.message : String(e)); }
+    if (fingerprint !== lineFingerprint) {
+      await line?.close(); line = undefined; lineError = undefined; lineFingerprint = fingerprint;
+      if (closed) return;
+      if (config.line.enabled && env.LINE_CHANNEL_ACCESS_TOKEN && env.LINE_CHANNEL_SECRET) {
+        const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret: env.LINE_CHANNEL_SECRET, accessToken: env.LINE_CHANNEL_ACCESS_TOKEN,
+          onMessage: m => runtime.lineMessage(m), ...options.lineOptions });
+        try { await gateway.listen(config.line.port); line = gateway; }
+        catch (e) { await gateway.close(); lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); }
+      }
+    }
+    if (closed) return;
+    scheduler.start();
+    await mcp.update(config.mcp.servers, env);
   }
   function lineStatus() {
     const env = readEnv(home), status = line?.status();
@@ -83,7 +87,6 @@ export async function startDaemon(options: DaemonOptions = {}) {
     const file = paths(home).daemon, tmp = `${file}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify({ pid: process.pid, port, version: VERSION, startedAt: Date.now() }) + '\n', { mode: 0o600 });
     renameSync(tmp, file);
-    scheduler.start();
     void serial(reload).catch(e => runtime.emit({ type: 'notification', title: 'Connector startup failed', body: String(e) }));
     return { home, token, port, runtime, mcp, scheduler, lineStatus, config: () => structuredClone(config), close };
   } catch (e) { await close(); throw e; }
