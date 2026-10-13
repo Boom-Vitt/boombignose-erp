@@ -259,6 +259,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"integration_receipts": {
+                  Row: {
+                    "created_at": string,"event_type": string,"id": string,"key": string,"org_id": string,"payload": NonNullable<Json>
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"event_type": string,"id"?: string,"key": string,"org_id": string,"payload": NonNullable<Json>
+                  }
+                  Update: {
+                    "created_at"?: string,"event_type"?: string,"id"?: string,"key"?: string,"org_id"?: string,"payload"?: NonNullable<Json>
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "integration_receipts_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"invitations": {
                   Row: {
                     "accepted_by": string | null,"created_at": string,"email": string,"expires_at": string | null,"id": string,"invited_by": string | null,"org_id": string,"role": Database["public"]['Enums']["role_enum"],"status": Database["public"]['Enums']["invitation_status"],"token": string,"updated_at": string
@@ -437,14 +457,14 @@ isOneToOne: true
                   ]
                 },"outbound_events": {
                   Row: {
-                    "attempts": number,"created_at": string,"delivered_at": string | null,"event_type": string,"id": string,"org_id": string,"payload": NonNullable<Json>,"status": Database["public"]['Enums']["outbound_status"]
+                    "attempts": number,"created_at": string,"delivered_at": string | null,"event_type": string,"id": string,"last_error": string | null,"lease_expires_at": string | null,"lease_token": string | null,"next_attempt_at": string,"org_id": string,"payload": NonNullable<Json>,"reminder_id": string | null,"status": Database["public"]['Enums']["outbound_status"]
                   }
                   ComputedFields: never
                   Insert: {
-                    "attempts"?: number,"created_at"?: string,"delivered_at"?: string | null,"event_type": string,"id"?: string,"org_id": string,"payload"?: NonNullable<Json>,"status"?: Database["public"]['Enums']["outbound_status"]
+                    "attempts"?: number,"created_at"?: string,"delivered_at"?: string | null,"event_type": string,"id"?: string,"last_error"?: string | null,"lease_expires_at"?: string | null,"lease_token"?: string | null,"next_attempt_at"?: string,"org_id": string,"payload"?: NonNullable<Json>,"reminder_id"?: string | null,"status"?: Database["public"]['Enums']["outbound_status"]
                   }
                   Update: {
-                    "attempts"?: number,"created_at"?: string,"delivered_at"?: string | null,"event_type"?: string,"id"?: string,"org_id"?: string,"payload"?: NonNullable<Json>,"status"?: Database["public"]['Enums']["outbound_status"]
+                    "attempts"?: number,"created_at"?: string,"delivered_at"?: string | null,"event_type"?: string,"id"?: string,"last_error"?: string | null,"lease_expires_at"?: string | null,"lease_token"?: string | null,"next_attempt_at"?: string,"org_id"?: string,"payload"?: NonNullable<Json>,"reminder_id"?: string | null,"status"?: Database["public"]['Enums']["outbound_status"]
                   }
                   Relationships: [
                     {
@@ -453,6 +473,12 @@ isOneToOne: true
 isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "outbound_reminder_tenant"
+      columns: ["org_id","reminder_id"]
+isOneToOne: false
+      referencedRelation: "reminders"
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"payment_allocations": {
@@ -811,6 +837,38 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"subscription_occurrences": {
+                  Row: {
+                    "created_at": string,"invoice_id": string,"occurrence_date": string,"org_id": string,"subscription_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"invoice_id": string,"occurrence_date": string,"org_id": string,"subscription_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"invoice_id"?: string,"occurrence_date"?: string,"org_id"?: string,"subscription_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "subscription_occurrences_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "subscription_occurrences_org_id_invoice_id_fkey"
+      columns: ["org_id","invoice_id"]
+isOneToOne: true
+      referencedRelation: "invoices"
+      referencedColumns: ["org_id","id"]
+    },{
+      foreignKeyName: "subscription_occurrences_org_id_subscription_id_fkey"
+      columns: ["org_id","subscription_id"]
+isOneToOne: false
+      referencedRelation: "subscriptions"
+      referencedColumns: ["org_id","id"]
+    }
+                  ]
                 },"subscriptions": {
                   Row: {
                     "amount_satang": number,"auto_generate": boolean,"client_id": string,"created_at": string,"id": string,"interval": Database["public"]['Enums']["recurring_interval"],"last_generated_on": string | null,"name": string,"next_run_date": string,"notes": string | null,"org_id": string,"project_id": string | null,"start_date": string,"status": Database["public"]['Enums']["subscription_status"],"updated_at": string
@@ -921,11 +979,26 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "accept_workspace_invitation":
+            "accept_integration_event":
+{ Args: { "p_event_type": string,"p_key": string,"p_org_id": string,"p_payload": Json }; Returns: Json
+                           },
+"accept_workspace_invitation":
 { Args: { "p_token": string }; Returns: string
+                           },
+"claim_outbound_events":
+{ Args: { "p_lease_seconds": number,"p_limit": number }; Returns: Json
                            },
 "convert_accepted_quote":
 { Args: { "p_key": string,"p_org_id": string,"p_quote_id": string }; Returns: string
+                           },
+"enqueue_reminders":
+{ Args: { "p_org_id": string,"p_specs": Json }; Returns: Json
+                           },
+"finish_outbound_event":
+{ Args: { "p_error": string,"p_event_id": string,"p_lease_token": string }; Returns: boolean
+                           },
+"generate_subscription_occurrence":
+{ Args: { "p_occurrence": string,"p_org_id": string,"p_subscription_id": string }; Returns: string
                            },
 "provision_workspace":
 { Args: { "p_key": string,"p_name": string }; Returns: string
