@@ -13,7 +13,7 @@ import type { Scheduler } from '../cron/index.ts';
 import type { Store, Job } from '../store/index.ts';
 import type { McpManager } from '../mcp/manager.ts';
 import type { LineGateway } from '../line/index.ts';
-import type { AgentEvent, ApprovalRequest, Approver, Config, HooksConfig, Origin, Policy, ProviderConfig, Tool } from '../types.ts';
+import type { Agent, AgentEvent, ApprovalRequest, Approver, Config, HooksConfig, Message, Origin, Policy, ProviderConfig, Tool } from '../types.ts';
 import { createCleaner, safeValue } from './settings.ts';
 
 export type ApiEvent = (AgentEvent & { sessionId: string; runId: string })
@@ -24,6 +24,7 @@ export interface RunProfile {
   provider: ProviderConfig; model: string; system: string; permissions: Record<string, Policy>;
   hooks: HooksConfig; cwd: string; maxTurns: number; maxTokens: number; contextWindow: number; compactAt: number;
   toolFilter?: (tool: Tool) => boolean;
+  memory?: string; // Kept separate so every profile can omit automatic notes for non-owner LINE runs.
 }
 export interface RuntimeOptions {
   home: string; token?: string; store: Store; mcp: McpManager; scheduler: Scheduler;
@@ -39,8 +40,17 @@ export class Runtime {
   private runs = new Map<string, ActiveRun>();
   private approvals = new Map<string, PendingApproval>();
   private listeners = new Set<(event: ApiEvent) => void>();
+  private deletingAgents = new Set<string>();
   private closed = false;
-  constructor(opts: RuntimeOptions) { this.opts = opts; this.store = opts.store; }
+  constructor(opts: RuntimeOptions) {
+    this.opts = opts; this.store = opts.store;
+    const c = opts.config();
+    this.store.ensureDefaultAgent({ ...c.active, instructions: c.agent.systemPrompt ?? '' });
+  }
+  lineAgent(): Agent {
+    const id = this.opts.config().line.agentId;
+    return (id && this.store.getAgent(id)) || this.store.listAgents()[0]!;
+  }
   cleaner() { return createCleaner(this.opts.home, this.opts.config(), this.opts.token); }
   clean = (text: string) => this.cleaner()(text);
   emit(event: ApiEvent): void {
@@ -68,15 +78,17 @@ export class Runtime {
     if (!pending) return false;
     pending.decide(allow); return true;
   }
-  profile(config = this.opts.config(), includeMemory = true): RunProfile {
+  profile(config = this.opts.config(), includeMemory = true, agent?: Agent): RunProfile {
     const c = structuredClone(config);
-    const provider = c.providers.find(p => p.id === c.active.provider);
-    if (!provider) throw new Error('active provider is missing');
+    const providerId = agent?.provider ?? c.active.provider;
+    const provider = c.providers.find(p => p.id === providerId);
+    if (!provider) throw new Error(`provider is not configured: ${providerId}`);
     return {
-      provider, model: c.active.model,
-      system: [c.agent.systemPrompt || 'You are BigNose, a helpful personal assistant. Use tools carefully and ask when permission is needed.',
-        includeMemory ? memoryPrompt(this.store) : '', skillsIndex(paths(this.opts.home).skills), `Today: ${new Date().toLocaleDateString('sv-SE')}`].filter(Boolean).join('\n\n'),
-      permissions: c.permissions, hooks: c.hooks, cwd: c.agent.workspace, maxTurns: c.agent.maxTurns,
+      provider, model: agent?.model ?? c.active.model,
+      system: [(agent ? agent.instructions : c.agent.systemPrompt) || 'You are BigNose, a helpful personal assistant. Use tools carefully and ask when permission is needed.',
+        skillsIndex(paths(this.opts.home).skills, agent?.skills), `Today: ${new Date().toLocaleDateString('sv-SE')}`].filter(Boolean).join('\n\n'),
+      memory: includeMemory ? memoryPrompt(this.store, agent?.id) : '',
+      permissions: { ...c.permissions, ...agent?.permissions }, hooks: c.hooks, cwd: c.agent.workspace, maxTurns: c.agent.maxTurns,
       maxTokens: provider.maxTokens ?? 8192, contextWindow: provider.contextWindow ?? 128000, compactAt: c.agent.compactAt,
     };
   }
@@ -112,53 +124,67 @@ export class Runtime {
     if (this.closed) throw new Error('runtime is closed');
     const session = this.store.getSession(sessionId);
     if (!session) throw new Error('session not found');
+    if (this.deletingAgents.has(session.agentId)) throw new Error('agent is being deleted');
     if (this.runs.has(sessionId)) throw new Error('session is already running');
-    const config = this.opts.config(), origin = options.origin ?? session.origin;
+    const config = structuredClone(this.opts.config()), origin = options.origin ?? session.origin;
+    const agent = this.store.getAgent(session.agentId);
     const nonOwner = origin.kind === 'line' && !config.line.allow.users.includes(options.userId ?? '');
     const context = nonOwner ? session.context.flatMap(m => {
       if (m.role === 'assistant' && m.content.some(b => b.type === 'tool_use')) return [];
       const content = m.content.filter(b => b.type === 'text' && !b.text.startsWith('[Summary of earlier conversation]\n'));
       return content.length ? [{ ...m, content }] : [];
     }) : session.context;
-    const profile = options.profile ? { ...options.profile, provider: structuredClone(options.profile.provider),
-      permissions: { ...options.profile.permissions }, hooks: structuredClone(options.profile.hooks) } : this.profile(config, !nonOwner);
-    const allTools = [...builtinTools(this.opts.home), ...memoryTools(this.store), sessionSearchTool(this.store),
-      ...skillTools(paths(this.opts.home).skills), ...scheduleTools(this.opts.scheduler), ...this.opts.mcp.tools()];
-    const tools = profile.toolFilter ? allTools.filter(profile.toolFilter) : allTools;
-    const permissions = { ...profile.permissions };
-    if (nonOwner) for (const tool of tools) if (effectivePolicy(tool, permissions) === 'allow') permissions[tool.name] = 'ask';
+    const suppliedProfile = options.profile ? { ...options.profile, provider: structuredClone(options.profile.provider),
+      permissions: { ...options.profile.permissions }, hooks: structuredClone(options.profile.hooks) } : undefined;
     const env = readEnv(this.opts.home);
-    const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
     const controller = new AbortController(), runId = randomUUID();
     const redaction = this.cleaner();
     let textTail = '';
     const streamText = (text = '', flush = false) => {
       // Redact the joined buffer before cutting it, so a complete secret cannot straddle the release boundary.
-      textTail = redaction(textTail + text);
-      const cut = flush ? textTail.length : Math.max(0, textTail.length - Math.max(0, redaction.maxSecretLength - 1));
+      const current = this.cleaner();
+      textTail = current(redaction(textTail + text));
+      const cut = flush ? textTail.length : Math.max(0, textTail.length - Math.max(0, Math.max(redaction.maxSecretLength, current.maxSecretLength) - 1));
       if (cut) this.emit({ type: 'text_delta', text: textTail.slice(0, cut), sessionId, runId });
       textTail = textTail.slice(cut);
     };
     // Start after the run is registered, so even an immediate provider completion cannot race the API.
     const result = Promise.resolve().then(async () => {
-      const raw = await runAgent({ ...profile, provider, tools, permissions, sessionId, origin, signal: controller.signal,
-        context, input, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
-        onEvent: e => {
-          if (e.type === 'text_delta') { streamText(e.text); return; }
-          streamText('', true);
-          if (!['approval_request', 'approval_result', 'run_end'].includes(e.type)) {
-            const event = safeValue({ ...e, sessionId, runId }, redaction);
-            // shortcut: cut previews lose a possible secret suffix; redact in the loop if all 2000 characters are needed.
-            if (event.type === 'tool_end' && e.type === 'tool_end' && e.output.length === 2000)
-              event.output = event.output.slice(0, Math.max(0, event.output.length - Math.max(0, redaction.maxSecretLength - 1)));
-            this.emit(event);
-          }
-        },
-      });
+      let raw: RunResult;
+      try {
+        if (!agent) throw new Error(`unknown agent: ${session.agentId}`);
+        const profile = suppliedProfile ?? this.profile(config, !nonOwner, agent);
+        const allTools = [...builtinTools(this.opts.home), ...memoryTools(this.store, agent.id), sessionSearchTool(this.store, agent.id),
+          ...skillTools(paths(this.opts.home).skills, agent.skills), ...scheduleTools(this.opts.scheduler, agent.id),
+          ...this.opts.mcp.tools().filter(t => Object.entries(config.mcp.servers).some(([name, server]) => server.enabled &&
+            (agent.connectors === null || agent.connectors.includes(name)) && t.name.startsWith(`mcp__${name}__`)))];
+        const tools = profile.toolFilter ? allTools.filter(profile.toolFilter) : allTools;
+        const permissions = { ...profile.permissions };
+        if (nonOwner) for (const tool of tools) if (effectivePolicy(tool, permissions) === 'allow') permissions[tool.name] = 'ask';
+        const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
+        raw = await runAgent({ ...profile, system: [profile.system, nonOwner ? '' : profile.memory].filter(Boolean).join('\n\n'), provider, tools, permissions, sessionId, origin, signal: controller.signal,
+          context, input, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
+          onEvent: e => {
+            if (e.type === 'text_delta') { streamText(e.text); return; }
+            streamText('', true);
+            if (!['approval_request', 'approval_result', 'run_end'].includes(e.type)) {
+              const event = safeValue({ ...e, sessionId, runId }, redaction);
+              // shortcut: cut previews lose a possible secret suffix; redact in the loop if all 2000 characters are needed.
+              if (event.type === 'tool_end' && e.type === 'tool_end' && e.output.length === 2000)
+                event.output = event.output.slice(0, Math.max(0, event.output.length - Math.max(0, Math.max(redaction.maxSecretLength, this.cleaner().maxSecretLength) - 1)));
+              this.emit(event);
+            }
+          },
+        });
+      } catch (e) {
+        const message: Message = { role: 'user', content: [{ type: 'text', text: input }] };
+        raw = { status: controller.signal.aborted ? 'interrupted' : 'error', text: '', error: e instanceof Error ? e.message : String(e),
+          context: [...context, message], added: [message], usage: { inputTokens: 0, outputTokens: 0 } };
+      }
       const current = this.cleaner(), clean = (text: string) => current(redaction(text)), completed = safeValue(raw, clean);
       this.store.appendMessages(sessionId, completed.added);
       this.store.setContext(sessionId, completed.context);
-      if (!session.title) this.store.setTitle(sessionId, clean(input.replace(/\s+/g, ' ')).slice(0, 80));
+      if (!session.title) this.store.setTitle(sessionId, clean(input).replace(/\s+/g, ' ').slice(0, 80));
       this.runs.delete(sessionId);
       this.emit({ type: 'run_end', status: completed.status, text: completed.text, ...(completed.error ? { error: completed.error } : {}), sessionId, runId });
       this.emit({ type: 'session_updated', sessionId });
@@ -170,14 +196,15 @@ export class Runtime {
   }
   async lineMessage(message: { to: string; userId: string; text: string }): Promise<string> {
     const origin: Origin = { kind: 'line', to: message.to };
-    const session = this.store.findSessionByOrigin(origin) ?? this.store.createSession({ origin });
+    const agentId = this.lineAgent().id;
+    const session = this.store.findSessionByOrigin(origin, agentId) ?? this.store.createSession({ origin, agentId });
     const result = await this.start(session.id, message.text, { origin, userId: message.userId }).result;
     return result.status === 'error' ? `Error: ${result.error}` : result.text || `Run ${result.status}.`;
   }
   async fireJob(job: Job): Promise<void> {
     try {
       const origin: Origin = { kind: 'cron', jobId: job.id };
-      const session = this.store.createSession({ origin, title: `Scheduled: ${this.clean(job.prompt.replace(/\s+/g, ' ')).slice(0, 60)}` });
+      const session = this.store.createSession({ origin, agentId: job.agentId, title: `Scheduled: ${this.clean(job.prompt).replace(/\s+/g, ' ').slice(0, 60)}` });
       const result = await this.start(session.id, job.prompt, { origin }).result;
       if (result.status !== 'done') throw new Error(result.error ?? `Run ${result.status}`);
       if (job.delivery.kind === 'line') {
@@ -186,6 +213,15 @@ export class Runtime {
         await gateway.push(job.delivery.to, result.text);
       } else this.emit({ type: 'notification', title: 'Scheduled task', body: result.text, sessionId: session.id });
     } catch (e) { throw new Error(this.clean(e instanceof Error ? e.message : String(e))); }
+  }
+  async deleteAgent(agentId: string): Promise<boolean> {
+    this.deletingAgents.add(agentId);
+    try {
+      const runs = [...this.runs].filter(([id]) => this.store.getSession(id)?.agentId === agentId).map(([, run]) => run);
+      for (const run of runs) run.controller.abort();
+      await Promise.allSettled(runs.map(run => run.result));
+      return this.store.deleteAgent(agentId);
+    } finally { this.deletingAgents.delete(agentId); }
   }
   async close(): Promise<void> {
     this.closed = true;

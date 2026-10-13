@@ -129,8 +129,9 @@ export function deleteSkill(dir: string, name: string): boolean {
 }
 
 /** One line per skill for the system prompt; '' when there are none. */
-export function skillsIndex(dir: string): string {
+export function skillsIndex(dir: string, allowed: string[] | null = null): string {
   return listSkills(dir)
+    .filter(s => allowed === null || allowed.includes(s.name))
     .map((s) => {
       const description = s.description.replace(/\s+/g, ' ');
       return `- ${s.name}: ${description.length > 300 ? `${description.slice(0, 299)}…` : description}`;
@@ -140,7 +141,7 @@ export function skillsIndex(dir: string): string {
 
 const fail = (e: unknown): ToolResult => ({ content: e instanceof Error ? e.message : String(e), isError: true });
 
-export function skillTools(dir: string): Tool[] {
+export function skillTools(dir: string, allowed: string[] | null = null): Tool[] {
   const load: Tool = {
     name: 'skill_load',
     description: 'Load a skill by name: returns its instructions and lists the other files in its folder (read them with read_file).',
@@ -149,8 +150,9 @@ export function skillTools(dir: string): Tool[] {
     async run(input) {
       try {
         const name = typeof input.name === 'string' ? input.name.trim() : '';
+        if (allowed !== null && !allowed.includes(name)) return fail(`Skill "${name}" is not enabled for this agent.`);
         const skill = loadSkill(dir, name);
-        if (!skill) return fail(`No skill named "${name}". Available: ${listSkills(dir).map((s) => s.name).join(', ') || 'none'}`);
+        if (!skill) return fail(`No skill named "${name}". Available: ${listSkills(dir).filter(s => allowed === null || allowed.includes(s.name)).map((s) => s.name).join(', ') || 'none'}`);
         const files = skill.files.length ? `\n\n---\nOther files in this skill (folder ${skill.folder}):\n${skill.files.map((f) => `- ${f}`).join('\n')}` : '';
         return { content: skill.body + files };
       } catch (e) { return fail(e); }
@@ -174,6 +176,7 @@ export function skillTools(dir: string): Tool[] {
       try {
         const { name, description, body } = input;
         if (typeof name !== 'string' || typeof description !== 'string' || typeof body !== 'string') throw new Error('name, description and body must be strings');
+        if (allowed !== null && !allowed.includes(name)) return fail(`Skill "${name}" is not enabled for this agent.`);
         saveSkill(dir, { name, description, body });
         return { content: `Saved skill "${name}".` };
       } catch (e) { return fail(e); }

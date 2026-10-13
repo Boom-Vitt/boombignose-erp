@@ -11,7 +11,7 @@ const kindOf = (v: unknown): MemoryKind | undefined => (KINDS.includes(v as stri
 const oneLine = (s: string) => s.replace(/\s*\n\s*/g, ' ').slice(0, NOTE_CAP);
 const limitOf = (v: unknown, dflt: number) => (Number.isInteger(v) && (v as number) > 0 ? Math.min(v as number, 100) : dflt);
 
-export function memoryTools(store: Store): Tool[] {
+export function memoryTools(store: Store, agentId: string): Tool[] {
   const read: Tool = {
     name: 'memory_read',
     description: 'Read persistent memory notes. Without "query" lists notes (newest last); with "query" searches them. '
@@ -29,7 +29,7 @@ export function memoryTools(store: Store): Tool[] {
       const kind = kindOf(input.kind), limit = limitOf(input.limit, 50);
       if (input.kind !== undefined && !kind) return fail('kind must be "user" or "agent"');
       const query = typeof input.query === 'string' ? input.query.trim() : '';
-      const notes: MemoryNote[] = query ? store.searchMemory(query, limit, kind) : store.listMemory(kind).slice(-limit);
+      const notes: MemoryNote[] = query ? store.searchMemory(query, limit, kind, agentId) : store.listMemory(kind, agentId).slice(-limit);
       if (!notes.length) return { content: query ? 'No matching notes.' : 'No notes.' };
       return { content: notes.map((n) => `[${n.id}] (${n.kind}) ${n.text}`).join('\n') };
     },
@@ -60,10 +60,11 @@ export function memoryTools(store: Store): Tool[] {
       if (action === 'add') {
         const kind = kindOf(input.kind);
         if (!kind) return fail('kind must be "user" or "agent"');
-        return { content: `Added note ${store.addMemory(kind, text).id}.` };
+        return { content: `Added note ${store.addMemory(kind, text, agentId).id}.` };
       }
       if (action === 'update' || action === 'delete') {
         if (!Number.isInteger(id)) return fail('id is required');
+        if (!store.listMemory(undefined, agentId).some(n => n.id === id)) return fail(`No note with id ${id}.`);
         const ok = action === 'update' ? !!store.updateMemory(id as number, text) : store.deleteMemory(id as number);
         return ok ? { content: `${action === 'update' ? 'Updated' : 'Deleted'} note ${id}.` } : fail(`No note with id ${id}.`);
       }
@@ -74,7 +75,7 @@ export function memoryTools(store: Store): Tool[] {
   return [read, write];
 }
 
-export function sessionSearchTool(store: Store): Tool {
+export function sessionSearchTool(store: Store, agentId: string): Tool {
   return {
     name: 'session_search',
     description: 'Full-text search across past conversations (any language, substring match). Returns the best hit per session.',
@@ -90,7 +91,7 @@ export function sessionSearchTool(store: Store): Tool {
     async run(input) {
       const query = typeof input.query === 'string' ? input.query.trim() : '';
       if (!query) return fail('query is required');
-      const hits = store.searchMessages(query, limitOf(input.limit, 10));
+      const hits = store.searchMessages(query, limitOf(input.limit, 10), agentId);
       if (!hits.length) return { content: 'No matching conversations.' };
       return {
         content: hits.map((h) => `${new Date(h.at).toISOString().slice(0, 16).replace('T', ' ')} session ${h.sessionId} "${h.title}": ${h.snippet}`).join('\n'),
@@ -100,10 +101,10 @@ export function sessionSearchTool(store: Store): Tool {
 }
 
 /** Notes for the system prompt, newest kept first when over the cap, shown oldest first. '' when there are none. */
-export function memoryPrompt(store: Store): string {
+export function memoryPrompt(store: Store, agentId?: string): string {
   const kept: MemoryNote[] = [];
   let size = 0;
-  const all = store.listMemory();
+  const all = store.listMemory(undefined, agentId);
   for (const n of [...all].reverse()) {
     size += oneLine(n.text).length + 4;
     if (size > PROMPT_CAP - 200) break; // headroom for the headings and the omitted-notes line

@@ -77,6 +77,11 @@ export interface Provider { readonly kind: ProviderKind; stream(req: ProviderReq
 
 // ---- tools and permissions
 export type Policy = 'allow' | 'ask' | 'deny';
+export interface Agent {
+  id: string; name: string; icon: string; instructions: string; provider: string; model: string;
+  permissions: Record<string, Policy>; connectors: string[] | null; skills: string[] | null;
+  createdAt: number; updatedAt: number;
+}
 export type Origin = { kind: 'desktop' } | { kind: 'cli' } | { kind: 'line'; to: string } | { kind: 'cron'; jobId: string };
 export type Delivery = { kind: 'desktop' } | { kind: 'line'; to: string };
 export interface ToolContext {
@@ -117,6 +122,7 @@ export type McpServerConfig =
   | { transport: 'http'; url: string; headers?: Record<string, string>; enabled: boolean; tools?: string[] };
 export interface LineConfig {
   enabled: boolean; port: number; publicUrl?: string; slowResponseMs: number;
+  agentId?: string;
   allow: { users: string[]; groups: string[]; rooms: string[] };
 }
 export interface Config {
@@ -232,27 +238,27 @@ export interface Config {
 - `store/index.ts`: `openStore(file: string): Store` on `node:sqlite` (WAL). FTS5 tables use `tokenize='trigram'`
   (substring search that works for Thai); queries shorter than 3 characters fall back to `LIKE`. User queries are
   quoted, never passed as raw FTS syntax. Store API:
-  sessions `createSession({title?, origin})`, `listSessions({limit?})`, `getSession(id)` (with `context` and `origin`),
-  `findSessionByOrigin(origin)` (latest session with that exact origin, or undefined; used to keep one session per
-  LINE chat),
+  sessions `createSession({title?, origin, agentId})`, `listSessions({limit?, agentId?})`, `getSession(id)` (with `context` and `origin`),
+  `findSessionByOrigin(origin, agentId)` (latest session with that exact origin and agent, or undefined; one session per
+  LINE chat per agent),
   `deleteSession(id)`, `setTitle(id, title)`, `appendMessages(id, msgs: Message[])` (transcript; indexes the text),
-  `getMessages(id)`, `setContext(id, msgs)`, `searchMessages(query, limit?)` → `{sessionId, title, snippet, at}[]`;
-  memory `listMemory(kind?)`, `addMemory(kind: 'user'|'agent', text)`, `updateMemory(id, text)`,
-  `deleteMemory(id)`, `searchMemory(query, limit?)`; jobs `listJobs()`, `saveJob(job)`, `deleteJob(id)`; `close()`.
-- `memory/tools.ts`: `memoryTools(store): Tool[]` — `memory_read` (allow; list or search, by kind), `memory_write`
-  (allow; add/update/delete); `sessionSearchTool(store): Tool` — `session_search` (allow). Plus
-  `memoryPrompt(store): string` (notes for the system prompt, capped at 4000 chars).
+  `getMessages(id)`, `setContext(id, msgs)`, `searchMessages(query, limit?, agentId?)` → `{sessionId, title, snippet, at}[]`;
+  memory `listMemory(kind?, agentId?)`, `addMemory(kind: 'user'|'agent', text, agentId?)`, `updateMemory(id, text)`,
+  `deleteMemory(id)`, `searchMemory(query, limit?, kind?, agentId?)`; jobs `listJobs(agentId?)`, `saveJob(job)`, `deleteJob(id)`; `close()`.
+- `memory/tools.ts`: `memoryTools(store, agentId): Tool[]` — `memory_read` (allow; list or search, by kind), `memory_write`
+  (allow; add/update/delete); `sessionSearchTool(store, agentId): Tool` — `session_search` (allow). Plus
+  `memoryPrompt(store, agentId?): string` (notes for the system prompt, capped at 4000 chars).
 - `skills/index.ts`: skills live in `<home>/skills/<name>/SKILL.md` (agentskills.io: YAML frontmatter `name`,
   `description`, then the body). `listSkills(dir)`, `loadSkill(dir, name)` (body + list of other files in the
   folder), `saveSkill(dir, {name, description, body})` (name `^[a-z0-9][a-z0-9-]{0,63}$`), `deleteSkill(dir, name)`,
-  `skillsIndex(dir): string` (one line per skill for the system prompt), `skillTools(dir): Tool[]` — `skill_load`
+  `skillsIndex(dir, allowed?: string[] | null): string` (one line per skill for the system prompt), `skillTools(dir, allowed?: string[] | null): Tool[]` — `skill_load`
   (allow), `skill_save` (ask).
 - `cron/index.ts`: `parseCron(expr)` (5 fields: minute hour day-of-month month day-of-week; `*`, lists, ranges,
   steps, month and weekday names, 0 and 7 = Sunday; when both day fields are restricted a day matches either),
   `nextRun(expr, after: Date): Date` (local time, strictly after), `Scheduler({ store, onFire: (job) => Promise<void>,
-  now?, setTimer? })` with `start()`, `stop()`, `add({cron, prompt, delivery})`, `remove(id)`,
+  now?, setTimer? })` with `start()`, `stop()`, `add({cron, prompt, delivery, agentId})`, `remove(id)`,
   `setEnabled(id, on)`, `list()`. Jobs persist in the store and reload on `start()` (survive restarts; runs missed
-  while stopped are skipped, not replayed). `scheduleTools(scheduler): Tool[]` — `schedule_create` (ask; delivery
+  while stopped are skipped, not replayed). `scheduleTools(scheduler, agentId): Tool[]` — `schedule_create` (ask; delivery
   defaults to the caller's origin: line → that chat, everything else → desktop), `schedule_list` (allow),
   `schedule_delete` (allow).
 - `line/index.ts`: `createLineGateway(opts)` returning `{ handler(req, res), listen(port) , close(), push(to, text),
@@ -262,22 +268,23 @@ export interface Config {
 
 ### core-app
 - `app/runtime.ts` exports `Runtime` and `RunProfile`: each run takes one snapshot containing provider config,
-  model, assembled system prompt, permissions, hooks, workspace and loop limits, plus an optional `toolFilter`.
-  `Runtime.start(sessionId, input, {profile?, origin?, userId?, approve?})` returns `{runId, result}`; later agent
-  profiles can supply this snapshot without changing the loop. Nested approvals are surfaced by the runtime's
+  model, system prompt, permissions, hooks, workspace and loop limits, plus an optional `toolFilter`. Automatic
+  memory is a separate `memory` field, appended only for owner runs, including with an explicitly supplied profile.
+  `Runtime.start(sessionId, input, {profile?, origin?, userId?, approve?})` returns `{runId, result}`; agent
+  profiles supply this snapshot without changing the loop. Nested approvals are surfaced by the runtime's
   approver, since delegated runs intentionally suppress loop events. Non-owner LINE runs omit automatic memory
   injection as well as raising allow policies to ask.
   Non-owner LINE context keeps only user text and assistant replies without tool calls; tool-bearing assistant
   messages (including intermediate text), tool blocks and internal compaction summaries are dropped. Owner runs
   keep full context; the messages table retains the full transcript when visitor context is saved.
-- `app/runtime.ts`: builds the provider (active config + key), the tool list (builtin + memory + session_search +
-  skills + schedule + MCP), the system prompt (`agent.systemPrompt` or a short default, + memory notes + skills
+- `app/runtime.ts`: builds the provider (the session's agent provider + key), the tool list (builtin + memory + session_search +
+  skills + schedule + MCP), the system prompt (the agent's instructions or a short default, + shared user and own agent memory notes + its skills
   index + today's date), runs `runAgent` per session (one run per session at a time), persists `added` and
   `context` in the store, sets a title from the first user message, routes approvals to the origin's channel
   (desktop → API event + `POST /api/approvals/:id`; cli = `chat -q` in-process → TTY prompt, denied without a TTY;
   line → LINE confirm buttons; cron → the job's delivery channel; 10 min timeout = deny), and delivers cron results
-  (desktop → `notification` event + session; line → push). Keeps one session per LINE chat (`findSessionByOrigin`).
-  First-message and scheduled-session titles are redacted before truncation. A 2000-character tool preview omits a
+  (desktop → `notification` event + session; line → push). Keeps one session per LINE chat per agent (`findSessionByOrigin`).
+  First-message and scheduled-session titles are redacted before whitespace normalization and truncation. A 2000-character tool preview omits a
   possible partial-secret suffix after redaction, so truncated credentials cannot reach API/CLI events.
   **LINE senders outside `allow.users`** (members of an allowlisted group or room) run with every `allow` policy
   raised to `ask`, so their requests reach the owner's disk, notes, sessions, web or memory only after a tap from an
@@ -313,9 +320,11 @@ export interface Config {
   `Access-Control-Allow-Headers: Authorization, Content-Type`, `Access-Control-Max-Age: 600`. Other origins get no
   CORS headers.
   JSON bodies ≤ 1 MiB. Errors: `{ "error": "<message>" }`. Secrets are only ever returned masked.
-  General redaction ignores env/token/literal MCP values shorter than 8 characters (often flags or usernames),
-  matching the MCP client, to avoid corrupting prose/config. Dedicated secret and MCP settings fields still use
-  `maskSecret` for every non-empty value. Each response/event/persistence batch snapshots its redaction list once.
+  General redaction masks only `.env` values and the API token of 8+ characters. Literal MCP env/header values
+  are masked in their own config fields (`GET /api/settings`, `/api/mcp`); the MCP client also masks its own
+  values in tool results. Ordinary filesystem ROOT paths remain intact in transcripts, SSE, titles and API text.
+  Dedicated secret and MCP settings fields use `maskSecret` for every non-empty value. Each response/event/persistence
+  batch snapshots its redaction list once; object keys are not cleaned.
 - Every API timestamp is a number in epoch milliseconds: sessions and memory `updatedAt`, jobs
   `nextRunAt`/`lastRunAt`, and LINE `lastEventAt`. Disabled jobs have `nextRunAt: null`; optional timestamps are
   omitted until present. `daemon.json.startedAt` uses the same unit.
@@ -326,7 +335,8 @@ export interface Config {
   Every new connection first replays one `run_start` per active run and one `approval_request` per pending
   API approval, with the same `sessionId`/`runId` and approval shape as live events, then streams live events.
   CLI TTY and LINE confirm-button approvals stay in their originating channel.
-  Per-run text streaming holds up to the longest known secret minus one characters, redacts the joined buffer
+  Per-run text streaming holds the larger of the run-start and current longest secret lengths minus one
+  characters, redacts the joined buffer with both cleaners
   before releasing its safe prefix, and flushes the remainder before other events or completion/interruption.
   This masks secrets spanning consecutive provider deltas. `run_end` precedes `session_updated` so the desktop
   can reload the final transcript after clearing its running state.
@@ -335,8 +345,16 @@ export interface Config {
 - Routes:
   - `GET /api/health` → `{ ok: true, version, pid }`; `GET /api/status` → `{ version, provider: {id, kind, model},
     line: {enabled, running, webhookUrl}, mcp: [{name, enabled, connected, tools}], schedules: n }`.
-  - `GET /api/sessions?q=&limit=` → `{ sessions: [{id, title, updatedAt, snippet?}] }` (with `q`: FTS search);
-    `POST /api/sessions` `{title?}` → `{id}`; `GET /api/sessions/:id` → `{id, title, messages: Message[]}`;
+  - `GET /api/agents` → `{agents: Agent[]}` (oldest first, ties by id); `GET /api/agents/:id` → `Agent`.
+    `POST /api/agents` `{name, icon?, instructions?, provider?, model?, permissions?, connectors?, skills?}`
+    → `201 Agent` (provider/model default to `config.active`); `PATCH /api/agents/:id` (subset of those fields)
+    → `Agent`; `DELETE /api/agents/:id` → `{ok:true}` (409 for the last agent). Invalid fields return 400;
+    unknown agents return 404. Deletion cancels and awaits its active runs, then cascades its sessions/messages/FTS,
+    agent memory and jobs, and clears `line.agentId` when it points to that agent. Duplicate is GET then POST
+    a copy named "<name> copy" in the client. See section 10 for field validation and ownership.
+  - `GET /api/sessions?agent=<id>&q=&limit=` → `{ sessions: [{id, agentId, title, updatedAt, snippet?}] }`
+    (no agent filter = all agents; with `q`: scoped FTS search); `POST /api/sessions` `{title?, agentId?}` → `{id}`
+    (default first agent; 400 unknown agent); `GET /api/sessions/:id` → `{id, agentId, title, messages: Message[]}`;
     `DELETE /api/sessions/:id`; `POST /api/sessions/:id/messages` `{text}` → `202 {runId}` (`409` while a run is
     active); `POST /api/sessions/:id/interrupt` → `{ok}`.
   - `POST /api/approvals/:id` `{allow: boolean}` → `{ok}` (`404` unknown or already decided).
@@ -348,11 +366,13 @@ export interface Config {
     the masked form of its stored value preserves the original value. The same applies to any string leaf equal
     to the blanket-redacted form GET returned for that stored leaf, including workspace, prompts, hooks and URLs;
     restore these before validation. Explicit new values still apply (whole-config read-modify-write is safe).
-    Unchanged array elements match by redacted content, preferring the same index then the first unused match.
+    Array elements with an `id` (providers) match by id first; otherwise elements match by redacted content,
+    preferring the same index then the first unused match, before falling back to index.
     If any restored string still contains `••••`, PUT returns
     `400 {error: "a masked value could not be restored; re-enter it"}` without saving, including an edited/moved element
     or a partial edit of a masked field.
-    LINE and MCP changes apply live; API port changes apply on daemon restart.
+    `line.agentId`, when supplied, must name an existing agent (400 otherwise). LINE and MCP changes apply live;
+    API port changes apply on daemon restart.
     `PUT /api/secrets` `{name, value}` (`''` deletes)
     → `{name, masked}`.
   - `GET /api/mcp` → `{ servers: [{name, transport, enabled, connected, error?, tools?: [{name, selected}]}] }`;
@@ -367,15 +387,17 @@ export interface Config {
     serialized settings queue, so concurrent mutations compose instead of overwriting one another.
   - `GET /api/skills` → `{skills: [{name, description}]}`; `GET /api/skills/:name` → `{name, description, body}`;
     `PUT /api/skills/:name` `{description, body}`; `DELETE /api/skills/:name`.
-  - `GET /api/memory?kind=&q=` → `{notes: [{id, kind, text, updatedAt}]}`; `POST /api/memory` `{kind, text}`;
+  - `GET /api/memory?kind=&q=&agent=<id>` → `{notes: [{id, agentId, kind, text, updatedAt}]}`;
+    `POST /api/memory` `{kind, text, agentId?}` (400 for agent-kind without a known agentId; user notes have
+    `agentId:null`). Agent filters include shared user notes and only that agent's notes, subject to the kind filter;
     `PUT /api/memory/:id` `{text}`; `DELETE /api/memory/:id`.
-  - `GET /api/schedules` → `{jobs: [{id, cron, prompt, delivery, enabled, nextRunAt, lastRunAt?, lastStatus?}]}`;
-    `POST /api/schedules` `{cron, prompt, delivery}` (`400` on a bad cron); `PATCH /api/schedules/:id` `{enabled}`;
+  - `GET /api/schedules?agent=<id>` → `{jobs: [{id, agentId, cron, prompt, delivery, enabled, nextRunAt, lastRunAt?, lastStatus?}]}`;
+    `POST /api/schedules` `{cron, prompt, delivery, agentId?}` (default first agent; `400` on a bad cron/unknown agent); `PATCH /api/schedules/:id` `{enabled}`;
     `DELETE /api/schedules/:id`.
-  - `GET /api/line/status` → `{enabled, running, port, publicUrl?, webhookUrl?, tokenSet, secretSet, lastEventAt?,
+  - `GET /api/line/status` → `{enabled, running, port, agentId, publicUrl?, webhookUrl?, tokenSet, secretSet, lastEventAt?,
     lastError?}`. LINE settings change through `/api/settings` (section `line`) and `/api/secrets`.
   Mutations without a more specific response above return `{ok:true}`. Memory create/update returns the note
-  `{id,kind,text,updatedAt}`; schedule create returns `{id,cron,prompt,delivery,enabled}`. Missing resources return
+  `{id,agentId,kind,text,updatedAt}`; schedule create returns `{id,agentId,cron,prompt,delivery,enabled}`. Missing resources return
   404. Deleting an active session returns 409; interrupt it first. An absent active run returns `{ok:false}` on
   interrupt. Memory ids are positive integers.
 
@@ -449,3 +471,64 @@ export interface Config {
 
 Note: the BBN harness runs checks with `CI=1`, which the Tauri CLI rejects (`--ci` wants true/false), so the build
 check sets `CI=true` itself.
+
+## 10. Agents
+
+```ts
+// core/src/types.ts (added)
+export interface Agent {
+  id: string;                              // random, e.g. 'ag_' + 12 hex chars
+  name: string;                            // 1..64 chars after trim
+  icon: string;                            // short text, usually one emoji; 1..16 UTF-16 units; default '🤖'
+  instructions: string;                    // the agent's system prompt; '' = the built-in default prompt
+  provider: string; model: string;         // a ProviderConfig.id and a model name
+  permissions: Record<string, Policy>;     // over config.permissions (agent entries win), same key rules
+  connectors: string[] | null;             // MCP server names the agent uses; null = every enabled server
+  skills: string[] | null;                 // skill names the agent sees; null = every skill
+  createdAt: number; updatedAt: number;    // epoch ms
+}
+// LineConfig gains: agentId?: string     // the agent that answers LINE; absent or unknown = the first agent
+```
+
+- **Store** (`core/src/store/`): table `agents` (JSON columns for permissions/connectors/skills). `listAgents()` (oldest
+  first), `getAgent(id)`, `createAgent(input)`, `updateAgent(id, patch)`, `deleteAgent(id)` (one transaction: the
+  agent's sessions with their messages and search index, its agent-memory notes and its jobs go with it),
+  `ensureDefaultAgent(defaults)`: when no agent exists, create `{name: 'BigNose', icon: '🤖', instructions:
+  config.agent.systemPrompt ?? '', provider/model: config.active, permissions: {}, connectors: null, skills: null}`;
+  then give every row without an agent (sessions, agent notes, jobs from before agents existed) to the first agent.
+  For a pre-agents database, add each missing `agentId` column idempotently without dropping existing rows; test opening the old schema, preserving its sessions/messages/memory/jobs, assigning orphan rows and reopening.
+  The "first agent" = oldest `createdAt` (ties: id). Sessions, agent-kind memory notes and jobs get an `agentId`.
+  `createSession({title?, origin, agentId})`, `listSessions({limit?, agentId?})`, `findSessionByOrigin(origin, agentId)`
+  (one session per LINE chat per agent), `searchMessages(query, limit?, agentId?)`, `listMemory(kind?, agentId?)` and
+  `searchMemory(query, limit?, kind?, agentId?)` (user notes are shared and always included; agent notes only for that
+  agent), `addMemory(kind, text, agentId?)` (agent kind needs an agentId).
+- **Runtime** (`core/src/app/`): every run uses its session's agent: provider + key from `agent.provider` (unknown
+  provider → run_end error naming it), `model = agent.model`, system prompt = `agent.instructions` or the default +
+  user notes + this agent's notes + the index of the agent's skills + today's date; tools = builtin + memory tools and
+  `session_search` scoped to the agent + skill tools limited to the agent's skills + schedule tools (new jobs get the
+  agent's id) + MCP tools of servers that are enabled and in `agent.connectors` (null = all enabled); permissions =
+  `{...config.permissions, ...agent.permissions}` (then the LINE non-owner raise to `ask`). LINE messages go to
+  `line.agentId` (fallback: first agent). A cron job runs with its own agent. Unknown connector or skill names in an
+  agent are ignored at run time.
+- **API** (§6 additions; every timestamp is epoch ms):
+  - `GET /api/agents` → `{agents: Agent[]}`; `GET /api/agents/:id` → `Agent` (404 unknown).
+  - `POST /api/agents` `{name, icon?, instructions?, provider?, model?, permissions?, connectors?, skills?}` → `201
+    Agent` (provider/model default to `config.active`). `PATCH /api/agents/:id` (any subset of those fields) → `Agent`.
+    400 on a bad shape: name length, icon length, provider not configured, empty model, a policy that is not
+    allow/ask/deny, connectors/skills not `null` or an array of names.
+  - `DELETE /api/agents/:id` → `{ok: true}`; `409 {error}` when it is the last agent; cascades as in the store; clears
+    `line.agentId` when it pointed at that agent.
+  - Duplicate is client-side (GET the agent, POST a copy named "<name> copy"); no route.
+  - Sessions: `GET /api/sessions?agent=<id>&q=&limit=` (no `agent` = all agents); `POST /api/sessions {title?, agentId?}`
+    (default: first agent; 400 unknown agent); sessions in lists and `GET /api/sessions/:id` carry `agentId`.
+  - Memory: `GET /api/memory?kind=&q=&agent=<id>`; `POST /api/memory {kind, text, agentId?}` (400 when kind is `agent`
+    without a known agentId); notes carry `agentId` (null for user notes).
+  - Schedules: jobs carry `agentId`; `POST /api/schedules {cron, prompt, delivery, agentId?}` (default first agent).
+  - Settings: `line.agentId` validated on `PUT /api/settings` (unknown id → 400). `GET /api/line/status` adds the
+    effective `agentId`.
+- **Tests** (no network): `core/test/agents/store.test.ts` (CRUD, default agent created once, orphan rows assigned,
+  cascade delete, scoped sessions/memory/search), `core/test/api/agents.test.ts` (every route above incl. 400/404/409,
+  agents persisted across a daemon restart on the same `BIGNOSE_HOME`, `line.agentId` validation and clearing),
+  `core/test/app/agent-runtime.test.ts` (two agents with different instructions, provider/model, permissions,
+  connectors and skills: a scripted mock provider records each request and sees the right model, system prompt and
+  tool list; agent notes isolated, user notes shared; a LINE message is answered by `line.agentId`).

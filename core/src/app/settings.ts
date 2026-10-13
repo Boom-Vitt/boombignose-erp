@@ -1,4 +1,5 @@
 import { defaultConfig, maskSecret, readEnv, redact } from '../config.ts';
+import type { AgentInput } from '../store/index.ts';
 import type { Config, McpServerConfig } from '../types.ts';
 
 export const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -12,6 +13,18 @@ const reference = (v: string) => /^\$\{[A-Z_][A-Z0-9_]*\}$/.test(v);
 
 export function validateMcpName(name: unknown): asserts name is string {
   requireValue(typeof name === 'string' && /^[a-zA-Z0-9-]{1,32}$/.test(name), 'MCP name must match ^[a-zA-Z0-9-]{1,32}$');
+}
+export function validateAgent(v: unknown, config: Config, patch = false): asserts v is AgentInput {
+  requireValue(isObject(v), 'agent must be an object');
+  const fields = ['name', 'icon', 'instructions', 'provider', 'model', 'permissions', 'connectors', 'skills'];
+  requireValue(Object.keys(v).every(k => fields.includes(k)), 'unknown agent field');
+  if (!patch || Object.hasOwn(v, 'name')) requireValue(typeof v.name === 'string' && v.name.trim().length >= 1 && v.name.trim().length <= 64, 'name must be 1-64 characters');
+  if (Object.hasOwn(v, 'icon')) requireValue(typeof v.icon === 'string' && v.icon.length >= 1 && v.icon.length <= 16, 'icon must be 1-16 characters');
+  if (Object.hasOwn(v, 'instructions')) requireValue(typeof v.instructions === 'string', 'instructions must be a string');
+  if (Object.hasOwn(v, 'provider')) requireValue(config.providers.some(p => p.id === v.provider), 'provider is not configured');
+  if (Object.hasOwn(v, 'model')) requireValue(string(v.model), 'model is required');
+  if (Object.hasOwn(v, 'permissions')) requireValue(isObject(v.permissions) && Object.values(v.permissions).every(x => ['allow', 'ask', 'deny'].includes(x as string)), 'invalid permissions');
+  for (const field of ['connectors', 'skills']) if (Object.hasOwn(v, field)) requireValue(v[field] === null || (strings(v[field]) && (v[field] as string[]).every(x => !!x.trim())), `${field} must be null or an array of names`);
 }
 export function validateMcpServer(v: unknown): asserts v is McpServerConfig {
   requireValue(isObject(v) && typeof v.enabled === 'boolean', 'invalid MCP config');
@@ -49,6 +62,7 @@ export function validateConfig(v: unknown): asserts v is Config {
   for (const [name, server] of Object.entries(v.mcp.servers)) { validateMcpName(name); validateMcpServer(server); }
   requireValue(isObject(v.line) && typeof v.line.enabled === 'boolean' && integer(v.line.port, 0, 65535) && integer(v.line.slowResponseMs, 1, 2 ** 31 - 1), 'invalid LINE settings');
   requireValue(v.line.publicUrl === undefined || v.line.publicUrl === '' || url(v.line.publicUrl), 'invalid LINE public URL');
+  requireValue(v.line.agentId === undefined || string(v.line.agentId), 'invalid LINE agentId');
   const allow = v.line.allow;
   requireValue(isObject(allow) && ['users', 'groups', 'rooms'].every(k => strings(allow[k])), 'invalid LINE allowlists');
   requireValue(isObject(v.api) && integer(v.api.port, 0, 65535), 'invalid API port');
@@ -62,7 +76,8 @@ export function restoreMaskedConfig(input: Config, stored: Config, clean: (text:
       const masked = previous.map(v => JSON.stringify(safeValue(v, clean)));
       return value.map((v, i) => {
         const text = JSON.stringify(v);
-        const match = !used.has(i) && masked[i] === text ? i : masked.findIndex((m, j) => m === text && !used.has(j));
+        const byId = isObject(v) && typeof v.id === 'string' ? previous.findIndex((p, j) => isObject(p) && p.id === v.id && !used.has(j)) : -1;
+        const match = byId >= 0 ? byId : !used.has(i) && masked[i] === text ? i : masked.findIndex((m, j) => m === text && !used.has(j));
         if (match >= 0) used.add(match);
         return restore(v, previous[match >= 0 ? match : i]);
       });
@@ -99,7 +114,7 @@ export function settingsResponse(config: Config, home: string) {
 
 // Short env values are often flags/usernames; replacing them in prose corrupts saved data.
 export function createCleaner(home: string, config: Config, token = '') {
-  const values = [...Object.values(readEnv(home)), token, ...Object.values(config.mcp.servers).flatMap(s => Object.values(s.transport === 'stdio' ? s.env ?? {} : s.headers ?? {}).filter(v => !reference(v)))].filter(v => v.length >= 8);
+  const values = [...Object.values(readEnv(home)), token].filter(v => v.length >= 8);
   const secrets = [...new Set(values.flatMap(v => [v, JSON.stringify(v).slice(1, -1)]))];
   return Object.assign((text: string) => redact(text, secrets), { maxSecretLength: secrets.reduce((n, s) => Math.max(n, s.length), 0) });
 }
