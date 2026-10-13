@@ -13,3 +13,4 @@ data: {"id":"chat_1","choices":[],"usage":{"prompt_tokens":42,"completion_tokens
 
 data: [DONE]
 
+: end of fixture
