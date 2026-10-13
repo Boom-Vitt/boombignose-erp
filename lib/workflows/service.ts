@@ -1,5 +1,6 @@
 import type { Enums } from "@/lib/types/database"
 import { z } from "zod"
+import { satangToBahtString } from "@/lib/money"
 
 type QuoteStatus = Enums<"quote_status">
 
@@ -39,8 +40,7 @@ export function serviceAmountSatang(value: string | number): number {
 
 export function serviceAmountBaht(satang: number): string {
   if (!Number.isSafeInteger(satang) || satang < 0) throw new Error("Invalid satang amount")
-  const amount = BigInt(satang)
-  return `${amount / BigInt(100)}.${String(amount % BigInt(100)).padStart(2, "0")}`
+  return satangToBahtString(satang)
 }
 
 /** Mirrors PostgreSQL numeric(12,3) and round(quantity * unit_price_satang). */
