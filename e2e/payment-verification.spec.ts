@@ -36,6 +36,16 @@ test("customer report stays pending until owner verifies actual receipt",async({
     await page.waitForURL("**/dashboard")
     await page.goto(`/finance/invoices/${invoiceId}`)
     await page.getByLabel("Verification evidence reference").fill("Synthetic bank statement receipt 001")
+    let dropped=false
+    await page.route(`**/finance/invoices/${invoiceId}`,async route=>{
+      if(route.request().method()==="POST"&&!dropped) {
+        await route.fetch() // Let the server commit, then simulate a lost response.
+        dropped=true
+        await route.abort("failed")
+      } else await route.continue()
+    })
+    await page.getByRole("button",{name:"Verify receipt",exact:true}).click()
+    await expect.poll(async()=> (await admin.from("payments").select().eq("invoice_id",invoiceId!)).data?.length).toBe(1)
     await page.getByRole("button",{name:"Verify receipt",exact:true}).click()
     await expect(page.getByRole("button",{name:"Verify receipt",exact:true})).toHaveCount(0)
     const receipts=await admin.from("payments").select().eq("invoice_id",invoiceId!)

@@ -301,7 +301,7 @@ export default async function InvoiceDetailPage({
                 items={itemRows}
                 addAction={addInvoiceItem}
                 deleteAction={removeInvoiceItem}
-                locked={invoice.status === "paid"}
+                locked={paid > 0 || (claimsRes.data ?? []).some(claim => claim.status === "pending")}
               />
             </CardContent>
           </Card>

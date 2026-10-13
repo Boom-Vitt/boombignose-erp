@@ -107,3 +107,33 @@ test("draft/cancelled, excessive and unsafe amounts fail without partial settlem
   assert.equal(ok(await admin.from("payments").select().eq("invoice_id",inv.id)).length,0)
   assert.equal(ok(await admin.from("payment_claims").select("status").eq("id",c).single()).status,"pending")
 })
+test("different retry key resolving a pending claim cannot later identify a different request",async()=>{
+  const inv=await invoice(), c=await claim(inv), alias=randomUUID()
+  assert.equal(await claim(inv,10000,alias),c)
+  ok(await owner.rpc("review_payment_claim",review(c,0,randomUUID(),"rejected","No bank match")))
+  const second=await invoice()
+  assert.ok((await admin.rpc("submit_payment_claim",{p_token:token,p_invoice_id:second.id,p_amount_satang:10000,p_reference:"Customer report",p_key:alias})).error)
+})
+test("direct member cannot forge a trusted payment verification audit",async()=>{
+  assert.ok((await member.from("audit_log").insert({org_id:orgs[0],actor_id:users[0],entity:"payment",entity_id:randomUUID(),action:"payment_verified",summary:"Forged receipt evidence"})).error)
+})
+test("verified invoice lines cannot mutate and a fully settled invoice cannot become overdue",async()=>{
+  const inv=await invoice(), c=await claim(inv,4000)
+  ok(await owner.rpc("review_payment_claim",review(c,4000,randomUUID())))
+  assert.ok((await owner.from("invoice_items").insert({org_id:orgs[0],invoice_id:inv.id,description:"Changed charge",quantity:1,unit_price_satang:50000,amount_satang:50000})).error)
+  assert.equal(ok(await admin.from("invoice_items").select().eq("invoice_id",inv.id)).length,0)
+  const c2=await claim(inv,6000)
+  ok(await owner.rpc("review_payment_claim",review(c2,6000,randomUUID())))
+  assert.ok((await owner.from("invoices").update({status:"overdue"}).eq("id",inv.id)).error)
+})
+test("pending customer claim prevents reassignment to another customer",async()=>{
+  const inv=await invoice(); await claim(inv)
+  const other=ok(await admin.from("clients").insert({org_id:orgs[0],name:"Other customer"}).select().single())
+  assert.ok((await member.from("invoices").update({client_id:other.id}).eq("id",inv.id)).error)
+})
+test("line mutation and authoritative header total commit together before settlement",async()=>{
+  const inv=await invoice()
+  ok(await owner.from("invoice_items").insert({org_id:orgs[0],invoice_id:inv.id,description:"Actual line",quantity:1,unit_price_satang:9000,amount_satang:1}))
+  assert.equal(ok(await owner.from("invoices").select("amount_satang").eq("id",inv.id).single()).amount_satang,9000)
+  assert.equal(ok(await owner.from("invoice_items").select("amount_satang").eq("invoice_id",inv.id).single()).amount_satang,9000)
+})

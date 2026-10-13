@@ -292,11 +292,11 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "invoice_items_invoice_id_fkey"
-      columns: ["invoice_id"]
+      foreignKeyName: "invoice_items_invoice_tenant_fkey"
+      columns: ["org_id","invoice_id"]
 isOneToOne: false
       referencedRelation: "invoices"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
       foreignKeyName: "invoice_items_org_id_fkey"
       columns: ["org_id"]
@@ -551,6 +551,32 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
+    }
+                  ]
+                },"portal_claim_requests": {
+                  Row: {
+                    "created_at": string,"key": string,"org_id": string,"request": NonNullable<Json>,"result": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"key": string,"org_id": string,"request": NonNullable<Json>,"result"?: string | null
+                  }
+                  Update: {
+                    "created_at"?: string,"key"?: string,"org_id"?: string,"request"?: NonNullable<Json>,"result"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "portal_claim_requests_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "portal_claim_requests_org_id_result_fkey"
+      columns: ["org_id","result"]
+isOneToOne: false
+      referencedRelation: "payment_claims"
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"profiles": {
