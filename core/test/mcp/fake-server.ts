@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline';
 
 const write = (value: unknown) => process.stdout.write(JSON.stringify(value) + '\n');
+if (process.argv.includes('--banner')) process.stdout.write('Fake MCP starting\n');
 let pinged = false, initialized = false;
 for await (const line of createInterface({ input: process.stdin })) {
   const m = JSON.parse(line);
@@ -15,14 +16,18 @@ for await (const line of createInterface({ input: process.stdin })) {
     reply({ protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '1' } });
   } else if (m.method === 'tools/list') {
     if (!initialized || !pinged) { write({ jsonrpc: '2.0', id: m.id, error: { code: -32000, message: 'not initialized' } }); continue; }
-    reply(m.params?.cursor === 'second' ? { tools: [{ name: 'fail', description: 'Fail', inputSchema: { type: 'object' } }, { name: 'bad.name', inputSchema: {} }, { name: 'bad/name', inputSchema: {} }, { name: 'x'.repeat(100), inputSchema: {} }] }
-      : { tools: [{ name: 'echo', description: 'Echo', inputSchema: { type: 'object' } }], nextCursor: 'second' });
+    if (m.params?.cursor === 'second') {
+      const tools = [{ name: 'fail', description: 'Fail', inputSchema: { type: 'object' } }, { name: 'bad.name', inputSchema: {} }, { name: 'bad/name', inputSchema: {} }, { name: 'x'.repeat(100), inputSchema: {} }];
+      reply({ tools: process.argv.includes('--reverse-tools') ? tools.reverse() : tools });
+    } else reply({ tools: [{ name: 'echo', description: 'Echo', inputSchema: { type: 'object' } }], nextCursor: 'second' });
   } else if (m.method === 'tools/call' && m.params.name === 'echo') {
     reply({ content: [{ type: 'text', text: String(m.params.arguments.text) }, { type: 'text', text: `${process.env.BN_TEST}|${process.env.PATH ? 'path' : 'missing'}` }] });
   } else if (m.method === 'tools/call' && m.params.name === 'fail') {
     reply({ content: [{ type: 'text', text: 'tool failed' }], isError: true });
   } else if (m.method === 'tools/call' && m.params.name === 'wait') {
     // Leave the request pending until the test aborts it or closes the client.
+  } else if (m.method === 'tools/call' && ['bad.name', 'bad/name', 'x'.repeat(100)].includes(m.params.name)) {
+    reply({ content: [{ type: 'text', text: m.params.name }] });
   } else {
     write({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'unknown method or tool' } });
   }

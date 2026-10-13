@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import http from 'node:http';
 import dns from 'node:dns';
 import { once } from 'node:events';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { builtinTools } from '../../src/tools/index.ts';
 import type { ToolContext } from '../../src/types.ts';
 
@@ -84,6 +87,35 @@ test('delegate forwards to its separate context runner and errors when unavailab
   assert.equal((await run('delegate', { task: 'help' })).isError, true);
 });
 
+test('noisy shell output retains at most 100 kB of captured buffers', async t => {
+  const { dir } = setup(t);
+  await promisify(execFile)(process.execPath, ['--expose-gc', fileURLToPath(new URL('process-memory.ts', import.meta.url)), dir], {
+    timeout: 10_000, env: { ...process.env, BIGNOSE_HOME: dir },
+  });
+});
+
+test('credential symlinks protect their targets directly and are refreshed after tool creation', async t => {
+  const { dir, run } = setup(t);
+  const outside = mkdtempSync(tmpdir() + '/bn-');
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  mkdirSync(outside + '/ssh'); writeFileSync(outside + '/ssh/id_x', 'hidden');
+  symlinkSync(outside + '/ssh', dir + '/.ssh');
+  for (const name of ['read_file', 'write_file', 'edit_file', 'list_files', 'search_files']) {
+    const r = await run(name, { path: name === 'list_files' || name === 'search_files' ? outside + '/ssh' : outside + '/ssh/id_x', content: 'bad', oldText: 'hidden', newText: 'bad', pattern: 'hidden' });
+    assert.equal(r.isError, true, name); assert.match(r.content, /protected/);
+  }
+  mkdirSync(dir + '/.aws'); mkdirSync(dir + '/.claude');
+  for (const [i, source] of ['.env', '.env.local', '.aws/credentials', '.claude/.credentials.json'].entries()) {
+    const target = outside + '/target' + i; writeFileSync(target, 'hidden'); symlinkSync(target, dir + '/' + source);
+    assert.equal((await run('read_file', { path: target })).isError, true, source);
+    assert.equal((await run('write_file', { path: target, content: 'bad' })).isError, true, source);
+  }
+  writeFileSync(outside + '/public.txt', 'visible');
+  assert.equal((await run('read_file', { path: outside + '/public.txt' })).content, 'visible');
+  assert.equal((await run('list_files', { path: outside })).content.includes('target'), false);
+  assert.equal((await run('search_files', { path: outside, pattern: 'hidden' })).content, '');
+});
+
 test('web_fetch defaults to ask and rejects private and mapped addresses without connecting', async t => {
   const { run, tools } = setup(t);
   assert.equal(tools.find(t => t.name === 'web_fetch')?.defaultPolicy, 'ask');
@@ -116,6 +148,9 @@ test('web_fetch extracts HTML text, caps response bodies and honours abort witho
   const { run, ctx } = setup(t);
   const server = http.createServer((req, res) => {
     if (req.url === '/large') { res.end('x'.repeat(2_000_001)); return; }
+    if (req.url === '/text') { res.end('x'.repeat(150_000)); return; }
+    if (req.url === '/unicode') { res.end('ไทย🙂'.repeat(15_000)); return; }
+    if (req.url === '/html') { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<script>' + 's'.repeat(150_000) + '</script><p>' + 'h'.repeat(150_000) + '</p>'); return; }
     if (req.url === '/slow') return;
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end('<style>hidden</style><h1>Hello &amp; world</h1><script>hidden</script>');
@@ -128,6 +163,8 @@ test('web_fetch extracts HTML text, caps response bodies and honours abort witho
   t.mock.method(http, 'request', (url: URL, options: any, callback: any) => original(`http://127.0.0.1:${port}${url.pathname}`, { ...options, lookup: undefined }, callback));
   assert.equal((await run('web_fetch', { url: 'http://public.test/' })).content, 'Hello & world');
   assert.match((await run('web_fetch', { url: 'http://public.test/large' })).content, /2 MB/);
+  for (const [path, character] of [['text', 'x'], ['html', 'h']]) assert.equal((await run('web_fetch', { url: 'http://public.test/' + path })).content, character!.repeat(100_000));
+  assert.equal((await run('web_fetch', { url: 'http://public.test/unicode' })).content, 'ไทย🙂'.repeat(7692) + 'ไ');
   const controller = new AbortController();
   const pending = run('web_fetch', { url: 'http://public.test/slow' }, { ...ctx, signal: controller.signal });
   setTimeout(() => controller.abort(), 20);

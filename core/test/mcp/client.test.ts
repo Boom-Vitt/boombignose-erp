@@ -15,7 +15,7 @@ test('stdio initializes, answers server ping, follows cursors and keeps tool and
   await client.connect();
   const tools = await client.listTools();
   assert.deepEqual(tools.map(t => t.name), ['echo', 'fail', 'bad.name', 'bad/name', 'x'.repeat(100)]);
-  assert.deepEqual(await client.callTool('echo', { text: 'hello' }), { content: 'hello\noverlay|path' });
+  assert.deepEqual(await client.callTool('echo', { text: 'hello' }), { content: 'hello\n••••|path' });
   assert.deepEqual(await client.callTool('fail', {}), { content: 'tool failed', isError: true });
   assert.match((await client.callTool('unknown', {})).content, /-32601/);
   assert.equal((await client.callTool('unknown', {})).isError, true);
@@ -72,7 +72,7 @@ test('manager filters selections, makes unique legal names, tests disabled serve
   assert.equal(tools.length, 4); assert.equal(new Set(tools.map(t => t.name)).size, 4);
   assert.ok(tools.every(t => /^[a-zA-Z0-9_-]{1,64}$/.test(t.name) && t.defaultPolicy === 'ask'));
   const context = { sessionId: 's', origin: { kind: 'cli' as const }, cwd: '/', signal: new AbortController().signal, depth: 0 };
-  assert.equal((await tools.find(t => t.name === 'mcp__a_b__echo')!.run({ text: 'hi' }, context)).content, 'hi\nmanager|path');
+  assert.equal((await tools.find(t => t.description === 'Echo')!.run({ text: 'hi' }, context)).content, 'hi\n••••|path');
   assert.deepEqual(await manager.test('disabled'), { ok: true, tools: 5 });
   assert.equal((await manager.test('missing')).ok, false);
   assert.equal(manager.status().find(s => s.name === 'disabled')?.connected, false);
@@ -96,8 +96,42 @@ test('stdio pending calls interrupt promptly and startup stderr redacts expanded
   const pending = client.callTool('wait', {}, controller.signal);
   setTimeout(() => controller.abort(), 20);
   assert.deepEqual(await pending, { content: 'interrupted', isError: true });
-  assert.equal((await client.callTool('echo', { text: 'alive' })).content, 'alive\nfake-value|path');
+  assert.equal((await client.callTool('echo', { text: 'alive' })).content, 'alive\n••••|path');
   const broken = new McpClient({ ...stdio, args: ['-e', 'process.stderr.write(process.env.BN_TEST); process.exit(2)'] }, { VALUE: 'fake-value' });
   await assert.rejects(broken.connect(), e => e instanceof Error && e.message.includes('exited') && !e.message.includes('fake-value'));
   await broken.close();
+});
+
+test('MCP tool results redact raw and JSON-escaped expanded environment values without truncating findings', async t => {
+  const value = 'fake\\"value';
+  const client = new McpClient(stdio, { VALUE: value }); t.after(() => client.close());
+  await client.connect();
+  const content = 'finding '.repeat(400) + JSON.stringify(value);
+  const result = await client.callTool('echo', { text: content });
+  assert.equal(result.isError, undefined);
+  assert.equal(result.content, 'finding '.repeat(400) + '"••••"\n••••|path');
+  assert.ok(!result.content.includes(value));
+});
+
+test('stdio tolerates a startup banner and still initializes and calls tools', async t => {
+  const client = new McpClient({ ...stdio, args: [...stdio.args!, '--banner'] }, { VALUE: 'overlay' });
+  t.after(() => client.close());
+  await client.connect();
+  assert.equal((await client.listTools()).length, 5);
+  assert.deepEqual(await client.callTool('echo', { text: 'ready' }), { content: 'ready\n••••|path' });
+});
+
+test('MCP aliases stay bound to original tools when server order or selection changes', async t => {
+  const selected = ['bad.name', 'bad/name', 'x'.repeat(100)];
+  const manager = new McpManager({ aliases: { ...stdio, tools: selected } }, { VALUE: 'overlay' });
+  t.after(() => manager.stop()); await manager.start();
+  const ctx = { sessionId: 's', origin: { kind: 'cli' as const }, cwd: '/', signal: new AbortController().signal, depth: 0 };
+  const aliases = async () => Object.fromEntries(await Promise.all(manager.tools().map(async tool => [(await tool.run({}, ctx)).content, tool.name] as const)));
+  const first = await aliases();
+  assert.equal(Object.keys(first).length, 3);
+  assert.ok(Object.values(first).every(name => /^[a-zA-Z0-9_-]{1,64}$/.test(name)));
+  await manager.update({ aliases: { ...stdio, args: [...stdio.args!, '--reverse-tools'], tools: selected } });
+  assert.deepEqual(await aliases(), first);
+  await manager.update({ aliases: { ...stdio, tools: ['bad/name'] } });
+  assert.deepEqual(await aliases(), { 'bad/name': first['bad/name'] });
 });

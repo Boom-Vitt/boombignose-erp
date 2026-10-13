@@ -25,9 +25,10 @@ export class McpManager {
       const selected = this.servers[server]?.tools;
       for (const spec of entry.specs) {
         if (selected && !selected.includes(spec.name)) continue;
-        const raw = `mcp__${server}__${spec.name}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const original = `mcp__${server}__${spec.name}`;
+        const raw = original.replace(/[^a-zA-Z0-9_-]/g, '_');
         let name = raw;
-        if (raw.length > 64 || names.has(raw)) {
+        if (raw !== original || raw.length > 64) {
           const hash = createHash('sha256').update(server + '\0' + spec.name).digest('hex').slice(0, 10);
           name = raw.slice(0, 53) + '_' + hash;
         }

@@ -25,7 +25,12 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
         if (cut === 1 && context[0]?.content.some(b => b.type === 'text' && b.text.startsWith('[Summary of earlier conversation]\n'))) cut = 0;
         if (cut > 0) {
           let summary = '';
-          const iterator = opts.provider.stream({ ...baseRequest(), system: 'Summarise the conversation for continuation. Preserve decisions, facts, tool findings and unfinished work.', messages: context.slice(0, cut), tools: [] })[Symbol.asyncIterator]();
+          const history = context.slice(0, cut).flatMap(m => m.content.map(b => {
+            if (b.type === 'text') return `${m.role}: ${b.text}`;
+            if (b.type === 'tool_use') return `assistant called ${b.name}(${JSON.stringify(b.input)}) [${b.id}]`;
+            return `tool result [${b.toolUseId}]${b.isError ? ' (error)' : ''}: ${b.content}`;
+          })).join('\n');
+          const iterator = opts.provider.stream({ ...baseRequest(), system: 'Summarise the conversation for continuation. Preserve decisions, facts, tool findings and unfinished work.', messages: [{ role: 'user', content: [{ type: 'text', text: history }] }], tools: [] })[Symbol.asyncIterator]();
           turns++;
           try {
             while (true) {
@@ -68,9 +73,11 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
         }
       } catch (e) { streamError = e; }
       finally { void iterator.return?.().catch(() => {}); }
-      if (content.length) append({ role: 'assistant', content });
+      const orderedCalls = [...complete].map(id => calls.get(id)!).concat([...calls.values()].filter(call => !complete.has(call.id)));
+      let callIndex = 0;
+      if (content.length) append({ role: 'assistant', content: content.map(b => b.type === 'tool_use' ? orderedCalls[callIndex++]! : b) });
       const replies: ContentBlock[] = [];
-      for (const call of calls.values()) {
+      for (const call of orderedCalls) {
         emit({ type: 'tool_start', callId: call.id, name: call.name, input: call.input });
         let result: ToolResult;
         try {

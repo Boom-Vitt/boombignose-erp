@@ -7,7 +7,11 @@ export function runCommand(command: string, opts: { cwd?: string; signal?: Abort
     const child = spawn('/bin/sh', ['-c', command], { cwd: opts.cwd, env: opts.env ?? process.env, detached: true, stdio: 'pipe' });
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
     let size = 0, reason: string | undefined;
-    const capture = (chunks: Buffer[]) => (chunk: Buffer) => { const kept = chunk.subarray(0, Math.max(0, 100_000 - size)); chunks.push(kept); size += kept.length; };
+    const capture = (chunks: Buffer[]) => (chunk: Buffer) => {
+      if (size >= 100_000) return;
+      const kept = Buffer.from(chunk.subarray(0, 100_000 - size));
+      chunks.push(kept); size += kept.length;
+    };
     child.stdout.on('data', capture(stdout)); child.stderr.on('data', capture(stderr));
     const kill = (why: string) => {
       reason = why;

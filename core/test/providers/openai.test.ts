@@ -49,3 +49,16 @@ test('openai non-2xx error is bounded and redacted', async () => {
   const p = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, 'fake-value', async () => new Response('fake-value'.repeat(500), { status: 429 }));
   await assert.rejects(collect(p.stream(request)), e => e instanceof Error && e.message.includes('429') && !e.message.includes('fake-value') && e.message.length < 1500);
 });
+
+test('openai keeps first id and name when compatible servers repeat them in later chunks', async () => {
+  const text = fixture('openai')
+    .replace('{"index":1,"function":{"arguments":', '{"index":1,"id":"call_b","function":{"name":"search_files","arguments":')
+    .replace('{"index":0,"function":{"arguments":', '{"index":0,"id":"call_a","function":{"name":"read_file","arguments":');
+  const provider = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, undefined, async () => streamed(text));
+  const events = await collect(provider.stream(request));
+  assert.deepEqual(events.filter(e => e.type === 'tool_call'), [
+    { type: 'tool_call', id: 'call_a', name: 'read_file', input: { path: 'a.txt' } },
+    { type: 'tool_call', id: 'call_b', name: 'search_files', input: { pattern: 'hello' } },
+  ]);
+  assert.equal(events.filter(e => e.type === 'tool_call_start').length, 2);
+});

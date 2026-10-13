@@ -44,7 +44,7 @@ export function openai(cfg: ProviderConfig, apiKey: string | undefined, fetchImp
         if (choice.delta?.content) yield { type: 'text_delta', text: choice.delta.content };
         for (const delta of choice.delta?.tool_calls ?? []) {
           const call = calls.get(delta.index) ?? { id: '', name: '', json: '', started: false };
-          call.id += delta.id ?? ''; call.name += delta.function?.name ?? ''; call.json += delta.function?.arguments ?? '';
+          call.id ||= delta.id ?? ''; call.name ||= delta.function?.name ?? ''; call.json += delta.function?.arguments ?? '';
           calls.set(delta.index, call);
           if (call.id && call.name && !call.started) {
             call.started = true;

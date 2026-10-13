@@ -70,6 +70,9 @@ test('compaction summarises the head and preserves a recent complete tool pair',
   const requests: ProviderRequest[] = [], events: AgentEvent[] = [];
   const r = await runAgent(options(scripted([[{ type: 'text_delta', text: 'summary' }, done], [{ type: 'text_delta', text: 'answer' }, done]], requests), { context, contextWindow: 80, onEvent: e => events.push(e) }));
   assert.equal(requests[0]?.tools.length, 0);
+  assert.equal(requests[0]?.messages.length, 1);
+  assert.equal(requests[0]?.messages.at(-1)?.role, 'user');
+  assert.ok(requests[0]?.messages.every(m => m.content.every(b => b.type === 'text')));
   assert.equal(requests[1]?.messages[0]?.content[0]?.type, 'text');
   assert.match((requests[1]!.messages[0]!.content[0] as { text: string }).text, /Summary of earlier conversation.*\nsummary/);
   assert.equal(results(r.context)[0]?.content, 'kept');
@@ -132,4 +135,46 @@ test('compaction during a tool chain keeps paired tail messages and respects the
   normal = 0; summaries = 0;
   const capped = await runAgent(options(p, { tools: [tool], maxTurns: 3, contextWindow: 150 }));
   assert.equal(capped.status, 'max_turns'); assert.equal(normal + summaries, 3);
+});
+
+test('compaction renders earlier tool calls and results as one user text message', async () => {
+  const context: Message[] = [
+    { role: 'user', content: [{ type: 'text', text: 'old task' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'past', name: 'echo', input: { value: 'old input' } }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'past', content: 'old output', isError: true }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'old response' }] },
+    { role: 'user', content: [{ type: 'text', text: 'recent task' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'recent', name: 'echo', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'recent', content: 'kept' }] },
+  ];
+  const requests: ProviderRequest[] = [];
+  const r = await runAgent(options(scripted([[{ type: 'text_delta', text: 'summary' }, done], [done]], requests), { context, contextWindow: 80 }));
+  const summary = requests[0]!;
+  assert.deepEqual(summary.tools, []);
+  assert.equal(summary.messages.length, 1);
+  assert.equal(summary.messages[0]?.role, 'user');
+  assert.ok(summary.messages[0]?.content.every(b => b.type === 'text'));
+  const text = summary.messages[0]!.content.map(b => b.type === 'text' ? b.text : '').join('');
+  for (const fragment of ['old task', 'echo', '{"value":"old input"}', 'old output', 'old response', 'past']) assert.ok(text.includes(fragment), fragment);
+  assert.equal(r.status, 'done');
+  assert.equal(results(r.context)[0]?.toolUseId, 'recent');
+});
+
+test('tools execute in completed-call order and incomplete announcements are answered last', async () => {
+  const events: AgentEvent[] = [], requests: ProviderRequest[] = [];
+  const p = scripted([[
+    { type: 'tool_call_start', id: 'partial', name: 'echo' },
+    { type: 'tool_call_start', id: 'b', name: 'echo' },
+    { type: 'text_delta', text: 'checking' },
+    { type: 'tool_call_start', id: 'a', name: 'echo' },
+    call('a'), call('b'), done,
+  ], [done]], requests);
+  const r = await runAgent(options(p, { onEvent: e => events.push(e) }));
+  assert.equal(r.status, 'done');
+  assert.deepEqual(results(r.context).map(b => b.toolUseId), ['a', 'b', 'partial']);
+  assert.deepEqual(results(r.context).map(b => b.isError), [false, false, true]);
+  assert.deepEqual(events.filter(e => e.type === 'tool_start').map(e => e.callId), ['a', 'b', 'partial']);
+  const assistant = requests[1]!.messages.find(m => m.role === 'assistant')!;
+  assert.deepEqual(assistant.content.filter(b => b.type === 'tool_use').map(b => b.id), ['a', 'b', 'partial']);
+  assert.equal(assistant.content.find(b => b.type === 'text')?.text, 'checking');
 });

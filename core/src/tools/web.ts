@@ -62,9 +62,9 @@ export async function fetchWeb(raw: string, signal: AbortSignal): Promise<string
       req.on('error', reject); req.end();
     });
     if (result.location) { url = new URL(result.location, url); continue; }
-    if (!result.html) return result.body;
-    return result.body.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    const text = result.html ? result.body.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim() : result.body;
+    return new TextDecoder('utf-8', { ignoreBOM: true }).decode(Buffer.from(text).subarray(0, 100_000), { stream: true });
   }
   throw new Error('Too many redirects');
 }

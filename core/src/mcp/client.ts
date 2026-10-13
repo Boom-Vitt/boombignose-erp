@@ -2,7 +2,7 @@ import type { McpServerConfig, ToolSpec, ToolResult } from '../types.ts';
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { redact, VERSION } from '../config.ts';
+import { maskSecret, VERSION } from '../config.ts';
 import { readSse } from '../providers/sse.ts';
 
 type Rpc = { jsonrpc: string; id?: string | number; method?: string; params?: unknown; result?: any; error?: { code: number; message: string } };
@@ -25,8 +25,14 @@ export class McpClient {
     this.config = structuredClone(config); this.env = { ...env };
     this.values = [...Object.values(env), ...Object.values(config.transport === 'stdio' ? config.env ?? {} : config.headers ?? {})];
   }
+  private redact(text: string): string {
+    const variants = this.values.flatMap(value => [value, JSON.stringify(value).slice(1, -1)]
+      .map(form => ({ form, masked: maskSecret(value) })));
+    for (const { form, masked } of variants.filter(v => v.form).sort((a, b) => b.form.length - a.form.length)) text = text.split(form).join(masked);
+    return text;
+  }
   private safe(text: string): Error {
-    return new Error(redact(text, this.values.flatMap(v => [v, JSON.stringify(v).slice(1, -1)])).slice(0, 2000));
+    return new Error(this.redact(text).slice(0, 2000));
   }
   private expand(value: string): string {
     return value.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_, name) => {
@@ -53,7 +59,7 @@ export class McpClient {
         const lines = createInterface({ input: this.child.stdout });
         lines.on('line', line => {
           try { void this.receive(JSON.parse(line)).catch(e => this.fail(this.safe(String(e)))); }
-          catch { this.fail(new Error('Invalid MCP JSON-RPC message')); }
+          catch { /* Ignore non-protocol stdout such as startup banners. */ }
         });
       } else this.headers = Object.fromEntries(Object.entries(this.config.headers ?? {}).map(([k, v]) => [k, this.expand(v)]));
       const result = await this.request('initialize', { protocolVersion: this.version, capabilities: {}, clientInfo: { name: 'BigNose', version: VERSION } }, undefined, this.config.transport === 'stdio' ? 180_000 : 60_000);
@@ -148,7 +154,7 @@ export class McpClient {
       const result = await this.request('tools/call', { name, arguments: args }, signal);
       if (!Array.isArray(result?.content)) throw new Error('Invalid MCP tool result');
       const content = result.content.filter((c: any) => c.type === 'text' && typeof c.text === 'string').map((c: any) => c.text).join('\n');
-      return { content, ...(result.isError ? { isError: true } : {}) };
+      return { content: this.redact(content), ...(result.isError ? { isError: true } : {}) };
     } catch (e) { return { content: this.safe(e instanceof Error ? e.message : String(e)).message, isError: true }; }
   }
   async close(): Promise<void> {
