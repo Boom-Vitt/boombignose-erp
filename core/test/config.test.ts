@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { inspect } from 'node:util';
 import {
   defaultConfig, ensureApiToken, getApiKey, homeDir, loadConfig, maskSecret, paths, readEnv, redact, saveConfig,
   setSecret, VERSION,
@@ -190,8 +191,8 @@ test('maskSecret', () => {
 
 test('redact', () => {
   const a = 'a'.repeat(20) + 'AAAA';
-  const b = 'short'; // < 6 chars: left alone
-  assert.equal(redact(`k=${a} again ${a}; ${b}`, [a, b]), 'k=••••AAAA again ••••AAAA; short');
+  const b = 'short'; // 5 chars: masked like any other secret
+  assert.equal(redact(`k=${a} again ${a}; ${b}`, [a, b]), 'k=••••AAAA again ••••AAAA; ••••');
   assert.equal(redact('token abcdef123456 here', ['abcdef123456']), 'token ••••3456 here');
   assert.equal(redact('abcdef', ['abcdef']), '••••', 'exactly 6 chars is redacted');
   assert.equal(redact('nothing to hide', ['zzzzzzzz', '']), 'nothing to hide');
@@ -206,8 +207,10 @@ test('ensureApiToken is created once, stable and 0600', (t) => {
   assert.match(token, /^[0-9a-f]{64}$/);
   assert.equal(mode(paths(home).apiToken), 0o600);
   assert.equal(fs.readFileSync(paths(home).apiToken, 'utf8').trim(), token);
+  assert.deepEqual(fs.readdirSync(home), ['api-token'], 'no temp file left behind');
   assert.equal(ensureApiToken(), token);
   assert.equal(ensureApiToken(home), token);
+  assert.deepEqual(fs.readdirSync(home), ['api-token'], 'none after the EEXIST path either');
   fs.chmodSync(paths(home).apiToken, 0o644);
   assert.equal(ensureApiToken(), token);
   assert.equal(mode(paths(home).apiToken), 0o600, 'wider bits are tightened');
@@ -244,4 +247,28 @@ test('log redacts the current .env values', (t) => {
   assert.match(lines[1]!, / warn url\?key=••••xxxx\n$/);
   assert.match(lines[2]!, / error Error: failed for ••••xxxx/);
   for (const l of lines) assert.equal(l.includes(secret), false);
+  const token = ensureApiToken();
+  log.info(`auth ${token}`);
+  assert.equal(lines.length, 4);
+  assert.equal(lines[3]!.includes(token), false, 'the api-token file contents are redacted too');
+});
+
+test('log never prints a secret with a backslash and quotes, raw or escaped', (t) => {
+  tmpHome(t);
+  const lines: string[] = [];
+  t.mock.method(process.stderr, 'write', (chunk: string | Uint8Array) => (lines.push(String(chunk)), true));
+  const base = ['pa\\ss', "q'uote", 'd"ouble', 'tail'].join('-'); // backslash, single and double quote
+  for (const secret of [base, base + '`']) { // with a backtick too, inspect switches to escaped single quotes
+    setSecret('SOME_KEY', secret);
+    lines.length = 0;
+    log.info({ nested: secret });
+    log.info(JSON.stringify({ nested: secret }));
+    log.error(new Error(`failed for ${secret}`));
+    assert.equal(lines.length, 3);
+    const forms = [secret, inspect(secret).slice(1, -1), JSON.stringify(secret).slice(1, -1)];
+    for (const l of lines) {
+      assert.match(l, /••••/);
+      for (const f of forms) assert.equal(l.includes(f), false, `${f} leaked`);
+    }
+  }
 });

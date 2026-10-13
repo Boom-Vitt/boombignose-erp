@@ -1,5 +1,5 @@
 // Home dir, config, .env secrets, masking. Node builtins only.
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -145,10 +145,10 @@ export function maskSecret(v: string): string {
   return v.length < 12 ? '••••' : '••••' + v.slice(-4);
 }
 
-/** Replace every occurrence of each secret (length >= 6) with its mask. Longest first, so overlaps mask cleanly. */
+/** Replace every occurrence of each non-empty secret with its mask. Longest first, so overlaps mask cleanly. */
 export function redact(text: string, secrets: readonly string[]): string {
   let out = text;
-  for (const s of [...secrets].filter((s) => s.length >= 6).sort((a, b) => b.length - a.length)) {
+  for (const s of [...secrets].filter((s) => s !== '').sort((a, b) => b.length - a.length)) {
     out = out.split(s).join(maskSecret(s));
   }
   return out;
@@ -159,11 +159,15 @@ export function ensureApiToken(home: string = homeDir()): string {
   ensureHome(home);
   const file = paths(home).apiToken;
   const token = randomBytes(32).toString('hex');
+  const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  writeFileSync(tmp, token, { mode: 0o600 });
   try {
-    writeFileSync(file, token, { mode: 0o600, flag: 'wx' });
+    linkSync(tmp, file); // atomic create-if-absent: the file appears complete, or EEXIST when another process won
     return token;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+  } finally {
+    unlinkSync(tmp);
   }
   const current = readFileSync(file, 'utf8').trim();
   if (TOKEN_RE.test(current)) {
