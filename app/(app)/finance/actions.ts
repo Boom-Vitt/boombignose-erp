@@ -343,7 +343,7 @@ export async function deleteCost(
   return {}
 }
 
-const IssueInvoice = z.object({ invoiceId: z.guid(), expectedVersion: z.number().int().min(0).max(2147483647), key: z.uuid() })
+const IssueInvoice = z.object({ invoiceId: z.guid(), expectedVersion: z.number().int().min(1).max(2147483647), key: z.uuid() })
 export async function issueInvoice(input: z.input<typeof IssueInvoice>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try { requireRole(ctx, ["owner", "admin"]) }
@@ -360,9 +360,10 @@ export async function issueInvoice(input: z.input<typeof IssueInvoice>): Promise
 }
 
 const BusinessProfile = z.object({
-  legalName: z.string().trim().min(1).max(200), address: z.string().trim().min(1).max(2000),
-  taxId: z.string().trim().max(30), taxStatus: z.enum(["unknown", "not_registered", "registered"]),
-})
+  expectedOrgId: z.guid(),
+  legalName: z.string().trim().min(1).max(200), address: z.string().trim().min(1).max(1000),
+  taxId: z.string().trim().refine(value => value === "" || /^[0-9]{13}$/.test(value), "Enter a 13-digit tax ID or leave it blank"), taxStatus: z.enum(["unknown", "not_registered", "registered"]),
+}).refine(value => value.taxStatus !== "registered" || value.taxId.length === 13, "Registered VAT profile needs a tax ID")
 export async function updateBusinessProfile(input: z.input<typeof BusinessProfile>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try { requireRole(ctx, ["owner", "admin"]) }
@@ -370,10 +371,11 @@ export async function updateBusinessProfile(input: z.input<typeof BusinessProfil
   const parsed = BusinessProfile.safeParse(input)
   if (!parsed.success) return { error: "Enter the legal business name, address and explicit tax status." }
   const d = parsed.data
+  if (d.expectedOrgId !== ctx.orgId) return { error: "Workspace changed. Reload this form before saving the business profile." }
   const supabase = await createSupabaseClient()
   const { error } = await supabase.rpc("update_business_profile", {
     p_org_id: ctx.orgId, p_legal_name: d.legalName, p_business_address: d.address,
-    p_tax_id: d.taxId || null, p_tax_status: d.taxStatus,
+    p_tax_id: d.taxId, p_tax_status: d.taxStatus,
   })
   if (error) return { error: error.message }
   revalidatePath("/finance/business-profile")

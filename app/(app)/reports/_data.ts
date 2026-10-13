@@ -59,7 +59,7 @@ export async function getReportData(): Promise<ReportAggregates> {
       .from("payments")
       .select("amount_satang, paid_at, invoices(clients(name))").eq("verification_state", "verified")
       .eq("org_id", ctx.orgId)
-      .gte("paid_at", startDate),
+      .gte("paid_at", `${startDate}T00:00:00+07:00`),
     supabase
       .from("time_entries")
       .select("minutes, billable, work_date, projects(name)")
