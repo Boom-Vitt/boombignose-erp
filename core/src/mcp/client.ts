@@ -26,7 +26,7 @@ export class McpClient {
     this.values = [...Object.values(env), ...Object.values(config.transport === 'stdio' ? config.env ?? {} : config.headers ?? {})];
   }
   private redact(text: string): string {
-    const variants = this.values.flatMap(value => [value, JSON.stringify(value).slice(1, -1)]
+    const variants = this.values.filter(value => value.length >= 8).flatMap(value => [value, JSON.stringify(value).slice(1, -1)]
       .map(form => ({ form, masked: maskSecret(value) })));
     for (const { form, masked } of variants.filter(v => v.form).sort((a, b) => b.form.length - a.form.length)) text = text.split(form).join(masked);
     return text;

@@ -16,3 +16,9 @@ test('deny never asks and ask requires positive approval', async () => {
   for (const approve of [undefined, async () => false]) assert.deepEqual(await checkPermission('ask', req, approve), { content: 'denied by user', isError: true });
   assert.equal(await checkPermission('ask', req, async r => r.id === 'a'), undefined);
 });
+
+test('invalid policy values are denied without asking', async () => {
+  for (const policy of ['ASK', null, undefined, 1]) {
+    assert.deepEqual(await checkPermission(policy as any, req, async () => { throw new Error('must not ask'); }), { content: 'invalid policy', isError: true });
+  }
+});

@@ -6,6 +6,7 @@ export function effectivePolicy(tool: Tool, permissions: Record<string, Policy>)
 }
 export async function checkPermission(policy: Policy, req: ApprovalRequest, approve?: Approver): Promise<ToolResult | undefined> {
   if (policy === 'deny') return { content: 'denied by policy', isError: true };
+  if (policy !== 'allow' && policy !== 'ask') return { content: 'invalid policy', isError: true };
   if (policy === 'ask' && (!approve || !(await approve(req)))) return { content: 'denied by user', isError: true };
   return undefined;
 }

@@ -8,6 +8,8 @@ import { once } from 'node:events';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { builtinTools } from '../../src/tools/index.ts';
 import type { ToolContext } from '../../src/types.ts';
 
@@ -32,6 +34,27 @@ test('file tools read slices, create directories and enforce exact unique edits'
   assert.equal((await run('edit_file', { path: 'repeat', oldText: 'absent', newText: 'y' })).isError, true);
   await run('edit_file', { path: 'repeat', oldText: 'x', newText: 'y', replaceAll: true });
   assert.equal(readFileSync(dir + '/repeat', 'utf8'), 'y y');
+});
+
+test('file writes finish their replacement when an interrupt arrives during the write', async t => {
+  const { dir, run, ctx } = setup(t);
+  const original = fs.writeFile;
+  for (const name of ['write_file', 'edit_file']) {
+    const controller = new AbortController(), file = dir + '/' + name;
+    writeFileSync(file, 'old text');
+    t.mock.method(fs, 'writeFile', async (...args: Parameters<typeof fs.writeFile>) => {
+      await original(args[0], 'partial');
+      controller.abort();
+      return original(...args);
+    });
+    syncBuiltinESMExports();
+    try {
+      await run(name, { path: file, content: 'new text', oldText: 'old', newText: 'new' }, { ...ctx, signal: controller.signal });
+      assert.equal(readFileSync(file, 'utf8'), 'new text', name);
+      assert.equal((await run(name, { path: file, content: 'bad', oldText: 'new', newText: 'bad' }, { ...ctx, signal: controller.signal })).isError, true);
+      assert.equal(readFileSync(file, 'utf8'), 'new text', name);
+    } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+  }
 });
 
 test('list globs and regex search skip dependency and git trees', async t => {

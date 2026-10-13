@@ -10,7 +10,7 @@ import type { McpServerConfig } from '../../src/types.ts';
 const stdio: McpServerConfig = { transport: 'stdio', command: process.execPath, args: [fileURLToPath(new URL('fake-server.ts', import.meta.url))], env: { BN_TEST: '${VALUE}' }, enabled: true };
 
 test('stdio initializes, answers server ping, follows cursors and keeps tool and RPC errors', async t => {
-  const client = new McpClient(stdio, { VALUE: 'overlay' });
+  const client = new McpClient(stdio, { VALUE: 'overlay-x' });
   t.after(() => client.close());
   await client.connect();
   const tools = await client.listTools();
@@ -64,7 +64,7 @@ test('HTTP accepts JSON and SSE, carries negotiated headers, and answers ping wi
 });
 
 test('manager filters selections, makes unique legal names, tests disabled servers and reconnects updates', async t => {
-  const manager = new McpManager({ 'a.b': { ...stdio, tools: ['echo', 'bad.name', 'bad/name', 'x'.repeat(100)] }, disabled: { ...stdio, enabled: false, command: process.execPath } }, { VALUE: 'manager' });
+  const manager = new McpManager({ 'a.b': { ...stdio, tools: ['echo', 'bad.name', 'bad/name', 'x'.repeat(100)] }, disabled: { ...stdio, enabled: false, command: process.execPath } }, { VALUE: 'manager-x' });
   t.after(() => manager.stop());
   await manager.start();
   assert.equal(manager.status().find(s => s.name === 'disabled')?.connected, false);
@@ -114,7 +114,7 @@ test('MCP tool results redact raw and JSON-escaped expanded environment values w
 });
 
 test('stdio tolerates a startup banner and still initializes and calls tools', async t => {
-  const client = new McpClient({ ...stdio, args: [...stdio.args!, '--banner'] }, { VALUE: 'overlay' });
+  const client = new McpClient({ ...stdio, args: [...stdio.args!, '--banner'] }, { VALUE: 'overlay-x' });
   t.after(() => client.close());
   await client.connect();
   assert.equal((await client.listTools()).length, 5);
@@ -123,7 +123,7 @@ test('stdio tolerates a startup banner and still initializes and calls tools', a
 
 test('MCP aliases stay bound to original tools when server order or selection changes', async t => {
   const selected = ['bad.name', 'bad/name', 'x'.repeat(100)];
-  const manager = new McpManager({ aliases: { ...stdio, tools: selected } }, { VALUE: 'overlay' });
+  const manager = new McpManager({ aliases: { ...stdio, tools: selected } }, { VALUE: 'overlay-x' });
   t.after(() => manager.stop()); await manager.start();
   const ctx = { sessionId: 's', origin: { kind: 'cli' as const }, cwd: '/', signal: new AbortController().signal, depth: 0 };
   const aliases = async () => Object.fromEntries(await Promise.all(manager.tools().map(async tool => [(await tool.run({}, ctx)).content, tool.name] as const)));
@@ -134,4 +134,17 @@ test('MCP aliases stay bound to original tools when server order or selection ch
   assert.deepEqual(await aliases(), first);
   await manager.update({ aliases: { ...stdio, tools: ['bad/name'] } });
   assert.deepEqual(await aliases(), { 'bad/name': first['bad/name'] });
+});
+
+test('MCP results and errors preserve short literal values while masking expanded secrets', async t => {
+  const config = { ...stdio, env: { ...stdio.env, LEVEL: '1', MODE: 'debug', SHORT: 'a"b"c"d' } };
+  const env = { VALUE: 'test-value' };
+  const client = new McpClient(config, env); t.after(() => client.close());
+  await client.connect();
+  const text = 'found 12 matches in 1 file; debug; a"b"c"d; ' + JSON.stringify(config.env.SHORT);
+  assert.deepEqual(await client.callTool('echo', { text }), { content: text + '\n••••|path' });
+  const broken = new McpClient({ ...config, args: ['-e', 'process.stderr.write("found 12 matches in 1 file; debug; " + process.env.BN_TEST); process.exit(1)'] }, env);
+  t.after(() => broken.close());
+  await assert.rejects(broken.connect(), e => e instanceof Error
+    && e.message.includes('exited (1)') && e.message.includes('found 12 matches in 1 file; debug; ••••') && !e.message.includes(env.VALUE));
 });

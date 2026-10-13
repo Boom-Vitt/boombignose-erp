@@ -101,7 +101,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
             sessionId: opts.sessionId, origin: opts.origin, cwd: opts.cwd, signal: opts.signal, depth,
             ...(depth < 1 ? { delegate: async (task: string) => {
               const nested = await runAgent({ ...opts, context: [], input: task, tools: opts.tools.filter(t => t.name !== 'delegate'), depth: depth + 1, onEvent: undefined });
-              if (nested.status === 'error') throw new Error(nested.error ?? 'Delegate failed');
+              if (nested.status !== 'done') throw new Error(nested.error ?? `Delegate stopped: ${nested.status}`);
               return nested.text;
             } } : {}),
           }), opts.signal);

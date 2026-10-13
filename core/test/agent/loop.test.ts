@@ -178,3 +178,24 @@ test('tools execute in completed-call order and incomplete announcements are ans
   assert.deepEqual(assistant.content.filter(b => b.type === 'tool_use').map(b => b.id), ['a', 'b', 'partial']);
   assert.equal(assistant.content.find(b => b.type === 'text')?.text, 'checking');
 });
+
+test('invalid shell permission never executes the tool or asks for approval', async () => {
+  let called = false, asked = false;
+  const shell: Tool = { ...echo, name: 'shell', defaultPolicy: 'ask', async run() { called = true; return { content: 'ran' }; } };
+  const r = await runAgent(options(scripted([[call('a', 'shell'), done], [done]]), {
+    tools: [shell], permissions: { shell: 'ASK' as any }, approve: async () => { asked = true; return true; },
+  }));
+  assert.equal(called, false); assert.equal(asked, false);
+  assert.deepEqual(results(r.context), [{ type: 'tool_result', toolUseId: 'a', content: 'invalid policy', isError: true }]);
+});
+
+test('delegate reports an error when its nested run exhausts maxTurns', async () => {
+  const delegate: Tool = { ...echo, name: 'delegate', async run(i, ctx) { return { content: await ctx.delegate!(String(i.task)) }; } };
+  const p = scripted([
+    [{ type: 'tool_call', id: 'd', name: 'delegate', input: { task: 'nested' } }, done],
+    [{ type: 'text_delta', text: 'partial narration' }, call('n'), done],
+  ]);
+  const r = await runAgent(options(p, { tools: [echo, delegate], maxTurns: 1 }));
+  assert.equal(r.status, 'max_turns');
+  assert.deepEqual(results(r.context), [{ type: 'tool_result', toolUseId: 'd', content: 'Delegate stopped: max_turns', isError: true }]);
+});
