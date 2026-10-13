@@ -180,6 +180,7 @@ test('streaming holds back newly added longer secrets across deltas, and titles 
 test('profile memory always has an agent owner, including a default profile', async t => {
   const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream() { yield done; } }));
   const first = h.store.listAgents()[0]!;
+  t.mock.method(Date, 'now', () => first.createdAt + 1); // Keep this fixture's default agent oldest.
   const second = h.store.createAgent({ name: 'Other', provider: 'mock', model: 'test-model' });
   h.store.addMemory('user', 'shared fact');
   h.store.addMemory('agent', 'first-only note', first.id);
@@ -188,4 +189,18 @@ test('profile memory always has an agent owner, including a default profile', as
   assert.doesNotMatch(h.runtime.profile().memory!, /second-only note/);
   assert.match(h.runtime.profile(h.config, true, second).memory!, /second-only note/);
   assert.doesNotMatch(h.runtime.profile(h.config, true, second).memory!, /first-only note/);
+});
+
+test('non-owner LINE slash text remains plain, including REA with its connector off', async t => {
+  const requests: ProviderRequest[] = [];
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream(req) {
+    requests.push({ ...req, messages: structuredClone(req.messages) }); yield { type: 'text_delta', text: 'plain reply' }; yield done;
+  } }), c => { c.line.allow.users = ['owner']; });
+  saveSkill(paths(h.home).skills, { name: 'demo', description: 'Demo', body: 'PRIVATE SKILL BODY' });
+  for (const text of ['/demo hello', '/rea /missing/target', '/rea']) {
+    assert.equal(await h.runtime.lineMessage({ to: 'group', userId: 'visitor', text }), 'plain reply');
+    const input = requests.at(-1)!.messages.at(-1)!.content;
+    assert.deepEqual(input, [{ type: 'text', text }]);
+    assert.ok(!JSON.stringify(requests.at(-1)!.messages).includes('PRIVATE SKILL BODY'));
+  }
 });

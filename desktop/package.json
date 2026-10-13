@@ -5,6 +5,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/index.html src/style.css dist/",
     "typecheck": "tsc -p tsconfig.json",
+    "e2e": "pnpm build && node --test e2e/agents-rea.e2e.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "tauri": "tauri"
   },

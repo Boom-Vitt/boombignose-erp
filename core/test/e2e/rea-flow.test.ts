@@ -41,6 +41,24 @@ function verifiedJavaScriptScope(): string {
   } finally { closeSync(fd); }
 }
 
+// Large application graphs are intentionally partial in the model context.
+function analysisEvidence(content: string) {
+  assert.ok(Buffer.byteLength(content) <= 100_000);
+  if (content.endsWith('[Tool result truncated at 100 kB]')) {
+    const path = /"input_path"\s*:\s*("(?:\\.|[^"\\])*")/.exec(content);
+    const parsed = /"parsed_javascript_files"\s*:\s*(\d+)/.exec(content);
+    assert.ok(path && parsed, 'retained prefix must contain the path and parse statistics');
+    assert.match(content, /"nodes"\s*:\s*\[\s*\{/, 'non-empty graph evidence in the retained prefix');
+    assert.ok(Number(parsed[1]) > 0);
+    return { path: JSON.parse(path[1]!), files: Number(parsed[1]), truncated: true };
+  }
+  const response = JSON.parse(content);
+  assert.equal(response.error, undefined); assert.notEqual(response.success, false);
+  const analysis = response.result;
+  assert.ok(analysis.statistics.parsed_javascript_files > 0); assert.ok(analysis.graph.nodes.length > 0);
+  return { path: analysis.input_path, files: analysis.statistics.parsed_javascript_files, truncated: false };
+}
+
 test('real REA opens Hermes Desktop and analyzes its shipped JavaScript through /rea with persisted evidence and a report', {
   skip: process.env.BIGNOSE_SKIP_NETWORK === '1' ? 'BIGNOSE_SKIP_NETWORK=1' : !existsSync(target) ? 'REA target is missing' : false,
   timeout: 240_000,
@@ -61,10 +79,9 @@ test('real REA opens Hermes Desktop and analyzes its shipped JavaScript through 
     assert.equal(n, 3);
     const results = req.messages.filter((m: any) => m.role === 'tool');
     assert.equal(results.length, 2); for (const result of results) assert.ok(result.content.trim().length > 0);
-    const analysis = JSON.parse(results[1].content).result;
-    assert.ok(analysis.statistics.parsed_javascript_files > 0);
-    assert.ok(analysis.graph.nodes.length > 0);
-    return { content: `# Hermes Desktop\nPartial static evidence: open_binary opened ${target}; analyze_javascript_application parsed ${analysis.statistics.parsed_javascript_files} JavaScript file and recovered ${analysis.graph.nodes.length} graph nodes at ${scope}.\nUnknown: the main/preload/renderer layout, IPC channels, routes, local API and runtime behavior are outside this scoped check. Whole-ASAR analysis refuses the mismatching unpacked pty.node.` };
+    const analysis = analysisEvidence(results[1].content);
+    assert.equal(analysis.path, scope);
+    return { content: `# Hermes Desktop\nPartial static evidence: open_binary opened ${target}; analyze_javascript_application parsed ${analysis.files} JavaScript file with non-empty graph evidence at ${scope}. ${analysis.truncated ? 'The model received a truncated graph prefix (100 kB).' : 'The model received the full tool result.'}\nUnknown: the main/preload/renderer layout, IPC channels, routes, local API and runtime behavior are outside this scoped check. Whole-ASAR analysis refuses the mismatching unpacked pty.node.` };
   });
   configured(home, mock.baseUrl, c => { c.mcp.servers.rea!.enabled = true; c.agent.maxTurns = 5; c.providers[0]!.contextWindow = 10_000_000; });
   const a = await startDaemon({ home }); t.after(() => a.close());
@@ -79,12 +96,16 @@ test('real REA opens Hermes Desktop and analyzes its shipped JavaScript through 
   assert.deepEqual(tools.map(r => r.toolUseId), ['rea-1', 'rea-2']);
   for (const tool of tools) {
     assert.equal(tool.isError, false, `${tool.toolUseId}: ${tool.content.slice(0, 2000)}`); assert.ok(tool.content.trim().length > 0);
-    const evidence = JSON.parse(tool.content);
-    assert.equal(evidence.error, undefined, tool.content.slice(0, 2000));
-    assert.notEqual(evidence.success, false, tool.content.slice(0, 2000));
+    assert.ok(Buffer.byteLength(tool.content) <= 100_000);
+    if (tool.toolUseId === 'rea-2') analysisEvidence(tool.content);
+    else {
+      const evidence = JSON.parse(tool.content);
+      assert.equal(evidence.error, undefined, tool.content.slice(0, 2000));
+      assert.notEqual(evidence.success, false, tool.content.slice(0, 2000));
+    }
   }
-  const analysis = JSON.parse(tools[1]!.content).result;
-  assert.equal(analysis.input_path, scope); assert.ok(analysis.statistics.parsed_javascript_files > 0);
+  const analysis = analysisEvidence(tools[1]!.content);
+  assert.equal(analysis.path, scope); assert.ok(analysis.files > 0);
   assert.deepEqual(blocks.filter(b => b.type === 'tool_use').map(b => b.name), ['mcp__rea__open_binary', 'mcp__rea__analyze_javascript_application']);
   assert.deepEqual(messages[0]!.content, [{ type: 'text', text: `/rea ${target}` }]);
   const files = readdirSync(join(home, 'reports')); assert.equal(files.length, 1);

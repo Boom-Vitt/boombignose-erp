@@ -2,7 +2,7 @@
 import type { Api } from '../api.ts';
 import type { McpServerInfo, McpToolInfo } from '../types.ts';
 import { badge, btn, check, confirmBtn, el, errMsg, field, guarded, load, select, toast } from '../dom.ts';
-import { addConnector } from './connector-form.ts';
+import { addConnector, deleteConnector } from './connector-form.ts';
 
 const BUILTIN = 'rea';
 
@@ -60,7 +60,7 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
       el('div', { class: 'actions' },
         builtin && !s.enabled ? btn('Enable', (b) => void guarded(async () => { await api.patchMcp(s.name, { enabled: true }); polls = 0; await refreshCards(); }, b), 'primary') : toggle.root,
         test, toolsBtn,
-        !builtin && confirmBtn('Delete', (b) => void guarded(async () => { await api.deleteMcp(s.name); await refreshCards(); }, b))),
+        !builtin && confirmBtn('Delete', (b) => void guarded(async () => { await deleteConnector(api, s.name); await refreshCards(); }, b))),
       result, panel);
   }
 

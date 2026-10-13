@@ -1,17 +1,25 @@
 // Settings: Schedules (cron jobs).
 import type { Api } from '../api.ts';
-import type { Delivery, Job } from '../types.ts';
+import type { Agent, Delivery, Job } from '../types.ts';
 import { badge, btn, check, confirmBtn, el, errMsg, field, formatTime, guarded, select, toast } from '../dom.ts';
 
 export function mountSchedules(pane: HTMLElement, api: Api): void {
   const list = el('div', { class: 'cards' });
+  let agents: Agent[] = [];
+  let refreshSeq = 0;
+  const agentFilter = select([['', 'All agents']], '');
+  const newAgent = select([], '');
+  const agentName = (id: string | null) => agents.find(a => a.id === id)?.name ?? id ?? 'Shared';
 
   async function refresh(): Promise<void> {
+    const seq = ++refreshSeq;
     try {
-      const { jobs } = await api.listSchedules();
+      const { jobs } = await api.listSchedules(agentFilter.value || undefined);
+      if (seq !== refreshSeq) return;
       list.replaceChildren(...jobs.map(jobCard));
       if (!jobs.length) list.append(el('p', { class: 'muted' }, 'No schedules yet.'));
     } catch (e) {
+      if (seq !== refreshSeq) return;
       list.replaceChildren(el('div', { class: 'notice error', role: 'alert' }, el('p', {}, errMsg(e)), btn('Retry', () => void refresh())));
     }
   }
@@ -21,7 +29,7 @@ export function mountSchedules(pane: HTMLElement, api: Api): void {
       void guarded(() => api.setScheduleEnabled(j.id, on)).then((ok) => { if (!ok) void refresh(); });
     });
     return el('section', { class: 'card' },
-      el('div', { class: 'card-head' }, el('code', {}, j.cron), badge(j.delivery.kind === 'line' ? `LINE ${j.delivery.to}` : 'Desktop')),
+      el('div', { class: 'card-head' }, badge(agentName(j.agentId)), el('code', {}, j.cron), badge(j.delivery.kind === 'line' ? `LINE ${j.delivery.to}` : 'Desktop')),
       el('p', { class: 'note-text' }, j.prompt),
       el('p', { class: 'muted' },
         j.nextRunAt ? `Next run: ${formatTime(j.nextRunAt)}` : 'Not scheduled',
@@ -43,7 +51,7 @@ export function mountSchedules(pane: HTMLElement, api: Api): void {
     el('div', { class: 'grid2' },
       field('When (cron)', cron, 'Five fields: minute hour day-of-month month day-of-week. Local time.'),
       field('Send the result to', delivery)),
-    toField, field('Prompt', prompt), el('div', { class: 'actions' }, submit));
+    field('Agent', newAgent), toField, field('Prompt', prompt), el('div', { class: 'actions' }, submit));
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
     void guarded(async () => {
@@ -55,7 +63,7 @@ export function mountSchedules(pane: HTMLElement, api: Api): void {
         if (!to.value.trim()) throw new Error('Enter the LINE chat ID');
         d = { kind: 'line', to: to.value.trim() };
       }
-      await api.addSchedule({ cron: expr, prompt: prompt.value.trim(), delivery: d });
+      await api.addSchedule({ cron: expr, prompt: prompt.value.trim(), delivery: d, agentId: newAgent.value });
       toast('Schedule added');
       form.reset();
       toField.hidden = true;
@@ -65,6 +73,13 @@ export function mountSchedules(pane: HTMLElement, api: Api): void {
 
   pane.append(el('h2', {}, 'Schedules'),
     el('p', { class: 'muted' }, 'Run a prompt on a schedule and send the answer to this app or a LINE chat. Schedules survive restarts; runs missed while BigNose was off are skipped.'),
-    list, form);
-  void refresh();
+    field('Agent filter', agentFilter), list, form);
+  agentFilter.addEventListener('change', () => void refresh());
+  void api.listAgents().then(result => {
+    agents = result.agents;
+    agentFilter.replaceChildren(el('option', { value: '' }, 'All agents'), ...agents.map(a => el('option', { value: a.id }, a.name)));
+    newAgent.replaceChildren(...agents.map(a => el('option', { value: a.id }, a.name)));
+    newAgent.value = agents[0]?.id ?? '';
+    void refresh();
+  }).catch(e => { list.replaceChildren(el('p', { class: 'notice error' }, errMsg(e))); });
 }

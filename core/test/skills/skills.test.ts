@@ -232,3 +232,18 @@ test('tools: skill_load (allow) and skill_save (ask)', async (t) => {
   assert.equal((await save!.run({ name: 'Bad Name', description: 'd', body: 'b' }, ctx)).isError, true);
   assert.equal((await save!.run({ name: 'ok', description: 5, body: 'b' }, ctx)).isError, true);
 });
+
+test('invalid same-named user skill falls back to the bundled skill for listing and loading', t => {
+  const dir = tmpSkills(t), name = 'reverse-engineer-anything';
+  for (const content of ['', 'no frontmatter', skillMd('other', 'wrong name')]) {
+    write(dir, `${name}/SKILL.md`, content);
+    assert.equal(listSkills(dir).find(s => s.name === name)?.bundled, true);
+    const loaded = loadSkill(dir, name)!;
+    assert.ok(loaded.body.length > 100);
+    assert.ok(loaded.folder.includes('/bundled/'));
+    assert.equal(loaded.name, name);
+  }
+  write(dir, `${name}/SKILL.md`, skillMd(name, 'User override', 'User procedure'));
+  assert.equal(loadSkill(dir, name)!.body, 'User procedure');
+  assert.equal(listSkills(dir).find(s => s.name === name)?.bundled, undefined);
+});

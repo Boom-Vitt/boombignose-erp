@@ -146,3 +146,27 @@ test('failed activation rolls back the connector and only its newly allocated se
   assert.equal(Object.hasOwn(stored.config.mcp.servers, 'my'), false);
   assert.deepEqual([...secrets], [['KEEP', 'fake-old']]);
 });
+
+test('connector names reject underscores before any writes', async () => {
+  const { api, calls } = fakeDaemon();
+  await assert.rejects(addConnector(api, { ...form, name: 'bad_name' }), /letters, digits or/);
+  assert.deepEqual(calls, ['GET /api/settings']);
+});
+
+test('delete clears only its own unshared secrets and permits same-name credential rotation', async () => {
+  const { deleteConnector } = await import('../src/settings/connector-form.ts');
+  const { api, stored, secrets, calls } = fakeDaemon();
+  await addConnector(api, form);
+  stored.secrets.MCP_6D79_4B = '••••';
+  const shared = secretName('my', 'SHARED'), unrelated = secretName('other', 'K');
+  stored.secrets[shared] = stored.secrets[unrelated] = '••••';
+  secrets.set(shared, 'fake-share'); secrets.set(unrelated, 'fake-other');
+  stored.config.mcp.servers.other = { transport: 'http', enabled: false, url: 'http://127.0.0.1:1', headers: { Authorization: `Bearer \${${shared}}` } };
+  await deleteConnector(api, 'my');
+  assert.equal(secrets.has('MCP_6D79_4B'), false);
+  assert.equal(secrets.get(shared), 'fake-share'); assert.equal(secrets.get(unrelated), 'fake-other');
+  assert.ok(calls.indexOf('DELETE /api/mcp/my') < calls.lastIndexOf('PUT /api/secrets'));
+  delete stored.secrets.MCP_6D79_4B;
+  await addConnector(api, form);
+  assert.equal(secrets.get('MCP_6D79_4B'), 'fake-one');
+});

@@ -1,8 +1,8 @@
 // Chat screen: session list with search, streaming answer, live tool activity, approval cards, stop.
 import { ApiError } from './api.ts';
 import type { Api } from './api.ts';
-import type { ApiEvent, Message, SessionSummary } from './types.ts';
-import { btn, confirmBtn, el, errMsg, formatTime, guarded, renderText, toast } from './dom.ts';
+import type { Agent, ApiEvent, Command, Message, SessionSummary } from './types.ts';
+import { btn, confirmBtn, el, errMsg, formatTime, guarded, renderText, select, field, toast } from './dom.ts';
 
 export interface Chat {
   root: HTMLElement;
@@ -11,6 +11,10 @@ export interface Chat {
   onStreamOpen(): void;
   /** Reload the list and the open chat, e.g. after the event stream reconnects. */
   refresh(): void;
+  refreshAgents(): Promise<void>;
+  selectAgent(id: string): Promise<void>;
+  agentId(): string | undefined;
+  leave(): void;
 }
 
 interface Approval { sessionId: string; tool: string; input: Record<string, unknown>; state: 'pending' | 'allowed' | 'denied'; card?: HTMLElement }
@@ -19,7 +23,15 @@ interface ToolRow { root: HTMLElement; finish(isError: boolean, output: string):
 const pretty = (v: unknown) => JSON.stringify(v, null, 2);
 const SUMMARY_PREFIX = '[Summary of earlier conversation]';
 
-export function createChat(api: Api): Chat {
+export function createChat(api: Api, agentChanged: (agent: Agent) => void = () => {}): Chat {
+  let agents: Agent[] = [];
+  let selectedAgent: string | undefined;
+  let agentSeq = 0;
+  let commands: Command[] = [];
+  let matches: Command[] = [];
+  let commandIndex = 0;
+  let pickerClosed = false;
+  const notifications = new Map<string, string[]>();
   let currentId: string | null = null;
   let loadSeq = 0;
   let listSeq = 0;
@@ -33,25 +45,37 @@ export function createChat(api: Api): Chat {
   let sessions: SessionSummary[] = [];
 
   // ---- DOM
+  const agentPicker = select([], '');
+  agentPicker.setAttribute('aria-label', 'Chat agent');
+  const providerPicker = select([], '');
+  const modelInput = el('input', { 'aria-label': 'Agent model', required: true });
+  const modelBar = el('div', { class: 'chat-model' }, field('Provider', providerPicker), field('Model', modelInput),
+    btn('Save model', b => void guarded(async () => {
+      if (!selectedAgent || !modelInput.value.trim()) throw new Error('Choose an agent and enter a model');
+      await api.patchAgent(selectedAgent, { provider: providerPicker.value, model: modelInput.value.trim() });
+      await refreshAgents();
+    }, b), 'small'));
+  const picker = el('div', { id: 'slash-picker', class: 'slash-picker', role: 'listbox', 'aria-label': 'Slash commands', hidden: true });
   const search = el('input', { type: 'search', placeholder: 'Search chats', autocomplete: 'off' });
   const list = el('ul', { class: 'session-list' });
   const messages = el('div', { class: 'messages', role: 'log', 'aria-live': 'polite', 'aria-label': 'Conversation' });
-  const input = el('textarea', { rows: 1, placeholder: 'Message BigNose', 'aria-label': 'Message' });
+  const input = el('textarea', { rows: 1, placeholder: 'Message BigNose', 'aria-label': 'Message', 'aria-autocomplete': 'list', 'aria-controls': 'slash-picker', 'aria-expanded': 'false' });
   const sendBtn = btn('Send', () => void send(), 'primary');
   const stopBtn = btn('Stop', () => void stop(), 'danger');
   const root = el('div', { class: 'chat' },
     el('aside', { class: 'sessions' },
-      el('div', { class: 'sessions-head' },
+      el('div', { class: 'sessions-head' }, field('Agent', agentPicker),
         btn('New chat', () => { void open(null); input.focus(); }, 'primary block'),
         el('label', { class: 'sr-label' }, el('span', { class: 'sr-only' }, 'Search chats'), search)),
       list),
-    el('section', { class: 'convo' }, messages, el('div', { class: 'composer' }, input, el('div', { class: 'composer-actions' }, sendBtn, stopBtn))));
+    el('section', { class: 'convo' }, modelBar, messages, el('div', { class: 'composer' }, picker, input, el('div', { class: 'composer-actions' }, sendBtn, stopBtn))));
 
   // ---- helpers
   const isBusy = () => sending || (currentId !== null && running.has(currentId));
 
   function updateComposer(): void {
     const busy = isBusy();
+    sendBtn.disabled = !selectedAgent;
     sendBtn.hidden = busy;
     stopBtn.hidden = !busy;
   }
@@ -151,6 +175,7 @@ export function createChat(api: Api): Chat {
         else tools.get(b.toolUseId)?.finish(!!b.isError, b.content);
       }
     }
+    for (const text of notifications.get(currentId ?? '') ?? []) note(text);
     messages.scrollTop = messages.scrollHeight;
   }
 
@@ -173,9 +198,10 @@ export function createChat(api: Api): Chat {
   }
 
   async function refreshList(): Promise<void> {
+    if (!selectedAgent) return;
     const seq = ++listSeq; // a slow answer must not overwrite a newer search
     try {
-      const found = (await api.listSessions(query || undefined)).sessions;
+      const found = (await api.listSessions(query || undefined, undefined, selectedAgent)).sessions;
       if (seq !== listSeq) return;
       sessions = found;
       renderList();
@@ -222,20 +248,102 @@ export function createChat(api: Api): Chat {
     }
   }
 
+  // ---- agents and commands
+  async function refreshAgents(): Promise<void> {
+    const seq = ++agentSeq;
+    try {
+      const [found, settings] = await Promise.all([api.listAgents(), api.getSettings()]);
+      if (seq !== agentSeq) return;
+      agents = found.agents;
+      agentPicker.replaceChildren(...agents.map(a => el('option', { value: a.id }, `${a.icon} ${a.name}`)));
+      providerPicker.replaceChildren(...settings.config.providers.map(p => el('option', { value: p.id }, p.label || p.id)));
+      const id = agents.some(a => a.id === selectedAgent) ? selectedAgent : agents[0]?.id;
+      if (id !== selectedAgent) { await selectAgent(id ?? ''); return; }
+      showAgent();
+      await loadCommands();
+    } catch (e) { toast(errMsg(e), 'error'); }
+  }
+
+  function showAgent(): void {
+    const a = agents.find(a => a.id === selectedAgent);
+    agentPicker.value = selectedAgent ?? '';
+    if (a) {
+      providerPicker.value = a.provider; modelInput.value = a.model; agentChanged(a);
+    }
+    updateComposer();
+  }
+
+  async function loadCommands(): Promise<void> {
+    const agent = selectedAgent;
+    commands = [];
+    if (!agent) return;
+    try {
+      const result = await api.listCommands(agent);
+      if (selectedAgent !== agent) return;
+      commands = result.commands; renderPicker();
+    } catch (e) { toast(errMsg(e), 'error'); }
+  }
+
+  async function selectAgent(id: string): Promise<void> {
+    selectedAgent = id || undefined;
+    query = ''; search.value = ''; input.value = '';
+    sessions = []; ++listSeq;
+    pickerClosed = false; commands = []; renderPicker();
+    showAgent();
+    await open(null);
+    await Promise.all([refreshList(), loadCommands()]);
+  }
+
+  function renderPicker(): void {
+    const typed = /^\/([^\s]*)$/.exec(input.value)?.[1];
+    matches = typed === undefined ? [] : commands.filter(c => c.name.toLowerCase().startsWith(typed.toLowerCase()));
+    commandIndex = Math.min(commandIndex, Math.max(0, matches.length - 1));
+    picker.hidden = pickerClosed || typed === undefined || !matches.length;
+    input.setAttribute('aria-expanded', String(!picker.hidden));
+    input.setAttribute('aria-activedescendant', picker.hidden ? '' : `slash-${commandIndex}`);
+    picker.replaceChildren(...matches.map((c, i) => el('button', { type: 'button', role: 'option', id: `slash-${i}`,
+      class: `slash-option${i === commandIndex ? ' active' : ''}`, 'aria-selected': i === commandIndex ? 'true' : 'false',
+      onclick: () => pickCommand(i) }, el('strong', {}, `/${c.name}`), el('span', {}, c.description))));
+  }
+
+  function pickCommand(index: number): void {
+    if (!matches[index]) return;
+    input.value = `/${matches[index].name} `;
+    pickerClosed = true; renderPicker(); input.focus();
+  }
+
+  function connectorConfirm(connector: string, id: string, agentId: string, text: string): void {
+    const name = agents.find(a => a.id === agentId)?.name ?? 'this agent';
+    const card = el('div', { class: 'connector-confirm notice', role: 'group', 'aria-label': 'Enable connector' },
+      el('p', {}, `Turn on ${connector} for ${name}?`));
+    card.append(btn('Turn on', b => void guarded(async () => {
+      const [settings, agent] = await Promise.all([api.getSettings(), api.getAgent(agentId)]);
+      if (!settings.config.mcp.servers[connector]?.enabled) await api.patchMcp(connector, { enabled: true });
+      if (agent.connectors !== null && !agent.connectors.includes(connector))
+        await api.patchAgent(agentId, { connectors: [...agent.connectors, connector] });
+      card.remove();
+      if (currentId === id && selectedAgent === agentId) { input.value = text; await send(); }
+    }, b), 'primary'), btn('Cancel', () => card.remove()));
+    append(card);
+  }
+
   // ---- sending
   async function send(): Promise<void> {
     const text = input.value.trim();
-    if (!text || isBusy()) return;
+    const agentId = selectedAgent;
+    if (!text || !agentId || isBusy()) return;
     sending = true;
+    pickerClosed = true; renderPicker();
     updateComposer();
     let userBubble: HTMLElement | undefined;
     let id = currentId;
+    const seq = loadSeq;
     try {
       if (!id) {
-        id = (await api.createSession()).id;
-        currentId = id;
-        ++loadSeq;
+        id = (await api.createSession(undefined, agentId)).id;
         scheduleList();
+        if (seq !== loadSeq || selectedAgent !== agentId) return;
+        currentId = id;
       }
       if (messages.querySelector('.empty')) messages.replaceChildren();
       live = null;
@@ -246,10 +354,14 @@ export function createChat(api: Api): Chat {
       await api.sendMessage(id, text);
       scheduleList();
     } catch (e) {
-      if (id && !(e instanceof ApiError && e.status === 409)) running.delete(id);
+      const connector = e instanceof ApiError && e.status === 409 ? e.connector : undefined;
+      if (id && (!(e instanceof ApiError && e.status === 409) || connector)) running.delete(id);
       userBubble?.remove();
-      if (userBubble) input.value = text;
-      toast(errMsg(e), 'error');
+      if (seq === loadSeq && selectedAgent === agentId) {
+        if (userBubble) input.value = text;
+        if (connector && id) connectorConfirm(connector, id, agentId, text);
+        else toast(errMsg(e), 'error');
+      }
     } finally {
       sending = false;
       updateComposer();
@@ -264,7 +376,14 @@ export function createChat(api: Api): Chat {
 
   // ---- events
   function onEvent(e: ApiEvent): void {
-    if (e.type === 'notification') { toast(e.body ? `${e.title}: ${e.body}` : e.title); return; }
+    if (e.type === 'notification') {
+      const text = e.body ? `${e.title}: ${e.body}` : e.title;
+      if (e.sessionId) {
+        notifications.set(e.sessionId, [...notifications.get(e.sessionId) ?? [], text]);
+        if (e.sessionId === currentId) note(text);
+      }
+      toast(text); return;
+    }
     if (e.type === 'session_updated') {
       scheduleList();
       if (e.sessionId === currentId && !running.has(e.sessionId) && !sending) void reloadCurrent();
@@ -303,6 +422,7 @@ export function createChat(api: Api): Chat {
       case 'run_end': {
         live = null;
         void reloadCurrent().then(() => {
+          if (currentId !== id) return;
           if (e.status === 'interrupted') note('Stopped.');
           else if (e.status === 'max_turns') note('Stopped at the turn limit. Send another message to continue.', 'warn');
           else if (e.status === 'error') note(e.error ? `Error: ${e.error}` : 'The run failed.', 'error');
@@ -320,19 +440,32 @@ export function createChat(api: Api): Chat {
     searchTimer = window.setTimeout(() => { query = search.value.trim(); void refreshList(); }, 250);
   });
   input.addEventListener('keydown', (ev) => {
+    if (!picker.hidden && !ev.isComposing) {
+      if (ev.key === 'Escape') { ev.preventDefault(); pickerClosed = true; renderPicker(); return; }
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault(); commandIndex = (commandIndex + (ev.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length; renderPicker(); return;
+      }
+      if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); pickCommand(commandIndex); return; }
+    }
     if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); void send(); }
   });
   input.addEventListener('input', () => {
+    pickerClosed = false; commandIndex = 0; renderPicker();
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 200)}px`;
   });
 
-  void refreshList();
+  agentPicker.addEventListener('change', () => void selectAgent(agentPicker.value));
+  void refreshAgents();
   void open(null);
 
   return {
     root,
     onEvent,
+    refreshAgents,
+    selectAgent,
+    agentId: () => selectedAgent,
+    leave: () => { ++loadSeq; },
     onStreamOpen() {
       running.clear();
       for (const a of approvals.values()) a.card?.remove();

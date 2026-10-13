@@ -1,6 +1,6 @@
 // Settings: Providers & models.
 import type { Api } from '../api.ts';
-import type { ProviderConfig, Settings } from '../types.ts';
+import type { Agent, ProviderConfig, Settings } from '../types.ts';
 import { badge, btn, confirmBtn, el, field, guarded, load, select, toast } from '../dom.ts';
 
 const HINT: Record<string, string> = {
@@ -8,21 +8,28 @@ const HINT: Record<string, string> = {
   'openai-compatible': 'Chat Completions root, for example https://api.openai.com/v1 or http://127.0.0.1:1234/v1',
 };
 
-export function mountProviders(pane: HTMLElement, api: Api): void {
-  const reload = () => void load(pane, () => api.getSettings(), render);
+export function mountProviders(pane: HTMLElement, api: Api, currentAgent?: string, changed: () => void = () => {}): void {
+  const reload = () => void load(pane, async () => {
+    const [settings, agents] = await Promise.all([api.getSettings(), api.listAgents()]);
+    return { ...settings, ...agents };
+  }, render);
 
-  function render({ config, secrets }: Settings): void {
+  function render({ config, secrets, agents }: Settings & { agents: Agent[] }): void {
     const label = (p: ProviderConfig) => p.label || p.id;
 
-    const provider = select(config.providers.map((p) => [p.id, label(p)]), config.active.provider);
-    const model = el('input', { type: 'text', value: config.active.model, autocomplete: 'off', spellcheck: 'false' });
+    const agent = select(agents.map(a => [a.id, `${a.icon} ${a.name}`]), agents.some(a => a.id === currentAgent) ? currentAgent! : agents[0]?.id ?? '');
+    const selected = () => agents.find(a => a.id === agent.value)!;
+    const provider = select(config.providers.map((p) => [p.id, label(p)]), selected().provider);
+    const model = el('input', { type: 'text', value: selected().model, autocomplete: 'off', spellcheck: 'false' });
+    agent.addEventListener('change', () => { provider.value = selected().provider; model.value = selected().model; });
     const active = el('section', { class: 'card' },
-      el('h3', {}, 'Active model'),
-      el('div', { class: 'grid2' }, field('Provider', provider), field('Model', model)),
+      el('h3', {}, 'Agent model'),
+      field('Agent', agent), el('div', { class: 'grid2' }, field('Provider', provider), field('Model', model)),
       el('div', { class: 'actions' }, btn('Save', (b) => void guarded(async () => {
         const m = model.value.trim();
         if (!m) throw new Error('Enter a model name');
-        await api.updateSettings((c) => { c.active = { provider: provider.value, model: m }; });
+        await api.patchAgent(agent.value, { provider: provider.value, model: m });
+        changed();
         toast('Saved');
         reload();
       }, b), 'primary')));
@@ -64,7 +71,7 @@ export function mountProviders(pane: HTMLElement, api: Api): void {
         : el('p', { class: 'muted' }, 'No key needed (local server).');
 
       return el('section', { class: 'card' },
-        el('h3', {}, label(p), badge(p.kind), p.id === config.active.provider && badge('Active', 'ok')),
+        el('h3', {}, label(p), badge(p.kind), p.id === selected().provider && badge('Selected', 'ok')),
         el('div', { class: 'grid2' }, field('Base URL', url, HINT[p.kind]), field('Context window (tokens)', ctx)),
         el('div', { class: 'actions' }, save),
         keyRow);

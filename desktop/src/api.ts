@@ -1,15 +1,17 @@
 // The only module that knows the local API's routes (docs/design.md section 6). No DOM.
 import type {
-  Config, Health, Job, Delivery, LineStatus, McpServerConfig, McpServerInfo, McpToolInfo, MemoryKind,
+  Agent, AgentInput, Command, Config, Health, Job, Delivery, LineStatus, McpServerConfig, McpServerInfo, McpToolInfo, MemoryKind,
   MemoryNote, SessionDetail, SessionSummary, Settings, Skill, SkillSummary, Status, TestResult,
 } from './types.ts';
 
 export class ApiError extends Error {
   status: number; // 0 = the daemon could not be reached
-  constructor(status: number, message: string) {
+  connector?: string;
+  constructor(status: number, message: string, connector?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.connector = connector;
   }
 }
 
@@ -31,6 +33,7 @@ export function createApi(opts: ApiOptions) {
   const base = `http://127.0.0.1:${opts.port}`;
   const doFetch = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const auth = { Authorization: `Bearer ${opts.token}` };
+  let settingsQueue: Promise<unknown> = Promise.resolve();
 
   function url(path: string, query?: Query): string {
     const u = new URL(path, base);
@@ -58,7 +61,8 @@ export function createApi(opts: ApiOptions) {
     try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
     if (!res.ok) {
       const msg = json && typeof json === 'object' && 'error' in json ? String((json as { error: unknown }).error) : '';
-      throw new ApiError(res.status, msg || FALLBACK[res.status] || `HTTP ${res.status}`);
+      const connector = json && typeof json === 'object' && 'connector' in json && typeof json.connector === 'string' ? json.connector : undefined;
+      throw new ApiError(res.status, msg || FALLBACK[res.status] || `HTTP ${res.status}`, connector);
     }
     return json as T;
   }
@@ -75,8 +79,14 @@ export function createApi(opts: ApiOptions) {
     /** Raw stream for GET /api/events (EventSource cannot send the Authorization header). */
     events: (signal: AbortSignal) => send('GET', '/api/events', { signal }, 'text/event-stream'),
 
-    listSessions: (q?: string, limit?: number) => get<{ sessions: SessionSummary[] }>('/api/sessions', { q, limit }),
-    createSession: (title?: string) => post<{ id: string }>('/api/sessions', title ? { title } : {}),
+    listAgents: () => get<{ agents: Agent[] }>('/api/agents'),
+    getAgent: (id: string) => get<Agent>(`/api/agents/${enc(id)}`),
+    createAgent: (agent: Partial<AgentInput> & { name: string }) => post<Agent>('/api/agents', agent),
+    patchAgent: (id: string, agent: Partial<AgentInput>) => patch<Agent>(`/api/agents/${enc(id)}`, agent),
+    deleteAgent: (id: string) => del(`/api/agents/${enc(id)}`),
+    listCommands: (agent?: string) => get<{ commands: Command[] }>('/api/commands', { agent }),
+    listSessions: (q?: string, limit?: number, agent?: string) => get<{ sessions: SessionSummary[] }>('/api/sessions', { q, limit, agent }),
+    createSession: (title?: string, agentId?: string) => post<{ id: string }>('/api/sessions', { title, agentId }),
     getSession: (id: string) => get<SessionDetail>(`/api/sessions/${enc(id)}`),
     deleteSession: (id: string) => del(`/api/sessions/${enc(id)}`),
     sendMessage: (id: string, text: string) => post<{ runId: string }>(`/api/sessions/${enc(id)}/messages`, { text }),
@@ -86,10 +96,14 @@ export function createApi(opts: ApiOptions) {
     getSettings: () => get<Settings>('/api/settings'),
     putSettings: (config: Config) => put<Settings>('/api/settings', { config }),
     /** Read-modify-write on a fresh copy, so one screen never overwrites what another saved. */
-    async updateSettings(mutate: (config: Config) => void): Promise<Settings> {
-      const { config } = await api.getSettings();
-      mutate(config);
-      return api.putSettings(config);
+    updateSettings(mutate: (config: Config) => void): Promise<Settings> {
+      const save = settingsQueue.then(async () => {
+        const { config } = await api.getSettings();
+        mutate(config);
+        return api.putSettings(config);
+      });
+      settingsQueue = save.catch(() => {});
+      return save;
     },
     /** An empty value deletes the secret. */
     putSecret: (name: string, value: string) => put<{ name: string; masked: string }>('/api/secrets', { name, value }),
@@ -106,13 +120,13 @@ export function createApi(opts: ApiOptions) {
     putSkill: (name: string, skill: { description: string; body: string }) => put<unknown>(`/api/skills/${enc(name)}`, skill),
     deleteSkill: (name: string) => del(`/api/skills/${enc(name)}`),
 
-    listMemory: (kind?: MemoryKind, q?: string) => get<{ notes: MemoryNote[] }>('/api/memory', { kind, q }),
-    addMemory: (kind: MemoryKind, text: string) => post<unknown>('/api/memory', { kind, text }),
+    listMemory: (kind?: MemoryKind, q?: string, agent?: string) => get<{ notes: MemoryNote[] }>('/api/memory', { kind, q, agent }),
+    addMemory: (kind: MemoryKind, text: string, agentId?: string) => post<unknown>('/api/memory', { kind, text, agentId }),
     updateMemory: (id: string | number, text: string) => put<unknown>(`/api/memory/${enc(String(id))}`, { text }),
     deleteMemory: (id: string | number) => del(`/api/memory/${enc(String(id))}`),
 
-    listSchedules: () => get<{ jobs: Job[] }>('/api/schedules'),
-    addSchedule: (job: { cron: string; prompt: string; delivery: Delivery }) => post<unknown>('/api/schedules', job),
+    listSchedules: (agent?: string) => get<{ jobs: Job[] }>('/api/schedules', { agent }),
+    addSchedule: (job: { cron: string; prompt: string; delivery: Delivery; agentId?: string }) => post<unknown>('/api/schedules', job),
     setScheduleEnabled: (id: string, enabled: boolean) => patch<unknown>(`/api/schedules/${enc(id)}`, { enabled }),
     deleteSchedule: (id: string) => del(`/api/schedules/${enc(id)}`),
 

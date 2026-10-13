@@ -14,7 +14,7 @@ export function secretName(server: string, key: string): string {
 
 export function prepareConnector(form: ConnectorForm, settings: Settings) {
   const name = form.name.trim();
-  if (!/^[A-Za-z0-9_-]{1,32}$/.test(name)) throw new Error('Name: 1 to 32 letters, digits, "-" or "_"');
+  if (!/^[A-Za-z0-9-]{1,32}$/.test(name)) throw new Error('Name: 1 to 32 letters, digits or "-"');
   if (Object.hasOwn(settings.config.mcp.servers, name)) throw new Error(`A connector named ${name} already exists`);
   let config: McpServerConfig;
   if (form.transport === 'stdio') {
@@ -75,5 +75,22 @@ export async function addConnector(api: Api, form: ConnectorForm): Promise<void>
       throw new Error(`Connector ${name} setup failed and cleanup was incomplete. Check the connector before retrying.`, { cause: error });
     }
     throw error;
+  }
+}
+
+export async function deleteConnector(api: Api, name: string): Promise<void> {
+  const { config, secrets } = await api.getSettings();
+  const referenced = new Set(config.providers.flatMap(p => p.apiKeyEnv ? [p.apiKeyEnv] : []));
+  for (const [serverName, server] of Object.entries(config.mcp.servers)) {
+    if (serverName === name) continue;
+    for (const value of Object.values(server.transport === 'stdio' ? server.env ?? {} : server.headers ?? {})) {
+      for (const match of value.matchAll(/\$\{([A-Z_][A-Z0-9_]*)\}/g)) referenced.add(match[1]);
+    }
+  }
+  await api.deleteMcp(name);
+  const prefix = secretName(name, '');
+  for (const secret of Object.keys(secrets)) {
+    if (secret.startsWith(prefix) && /^[0-9A-F]+$/.test(secret.slice(prefix.length)) && !referenced.has(secret))
+      await api.putSecret(secret, '');
   }
 }
