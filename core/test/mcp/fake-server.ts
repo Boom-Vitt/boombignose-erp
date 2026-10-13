@@ -1,0 +1,29 @@
+import { createInterface } from 'node:readline';
+
+const write = (value: unknown) => process.stdout.write(JSON.stringify(value) + '\n');
+let pinged = false, initialized = false;
+for await (const line of createInterface({ input: process.stdin })) {
+  const m = JSON.parse(line);
+  if (m.id === 'server-ping' && m.result) { pinged = true; continue; }
+  if (m.method === 'notifications/initialized') { initialized = true; continue; }
+  if (!m.id) continue;
+  const reply = (result: unknown) => write({ jsonrpc: '2.0', id: m.id, result });
+  if (m.method === 'initialize') {
+    if (m.params.protocolVersion !== '2025-11-25') process.exit(2);
+    write({ jsonrpc: '2.0', id: 'server-ping', method: 'ping' });
+    write({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
+    reply({ protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '1' } });
+  } else if (m.method === 'tools/list') {
+    if (!initialized || !pinged) { write({ jsonrpc: '2.0', id: m.id, error: { code: -32000, message: 'not initialized' } }); continue; }
+    reply(m.params?.cursor === 'second' ? { tools: [{ name: 'fail', description: 'Fail', inputSchema: { type: 'object' } }, { name: 'bad.name', inputSchema: {} }, { name: 'bad/name', inputSchema: {} }, { name: 'x'.repeat(100), inputSchema: {} }] }
+      : { tools: [{ name: 'echo', description: 'Echo', inputSchema: { type: 'object' } }], nextCursor: 'second' });
+  } else if (m.method === 'tools/call' && m.params.name === 'echo') {
+    reply({ content: [{ type: 'text', text: String(m.params.arguments.text) }, { type: 'text', text: `${process.env.BN_TEST}|${process.env.PATH ? 'path' : 'missing'}` }] });
+  } else if (m.method === 'tools/call' && m.params.name === 'fail') {
+    reply({ content: [{ type: 'text', text: 'tool failed' }], isError: true });
+  } else if (m.method === 'tools/call' && m.params.name === 'wait') {
+    // Leave the request pending until the test aborts it or closes the client.
+  } else {
+    write({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'unknown method or tool' } });
+  }
+}
