@@ -43,6 +43,7 @@ export default async function ClientDetailPage({
   const { data: client } = await supabase
     .from("clients")
     .select("id, name, industry, source, notes, created_at, portal_enabled, portal_token")
+    .eq("org_id", ctx.orgId)
     .eq("id", id)
     .maybeSingle()
 
@@ -55,16 +56,19 @@ export default async function ClientDetailPage({
     supabase
       .from("contacts")
       .select("id, name, email, phone, role")
+      .eq("org_id", ctx.orgId)
       .eq("client_id", id)
       .order("created_at", { ascending: true }),
     supabase
       .from("deals")
       .select("id, title, stage, value_satang, updated_at")
+      .eq("org_id", ctx.orgId)
       .eq("client_id", id)
       .order("updated_at", { ascending: false }),
     supabase
       .from("activities")
       .select("id, type, body, due_date, done, created_at")
+      .eq("org_id", ctx.orgId)
       .eq("client_id", id)
       .order("created_at", { ascending: false })
       .limit(8),

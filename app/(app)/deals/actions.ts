@@ -211,7 +211,10 @@ export async function addActivity(input: ActivityInput): Promise<{ error?: strin
     .from("deals")
     .select("client_id")
     .eq("id", a.dealId)
+    .eq("org_id", ctx.orgId)
     .maybeSingle()
+
+  if (!deal) return { error: "Deal not found in the active workspace" }
 
   const { error } = await supabase.from("activities").insert({
     org_id: ctx.orgId,

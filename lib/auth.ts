@@ -19,6 +19,13 @@ export type OrgContext = {
   role: Role
 }
 
+/** Authenticated actor, independent of whether workspace onboarding is complete. */
+export const getAuthenticatedUser = cache(async () => {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user
+})
+
 /**
  * Resolve the signed-in user's active organization context. The active org is
  * the one named by the `active_org` cookie when the user is a member of it,
@@ -34,12 +41,13 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
   } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data: memberships } = await supabase
+  const { data: memberships, error: membershipError } = await supabase
     .from("memberships")
     .select("org_id, role")
     .eq("user_id", user.id)
     .order("created_at", { ascending: true })
 
+  if (membershipError) throw new Error("Unable to load workspace memberships. Please try again.")
   if (!memberships || memberships.length === 0) return null
 
   const cookieStore = await cookies()
@@ -48,17 +56,19 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
     (preferred && memberships.find((m) => m.org_id === preferred)) ||
     memberships[0]!
 
-  const { data: org } = await supabase
+  const { data: org, error: orgError } = await supabase
     .from("organizations")
     .select("name")
     .eq("id", active.org_id)
     .maybeSingle()
 
+  if (orgError || !org) throw new Error("Unable to load the active workspace. Please try again.")
+
   return {
     userId: user.id,
     email: user.email ?? null,
     orgId: active.org_id,
-    orgName: org?.name ?? "Workspace",
+    orgName: org.name,
     role: active.role,
   }
 })
@@ -77,19 +87,22 @@ export const getUserOrgs = cache(async (): Promise<UserOrg[]> => {
   } = await supabase.auth.getUser()
   if (!user) return []
 
-  const { data: memberships } = await supabase
+  const { data: memberships, error: membershipError } = await supabase
     .from("memberships")
     .select("org_id, role")
     .eq("user_id", user.id)
     .order("created_at", { ascending: true })
 
+  if (membershipError) throw new Error("Unable to load workspace memberships. Please try again.")
   if (!memberships || memberships.length === 0) return []
 
   const ids = memberships.map((m) => m.org_id)
-  const { data: orgs } = await supabase
+  const { data: orgs, error: orgError } = await supabase
     .from("organizations")
     .select("id, name")
     .in("id", ids)
+
+  if (orgError) throw new Error("Unable to load workspaces. Please try again.")
 
   const nameById = new Map((orgs ?? []).map((o) => [o.id, o.name] as const))
 
@@ -100,10 +113,13 @@ export const getUserOrgs = cache(async (): Promise<UserOrg[]> => {
   }))
 })
 
-/** Like getOrgContext but redirects to /login when there is no context. */
+/** Login is for signed-out actors; signed-in actors without a workspace onboard. */
 export async function requireOrgContext(): Promise<OrgContext> {
   const ctx = await getOrgContext()
-  if (!ctx) redirect("/login")
+  if (!ctx) {
+    if (await getAuthenticatedUser()) redirect("/onboarding")
+    redirect("/login")
+  }
   return ctx
 }
 

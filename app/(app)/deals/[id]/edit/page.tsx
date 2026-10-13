@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/server"
+import { requireOrgContext } from "@/lib/auth"
 import { satangToBaht } from "@/lib/money"
 import { PageHeader } from "@/components/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -16,6 +17,7 @@ export default async function EditDealPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const [{ data: deal }, { data: clients }] = await Promise.all([
@@ -24,9 +26,10 @@ export default async function EditDealPage({
       .select(
         "id,client_id,title,stage,value_satang,expected_close_date,next_follow_up_date,source,notes"
       )
+      .eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
-    supabase.from("clients").select("id,name").order("name"),
+    supabase.from("clients").select("id,name").eq("org_id", ctx.orgId).order("name"),
   ])
 
   if (!deal) notFound()
