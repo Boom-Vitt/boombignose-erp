@@ -52,11 +52,20 @@ export function costsForMonth(
 }
 
 /** Normalize a recurring interval to a per-month multiplier. */
-const MONTHLY_FACTOR: Record<Enums<"recurring_interval">, number> = {
-  weekly: 52 / 12,
-  monthly: 1,
-  quarterly: 1 / 3,
-  yearly: 1 / 12,
+const MONTHLY_TWELFTHS: Record<Enums<"recurring_interval">, number> = {
+  weekly: 52, monthly: 12, quarterly: 4, yearly: 1,
+}
+
+/** Normalize the whole forecast exactly, then round once; it is not cash. */
+function normalizedMonthly(values: { amount_satang: number; interval: Enums<"recurring_interval"> }[]): Satang {
+  let twelfths = BigInt(0)
+  for (const value of values) {
+    if (!Number.isSafeInteger(value.amount_satang) || value.amount_satang < 0) throw new Error("MRR amount outside safe satang bounds")
+    twelfths += BigInt(value.amount_satang) * BigInt(MONTHLY_TWELFTHS[value.interval])
+  }
+  const total = (twelfths + BigInt(6)) / BigInt(12)
+  if (total > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("MRR total outside safe satang bounds")
+  return Number(total)
 }
 
 /**
@@ -64,20 +73,7 @@ const MONTHLY_FACTOR: Record<Enums<"recurring_interval">, number> = {
  * Draft and cancelled invoices are excluded.
  */
 export function mrr(invoices: RecurringInvoiceLike[]): Satang {
-  const total = invoices
-    .filter(
-      (i) =>
-        i.is_recurring &&
-        i.recurring_interval !== null &&
-        i.status !== "draft" &&
-        i.status !== "cancelled"
-    )
-    .reduce(
-      (acc, i) =>
-        acc + i.amount_satang * MONTHLY_FACTOR[i.recurring_interval!],
-      0
-    )
-  return Math.round(total)
+  return normalizedMonthly(invoices.filter(i => i.is_recurring && i.recurring_interval !== null && i.status !== "draft" && i.status !== "cancelled").map(i => ({ amount_satang: i.amount_satang, interval: i.recurring_interval! })))
 }
 
 /**
@@ -86,10 +82,7 @@ export function mrr(invoices: RecurringInvoiceLike[]): Satang {
  * figure using the same per-interval factors as {@link mrr}.
  */
 export function subscriptionMrr(subs: SubscriptionLike[]): Satang {
-  const total = subs
-    .filter((s) => s.status === "active")
-    .reduce((acc, s) => acc + s.amount_satang * MONTHLY_FACTOR[s.interval], 0)
-  return Math.round(total)
+  return normalizedMonthly(subs.filter(s => s.status === "active"))
 }
 
 /** Total still owed across all non-draft, non-cancelled, not-fully-paid invoices. */

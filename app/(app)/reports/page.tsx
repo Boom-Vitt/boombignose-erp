@@ -47,11 +47,11 @@ export default async function ReportsPage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard
-          label="Total revenue"
+          label="Verified cash received"
           value={formatTHB(totalRevenueSatang)}
           icon={TrendingUp}
           tone="positive"
-          hint="Payments received in range"
+          hint="Verified receipts in range · Bangkok month"
         />
         <StatCard
           label="Billable hours"
@@ -69,14 +69,14 @@ export default async function ReportsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Revenue by client × month</CardTitle>
+          <CardTitle className="text-base">Verified cash by client × month</CardTitle>
         </CardHeader>
         <CardContent>
           {revenue.rowKeys.length === 0 ? (
             <EmptyState
               icon={BarChart3}
               title="No payments in range"
-              description="Recorded payments will pivot here by client and month."
+              description="Only verified receipts appear here by client and month."
               className="border-0"
             />
           ) : (

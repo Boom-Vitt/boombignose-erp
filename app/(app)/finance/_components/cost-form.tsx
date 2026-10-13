@@ -3,6 +3,7 @@
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { moneyInput } from "@/lib/payments/input"
 import { toast } from "sonner"
 
 import {
@@ -38,7 +39,7 @@ const Schema = z.object({
     "salary",
     "other",
   ]),
-  amountBaht: z.coerce.number().min(0, "Amount must be 0 or more"),
+  amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter an exact THB amount with up to two decimals"),
   incurred_on: z.string().optional(),
   vendor: z.string().optional(),
   project_id: z.string().optional(),
@@ -60,7 +61,7 @@ export function CostForm({
     resolver: zodResolver(Schema),
     defaultValues: {
       category: "other",
-      amountBaht: 0,
+      amountBaht: "0.00",
       incurred_on: today,
       vendor: "",
       project_id: "",

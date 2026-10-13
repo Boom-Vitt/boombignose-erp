@@ -67,6 +67,7 @@ export async function getReportData(): Promise<ReportAggregates> {
       .gte("work_date", startDate),
   ])
 
+  if (paymentsRes.error || entriesRes.error) throw new Error("Operational reports unavailable. Reload before relying on totals.")
   const inRange = new Set(months)
 
   const payments: ClientPayment[] = (paymentsRes.data ?? [])
