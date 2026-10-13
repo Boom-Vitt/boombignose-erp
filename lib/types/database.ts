@@ -163,14 +163,14 @@ isOneToOne: false
                   ]
                 },"clients": {
                   Row: {
-                    "created_at": string,"id": string,"industry": string | null,"name": string,"notes": string | null,"org_id": string,"owner": string | null,"portal_enabled": boolean,"portal_token": string | null,"source": string | null,"updated_at": string
+                    "billing_address": string | null,"created_at": string,"id": string,"industry": string | null,"name": string,"notes": string | null,"org_id": string,"owner": string | null,"portal_enabled": boolean,"portal_token": string | null,"source": string | null,"tax_id": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"industry"?: string | null,"name": string,"notes"?: string | null,"org_id": string,"owner"?: string | null,"portal_enabled"?: boolean,"portal_token"?: string | null,"source"?: string | null,"updated_at"?: string
+                    "billing_address"?: string | null,"created_at"?: string,"id"?: string,"industry"?: string | null,"name": string,"notes"?: string | null,"org_id": string,"owner"?: string | null,"portal_enabled"?: boolean,"portal_token"?: string | null,"source"?: string | null,"tax_id"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"industry"?: string | null,"name"?: string,"notes"?: string | null,"org_id"?: string,"owner"?: string | null,"portal_enabled"?: boolean,"portal_token"?: string | null,"source"?: string | null,"updated_at"?: string
+                    "billing_address"?: string | null,"created_at"?: string,"id"?: string,"industry"?: string | null,"name"?: string,"notes"?: string | null,"org_id"?: string,"owner"?: string | null,"portal_enabled"?: boolean,"portal_token"?: string | null,"source"?: string | null,"tax_id"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -259,6 +259,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"document_counters": {
+                  Row: {
+                    "kind": string,"org_id": string,"value": number,"year": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "kind": string,"org_id": string,"value": number,"year": number
+                  }
+                  Update: {
+                    "kind"?: string,"org_id"?: string,"value"?: number,"year"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "document_counters_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"integration_receipts": {
                   Row: {
                     "created_at": string,"event_type": string,"id": string,"key": string,"org_id": string,"payload": NonNullable<Json>
@@ -299,6 +319,38 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"invoice_issue_requests": {
+                  Row: {
+                    "invoice_id": string,"key": string,"org_id": string,"snapshot_id": string | null,"source_version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "invoice_id": string,"key": string,"org_id": string,"snapshot_id"?: string | null,"source_version": number
+                  }
+                  Update: {
+                    "invoice_id"?: string,"key"?: string,"org_id"?: string,"snapshot_id"?: string | null,"source_version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "invoice_issue_requests_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "invoice_issue_requests_org_id_invoice_id_fkey"
+      columns: ["org_id","invoice_id"]
+isOneToOne: false
+      referencedRelation: "invoices"
+      referencedColumns: ["org_id","id"]
+    },{
+      foreignKeyName: "invoice_issue_requests_org_id_snapshot_id_fkey"
+      columns: ["org_id","snapshot_id"]
+isOneToOne: false
+      referencedRelation: "invoice_snapshots"
+      referencedColumns: ["org_id","id"]
+    }
+                  ]
                 },"invoice_items": {
                   Row: {
                     "amount_satang": number,"created_at": string,"description": string,"id": string,"invoice_id": string,"org_id": string,"position": number,"quantity": number,"unit_price_satang": number,"updated_at": string
@@ -325,19 +377,51 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"invoices": {
+                },"invoice_snapshots": {
                   Row: {
-                    "amount_satang": number,"client_id": string,"created_at": string,"discount_satang": number,"due_date": string | null,"id": string,"is_recurring": boolean,"issue_date": string,"notes": string | null,"number": string,"org_id": string,"project_id": string | null,"recurring_interval": Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id": string | null,"source_quote_id": string | null,"status": Database["public"]['Enums']["invoice_status"],"updated_at": string
+                    "id": string,"invoice_id": string,"issued_at": string,"issued_by": string,"number": string,"org_id": string,"snapshot": NonNullable<Json>,"source_version": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_satang"?: number,"client_id": string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"notes"?: string | null,"number": string,"org_id": string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string
+                    "id"?: string,"invoice_id": string,"issued_at"?: string,"issued_by": string,"number": string,"org_id": string,"snapshot": NonNullable<Json>,"source_version": number
                   }
                   Update: {
-                    "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"notes"?: string | null,"number"?: string,"org_id"?: string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string
+                    "id"?: string,"invoice_id"?: string,"issued_at"?: string,"issued_by"?: string,"number"?: string,"org_id"?: string,"snapshot"?: NonNullable<Json>,"source_version"?: number
                   }
                   Relationships: [
                     {
+      foreignKeyName: "invoice_snapshots_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "invoice_snapshots_org_id_invoice_id_fkey"
+      columns: ["org_id","invoice_id"]
+isOneToOne: true
+      referencedRelation: "invoices"
+      referencedColumns: ["org_id","id"]
+    }
+                  ]
+                },"invoices": {
+                  Row: {
+                    "amount_satang": number,"client_id": string,"created_at": string,"discount_satang": number,"due_date": string | null,"id": string,"is_recurring": boolean,"issue_date": string,"issued_snapshot_id": string | null,"notes": string | null,"number": string,"org_id": string,"project_id": string | null,"recurring_interval": Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id": string | null,"source_quote_id": string | null,"status": Database["public"]['Enums']["invoice_status"],"updated_at": string,"version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount_satang"?: number,"client_id": string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"issued_snapshot_id"?: string | null,"notes"?: string | null,"number": string,"org_id": string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string,"version"?: number
+                  }
+                  Update: {
+                    "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"issued_snapshot_id"?: string | null,"notes"?: string | null,"number"?: string,"org_id"?: string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "invoice_snapshot_tenant"
+      columns: ["org_id","issued_snapshot_id"]
+isOneToOne: false
+      referencedRelation: "invoice_snapshots"
+      referencedColumns: ["org_id","id"]
+    },{
       foreignKeyName: "invoices_client_tenant_fkey"
       columns: ["org_id","client_id"]
 isOneToOne: false
@@ -423,14 +507,14 @@ isOneToOne: false
                   ]
                 },"org_settings": {
                   Row: {
-                    "cash_balance_satang": number,"created_at": string,"id": string,"monthly_burn_satang": number | null,"org_id": string,"updated_at": string
+                    "business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"monthly_burn_satang"?: number | null,"org_id": string,"updated_at"?: string
+                    "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"monthly_burn_satang"?: number | null,"org_id"?: string,"updated_at"?: string
+                    "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -515,14 +599,14 @@ isOneToOne: true
                   ]
                 },"payment_claims": {
                   Row: {
-                    "amount_satang": number,"client_id": string,"created_at": string,"id": string,"idempotency_key": string,"invoice_id": string,"org_id": string,"payment_id": string | null,"reference": string,"review_reference": string | null,"reviewed_at": string | null,"reviewed_by": string | null,"status": string,"updated_at": string
+                    "amount_satang": number,"client_id": string,"created_at": string,"id": string,"idempotency_key": string,"invoice_id": string,"org_id": string,"payment_id": string | null,"reference": string,"review_reference": string | null,"reviewed_at": string | null,"reviewed_by": string | null,"source": string,"status": string,"submitted_by": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_satang": number,"client_id": string,"created_at"?: string,"id"?: string,"idempotency_key": string,"invoice_id": string,"org_id": string,"payment_id"?: string | null,"reference": string,"review_reference"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"status"?: string,"updated_at"?: string
+                    "amount_satang": number,"client_id": string,"created_at"?: string,"id"?: string,"idempotency_key": string,"invoice_id": string,"org_id": string,"payment_id"?: string | null,"reference": string,"review_reference"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"source"?: string,"status"?: string,"submitted_by"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"id"?: string,"idempotency_key"?: string,"invoice_id"?: string,"org_id"?: string,"payment_id"?: string | null,"reference"?: string,"review_reference"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"status"?: string,"updated_at"?: string
+                    "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"id"?: string,"idempotency_key"?: string,"invoice_id"?: string,"org_id"?: string,"payment_id"?: string | null,"reference"?: string,"review_reference"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"source"?: string,"status"?: string,"submitted_by"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -573,14 +657,14 @@ isOneToOne: false
                   ]
                 },"payments": {
                   Row: {
-                    "amount_satang": number,"command_key": string | null,"created_at": string,"id": string,"invoice_id": string,"method": Database["public"]['Enums']["payment_method"],"notes": string | null,"org_id": string,"paid_at": string,"updated_at": string,"verification_reference": string | null,"verification_state": string,"verified_by": string | null
+                    "amount_satang": number,"command_key": string | null,"created_at": string,"id": string,"invoice_id": string,"method": Database["public"]['Enums']["payment_method"],"notes": string | null,"org_id": string,"paid_at": string,"reconciled_payment_id": string | null,"updated_at": string,"verification_reference": string | null,"verification_state": string,"verified_by": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_satang": number,"command_key"?: string | null,"created_at"?: string,"id"?: string,"invoice_id": string,"method"?: Database["public"]['Enums']["payment_method"],"notes"?: string | null,"org_id": string,"paid_at"?: string,"updated_at"?: string,"verification_reference"?: string | null,"verification_state"?: string,"verified_by"?: string | null
+                    "amount_satang": number,"command_key"?: string | null,"created_at"?: string,"id"?: string,"invoice_id": string,"method"?: Database["public"]['Enums']["payment_method"],"notes"?: string | null,"org_id": string,"paid_at"?: string,"reconciled_payment_id"?: string | null,"updated_at"?: string,"verification_reference"?: string | null,"verification_state"?: string,"verified_by"?: string | null
                   }
                   Update: {
-                    "amount_satang"?: number,"command_key"?: string | null,"created_at"?: string,"id"?: string,"invoice_id"?: string,"method"?: Database["public"]['Enums']["payment_method"],"notes"?: string | null,"org_id"?: string,"paid_at"?: string,"updated_at"?: string,"verification_reference"?: string | null,"verification_state"?: string,"verified_by"?: string | null
+                    "amount_satang"?: number,"command_key"?: string | null,"created_at"?: string,"id"?: string,"invoice_id"?: string,"method"?: Database["public"]['Enums']["payment_method"],"notes"?: string | null,"org_id"?: string,"paid_at"?: string,"reconciled_payment_id"?: string | null,"updated_at"?: string,"verification_reference"?: string | null,"verification_state"?: string,"verified_by"?: string | null
                   }
                   Relationships: [
                     {
@@ -595,6 +679,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "payments_reconciled_tenant"
+      columns: ["org_id","reconciled_payment_id"]
+isOneToOne: false
+      referencedRelation: "payments"
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"portal_claim_requests": {
@@ -995,19 +1085,37 @@ isOneToOne: false
 { Args: { "p_org_id": string,"p_specs": Json }; Returns: Json
                            },
 "finish_outbound_event":
-{ Args: { "p_error": string,"p_event_id": string,"p_lease_token": string }; Returns: boolean
+{ Args: { "p_error"?: string,"p_event_id": string,"p_lease_token": string }; Returns: boolean
                            },
 "generate_subscription_occurrence":
 { Args: { "p_occurrence": string,"p_org_id": string,"p_subscription_id": string }; Returns: string
                            },
+"issue_invoice":
+{ Args: { "p_expected_version": number,"p_invoice_id": string,"p_key": string,"p_org_id": string }; Returns: string
+                           },
 "provision_workspace":
 { Args: { "p_key": string,"p_name": string }; Returns: string
+                           },
+"reconcile_legacy_payment":
+{ Args: { "p_amount_satang": number,"p_key": string,"p_legacy_payment_id": string,"p_org_id": string,"p_reference": string }; Returns: string
+                           },
+"reconcile_legacy_payment_with_evidence":
+{ Args: { "p_amount_satang": number,"p_key": string,"p_legacy_payment_id": string,"p_method": Database["public"]['Enums']["payment_method"],"p_org_id": string,"p_paid_on": string,"p_reference": string }; Returns: string
                            },
 "review_payment_claim":
 { Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_org_id": string,"p_reference": string }; Returns: string
                            },
+"review_payment_claim_with_evidence":
+{ Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_method": Database["public"]['Enums']["payment_method"],"p_org_id": string,"p_paid_on": string,"p_reference": string }; Returns: string
+                           },
+"submit_internal_payment_claim":
+{ Args: { "p_amount_satang": number,"p_invoice_id": string,"p_key": string,"p_org_id": string,"p_reference": string }; Returns: string
+                           },
 "submit_payment_claim":
 { Args: { "p_amount_satang": number,"p_invoice_id": string,"p_key": string,"p_reference": string,"p_token": string }; Returns: string
+                           },
+"update_business_profile":
+{ Args: { "p_business_address": string,"p_legal_name": string,"p_org_id": string,"p_tax_id": string,"p_tax_status": string }; Returns: undefined
                            }
           }
           Enums: {
