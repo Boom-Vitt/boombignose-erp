@@ -1,5 +1,5 @@
 begin;
-select plan(15);
+select plan(16);
 insert into auth.users(id,email,email_confirmed_at) values('b9000000-0000-4000-8000-000000000001','synthetic-finance@example.invalid',now());
 insert into organizations(id,name,slug) values('b9000000-0000-4000-8000-000000000002','Synthetic financial evidence','synthetic-finance-evidence');
 insert into memberships(org_id,user_id,role) values('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000001','owner');
@@ -20,6 +20,7 @@ insert into evidence_result select 'snapshot',issue_invoice('b9000000-0000-4000-
 select is((select snapshot->'document'->>'totalSatang' from invoice_snapshots where id=(select id from evidence_result where kind='snapshot')),'101','snapshot preserves exact satang');
 select is((select snapshot->>'kind' from invoice_snapshots where id=(select id from evidence_result where kind='snapshot')),'operational_invoice','document classification explicit');
 select throws_ok($$update invoice_items set description='Changed after issue' where invoice_id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Issued or payment evidence locks invoice lines','issued lines cannot mutate');
+select throws_ok($$update invoices set amount_satang=1 where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Retained invoice amount cannot be overwritten','issued amount tampering rejected');
 select throws_ok($$update invoices set notes='Changed after issue' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Issued content is frozen; use linked correction','issued header cannot mutate');
 select throws_ok($$update invoices set status='cancelled' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Issued invoice cancellation requires linked correction','issued cancellation cannot bypass correction');
 select is(issue_invoice('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000004',(select source_version from invoice_snapshots where id=(select id from evidence_result where kind='snapshot')),'b9000000-0000-4000-8000-000000000011'),(select id from evidence_result where kind='snapshot'),'same-key issued retry durable');
