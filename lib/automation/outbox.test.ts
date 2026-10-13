@@ -17,6 +17,26 @@ function database(handler: (name: string, args: Record<string, unknown>) => unkn
 }
 
 describe("at-least-once outbox delivery", () => {
+  it("reclaims after a successful send with a lost database acknowledgement using the same event key", async () => {
+    let claim = 0
+    const acknowledgements: Record<string, unknown>[] = []
+    const client = database((name, args) => {
+      if (name === "claim_outbound_events") return [{ ...envelope, lease_token: ++claim === 1 ? lease1 : lease2 }]
+      acknowledgements.push(args)
+      if (acknowledgements.length === 1) throw new Error("Acknowledgement response lost")
+      return true
+    })
+    const keys: string[] = []
+    const sink: typeof fetch = async (_url, init) => { keys.push(new Headers(init?.headers).get("Idempotency-Key")!); return new Response(null, { status: 204 }) }
+    const config = { url: "http://127.0.0.1:55599", secret: "test" }
+    await expect(deliverOutbox(client, config, sink)).rejects.toThrow("Outbox acknowledgement failed")
+    expect((await deliverOutbox(client, config, sink)).delivered).toBe(1)
+    expect(keys).toEqual([eventId, eventId])
+    expect(acknowledgements).toEqual([
+      { p_event_id: eventId, p_lease_token: lease1, p_error: null },
+      { p_event_id: eventId, p_lease_token: lease2, p_error: null },
+    ])
+  })
   it("starts every leased send together so later events do not wait through earlier timeouts", async () => {
     const client = database(name => name === "claim_outbound_events" ? [envelope, { ...envelope, id: lease2 }] : true)
     let releaseFirst: () => void = () => undefined

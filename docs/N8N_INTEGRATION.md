@@ -20,7 +20,7 @@ Billing identity is `(org_id,subscription_id,scheduled_date)`, persisted indepen
 
 The command locks the subscription, creates its invoice and occurrence result, advances `next_run_date` by one interval, and records trusted audit in one transaction. A delayed run bills the scheduled date, not the scan date. Each invocation processes one occurrence; repeated scans catch up every missed period without skipping. Weekly cadence adds seven days. Monthly/quarterly/yearly cadence clamps the original start day to the month's end and restores it when possible, including leap day.
 
-The manual “Generate scheduled invoice” button uses the server-rendered occurrence. A transport failure preserves that same date for retry; loading the advanced next date would incorrectly bill another period. Editing a billed cadence requires the database's correction policy. Invoice issuance/document review is a separate workflow.
+The manual “Generate scheduled invoice” button saves the org/subscription/scheduled date in tab session storage before sending. A transport failure preserves that same date across reload or status refresh until an acknowledgement clears that matching request; loading the advanced next date would incorrectly bill another period. If retry state cannot be saved, generation fails closed. A pending retry is labelled with its date. Editing a billed cadence requires the database's correction policy. The occurrence creates a complete draft invoice with one line retaining the subscription amount and a due date 15 days after the scheduled occurrence. Staff issuance/document review is a separate workflow.
 
 ## Outbound delivery
 

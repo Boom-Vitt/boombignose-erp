@@ -139,6 +139,7 @@ export default async function SubscriptionDetailPage({
             occurrence={sub.next_run_date}
             isDue={sub.next_run_date <= todayISO()}
             id={sub.id}
+            orgId={ctx.orgId}
             status={sub.status}
             canManage={canManage}
           />

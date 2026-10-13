@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useSyncExternalStore, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Play, Pause, Ban, ReceiptText, Trash2 } from "lucide-react"
 import { toast } from "sonner"
@@ -18,6 +18,7 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog"
 import type { Enums } from "@/lib/types/database"
+import { beginInvoiceRequest, readInvoiceRequest, acknowledgeInvoiceRequest } from "@/lib/billing/occurrence-command"
 
 import {
   setSubscriptionStatus,
@@ -27,14 +28,25 @@ import {
 
 type Status = Enums<"subscription_status">
 
+function subscribeToRequests(onChange: () => void) {
+  window.addEventListener("storage", onChange)
+  window.addEventListener("erp.subscription.request", onChange)
+  return () => {
+    window.removeEventListener("storage", onChange)
+    window.removeEventListener("erp.subscription.request", onChange)
+  }
+}
+
 export function SubscriptionControls({
   id,
+  orgId,
   status,
   canManage,
   occurrence,
   isDue,
 }: {
   id: string
+  orgId: string
   status: Status
   canManage: boolean
   occurrence: string
@@ -43,6 +55,9 @@ export function SubscriptionControls({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const unacknowledged = useSyncExternalStore(subscribeToRequests, () => {
+    try { return readInvoiceRequest(sessionStorage, orgId, id)?.occurrence ?? null } catch { return null }
+  }, () => null)
 
   function changeStatus(next: Status) {
     startTransition(async () => {
@@ -58,13 +73,18 @@ export function SubscriptionControls({
 
   function generate() {
     startTransition(async () => {
-      const res = await generateInvoiceNow({ id, occurrence })
-      if (res?.error) {
-        toast.error(res.error)
-        return
+      try {
+        const command = beginInvoiceRequest(sessionStorage, orgId, id, occurrence)
+        window.dispatchEvent(new Event("erp.subscription.request"))
+        const res = await generateInvoiceNow({ id, occurrence: command.occurrence })
+        if (res?.error) { toast.error(res.error); return }
+        acknowledgeInvoiceRequest(sessionStorage, orgId, id, command.occurrence)
+        window.dispatchEvent(new Event("erp.subscription.request"))
+        toast.success("Scheduled invoice draft ready")
+        router.refresh()
+      } catch {
+        toast.error("Could not confirm the invoice request. Retry in this tab.")
       }
-      toast.success("Invoice generated")
-      router.refresh()
     })
   }
 
@@ -103,8 +123,8 @@ export function SubscriptionControls({
 
       {canManage ? (
         <>
-          <Button size="sm" disabled={pending || !isDue || status !== "active"} onClick={generate}>
-            <ReceiptText /> Generate scheduled invoice
+          <Button size="sm" disabled={pending || (!isDue && !unacknowledged) || status !== "active"} onClick={generate}>
+            <ReceiptText /> {unacknowledged ? `Retry invoice for ${unacknowledged}` : "Generate scheduled invoice"}
           </Button>
 
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
