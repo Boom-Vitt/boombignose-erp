@@ -1,5 +1,5 @@
 begin;
-select plan(16);
+select plan(18);
 insert into auth.users(id,email,email_confirmed_at) values('b9000000-0000-4000-8000-000000000001','synthetic-finance@example.invalid',now());
 insert into organizations(id,name,slug) values('b9000000-0000-4000-8000-000000000002','Synthetic financial evidence','synthetic-finance-evidence');
 insert into memberships(org_id,user_id,role) values('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000001','owner');
@@ -10,6 +10,7 @@ select set_config('request.jwt.claims','{"role":"authenticated","sub":"b9000000-
 set local role authenticated;
 select throws_ok($$update invoices set status='sent' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Invoice issuance requires the issue command','direct draft issuance denied');
 select throws_ok($$insert into invoices(org_id,client_id,number,status) values('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000003','Forged sent','sent')$$,'P0001','New invoice must be draft','direct sent creation denied');
+select throws_ok($$update invoices set status='overdue' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Payable state requires issue command','draft cannot bypass issue through overdue');
 reset role;
 update invoices set status='draft' where id='b9000000-0000-4000-8000-000000000004';
 select update_business_profile('b9000000-0000-4000-8000-000000000002','Synthetic seller','Synthetic address',null,'unknown');
@@ -23,6 +24,7 @@ select throws_ok($$update invoice_items set description='Changed after issue' wh
 select throws_ok($$update invoices set amount_satang=1 where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Retained invoice amount cannot be overwritten','issued amount tampering rejected');
 select throws_ok($$update invoices set notes='Changed after issue' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Issued content is frozen; use linked correction','issued header cannot mutate');
 select throws_ok($$update invoices set status='cancelled' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Issued invoice cancellation requires linked correction','issued cancellation cannot bypass correction');
+select throws_ok($$update invoices set status='draft' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Issued invoice cannot return to draft','issued invoice cannot disappear from AR');
 select is(issue_invoice('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000004',(select source_version from invoice_snapshots where id=(select id from evidence_result where kind='snapshot')),'b9000000-0000-4000-8000-000000000011'),(select id from evidence_result where kind='snapshot'),'same-key issued retry durable');
 insert into evidence_result select 'claim',submit_internal_payment_claim('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000004',101,'Synthetic receipt report','b9000000-0000-4000-8000-000000000012');
 select is((select count(*)::int from payments where org_id='b9000000-0000-4000-8000-000000000002'),0,'staff report cannot settle');
