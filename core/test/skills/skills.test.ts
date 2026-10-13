@@ -50,21 +50,21 @@ test('block descriptions load in full and appear on one line in the skills index
   assert.equal(loadSkill(dir, 'folded')!.description, 'Work with PDFs. Use for documents.');
   assert.equal(loadSkill(dir, 'literal')!.description, 'First paragraph.\n\nSecond paragraph.');
   assert.deepEqual(scanSkills(dir).skipped, []);
-  assert.equal(skillsIndex(dir), '- folded: Work with PDFs. Use for documents.\n- literal: First paragraph. Second paragraph.');
+  assert.equal(skillsIndex(dir, scanSkills(dir).skills.map(s => s.name)), '- folded: Work with PDFs. Use for documents.\n- literal: First paragraph. Second paragraph.');
 });
 
 test('index lists name + description; missing dir is empty', (t) => {
   const dir = tmpSkills(t);
-  assert.deepEqual(listSkills(dir), []);
-  assert.equal(skillsIndex(dir), '');
+  assert.deepEqual(listSkills(dir).filter(s => !s.bundled), []);
+  assert.equal(skillsIndex(dir, scanSkills(dir).skills.map(s => s.name)), '');
   write(dir, 'pdf-tools/SKILL.md', skillMd('pdf-tools', 'Work with PDF files. Use when asked about PDFs.'));
   write(dir, 'สรุป-ข่าว/ignored.txt', 'x');
   write(dir, 'daily-brief/SKILL.md', skillMd('daily-brief', '"สรุปข่าวประจำวัน: เช้า"'));
-  assert.deepEqual(listSkills(dir), [
+  assert.deepEqual(listSkills(dir).filter(s => !s.bundled), [
     { name: 'daily-brief', description: 'สรุปข่าวประจำวัน: เช้า' },
     { name: 'pdf-tools', description: 'Work with PDF files. Use when asked about PDFs.' },
   ]);
-  assert.equal(skillsIndex(dir), '- daily-brief: สรุปข่าวประจำวัน: เช้า\n- pdf-tools: Work with PDF files. Use when asked about PDFs.');
+  assert.equal(skillsIndex(dir, scanSkills(dir).skills.map(s => s.name)), '- daily-brief: สรุปข่าวประจำวัน: เช้า\n- pdf-tools: Work with PDF files. Use when asked about PDFs.');
 });
 
 test('invalid skills are skipped with a reason, never a crash', (t) => {
@@ -96,7 +96,7 @@ test('invalid skills are skipped with a reason, never a crash', (t) => {
   assert.match(reason('long')!, /over 1024/);
   assert.equal(reason('.hidden'), undefined);
   assert.equal(skipped.length, 9);
-  assert.deepEqual(listSkills(dir).map((s) => s.name), ['good']);
+  assert.deepEqual(listSkills(dir).filter(s => !s.bundled).map((s) => s.name), ['good']);
 });
 
 test('load returns the body without frontmatter and the folder\'s other files', (t) => {
@@ -130,7 +130,7 @@ test('SKILL.md as a symlink is not read', (t) => {
   fs.writeFileSync(secret, skillMd('sneaky', 'leaks a file'));
   fs.mkdirSync(path.join(dir, 'sneaky'), { recursive: true });
   fs.symlinkSync(secret, path.join(dir, 'sneaky', 'SKILL.md'));
-  assert.deepEqual(listSkills(dir), []);
+  assert.deepEqual(listSkills(dir).filter(s => !s.bundled), []);
   assert.throws(() => loadSkill(dir, 'sneaky'), /not a regular file/);
 });
 
@@ -142,7 +142,7 @@ test('save then load round trip, update in place, delete', (t) => {
   const s = loadSkill(dir, 'thai-notes')!;
   assert.equal(s.description, input.description);
   assert.equal(s.body, '  indented first line\n\nสวัสดี');
-  assert.deepEqual(listSkills(dir), [{ name: 'thai-notes', description: input.description }]);
+  assert.deepEqual(listSkills(dir).filter(s => !s.bundled), [{ name: 'thai-notes', description: input.description }]);
 
   write(dir, 'thai-notes/extra.txt', 'keep me');
   saveSkill(dir, { name: 'thai-notes', description: 'multi\nline  description', body: 'v2' });
@@ -153,7 +153,7 @@ test('save then load round trip, update in place, delete', (t) => {
 
   assert.equal(deleteSkill(dir, 'thai-notes'), true);
   assert.equal(deleteSkill(dir, 'thai-notes'), false);
-  assert.deepEqual(listSkills(dir), []);
+  assert.deepEqual(listSkills(dir).filter(s => !s.bundled), []);
 });
 
 test('load and save refuse a symlinked skill folder, including a dangling link', (t) => {
@@ -192,8 +192,8 @@ test('an unreadable SKILL.md is skipped without breaking the index', (t) => {
   assert.deepEqual(skills, [{ name: 'good', description: 'ok' }]);
   assert.equal(skipped[0]!.folder, 'unreadable');
   assert.match(skipped[0]!.reason, /read.*SKILL\.md/i);
-  assert.deepEqual(listSkills(dir), skills);
-  assert.equal(skillsIndex(dir), '- good: ok');
+  assert.deepEqual(listSkills(dir).filter(s => !s.bundled), skills);
+  assert.equal(skillsIndex(dir, scanSkills(dir).skills.map(s => s.name)), '- good: ok');
   assert.throws(() => loadSkill(dir, 'unreadable'), /read.*SKILL\.md/i);
 });
 

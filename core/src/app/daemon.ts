@@ -33,7 +33,8 @@ export async function startDaemon(options: DaemonOptions = {}) {
   async function reload(): Promise<void> {
     if (closed) return;
     const env = readEnv(home);
-    const fingerprint = JSON.stringify([config.line, env.LINE_CHANNEL_ACCESS_TOKEN, env.LINE_CHANNEL_SECRET]);
+    const { agentId: _agentId, ...listenerConfig } = config.line;
+    const fingerprint = JSON.stringify([listenerConfig, env.LINE_CHANNEL_ACCESS_TOKEN, env.LINE_CHANNEL_SECRET]);
     if (fingerprint !== lineFingerprint) {
       await line?.close(); line = undefined; lineError = undefined; lineFingerprint = fingerprint;
       if (closed) return;

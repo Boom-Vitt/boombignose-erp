@@ -116,3 +116,20 @@ test('deleting an agent interrupts its active run before removing its transcript
   assert.equal((await run.result).status, 'interrupted'); assert.equal(a.runtime.pendingEvents().length, 0);
   assert.equal(a.runtime.store.getSession(session.id), undefined); assert.deepEqual(a.runtime.store.getMessages(session.id), []);
 });
+
+test('changing or deleting the chosen LINE agent preserves the webhook listener', async t => {
+  const home = testHome(t); configured(home, undefined, c => { c.line.enabled = true; });
+  const { setSecret } = await import('../../src/config.ts');
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  const a = await startDaemon({ home }); t.after(() => a.close());
+  const second = a.runtime.store.createAgent({ name: 'LINE agent', provider: 'mock', model: 'test-model' });
+  const config = a.config();
+  // A settings call also waits for the initial listener startup.
+  await call(a, '/api/settings', 'PUT', { config });
+  const port = a.lineStatus().port; assert.ok(port > 0);
+  config.line.agentId = second.id;
+  assert.equal((await call(a, '/api/settings', 'PUT', { config })).status, 200);
+  assert.equal(a.lineStatus().agentId, second.id); assert.equal(a.lineStatus().port, port);
+  assert.equal((await call(a, `/api/agents/${second.id}`, 'DELETE')).status, 200);
+  assert.equal(a.lineStatus().port, port); assert.equal(a.lineStatus().running, true);
+});

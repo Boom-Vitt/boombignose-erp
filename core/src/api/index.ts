@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { VERSION, paths, maskSecret, setSecret } from '../config.ts';
 import { deleteSkill, listSkills, loadSkill, saveSkill } from '../skills/index.ts';
+import { CommandError, listCommands } from '../commands/index.ts';
 import { isObject, restoreMaskedConfig, safeValue, settingsResponse, validateAgent, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
 import type { AgentInput } from '../store/index.ts';
 import type { Runtime } from '../app/runtime.ts';
@@ -211,6 +212,10 @@ export function createApiServer(opts: ApiOptions) {
         if (action === 'tools' && method === 'GET') return send(res, { tools: mcp.listTools(id).map(t => ({ name: t.name, description: t.description, selected: !server.tools || server.tools.includes(t.name) })) });
       }
       const dir = paths(opts.home).skills;
+      if (area === 'commands' && !id && method === 'GET') {
+        const agent = store.getAgent(agentId(url.searchParams.get('agent') ?? undefined, true))!;
+        return send(res, { commands: listCommands(listSkills(dir).filter(s => agent.skills === null || agent.skills.includes(s.name))) });
+      }
       if (area === 'skills' && !action) {
         if (!id && method === 'GET') return send(res, { skills: listSkills(dir) });
         if (id && method === 'GET') {
@@ -259,7 +264,8 @@ export function createApiServer(opts: ApiOptions) {
       return missing();
     } catch (e) {
       if (res.headersSent) { res.end(); return; }
-      send(res, { error: e instanceof Error ? e.message : String(e) }, e instanceof HttpError ? e.status : 500);
+      send(res, { error: e instanceof Error ? e.message : String(e), ...(e instanceof CommandError && e.connector ? { connector: e.connector } : {}) },
+        e instanceof HttpError || e instanceof CommandError ? e.status : 500);
     }
   }
   const server = createServer((req, res) => { void handler(req, res); });
