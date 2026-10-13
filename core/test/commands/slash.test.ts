@@ -23,7 +23,7 @@ async function call(a: App, path: string, method = 'GET', body?: unknown) {
   return { status: res.status, body: await res.json() as any };
 }
 async function app(t: Parameters<typeof testHome>[0], onRequest: (req: ProviderRequest) => void = () => {}) {
-  const home = testHome(t); configured(home);
+  const home = testHome(t); configured(home, undefined, c => { c.line.allow.users = ['owner']; });
   const a = await startDaemon({ home, providerFactory: () => ({ kind: 'openai-compatible', async *stream(req) {
     onRequest(req); yield { type: 'text_delta', text: '# Evidence report\nTool: echo; location: target. Unknown: runtime routes.' }; yield done;
   } }) });
@@ -95,7 +95,7 @@ test('commands and skill API expose the bundle, scope skill commands by agent, a
   }
 });
 
-test('REA off rejects before any run on API and LINE; agent connector selection is enforced', async t => {
+test('REA off rejects before any run on API and owner LINE; agent connector selection is enforced', async t => {
   let calls = 0; const a = await app(t, () => { calls++; });
   const agent = a.runtime.store.listAgents()[0]!, session = a.runtime.store.createSession({ origin: { kind: 'desktop' }, agentId: agent.id });
   const events: ApiEvent[] = []; a.runtime.subscribe(e => events.push(e));
@@ -143,7 +143,7 @@ test('cold REA run waits, loads skill into model context, preserves slash transc
   assert.equal(readdirSync(join(cold.home, 'reports')).length, 1);
 });
 
-test('skill slash expansion reaches desktop, LINE, cron and CLI origins and leaves unknown slash text alone', async t => {
+test('skill slash expansion reaches desktop, owner LINE, cron and CLI origins and leaves unknown slash text alone', async t => {
   const requests: ProviderRequest[] = [], a = await app(t, req => requests.push({ ...req, messages: structuredClone(req.messages) }));
   saveSkill(paths(a.home).skills, { name: 'notes', description: 'Notes', body: 'A custom note procedure.' });
   const first = a.runtime.store.listAgents()[0]!;

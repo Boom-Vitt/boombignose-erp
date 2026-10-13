@@ -9,6 +9,13 @@ export type Message = { role: 'user' | 'assistant'; content: ContentBlock[] };
 
 export type ProviderKind = 'anthropic' | 'openai-compatible';
 export type Policy = 'allow' | 'ask' | 'deny';
+export interface Agent {
+  id: string; name: string; icon: string; instructions: string; provider: string; model: string;
+  permissions: Record<string, Policy>; connectors: string[] | null; skills: string[] | null;
+  createdAt: number; updatedAt: number;
+}
+export type AgentInput = Omit<Agent, 'id' | 'createdAt' | 'updatedAt'>;
+export interface Command { name: string; description: string; usage: string; kind: string }
 export interface ProviderConfig {
   id: string; kind: ProviderKind; label?: string; baseUrl: string;
   apiKeyEnv?: string; contextWindow?: number; maxTokens?: number;
@@ -17,6 +24,7 @@ export type McpServerConfig =
   | { transport: 'stdio'; command: string; args?: string[]; env?: Record<string, string>; enabled: boolean; tools?: string[] }
   | { transport: 'http'; url: string; headers?: Record<string, string>; enabled: boolean; tools?: string[] };
 export interface LineConfig {
+  agentId?: string;
   enabled: boolean; port: number; publicUrl?: string; slowResponseMs: number;
   allow: { users: string[]; groups: string[]; rooms: string[] };
 }
@@ -60,8 +68,8 @@ export interface Status {
   mcp: { name: string; enabled: boolean; connected: boolean; tools: number }[];
   schedules: number;
 }
-export interface SessionSummary { id: string; title: string; updatedAt: Time; snippet?: string }
-export interface SessionDetail { id: string; title: string; messages: Message[] }
+export interface SessionSummary { id: string; agentId: string; title: string; updatedAt: Time; snippet?: string }
+export interface SessionDetail { id: string; agentId: string; title: string; messages: Message[] }
 export interface Settings { config: Config; secrets: Record<string, string> }
 export interface McpServerInfo {
   name: string; transport: 'stdio' | 'http'; enabled: boolean; connected: boolean; error?: string;
@@ -72,10 +80,10 @@ export interface TestResult { ok: boolean; tools: number; error?: string }
 export interface SkillSummary { name: string; description: string }
 export interface Skill extends SkillSummary { body: string }
 export type MemoryKind = 'user' | 'agent';
-export interface MemoryNote { id: string | number; kind: MemoryKind; text: string; updatedAt: Time }
+export interface MemoryNote { id: string | number; agentId: string | null; kind: MemoryKind; text: string; updatedAt: Time }
 export type Delivery = { kind: 'desktop' } | { kind: 'line'; to: string };
 export interface Job {
-  id: string; cron: string; prompt: string; delivery: Delivery; enabled: boolean;
+  id: string; agentId: string; cron: string; prompt: string; delivery: Delivery; enabled: boolean;
   nextRunAt?: Time | null; lastRunAt?: Time | null; lastStatus?: string | null;
 }
 export interface LineStatus {

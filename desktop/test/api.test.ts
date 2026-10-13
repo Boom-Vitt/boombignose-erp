@@ -120,3 +120,28 @@ test('updateSettings edits a fresh copy and puts the whole config back', async (
   assert.deepEqual(sent.config.active, { provider: 'b', model: 'n' });
   assert.equal(sent.config.version, 1);
 });
+
+test('concurrent settings saves compose, and a failed save does not poison the queue', async () => {
+  let stored = { version: 1, active: { provider: 'a', model: 'm' }, line: { enabled: false }, hooks: {} } as unknown as Config;
+  let fail = false;
+  const methods: string[] = [];
+  const api = createApi({ port: 1, token: 'test-token', fetch: (async (_url, init) => {
+    methods.push(init?.method ?? 'GET');
+    if (init?.method === 'PUT') {
+      if (fail) { fail = false; return json({ error: 'failed' }, 500); }
+      stored = JSON.parse(String(init.body)).config;
+    }
+    await new Promise(resolve => setImmediate(resolve));
+    return json({ config: stored, secrets: {} });
+  }) as typeof fetch });
+  await Promise.all([
+    api.updateSettings(c => { c.active.model = 'new'; }),
+    api.updateSettings(c => { c.line.enabled = true; }),
+  ]);
+  assert.equal(stored.active.model, 'new'); assert.equal(stored.line.enabled, true);
+  assert.deepEqual(methods, ['GET', 'PUT', 'GET', 'PUT']);
+  fail = true;
+  await assert.rejects(api.updateSettings(c => { c.active.model = 'fail'; }));
+  await api.updateSettings(c => { c.active.model = 'recovered'; });
+  assert.equal(stored.active.model, 'recovered');
+});

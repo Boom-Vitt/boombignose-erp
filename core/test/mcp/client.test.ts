@@ -163,3 +163,17 @@ test('manager stop aborts in-flight test clients and initialization without leav
   assert.equal(result.ok, false); assert.equal(result.tools, 0);
   assert.equal(manager.status()[0]!.connected, false);
 });
+
+test('MCP text is capped at 100 kB with a note and a complete UTF-8 boundary', async t => {
+  const client = new McpClient(stdio, { VALUE: 'fake' });
+  t.after(() => client.close());
+  await client.connect();
+  const exact = (await client.callTool('echo', { text: 'a'.repeat(99_990) })).content;
+  assert.ok(Buffer.byteLength(exact) <= 100_000);
+  assert.ok(!exact.includes('truncated'));
+  const huge = (await client.callTool('echo', { text: 'ก🙂'.repeat(25_000) })).content;
+  assert.ok(Buffer.byteLength(huge) <= 100_000);
+  assert.match(huge, /\[Tool result truncated at 100 kB\]$/);
+  assert.ok(!huge.includes('\uFFFD'));
+  assert.match(huge, /^(ก🙂)+(ก)?\n/);
+});

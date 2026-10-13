@@ -3,5 +3,5 @@
   "compilerOptions": {
     "lib": ["es2024", "dom", "dom.iterable"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "e2e"]
 }

@@ -5,6 +5,7 @@ export class TestNode {
   className = '';
   hidden = false;
   disabled = false;
+  checked = false;
   value = '';
   style = { height: '' };
   scrollHeight = 0;
@@ -25,6 +26,8 @@ export class TestNode {
       },
     };
   }
+  focus(): void {}
+  reset(): void {}
   setAttribute(name: string, value: string): void { this.attrs[name] = value; }
   addEventListener(type: string, fn: (event: unknown) => void): void {
     this.handlers.set(type, [...(this.handlers.get(type) ?? []), fn]);

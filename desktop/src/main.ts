@@ -1,6 +1,7 @@
 // App shell: asks the Rust side for the daemon, then wires Chat, Settings and the event stream.
 import { createApi } from './api.ts';
 import type { Api } from './api.ts';
+import { mountAgents } from './agents.ts';
 import { createChat } from './chat.ts';
 import { btn, el, errMsg } from './dom.ts';
 import { streamEvents } from './sse.ts';
@@ -65,39 +66,46 @@ async function boot(): Promise<void> {
 }
 
 function shell(api: Api): void {
-  const chat = createChat(api);
-  const settings = el('section', { class: 'settings', 'aria-label': 'Settings' });
   const model = el('div', { class: 'nav-model' });
+  const chat = createChat(api, agent => { model.textContent = `${agent.name} · ${agent.provider} · ${agent.model}`; });
+  const agents = el('section', { class: 'settings', 'aria-label': 'Agents' });
+  const settings = el('section', { class: 'settings', 'aria-label': 'Settings' });
   const conn = el('div', { class: 'nav-conn' });
   const banner = el('div', { class: 'banner', role: 'alert', hidden: true },
     el('span', {}, 'Lost the connection to the BigNose daemon.'), btn('Retry', () => void boot(), 'small'));
 
   const link = (href: string, text: string) => el('a', { href, class: 'nav-link' }, text);
+  const agentsLink = link('#/agents', 'Agents');
   const chatLink = link('#/chat', 'Chat');
   const sectionLinks = SECTIONS.map((s) => ({ s, a: link(`#/settings/${s.id}`, s.label) }));
   const nav = el('nav', { class: 'nav', 'aria-label': 'Main' },
     el('div', { class: 'brand' }, logo(), el('span', {}, 'BigNose')),
-    chatLink, el('div', { class: 'nav-group' }, 'Settings'), ...sectionLinks.map((l) => l.a),
+    chatLink, agentsLink, el('div', { class: 'nav-group' }, 'Settings'), ...sectionLinks.map((l) => l.a),
     el('div', { class: 'nav-foot' }, model, conn));
 
-  app.replaceChildren(el('div', { class: 'shell' }, nav, el('main', { class: 'main' }, banner, chat.root, settings)));
-
-  async function showStatus(): Promise<void> {
-    try {
-      const st = await api.status();
-      model.textContent = `${st.provider.id} · ${st.provider.model}`;
-    } catch { model.textContent = ''; }
-  }
+  app.replaceChildren(el('div', { class: 'shell' }, nav, el('main', { class: 'main' }, banner, chat.root, agents, settings)));
 
   function route(): void {
     const id = /^#\/settings\/(\w+)/.exec(location.hash)?.[1];
     const section = SECTIONS.find((s) => s.id === id);
-    chat.root.hidden = !!section;
+    const isAgents = location.hash === '#/agents';
+    chat.root.hidden = !!section || isAgents;
+    agents.hidden = !isAgents;
+    if (chat.root.hidden) chat.leave();
+    agentsLink.setAttribute('aria-current', isAgents ? 'page' : 'false');
+    if (isAgents) mountAgents(agents, api, id => {
+      void chat.refreshAgents().then(() => { if (id) return chat.selectAgent(id); });
+    });
     settings.hidden = !section;
-    chatLink.setAttribute('aria-current', section ? 'false' : 'page');
+    chatLink.setAttribute('aria-current', section || isAgents ? 'false' : 'page');
     for (const l of sectionLinks) l.a.setAttribute('aria-current', l.s === section ? 'page' : 'false');
-    if (section) { const host = el('div'); settings.replaceChildren(host); settings.scrollTop = 0; section.mount(host, api); }
-    else void showStatus();
+    if (section) {
+      const host = el('div');
+      settings.replaceChildren(host); settings.scrollTop = 0;
+      if (section.id === 'providers') mountProviders(host, api, chat.agentId(), () => { void chat.refreshAgents(); });
+      else section.mount(host, api);
+    }
+    else if (!isAgents) void chat.refreshAgents();
   }
   window.onhashchange = route;
   route();

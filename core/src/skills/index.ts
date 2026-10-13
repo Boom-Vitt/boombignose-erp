@@ -102,7 +102,10 @@ export function loadSkill(dir: string, name: string): LoadedSkill | undefined {
   let folder = folderOf(dir, name);
   if (!folderExists(folder)) { dir = bundledDir; folder = folderOf(dir, name); }
   if (!folderExists(folder)) return undefined;
-  const r = readSkill(dir, name);
+  let r = readSkill(dir, name);
+  if (!r.ok && dir !== bundledDir && folderExists(folderOf(bundledDir, name))) {
+    dir = bundledDir; folder = folderOf(dir, name); r = readSkill(dir, name);
+  }
   if (!r.ok) throw new Error(`skill "${name}": ${r.reason}`);
   const files = readdirSync(folder, { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile())

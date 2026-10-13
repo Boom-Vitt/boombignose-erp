@@ -154,7 +154,11 @@ export class McpClient {
       const result = await this.request('tools/call', { name, arguments: args }, signal);
       if (!Array.isArray(result?.content)) throw new Error('Invalid MCP tool result');
       const content = result.content.filter((c: any) => c.type === 'text' && typeof c.text === 'string').map((c: any) => c.text).join('\n');
-      return { content: this.redact(content), ...(result.isError ? { isError: true } : {}) };
+      const bytes = Buffer.from(this.redact(content));
+      const note = '\n[Tool result truncated at 100 kB]';
+      const bounded = bytes.length <= 100_000 ? bytes.toString('utf8')
+        : new TextDecoder().decode(bytes.subarray(0, 100_000 - Buffer.byteLength(note)), { stream: true }) + note;
+      return { content: bounded, ...(result.isError ? { isError: true } : {}) };
     } catch (e) { return { content: this.safe(e instanceof Error ? e.message : String(e)).message, isError: true }; }
   }
   async close(): Promise<void> {

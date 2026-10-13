@@ -146,14 +146,14 @@ export class Runtime {
     if (this.runs.has(sessionId)) throw new Error('session is already running');
     const config = structuredClone(this.opts.config()), origin = options.origin ?? session.origin;
     const agent = this.store.getAgent(session.agentId);
-    const slash = expandSlash(input, listSkills(paths(this.opts.home).skills).filter(s => agent?.skills == null || agent.skills.includes(s.name)),
+    const nonOwner = origin.kind === 'line' && !config.line.allow.users.includes(options.userId ?? '');
+    const slash = nonOwner ? undefined : expandSlash(input, listSkills(paths(this.opts.home).skills).filter(s => agent?.skills == null || agent.skills.includes(s.name)),
       { cwd: options.profile?.cwd ?? config.agent.workspace });
     if (slash && 'error' in slash) throw new CommandError(slash.error);
     for (const name of slash?.connectors ?? []) {
       if (!config.mcp.servers[name]?.enabled || (agent?.connectors != null && !agent.connectors.includes(name)))
         throw new CommandError(`connector ${name} is off for this agent`, 409, name);
     }
-    const nonOwner = origin.kind === 'line' && !config.line.allow.users.includes(options.userId ?? '');
     const context = nonOwner ? session.context.flatMap(m => {
       if (m.role === 'assistant' && m.content.some(b => b.type === 'tool_use')) return [];
       const content = m.content.filter(b => b.type === 'text' && !b.text.startsWith('[Summary of earlier conversation]\n'));

@@ -221,7 +221,8 @@ export interface Config {
 - `mcp/client.ts`: `McpClient` for one server: `connect()` (JSON-RPC 2.0 `initialize` with protocolVersion
   `2025-11-25`, accept the server's version, then `notifications/initialized`), `listTools()` (follows
   `nextCursor`), `callTool(name, args)` → `ToolResult` (text content joined; `isError` kept; JSON-RPC error → error
-  result), `close()`. Transports: stdio (spawn, newline-delimited JSON, stderr kept for errors, kill on close) and
+  result), `close()`. Text tool results are redacted then capped at 100 kB including a truncation note,
+  preserving UTF-8 character boundaries before entering model context. Transports: stdio (spawn, newline-delimited JSON, stderr kept for errors, kill on close) and
   streamable HTTP (POST, `Accept: application/json, text/event-stream`, JSON or SSE response, `Mcp-Session-Id` and
   `MCP-Protocol-Version` headers after init, 202 for notifications). Request timeout 60 s, except the first stdio
   `initialize` (180 s: a cold `npx` download is slow). Stdio servers get `process.env` overlaid with the configured
@@ -558,10 +559,11 @@ export interface Agent {
 - **Bundled skill**: `core/src/skills/bundled/reverse-engineer-anything/` = an unmodified copy of
   `skills/reverse-engineer-anything/` from the `rea-agents@6.1.0` npm package (`SKILL.md` + `references/`) plus that
   package's MIT `LICENSE` in the same folder. (Under `core/src` so the desktop bundle, which ships `core/src`, carries
-  it.) Skills seen by the app = user skills in `<home>/skills` + bundled skills; a user skill with the same name wins.
+  it.) Skills seen by the app = user skills in `<home>/skills` + bundled skills; a valid user skill with the same name wins; a broken same-named user skill falls back to the bundled folder when loading as well as listing.
   `skill_load` and `GET /api/skills/:name` load bundled skills; `GET /api/skills` marks them `bundled: true`;
   `PUT`/`DELETE /api/skills/<bundled name>` and `skill_save` on a bundled name → 400 / error `built-in skill`.
-- **Runtime**: the message path (`POST /api/sessions/:id/messages`, LINE, cron) expands slash commands. Before the run
+- **Runtime**: the message path (`POST /api/sessions/:id/messages`, owner LINE, cron) expands slash commands.
+  Non-owner LINE senders receive plain-text handling, without slash validation, connector checks or skill body expansion. Before the run
   starts, every connector the command needs must be on for the session's agent (server enabled and in
   `agent.connectors` when that is a list). If one is off, no run starts: the API answers `409 {error: 'connector <name>
   is off for this agent', connector: '<name>'}` (the desktop asks the user, turns it on, and sends again); LINE gets a
@@ -595,8 +597,48 @@ export interface Agent {
   `dist/node_modules/node-pty/prebuilds/darwin-arm64/pty.node` (observed 2026-10-14). REA has no scope/exclusion
   argument for ASAR analysis. The full node-pty `lib` graph also exceeds REA's 10 MiB stdio response budget.
   The selected shipped JavaScript scope contains `conout.js`; the test verifies its SHA-256 against the original
-  ASAR header before analysis and asserts actual parsed JavaScript and graph evidence. A real call through
+  ASAR header before analysis and asserts actual parsed JavaScript and non-empty graph evidence.
+  Results over 100 kB are a UTF-8-safe prefix plus a truncation note; this test checks retained path/statistics/graph
+  evidence without claiming the clipped text is complete JSON or the whole graph was retained. A real call through
   BigNose's MCP client verified this scope succeeds. The app is never changed or repackaged, and integrity checks
   stay enabled. This checks the agent/tool/report flow on a trusted JavaScript entry; it does not establish the
   full Hermes layout or runtime behavior. The owner's manual run must keep the whole-ASAR integrity limitation
   explicit rather than treating the native file or unexamined app features as verified.
+
+
+## 12. Desktop: agents, slash picker, e2e (stream `agents-desktop`)
+
+- **Agents screen** (`#/agents`, in the left nav): list (icon, name, provider · model, a badge on the LINE agent);
+  create; edit (name, icon, instructions, provider + model from the configured providers, tool permissions as rows of
+  tool name or `prefix*` + allow/ask/deny, connectors "All" or a pick list from `GET /api/mcp`, skills "All" or a pick
+  list from `GET /api/skills`, "Answers LINE" which writes `line.agentId` through settings); duplicate (client-side
+  copy); delete with a confirm that says sessions, agent notes and schedules go with it (the last agent cannot be
+  deleted).
+- **Chat**: pick the agent; the session list and search show that agent's sessions; a new chat belongs to it.
+- **Slash picker**: typing `/` at the start of the chat box opens the list from `GET /api/commands?agent=`, filtered as
+  you type; arrow keys, Enter or Tab pick, Esc closes; mouse works too. Sending `/rea <path>` that gets `409` with
+  `connector` shows a confirm "Turn on <connector> for <agent>?"; yes → `PATCH /api/mcp/<name> {enabled: true}` when it
+  is off globally and `PATCH /api/agents/:id` adding it when the agent's connectors are a list, then send again.
+  A `notification` event for the session shows as a system line in the chat (e.g. the saved report path).
+- **Memory / Schedules**: an agent filter / column; new agent notes and schedules pick an agent.
+- **Digest**: `docs/reverse/hermes-desktop.md`, short (about 150 lines max): what Hermes Desktop is (Electron), its
+  main / preload / renderer layout, IPC channel groups, screens and routes (incl. Messaging → LINE), the local API it
+  calls, and what BigNose took or simplified, each point pointing at the note it comes from. No copied code.
+- **e2e** `desktop/e2e/agents-rea.e2e.ts`, script `e2e` in `desktop/package.json` (not part of `test`): start the real
+  daemon (`node core/src/cli.ts daemon`, temp `BIGNOSE_HOME`, `api.port: 0`, read the bound port from `daemon.json`),
+  a mock OpenAI-compatible provider (scripted: call `mcp__rea__open_binary`, then `mcp__rea__analyze_javascript_application`,
+  then a final message), and a fake REA stdio MCP server (a fixture with those two tools) configured as
+  `mcp.servers.rea`, so the e2e needs no network (the real REA is covered by `slash-rea`). Drive the built UI
+  (`desktop/dist`, served by a tiny local static server) in the installed Google Chrome, headless, over the Chrome
+  DevTools Protocol with Node's built-in `WebSocket` (no Playwright, no new dependency); `BIGNOSE_CHROME` overrides the
+  browser path. Stub `window.__TAURI__` with `Page.addScriptToEvaluateOnNewDocument` so `daemon_info` returns the
+  test daemon's port and token, and start Chrome with a temp `--user-data-dir` and `--disable-web-security` (CORS is
+  covered by the core API tests). Flow: Agents → create "Hermes Reverser" → edit its icon and instructions, verify persisted values through GET /api/agents/:id → duplicate it, verify the copy has matching instructions → delete the copy, verify it is absent from GET /api/agents → Chat with it → type `/` → the picker
+  lists `rea` → send `/rea <existing fixture path>` → confirm turning REA on → Allow the tool approvals → the chat
+  shows tool activity for both tools and the final message, and `GET /api/agents` lists the new agent. Kill Chrome,
+  the daemon and the servers on exit; non-zero exit on failure.
+
+Desktop integration notes (2026-10-14): settings read-modify-write saves are serialized in the API client.
+Deleting a user connector clears only its own hex-named secrets unreferenced by other connectors or providers.
+The chat and Providers page edit the selected agent with PATCH; config.active only seeds new agents.
+The desktop e2e reloads with a pending tool approval and verifies the SSE replay restores Stop and Allow/Deny.
