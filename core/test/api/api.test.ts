@@ -10,6 +10,7 @@ import { startDaemon } from '../../src/app/daemon.ts';
 import type { DaemonOptions } from '../../src/app/daemon.ts';
 import { maskSecret, readEnv, setSecret, loadConfig } from '../../src/config.ts';
 import type { Config, Provider } from '../../src/types.ts';
+import { createCleaner, safeValue } from '../../src/app/settings.ts';
 import { configured, mockOpenai, testHome, toolCall } from '../e2e/helpers.ts';
 
 type App = Awaited<ReturnType<typeof startDaemon>>;
@@ -350,6 +351,8 @@ test('cron LINE delivery uses confirm buttons and pushes the completed answer to
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider, lineOptions: { fetchImpl: async (url, init) => { sent.push({ url: String(url), ...JSON.parse(String(init?.body)) }); return new Response('{}'); } } });
+  const deadline = Date.now() + 3000;
+  while (!a.lineStatus().running) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   const job = a.scheduler.add({ cron: '* * * * *', prompt: 'scheduled task', delivery: { kind: 'line', to: 'owner' } });
   const fire = a.runtime.fireJob(job);
   while (!sent.length) await new Promise(resolve => setImmediate(resolve));
@@ -414,4 +417,90 @@ test('chunked oversized requests return 413 without losing the response socket',
     req.on('error', reject); req.write('x'.repeat(600_000)); req.end('x'.repeat(600_000));
   });
   assert.equal(status, 413);
+});
+
+test('short environment values preserve config, API text, transcript and context while long values remain masked', async t => {
+  const home = testHome(t), ordinary = 'found 12 matches in 1 file by boombignose';
+  const sensitive = 'private-' + 'x'.repeat(16);
+  configured(home, undefined, c => { c.agent.workspace = join(home, 'boom1'); c.agent.systemPrompt = ordinary; });
+  setSecret('LEVEL', '1', home); setSecret('GITHUB_USER', 'boom', home); setSecret('VALUE', sensitive, home);
+  const provider: Provider = { kind: 'openai-compatible', async *stream() {
+    yield { type: 'text_delta', text: ordinary + ': ' + sensitive };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await app(t, { home, providerFactory: () => provider });
+  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const result = await a.runtime.start(id, ordinary).result;
+  assert.equal(result.text, ordinary + ': ' + maskSecret(sensitive));
+  const transcript = a.runtime.store.getMessages(id);
+  assert.deepEqual(transcript[0]!.content, [{ type: 'text', text: ordinary }]);
+  assert.deepEqual(a.runtime.store.getSession(id)!.context, transcript);
+  const detail = (await call(a, `/api/sessions/${id}`)).body;
+  assert.deepEqual(detail.messages, transcript); assert.equal(detail.title, ordinary);
+  const settings = (await call(a, '/api/settings')).body;
+  assert.equal(settings.config.agent.workspace, join(home, 'boom1')); assert.equal(settings.config.agent.systemPrompt, ordinary);
+  assert.equal(settings.secrets.LEVEL, '••••'); assert.equal(settings.secrets.VALUE, maskSecret(sensitive));
+  assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
+  assert.equal(loadConfig(home).agent.workspace, join(home, 'boom1')); assert.equal(loadConfig(home).agent.systemPrompt, ordinary);
+});
+
+test('one cleaner snapshots secrets for all strings in a response or persistence batch', t => {
+  const home = testHome(t), config = configured(home), sensitive = 'first-' + 'x'.repeat(16);
+  setSecret('VALUE', sensitive, home);
+  const clean = createCleaner(home, config);
+  setSecret('VALUE', 'replacement', home);
+  assert.deepEqual(safeValue({ first: sensitive, blocks: [sensitive, sensitive] }, clean), { first: maskSecret(sensitive), blocks: [maskSecret(sensitive), maskSecret(sensitive)] });
+  assert.equal(createCleaner(home, config)(sensitive), sensitive);
+});
+
+test('concurrent MCP mutations compose against current config inside the startup queue', async t => {
+  const home = testHome(t);
+  configured(home, undefined, c => { c.mcp.servers.slow = { ...fakeMcp, args: [...fakeMcp.args, '--delay-init'] }; });
+  setSecret('VALUE', 'test-value', home);
+  const a = await app(t, { home }), config = { ...fakeMcp, enabled: false };
+  assert.equal((await call(a, '/api/mcp')).body.servers.find((s: any) => s.name === 'slow').connected, false);
+  const added = await Promise.all(['one', 'two'].map(name => call(a, '/api/mcp', 'POST', { name, config })));
+  assert.deepEqual(added.map(r => r.status), [200, 200]);
+  assert.ok(loadConfig(home).mcp.servers.one); assert.ok(loadConfig(home).mcp.servers.two);
+  const duplicate = await Promise.all([0, 1].map(() => call(a, '/api/mcp', 'POST', { name: 'same', config })));
+  assert.deepEqual(duplicate.map(r => r.status).sort(), [200, 400]);
+  const patched = await Promise.all([
+    call(a, '/api/mcp/one', 'PATCH', { enabled: true }),
+    call(a, '/api/mcp/one', 'PATCH', { tools: ['echo'] }),
+  ]);
+  assert.deepEqual(patched.map(r => r.status), [200, 200]);
+  assert.equal(loadConfig(home).mcp.servers.one!.enabled, true); assert.deepEqual(loadConfig(home).mcp.servers.one!.tools, ['echo']);
+  const deleted = await Promise.all(['one', 'two'].map(name => call(a, `/api/mcp/${name}`, 'DELETE')));
+  assert.deepEqual(deleted.map(r => r.status), [200, 200]);
+  assert.equal(loadConfig(home).mcp.servers.one, undefined); assert.equal(loadConfig(home).mcp.servers.two, undefined);
+});
+
+test('SSE masks secrets split across deltas and flushes text before tool activity and interruption', async t => {
+  const home = testHome(t), sensitive = 'private-' + 'x'.repeat(16), prefix = 'ordinary '.repeat(20);
+  configured(home); setSecret('VALUE', sensitive, home);
+  let interrupted = false;
+  const provider: Provider = { kind: 'openai-compatible', async *stream(req) {
+    yield { type: 'text_delta', text: prefix + sensitive.slice(0, 10) };
+    yield { type: 'text_delta', text: sensitive.slice(10) + ' tail' };
+    if (interrupted) { await new Promise<void>(resolve => req.signal!.addEventListener('abort', () => resolve(), { once: true })); return; }
+    if (req.messages.length === 1) yield { type: 'tool_call', id: 'memory', name: 'memory_read', input: {} };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await app(t, { home, providerFactory: () => provider }), stream = await events(a, t);
+  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  const done = a.runtime.start(id, 'echo'); await done.result;
+  await stream.wait(e => e.type === 'run_end' && e.runId === done.runId);
+  await stream.wait(e => e.type === 'session_updated' && e.sessionId === id);
+  const output = stream.values.filter(e => e.runId === done.runId && e.type === 'text_delta').map(e => e.text).join('');
+  assert.equal(output, (prefix + maskSecret(sensitive) + ' tail').repeat(2)); assert.ok(!output.includes(sensitive));
+  const toolAt = stream.values.findIndex(e => e.type === 'tool_start');
+  assert.equal(stream.values.slice(0, toolAt).filter(e => e.type === 'text_delta').map(e => e.text).join(''), prefix + maskSecret(sensitive) + ' tail');
+  const endAt = stream.values.findIndex(e => e.type === 'run_end');
+  assert.equal(stream.values[endAt + 1].type, 'session_updated');
+  interrupted = true;
+  const stopped = a.runtime.start(id, 'interrupt');
+  await stream.wait(e => e.type === 'text_delta' && e.runId === stopped.runId);
+  a.runtime.interrupt(id); assert.equal((await stopped.result).status, 'interrupted');
+  await stream.wait(e => e.type === 'run_end' && e.runId === stopped.runId);
+  assert.equal(stream.values.filter(e => e.runId === stopped.runId && e.type === 'text_delta').map(e => e.text).join(''), prefix + maskSecret(sensitive) + ' tail');
 });

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openStore } from '../../src/store/index.ts';
+import { maskSecret, setSecret } from '../../src/config.ts';
+import { createServer } from 'node:http';
 import { cli, configured, mockOpenai, testHome, toolCall } from './helpers.ts';
 
 test('chat -q round trips a builtin tool through a mock OpenAI-compatible server and persists transcript/context', async t => {
@@ -49,4 +51,19 @@ test('CLI MCP commands validate names and persist add/list/enable/disable; docto
   assert.match((await cli(home, ['mcp', 'list'])).stdout, /fake http disabled/);
   assert.equal((await cli(home, ['mcp', 'enable', 'fake'])).code, 0);
   assert.equal((await cli(home, ['mcp', 'test', 'fake'])).code, 1);
+});
+
+test('chat -q never prints a secret split across streamed provider chunks', async t => {
+  const home = testHome(t), sensitive = 'private-' + 'y'.repeat(16), prefix = 'ordinary '.repeat(20);
+  const server = createServer((req, res) => {
+    req.resume(); res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    for (const content of [prefix + sensitive.slice(0, 10), sensitive.slice(10), ' tail']) res.write(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] })}\n\n`);
+    res.end('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); }));
+  configured(home, `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`); setSecret('VALUE', sensitive, home);
+  const result = await cli(home, ['chat', '-q', 'echo']);
+  assert.equal(result.code, 0, result.stderr); assert.equal(result.stdout, prefix + maskSecret(sensitive) + ' tail\n');
+  assert.ok(!result.stdout.includes(sensitive));
 });

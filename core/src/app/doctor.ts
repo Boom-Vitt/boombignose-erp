@@ -1,9 +1,9 @@
-import { accessSync, constants, writeFileSync, unlinkSync } from 'node:fs';
+import { accessSync, constants, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { getApiKey, homeDir, loadConfig, readEnv } from '../config.ts';
-import { safeText, validateConfig } from './settings.ts';
+import { createCleaner, validateConfig } from './settings.ts';
 
 export function doctor(home = homeDir()): { code: number; lines: string[] } {
   const lines: string[] = [];
@@ -18,6 +18,7 @@ export function doctor(home = homeDir()): { code: number; lines: string[] } {
     try { db.exec("CREATE VIRTUAL TABLE check_fts USING fts5(text, tokenize='trigram')"); } finally { db.close(); }
   });
   hard('home writable', () => {
+    mkdirSync(home, { recursive: true, mode: 0o700 });
     accessSync(home, constants.W_OK);
     const file = join(home, `.doctor-${randomUUID()}`);
     writeFileSync(file, '', { flag: 'wx', mode: 0o600 }); unlinkSync(file);
@@ -32,6 +33,6 @@ export function doctor(home = homeDir()): { code: number; lines: string[] } {
       if (!config.line.allow.users.length && !config.line.allow.groups.length && !config.line.allow.rooms.length) lines.push('warn LINE allowlists are empty');
       if (!config.line.publicUrl) lines.push('warn LINE public URL is unset');
     }
-    return { code, lines: lines.map(line => safeText(line, home, config)) };
+    return { code, lines: lines.map(createCleaner(home, config)) };
   } catch { return { code: 1, lines: [...lines, 'fail config'] }; }
 }

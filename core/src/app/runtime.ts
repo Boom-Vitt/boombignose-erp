@@ -14,7 +14,7 @@ import type { Store, Job } from '../store/index.ts';
 import type { McpManager } from '../mcp/manager.ts';
 import type { LineGateway } from '../line/index.ts';
 import type { AgentEvent, ApprovalRequest, Approver, Config, HooksConfig, Origin, Policy, ProviderConfig, Tool } from '../types.ts';
-import { safeText, safeValue } from './settings.ts';
+import { createCleaner, safeValue } from './settings.ts';
 
 export type ApiEvent = (AgentEvent & { sessionId: string; runId: string })
   | { type: 'run_start'; sessionId: string; runId: string }
@@ -41,9 +41,10 @@ export class Runtime {
   private listeners = new Set<(event: ApiEvent) => void>();
   private closed = false;
   constructor(opts: RuntimeOptions) { this.opts = opts; this.store = opts.store; }
-  clean = (text: string) => safeText(text, this.opts.home, this.opts.config(), this.opts.token);
+  cleaner() { return createCleaner(this.opts.home, this.opts.config(), this.opts.token); }
+  clean = (text: string) => this.cleaner()(text);
   emit(event: ApiEvent): void {
-    const safe = safeValue(event, this.clean);
+    const safe = safeValue(event, this.cleaner());
     for (const listener of this.listeners) listener(safe);
   }
   subscribe(listener: (event: ApiEvent) => void): () => void {
@@ -53,7 +54,10 @@ export class Runtime {
   replay(): ApiEvent[] {
     return [...[...this.runs].map(([sessionId, run]) => ({ type: 'run_start' as const, sessionId, runId: run.runId })), ...this.pendingEvents()];
   }
-  pendingEvents(): ApiEvent[] { return [...this.approvals.values()].map(a => safeValue(a.event, this.clean)); }
+  pendingEvents(): ApiEvent[] {
+    const clean = this.cleaner();
+    return [...this.approvals.values()].map(a => safeValue(a.event, clean));
+  }
   isRunning(sessionId: string): boolean { return this.runs.has(sessionId); }
   interrupt(sessionId: string): boolean {
     const run = this.runs.get(sessionId);
@@ -121,19 +125,32 @@ export class Runtime {
     const env = readEnv(this.opts.home);
     const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
     const controller = new AbortController(), runId = randomUUID();
+    const redaction = this.cleaner();
+    let textTail = '';
+    const streamText = (text = '', flush = false) => {
+      // Redact the joined buffer before cutting it, so a complete secret cannot straddle the release boundary.
+      textTail = redaction(textTail + text);
+      const cut = flush ? textTail.length : Math.max(0, textTail.length - Math.max(0, redaction.maxSecretLength - 1));
+      if (cut) this.emit({ type: 'text_delta', text: textTail.slice(0, cut), sessionId, runId });
+      textTail = textTail.slice(cut);
+    };
     // Start after the run is registered, so even an immediate provider completion cannot race the API.
     const result = Promise.resolve().then(async () => {
       const raw = await runAgent({ ...profile, provider, tools, permissions, sessionId, origin, signal: controller.signal,
         context: session.context, input, approve: req => this.approve(req, runId, controller.signal, options.approve),
-        onEvent: e => { if (!['approval_request', 'approval_result', 'run_end'].includes(e.type)) this.emit({ ...e, sessionId, runId }); },
+        onEvent: e => {
+          if (e.type === 'text_delta') { streamText(e.text); return; }
+          streamText('', true);
+          if (!['approval_request', 'approval_result', 'run_end'].includes(e.type)) this.emit({ ...e, sessionId, runId });
+        },
       });
-      const completed = safeValue(raw, this.clean);
+      const current = this.cleaner(), clean = (text: string) => current(redaction(text)), completed = safeValue(raw, clean);
       this.store.appendMessages(sessionId, completed.added);
       this.store.setContext(sessionId, completed.context);
-      if (!session.title) this.store.setTitle(sessionId, this.clean(input.replace(/\s+/g, ' ').slice(0, 80)));
+      if (!session.title) this.store.setTitle(sessionId, clean(input.replace(/\s+/g, ' ').slice(0, 80)));
       this.runs.delete(sessionId);
-      this.emit({ type: 'session_updated', sessionId });
       this.emit({ type: 'run_end', status: completed.status, text: completed.text, ...(completed.error ? { error: completed.error } : {}), sessionId, runId });
+      this.emit({ type: 'session_updated', sessionId });
       return completed;
     }).finally(() => { this.runs.delete(sessionId); });
     this.runs.set(sessionId, { runId, controller, result });

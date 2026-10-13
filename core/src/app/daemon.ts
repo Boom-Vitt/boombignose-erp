@@ -54,8 +54,9 @@ export async function startDaemon(options: DaemonOptions = {}) {
   const api = createApiServer({ home, token, runtime, mcp, scheduler, config: () => config, lineStatus,
     updateSettings: input => serial(async () => {
       if (closed) throw new Error('daemon is closing');
-      validateConfig(input);
-      const next = restoreMaskedConfig(input, config);
+      const value = typeof input === 'function' ? input(structuredClone(config)) : input;
+      validateConfig(value);
+      const next = restoreMaskedConfig(value, config);
       saveConfig(next, home); config = next; await reload();
     }),
     reloadSecrets: () => serial(reload),
@@ -77,12 +78,13 @@ export async function startDaemon(options: DaemonOptions = {}) {
   options.signal?.addEventListener('abort', abort, { once: true });
   try {
     options.signal?.throwIfAborted();
-    await serial(reload); options.signal?.throwIfAborted(); scheduler.start();
     const port = await api.listen(config.api.port);
     options.signal?.throwIfAborted();
     const file = paths(home).daemon, tmp = `${file}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify({ pid: process.pid, port, version: VERSION, startedAt: Date.now() }) + '\n', { mode: 0o600 });
     renameSync(tmp, file);
+    scheduler.start();
+    void serial(reload).catch(e => runtime.emit({ type: 'notification', title: 'Connector startup failed', body: String(e) }));
     return { home, token, port, runtime, mcp, scheduler, lineStatus, config: () => structuredClone(config), close };
   } catch (e) { await close(); throw e; }
 }

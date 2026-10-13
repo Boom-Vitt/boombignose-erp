@@ -28,7 +28,7 @@ test('daemon starts on a bound loopback port, authenticates health, and stops cl
   assert.deepEqual(stopped, [0, null]); assert.equal(existsSync(join(home, 'daemon.json')), false);
 });
 
-test('SIGTERM during MCP initialization closes the daemon and its detached MCP process', async t => {
+test('API health and connector status are available during hung MCP initialization, and SIGTERM closes both processes', async t => {
   const home = testHome(t), pidFile = join(home, 'mcp-pid');
   configured(home, undefined, c => {
     c.mcp.servers.waiting = { transport: 'stdio', command: process.execPath,
@@ -41,6 +41,13 @@ test('SIGTERM during MCP initialization closes the daemon and its detached MCP p
   while (!existsSync(pidFile)) { assert.ok(Date.now() < deadline && child.exitCode === null); await new Promise(resolve => setTimeout(resolve, 10)); }
   const pid = Number(readFileSync(pidFile, 'utf8'));
   t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch { /* Already closed by daemon. */ } });
+  assert.equal(existsSync(join(home, 'daemon.json')), true);
+  const info = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8'));
+  const headers = { Authorization: `Bearer ${readFileSync(join(home, 'api-token'), 'utf8').trim()}` };
+  const base = `http://127.0.0.1:${info.port}`;
+  assert.equal((await fetch(base + '/api/health', { headers })).status, 200);
+  const connectors = await (await fetch(base + '/api/mcp', { headers })).json() as any;
+  assert.equal(connectors.servers.find((s: any) => s.name === 'waiting').connected, false);
   child.kill('SIGTERM');
   const result = await Promise.race([exit, new Promise<never>((_, reject) => { const timer = setTimeout(() => reject(new Error('startup shutdown timed out')), 3000); timer.unref(); })]);
   assert.deepEqual(result, [0, null]);

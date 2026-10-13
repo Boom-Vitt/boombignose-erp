@@ -12,7 +12,7 @@ import type { McpManager } from '../mcp/manager.ts';
 
 export interface ApiOptions {
   home: string; token: string; runtime: Runtime; mcp: McpManager; scheduler: Scheduler;
-  config: () => Config; updateSettings: (config: Config) => Promise<void>; reloadSecrets: () => Promise<void>;
+  config: () => Config; updateSettings: (config: Config | ((current: Config) => Config)) => Promise<void>; reloadSecrets: () => Promise<void>;
   lineStatus: () => { enabled: boolean; running: boolean; port: number; publicUrl?: string; webhookUrl?: string; tokenSet: boolean; secretSet: boolean; lastEventAt?: number; lastError?: string };
 }
 class HttpError extends Error {
@@ -56,7 +56,7 @@ export function createApiServer(opts: ApiOptions) {
   const streams = new Set<ServerResponse>();
   const send = (res: ServerResponse, value: unknown, status = 200) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify(safeValue(value, runtime.clean)));
+    res.end(JSON.stringify(safeValue(value, runtime.cleaner())));
   };
   async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
@@ -146,24 +146,32 @@ export function createApiServer(opts: ApiOptions) {
         if (!id && method === 'GET') return send(res, { servers: mcp.status() });
         if (!id && method === 'POST') {
           const b = await body(req); validate(() => { validateMcpName(b.name); validateMcpServer(b.config); });
-          const c = structuredClone(opts.config()), name = b.name as string;
-          check(!Object.hasOwn(c.mcp.servers, name), 'MCP server already exists');
-          c.mcp.servers[name] = b.config as Config['mcp']['servers'][string];
-          await opts.updateSettings(c); return send(res, { ok: true });
+          await opts.updateSettings(c => {
+            const name = b.name as string;
+            check(!Object.hasOwn(c.mcp.servers, name), 'MCP server already exists');
+            c.mcp.servers[name] = b.config as Config['mcp']['servers'][string]; return c;
+          });
+          return send(res, { ok: true });
+        }
+        if (id && !action && method === 'PATCH') {
+          const b = await body(req); check(b.enabled !== undefined || b.tools !== undefined, 'enabled or tools is required');
+          await opts.updateSettings(c => {
+            if (!Object.hasOwn(c.mcp.servers, id)) return missing();
+            c.mcp.servers[id] = { ...c.mcp.servers[id]!, ...(b.enabled !== undefined ? { enabled: b.enabled as boolean } : {}), ...(b.tools !== undefined ? { tools: b.tools as string[] } : {}) };
+            validate(() => validateMcpServer(c.mcp.servers[id])); return c;
+          });
+          return send(res, { ok: true });
+        }
+        if (id && !action && method === 'DELETE') {
+          await opts.updateSettings(c => {
+            if (!Object.hasOwn(c.mcp.servers, id)) return missing();
+            check(id !== 'rea', 'rea is built in: disable it instead');
+            delete c.mcp.servers[id]; return c;
+          });
+          return send(res, { ok: true });
         }
         const servers = opts.config().mcp.servers;
         const server = id && Object.hasOwn(servers, id) ? servers[id] : undefined; if (!server || !id) return missing();
-        if (!action && method === 'PATCH') {
-          const b = await body(req); check(b.enabled !== undefined || b.tools !== undefined, 'enabled or tools is required');
-          const c = structuredClone(opts.config());
-          c.mcp.servers[id] = { ...server, ...(b.enabled !== undefined ? { enabled: b.enabled as boolean } : {}), ...(b.tools !== undefined ? { tools: b.tools as string[] } : {}) };
-          validate(() => validateMcpServer(c.mcp.servers[id]));
-          await opts.updateSettings(c); return send(res, { ok: true });
-        }
-        if (!action && method === 'DELETE') {
-          check(id !== 'rea', 'rea is built in: disable it instead');
-          const c = structuredClone(opts.config()); delete c.mcp.servers[id]; await opts.updateSettings(c); return send(res, { ok: true });
-        }
         if (action === 'test' && method === 'POST') return send(res, await mcp.test(id));
         if (action === 'tools' && method === 'GET') return send(res, { tools: mcp.listTools(id).map(t => ({ name: t.name, description: t.description, selected: !server.tools || server.tools.includes(t.name) })) });
       }
@@ -212,7 +220,7 @@ export function createApiServer(opts: ApiOptions) {
       return missing();
     } catch (e) {
       if (res.headersSent) { res.end(); return; }
-      send(res, { error: runtime.clean(e instanceof Error ? e.message : String(e)) }, e instanceof HttpError ? e.status : 500);
+      send(res, { error: e instanceof Error ? e.message : String(e) }, e instanceof HttpError ? e.status : 500);
     }
   }
   const server = createServer((req, res) => { void handler(req, res); });

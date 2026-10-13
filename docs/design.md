@@ -281,6 +281,9 @@ export interface Config {
   (when enabled and both secrets set), the API server; write `daemon.json` with the **bound** port (`api.port: 0` and `line.port: 0` mean ephemeral
   ports, used by tests; tests never use the default ports 47821/47822); apply settings changes live (LINE
   restart, MCP update); clean shutdown on SIGINT/SIGTERM.
+  The API listens and `daemon.json` is written before connectors finish initializing. Initial connector startup
+  runs asynchronously in the same serialized queue as settings writes; pending connectors show `connected:false`.
+  Shutdown cancels their initialization and waits for the queue before closing the store.
 - `cli.ts` (`#!/usr/bin/env node`): `bignose daemon`, `bignose chat -q "<prompt>"` (headless single turn without a
   daemon: text to stdout, tool activity to stderr, `ask` tools prompt on a TTY and are denied otherwise; exit 0 when
   done, 1 otherwise), `bignose mcp add <name> (--url <url> | -- <command> [args…])`, `mcp list`, `mcp test <name>`
@@ -288,6 +291,7 @@ export interface Config {
   `bignose doctor` (node version, sqlite + FTS5 trigram, home writable, config valid, active provider has a key,
   LINE settings when enabled; exit 1 only on hard failures: node < 24, sqlite/FTS5 trigram missing, home not
   writable, invalid config; a missing provider key or LINE secret is a warning and exits 0).
+  Doctor creates a missing fresh-install home with mode 0700 before checking writability.
 
 ## 6. Local API (core-app serves it, desktop consumes it)
 
@@ -300,6 +304,9 @@ export interface Config {
   `Access-Control-Allow-Headers: Authorization, Content-Type`, `Access-Control-Max-Age: 600`. Other origins get no
   CORS headers.
   JSON bodies ≤ 1 MiB. Errors: `{ "error": "<message>" }`. Secrets are only ever returned masked.
+  General redaction ignores env/token/literal MCP values shorter than 8 characters (often flags or usernames),
+  matching the MCP client, to avoid corrupting prose/config. Dedicated secret and MCP settings fields still use
+  `maskSecret` for every non-empty value. Each response/event/persistence batch snapshots its redaction list once.
 - Every API timestamp is a number in epoch milliseconds: sessions and memory `updatedAt`, jobs
   `nextRunAt`/`lastRunAt`, and LINE `lastEventAt`. Disabled jobs have `nextRunAt: null`; optional timestamps are
   omitted until present. `daemon.json.startedAt` uses the same unit.
@@ -310,6 +317,10 @@ export interface Config {
   Every new connection first replays one `run_start` per active run and one `approval_request` per pending
   API approval, with the same `sessionId`/`runId` and approval shape as live events, then streams live events.
   CLI TTY and LINE confirm-button approvals stay in their originating channel.
+  Per-run text streaming holds up to the longest known secret minus one characters, redacts the joined buffer
+  before releasing its safe prefix, and flushes the remainder before other events or completion/interruption.
+  This masks secrets spanning consecutive provider deltas. `run_end` precedes `session_updated` so the desktop
+  can reload the final transcript after clearing its running state.
 - Routes:
   - `GET /api/health` → `{ ok: true, version, pid }`; `GET /api/status` → `{ version, provider: {id, kind, model},
     line: {enabled, running, webhookUrl}, mcp: [{name, enabled, connected, tools}], schedules: n }`.
@@ -335,6 +346,8 @@ export interface Config {
     invalid API input returns 400. REA is built in: `DELETE /api/mcp/rea` returns
     `400 {error: "rea is built in: disable it instead"}`; enable/disable is supported, and a full config without
     REA restores the built-in disabled entry.
+    Connector POST/PATCH/DELETE operations read, validate and mutate the live config inside the daemon's
+    serialized settings queue, so concurrent mutations compose instead of overwriting one another.
   - `GET /api/skills` → `{skills: [{name, description}]}`; `GET /api/skills/:name` → `{name, description, body}`;
     `PUT /api/skills/:name` `{description, body}`; `DELETE /api/skills/:name`.
   - `GET /api/memory?kind=&q=` → `{notes: [{id, kind, text, updatedAt}]}`; `POST /api/memory` `{kind, text}`;

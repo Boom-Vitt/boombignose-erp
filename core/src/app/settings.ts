@@ -78,11 +78,13 @@ export function settingsResponse(config: Config, home: string) {
   return { config: masked, secrets: Object.fromEntries([...names].map(name => [name, maskSecret(env[name] ?? '')])) };
 }
 
-// Also redact JSON-escaped forms in upstream errors and tool output.
-export function safeText(text: string, home: string, config: Config, token = ''): string {
-  const values = [...Object.values(readEnv(home)), token, ...Object.values(config.mcp.servers).flatMap(s => Object.values(s.transport === 'stdio' ? s.env ?? {} : s.headers ?? {}).filter(v => !reference(v) && v.length >= 8))];
-  return redact(text, values.flatMap(v => [v, JSON.stringify(v).slice(1, -1)]));
+// Short env values are often flags/usernames; replacing them in prose corrupts saved data.
+export function createCleaner(home: string, config: Config, token = '') {
+  const values = [...Object.values(readEnv(home)), token, ...Object.values(config.mcp.servers).flatMap(s => Object.values(s.transport === 'stdio' ? s.env ?? {} : s.headers ?? {}).filter(v => !reference(v)))].filter(v => v.length >= 8);
+  const secrets = [...new Set(values.flatMap(v => [v, JSON.stringify(v).slice(1, -1)]))];
+  return Object.assign((text: string) => redact(text, secrets), { maxSecretLength: secrets.reduce((n, s) => Math.max(n, s.length), 0) });
 }
+export const safeText = (text: string, home: string, config: Config, token = '') => createCleaner(home, config, token)(text);
 export function safeValue<T>(value: T, clean: (s: string) => string): T {
   if (typeof value === 'string') return clean(value) as T;
   if (Array.isArray(value)) return value.map(v => safeValue(v, clean)) as T;
