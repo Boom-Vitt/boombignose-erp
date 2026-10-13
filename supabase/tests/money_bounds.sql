@@ -1,0 +1,14 @@
+begin;
+select plan(7);
+insert into organizations(id,name,slug) values('ba000000-0000-4000-8000-000000000001','Synthetic money bounds','synthetic-money-bounds');
+insert into clients(id,org_id,name) values('ba000000-0000-4000-8000-000000000002','ba000000-0000-4000-8000-000000000001','Synthetic customer');
+insert into projects(id,org_id,client_id,name) values('ba000000-0000-4000-8000-000000000003','ba000000-0000-4000-8000-000000000001','ba000000-0000-4000-8000-000000000002','Synthetic project');
+insert into org_settings(org_id,cash_balance_satang,monthly_burn_satang) values('ba000000-0000-4000-8000-000000000001',0,0);
+select throws_ok($$insert into costs(org_id,amount_satang) values('ba000000-0000-4000-8000-000000000001',9007199254740992)$$,'23514',null,'costs reject unsafe upper bound');
+select throws_ok($$insert into costs(org_id,amount_satang) values('ba000000-0000-4000-8000-000000000001',-9007199254740992)$$,'23514',null,'costs reject unsafe lower bound');
+select throws_ok($$insert into deals(org_id,client_id,title,value_satang) values('ba000000-0000-4000-8000-000000000001','ba000000-0000-4000-8000-000000000002','Synthetic',9007199254740992)$$,'23514',null,'deal value bounded');
+select throws_ok($$update projects set budget_satang=9007199254740992 where id='ba000000-0000-4000-8000-000000000003'$$,'23514',null,'project budget bounded');
+select throws_ok($$insert into time_entries(org_id,project_id,minutes,rate_satang) values('ba000000-0000-4000-8000-000000000001','ba000000-0000-4000-8000-000000000003',60,9007199254740992)$$,'23514',null,'time rate bounded');
+select throws_ok($$update org_settings set cash_balance_satang=9007199254740992 where org_id='ba000000-0000-4000-8000-000000000001'$$,'23514',null,'cash setting bounded');
+select throws_ok($$update org_settings set monthly_burn_satang=9007199254740992 where org_id='ba000000-0000-4000-8000-000000000001'$$,'23514',null,'burn setting bounded');
+select * from finish();rollback;
