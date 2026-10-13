@@ -47,4 +47,10 @@ describe("authenticated inbound event receipts", () => {
     }
     expect(state.requests).toEqual([])
   })
+  it("rejects non-object event payloads before a futile database retry", async () => {
+    for (const payload of [null, [], "text", 101]) {
+      expect((await followup(request("local-secret", { orgId, payload }))).status).toBe(400)
+    }
+    expect(state.requests).toEqual([])
+  })
 })

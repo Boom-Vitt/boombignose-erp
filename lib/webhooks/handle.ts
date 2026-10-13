@@ -3,7 +3,7 @@ import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { verifyWebhookSecret } from "./verify"
 
-const Body = z.object({ orgId: z.uuid(), payload: z.json() }).strict()
+const Body = z.object({ orgId: z.uuid(), payload: z.record(z.string(), z.json()) }).strict()
 const Result = z.object({ eventId: z.uuid(), duplicate: z.boolean() })
 export type IntegrationEvent = "followup" | "invoice-overdue" | "project-deadline"
 

@@ -57,7 +57,7 @@ POST `/api/webhooks/n8n/followup`, `/invoice-overdue` and `/project-deadline` re
 { "orgId": "organization UUID", "payload": { "sourceId": "synthetic-example" } }
 ```
 
-The body must be valid JSON and no larger than 16 KiB. The handler persists a receipt before acknowledging `{ok:true,event,eventId,duplicate}`. Same org/event/key and equal JSON returns the durable receipt; a changed request conflicts (409). Missing secret returns 401; invalid identity/body returns 400; storage failure returns 503. GET returns only endpoint health.
+The body must be valid JSON, its `payload` must be an object, and the body may be no larger than 16 KiB. The handler persists a receipt before acknowledging `{ok:true,event,eventId,duplicate}`. Same org/event/key and equal JSON returns the durable receipt; a changed request conflicts (409). Missing secret returns 401; invalid identity/body returns 400; storage failure returns 503. GET returns only endpoint health.
 
 These endpoints acknowledge authenticated integration receipts. They do not settle invoices, mark payments paid, modify overdue status, or send customer messages. The global secret represents a trusted server integration across orgs; it must never be distributed to tenant browsers or customer integrations. Tenant-specific integration credentials and accountant/document readiness remain separate release gates.
 
