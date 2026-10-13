@@ -106,7 +106,7 @@ BoomBigNose Company OS เป็น **Company OS / ERP แบบเบา ที
 
 ### สิ่งที่ต้องมี
 
-- **Node.js 20+**
+- **Node.js 22+**
 - **pnpm**
 - **Docker** (สำหรับรัน Supabase บนเครื่อง)
 - **Supabase CLI**
