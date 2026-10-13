@@ -277,8 +277,8 @@ export interface Config {
   (desktop → API event + `POST /api/approvals/:id`; cli = `chat -q` in-process → TTY prompt, denied without a TTY;
   line → LINE confirm buttons; cron → the job's delivery channel; 10 min timeout = deny), and delivers cron results
   (desktop → `notification` event + session; line → push). Keeps one session per LINE chat (`findSessionByOrigin`).
-  First-message titles are redacted before truncation. A 2000-character tool preview omits a possible partial-secret
-  suffix after redaction, so truncated credentials cannot reach API/CLI events.
+  First-message and scheduled-session titles are redacted before truncation. A 2000-character tool preview omits a
+  possible partial-secret suffix after redaction, so truncated credentials cannot reach API/CLI events.
   **LINE senders outside `allow.users`** (members of an allowlisted group or room) run with every `allow` policy
   raised to `ask`, so their requests reach the owner's disk, notes, sessions, web or memory only after a tap from an
   `allow.users` member.
@@ -348,6 +348,10 @@ export interface Config {
     the masked form of its stored value preserves the original value. The same applies to any string leaf equal
     to the blanket-redacted form GET returned for that stored leaf, including workspace, prompts, hooks and URLs;
     restore these before validation. Explicit new values still apply (whole-config read-modify-write is safe).
+    Unchanged array elements match by redacted content, preferring the same index then the first unused match.
+    If any restored string still contains `••••`, PUT returns
+    `400 {error: "a masked value could not be restored; re-enter it"}` without saving, including an edited/moved element
+    or a partial edit of a masked field.
     LINE and MCP changes apply live; API port changes apply on daemon restart.
     `PUT /api/secrets` `{name, value}` (`''` deletes)
     → `{name, masked}`.

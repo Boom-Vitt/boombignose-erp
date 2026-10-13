@@ -177,7 +177,7 @@ export class Runtime {
   async fireJob(job: Job): Promise<void> {
     try {
       const origin: Origin = { kind: 'cron', jobId: job.id };
-      const session = this.store.createSession({ origin, title: `Scheduled: ${job.prompt.slice(0, 60)}` });
+      const session = this.store.createSession({ origin, title: `Scheduled: ${this.clean(job.prompt.replace(/\s+/g, ' ')).slice(0, 60)}` });
       const result = await this.start(session.id, job.prompt, { origin }).result;
       if (result.status !== 'done') throw new Error(result.error ?? `Run ${result.status}`);
       if (job.delivery.kind === 'line') {

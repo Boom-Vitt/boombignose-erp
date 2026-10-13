@@ -575,6 +575,47 @@ test('settings round trip preserves every masked config string and still accepts
   assert.deepEqual(loadConfig(home), saved);
 });
 
+test('settings restore deleted/reordered array elements and reject edited masks without saving', async t => {
+  const home = testHome(t);
+  const original = configured(home, undefined, c => {
+    c.hooks.preTool = [{ command: 'echo first' }, { command: `cd ${home} && ./check.sh` }];
+    c.mcp.servers.local = { ...fakeMcp, args: ['first', home], env: { ROOT: home }, enabled: false };
+  });
+  const a = await app(t, { home }), settings = (await call(a, '/api/settings')).body;
+  const deleted = structuredClone(settings);
+  deleted.config.hooks.preTool.shift(); deleted.config.mcp.servers.local.args.shift();
+  assert.equal((await call(a, '/api/settings', 'PUT', deleted)).status, 200);
+  assert.deepEqual(loadConfig(home).hooks.preTool, [original.hooks.preTool![1]]);
+  assert.deepEqual(loadConfig(home).mcp.servers.local, { ...original.mcp.servers.local, args: [home] });
+  assert.equal((await call(a, '/api/settings', 'PUT', { config: original })).status, 200);
+  const reversed = structuredClone(settings);
+  reversed.config.hooks.preTool.reverse(); reversed.config.mcp.servers.local.args.reverse();
+  assert.equal((await call(a, '/api/settings', 'PUT', reversed)).status, 200);
+  assert.deepEqual(loadConfig(home).hooks.preTool, [...original.hooks.preTool!].reverse());
+  assert.deepEqual(loadConfig(home).mcp.servers.local, { ...original.mcp.servers.local, args: [home, 'first'] });
+  const before = readFileSync(join(home, 'config.json'), 'utf8'), edited = structuredClone(settings);
+  edited.config.hooks.preTool[1].command += ' --edited';
+  const rejected = await call(a, '/api/settings', 'PUT', edited);
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(rejected.body, { error: 'a masked value could not be restored; re-enter it' });
+  assert.equal(readFileSync(join(home, 'config.json'), 'utf8'), before);
+});
+
+test('scheduled session titles redact known values before the 60-character cut', async t => {
+  const home = testHome(t), sensitive = 'private-' + 'z'.repeat(16), prompt = 'a'.repeat(40) + sensitive + ' tail';
+  configured(home); setSecret('VALUE', sensitive, home);
+  const provider: Provider = { kind: 'openai-compatible', async *stream() {
+    yield { type: 'text_delta', text: 'done' };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await app(t, { home, providerFactory: () => provider });
+  await a.runtime.fireJob({ id: 'title', cron: '* * * * *', prompt, delivery: { kind: 'desktop' }, enabled: true });
+  const title = a.runtime.store.listSessions()[0]!.title;
+  assert.equal(title, `Scheduled: ${('a'.repeat(40) + maskSecret(sensitive) + ' tail').slice(0, 60)}`);
+  assert.ok(!title.includes('z'.repeat(8)));
+  assert.equal((await call(a, '/api/sessions')).body.sessions[0].title, title);
+});
+
 test('session titles and truncated tool previews never leak a secret crossing the cut', async t => {
   const home = testHome(t), sensitive = 'private-' + 'x'.repeat(16), input = 'a'.repeat(60) + sensitive + ' suffix';
   configured(home); setSecret('VALUE', sensitive, home);

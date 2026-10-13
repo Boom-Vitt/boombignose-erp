@@ -57,7 +57,16 @@ export function validateConfig(v: unknown): asserts v is Config {
 export function restoreMaskedConfig(input: Config, stored: Config, clean: (text: string) => string): Config {
   const restore = (value: unknown, old: unknown): unknown => {
     if (typeof value === 'string' && typeof old === 'string' && value !== old && value === clean(old)) return old;
-    if (Array.isArray(value)) return value.map((v, i) => restore(v, Array.isArray(old) ? old[i] : undefined));
+    if (Array.isArray(value)) {
+      const previous = Array.isArray(old) ? old : [], used = new Set<number>();
+      const masked = previous.map(v => JSON.stringify(safeValue(v, clean)));
+      return value.map((v, i) => {
+        const text = JSON.stringify(v);
+        const match = !used.has(i) && masked[i] === text ? i : masked.findIndex((m, j) => m === text && !used.has(j));
+        if (match >= 0) used.add(match);
+        return restore(v, previous[match >= 0 ? match : i]);
+      });
+    }
     if (isObject(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, restore(v, isObject(old) && Object.hasOwn(old, k) ? old[k] : undefined)]));
     return value;
   };
@@ -72,6 +81,10 @@ export function restoreMaskedConfig(input: Config, stored: Config, clean: (text:
       if (old && Object.hasOwn(old, k) && value === maskSecret(old[k]!)) fields![k] = old[k]!;
     }
   }
+  safeValue(next, value => {
+    requireValue(!value.includes('••••'), 'a masked value could not be restored; re-enter it');
+    return value;
+  });
   return next;
 }
 export function settingsResponse(config: Config, home: string) {
