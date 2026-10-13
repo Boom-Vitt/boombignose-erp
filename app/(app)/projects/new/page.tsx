@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { satangToBaht } from "@/lib/money"
+import { serviceAmountBaht } from "@/lib/workflows/service"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -21,13 +21,14 @@ export default async function NewProjectPage({
 }: {
   searchParams: Promise<{ dealId?: string; clientId?: string }>
 }) {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const { dealId, clientId } = await searchParams
   const supabase = await createClient()
 
   const { data: clientsData } = await supabase
     .from("clients")
     .select("id, name")
+    .eq("org_id", ctx.orgId)
     .order("name", { ascending: true })
   const clients = (clientsData ?? []) as ClientOption[]
 
@@ -39,6 +40,7 @@ export default async function NewProjectPage({
     const { data: deal } = await supabase
       .from("deals")
       .select("id, title, client_id, value_satang")
+      .eq("org_id", ctx.orgId)
       .eq("id", dealId)
       .maybeSingle()
     if (deal) {
@@ -46,7 +48,7 @@ export default async function NewProjectPage({
       prefill = {
         name: deal.title,
         clientId: deal.client_id ?? "none",
-        budgetBaht: satangToBaht(deal.value_satang ?? 0),
+        budgetBaht: serviceAmountBaht(deal.value_satang ?? 0),
       }
     }
   } else if (clientId) {

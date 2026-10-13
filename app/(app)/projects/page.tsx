@@ -37,12 +37,13 @@ const STATUS_ORDER: { value: ProjectStatus; label: string }[] = [
 ]
 
 export default async function ProjectsPage() {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const { data: projects } = await supabase
     .from("projects")
     .select("id, name, status, deadline, owner, client:clients(name)")
+    .eq("org_id", ctx.orgId)
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })
 

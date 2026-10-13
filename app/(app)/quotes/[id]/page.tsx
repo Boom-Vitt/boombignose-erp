@@ -4,7 +4,9 @@ import { ArrowLeft, Download, ListPlus } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { formatTHB, satangToBaht } from "@/lib/money"
+import { formatTHB } from "@/lib/money"
+import { quoteIsEditable, serviceAmountBaht } from "@/lib/workflows/service"
+import { todayISO } from "@/lib/dates"
 
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
@@ -57,26 +59,36 @@ export default async function QuoteDetailPage({
     supabase
       .from("quotes")
       .select(
-        "id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, notes, client_id, project_id, converted_invoice_id, clients(name), projects(name)"
-      )
+        "id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, notes, client_id, project_id, converted_invoice_id, clients(name)"
+      ).eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
     supabase
       .from("quote_items")
       .select("id, description, quantity, unit_price_satang, amount_satang, position")
+      .eq("org_id", ctx.orgId)
       .eq("quote_id", id)
       .order("position", { ascending: true }),
-    supabase.from("clients").select("id, name").order("name"),
-    supabase.from("projects").select("id, name").order("name"),
+    supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
+    supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
   ])
 
   const quote = quoteRes.data
   if (!quote) notFound()
 
+  const { data: deliveryMilestones, error: milestoneError } = await supabase
+    .from("milestones")
+    .select("id, title, done, project_id")
+    .eq("org_id", ctx.orgId)
+    .eq("source_quote_id", quote.id)
+    .order("created_at", { ascending: true })
+  if (milestoneError) throw new Error(milestoneError.message)
+
   const items = itemsRes.data ?? []
-  const canConvert = ctx.role === "owner" || ctx.role === "admin"
-  const editable = quote.status === "draft" || quote.status === "sent"
-  const locked = quote.status === "converted"
+  const canConvert = (ctx.role === "owner" || ctx.role === "admin") && (!quote.valid_until || quote.valid_until >= todayISO())
+  const editable = quoteIsEditable(quote.status)
+  const locked = !editable
+  const linkedProject = (projectsRes.data ?? []).find((p) => p.id === quote.project_id)
 
   const clients: Option[] = (clientsRes.data ?? []).map((c) => ({
     value: c.id,
@@ -93,7 +105,7 @@ export default async function QuoteDetailPage({
     number: quote.number,
     issue_date: quote.issue_date ?? "",
     valid_until: quote.valid_until ?? "",
-    discountBaht: satangToBaht(quote.discount_satang),
+    discountBaht: serviceAmountBaht(quote.discount_satang),
     notes: quote.notes ?? "",
   }
 
@@ -141,7 +153,9 @@ export default async function QuoteDetailPage({
             <Field label="Issue date" value={quote.issue_date ?? "—"} />
             <Field label="Valid until" value={quote.valid_until ?? "—"} />
             <Field label="Client" value={quote.clients?.name ?? "—"} />
-            <Field label="Project" value={quote.projects?.name ?? "—"} />
+            <Field label="Project" value={linkedProject ? (
+              <Link href={`/projects/${linkedProject.id}`} className="hover:underline">{linkedProject.name}</Link>
+            ) : "—"} />
             {quote.converted_invoice_id ? (
               <Field
                 label="Converted invoice"
@@ -157,6 +171,20 @@ export default async function QuoteDetailPage({
             ) : null}
           </dl>
 
+          {deliveryMilestones?.length ? (
+            <Field label="Delivery milestones" value={
+              <ul className="space-y-1">
+                {deliveryMilestones.map((milestone) => (
+                  <li key={milestone.id}>
+                    <Link href={`/projects/${milestone.project_id}#milestone-${milestone.id}`} className="hover:underline">
+                      {milestone.title} · {milestone.done ? "Done" : "Pending"}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            } />
+          ) : null}
+
           {quote.notes ? (
             <>
               <Separator />
@@ -167,6 +195,7 @@ export default async function QuoteDetailPage({
           <Separator />
           <QuoteStatusControls
             quoteId={quote.id}
+            orgId={ctx.orgId}
             status={quote.status}
             canConvert={canConvert}
           />
@@ -224,7 +253,7 @@ export default async function QuoteDetailPage({
 
           <Separator />
           {locked ? (
-            <p className="text-muted-foreground text-sm">Converted (locked)</p>
+            <p className="text-muted-foreground text-sm">{quote.status === "accepted" ? "Accepted scope is locked." : "This quote is locked."}</p>
           ) : (
             <QuoteItemForm quoteId={quote.id} />
           )}

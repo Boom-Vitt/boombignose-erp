@@ -6,7 +6,7 @@ import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { bahtToSatang } from "@/lib/money"
+import { serviceMoneyInput, serviceAmountSatang } from "@/lib/workflows/service"
 import { Constants } from "@/lib/types/database"
 
 const PROJECT_STATUS = Constants.public.Enums.project_status
@@ -36,7 +36,7 @@ const ProjectInput = z.object({
   clientId: optionalId,
   status: z.enum(PROJECT_STATUS),
   deadline: optionalDate,
-  budgetBaht: z.coerce.number().min(0, "Budget cannot be negative").optional(),
+  budgetBaht: serviceMoneyInput.optional(),
   owner: optionalText,
   dealId: optionalId,
 })
@@ -47,7 +47,7 @@ export async function createProject(
   const ctx = await requireOrgContext()
   const parsed = ProjectInput.safeParse(input)
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
+    return { error: "Invalid input" }
   }
   const { name, clientId, status, deadline, budgetBaht, owner, dealId } =
     parsed.data
@@ -62,7 +62,7 @@ export async function createProject(
       status,
       deadline,
       budget_satang:
-        budgetBaht !== undefined ? bahtToSatang(budgetBaht) : null,
+        budgetBaht !== undefined ? serviceAmountSatang(budgetBaht) : null,
       owner: owner ?? null,
       deal_id: dealId,
     })
@@ -85,7 +85,7 @@ export async function updateProject(
   const ctx = await requireOrgContext()
   const parsed = UpdateProjectInput.safeParse(input)
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
+    return { error: "Invalid input" }
   }
   const { id, name, clientId, status, deadline, budgetBaht, owner } =
     parsed.data
@@ -99,7 +99,7 @@ export async function updateProject(
       status,
       deadline,
       budget_satang:
-        budgetBaht !== undefined ? bahtToSatang(budgetBaht) : null,
+        budgetBaht !== undefined ? serviceAmountSatang(budgetBaht) : null,
       owner: owner ?? null,
     })
     .eq("id", id)
@@ -152,7 +152,7 @@ export async function addTask(
   const ctx = await requireOrgContext()
   const parsed = AddTaskInput.safeParse(input)
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
+    return { error: "Invalid input" }
   }
   const { projectId, title, status, dueDate, assignee } = parsed.data
 
@@ -213,7 +213,7 @@ export async function addMilestone(
   const ctx = await requireOrgContext()
   const parsed = AddMilestoneInput.safeParse(input)
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
+    return { error: "Invalid input" }
   }
   const { projectId, title, dueDate } = parsed.data
 
