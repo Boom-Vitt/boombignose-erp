@@ -79,6 +79,7 @@ const test = base.extend<{ fixtures: Fixtures }>({
 })
 
 test("switching two actual memberships fences dashboard, clients, deals and exports", async ({ fixtures: f, page, context }) => {
+  page.on("pageerror", error => console.error("QA switcher client error:", error.stack ?? error.message))
   const actor = await f.user()
   const a = await f.workspace("workspace A", actor)
   const b = await f.workspace("workspace B", actor)
@@ -143,6 +144,8 @@ test("a zero-membership account reaches onboarding and provisions one owner work
   expect(memberships[0].role).toBe("owner")
   expect(ok(await admin.from("organizations").select("name").eq("id", memberships[0].org_id).single()).name).toBe(name)
   f.workspaces.add(memberships[0].org_id)
+  const activeCookie = (await context.cookies()).find(cookie => cookie.name === "active_org")
+  console.info("QA active cookie metadata:", JSON.stringify({ present: !!activeCookie, secure: activeCookie?.secure, domain: activeCookie?.domain, path: activeCookie?.path, appURL: baseURL }))
   expect((await context.cookies(baseURL)).find(cookie => cookie.name === "active_org")?.value).toBe(memberships[0].org_id)
 })
 
@@ -174,4 +177,44 @@ test("invitation account switching accepts only the intended recipient and retry
   await expect(page).toHaveURL(/\/dashboard$/)
   const memberships = ok(await admin.from("memberships").select("role").eq("org_id", workspace.id).eq("user_id", recipient.id))
   expect(memberships).toEqual([{ role: "member" }])
+})
+
+test("a committed subscription request survives lost response, reload and status refresh without billing the next occurrence", async ({ fixtures: f, page }) => {
+  const owner = await f.user()
+  const workspace = await f.workspace("subscription recovery", owner)
+  const client = ok(await admin.from("clients").insert({ org_id: workspace.id, name: f.name("subscription client") }).select("id").single())
+  const subscription = ok(await admin.from("subscriptions").insert({ org_id: workspace.id, client_id: client.id, name: f.name("weekly subscription"), amount_satang: 10000, interval: "weekly", start_date: "2026-07-02", next_run_date: "2026-07-02", status: "active" }).select("id, name").single())
+  await f.signIn(owner)
+  await page.goto(`/finance/subscriptions/${subscription.id}`)
+  let dropResponse = true
+  await page.route("**/*", async route => {
+    if (dropResponse && route.request().method() === "POST" && route.request().headers()["next-action"]) {
+      dropResponse = false
+      await route.fetch() // Commit the scheduled occurrence before dropping its response.
+      await route.abort("failed")
+    } else await route.continue()
+  })
+  const receipts = async () => ok(await admin.from("invoices").select("id").eq("org_id", workspace.id))
+  const nextRun = async () => ok(await admin.from("subscriptions").select("next_run_date").eq("id", subscription.id).single()).next_run_date
+  await page.getByRole("button", { name: "Generate scheduled invoice", exact: true }).click()
+  await expect(page.getByText("Could not confirm the invoice request. Retry in this tab.", { exact: true })).toBeVisible()
+  await expect.poll(async () => (await receipts()).length).toBe(1)
+  expect(await nextRun()).toBe("2026-07-09")
+  const originalInvoice = (await receipts())[0].id
+
+  await page.reload()
+  const retry = page.getByRole("button", { name: "Retry invoice for 2026-07-02", exact: true })
+  await expect(retry).toBeVisible()
+  await page.getByRole("button", { name: "Pause", exact: true }).click()
+  await page.getByRole("button", { name: "Activate", exact: true }).click()
+  await expect(retry).toBeEnabled()
+  await retry.click()
+  await expect(page.getByRole("button", { name: "Generate scheduled invoice", exact: true })).toBeVisible()
+  expect(await receipts()).toEqual([{ id: originalInvoice }])
+  expect(await nextRun()).toBe("2026-07-09")
+
+  // Only a new acknowledged user command may bill the still-overdue July 9 slot.
+  await page.getByRole("button", { name: "Generate scheduled invoice", exact: true }).click()
+  await expect.poll(async () => (await receipts()).length).toBe(2)
+  expect(await nextRun()).toBe("2026-07-16")
 })
