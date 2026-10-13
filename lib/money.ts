@@ -14,7 +14,18 @@ export const SATANG_PER_BAHT = 100
 
 /** Convert a baht amount (possibly fractional user input) to integer satang. */
 export function bahtToSatang(baht: number): Satang {
-  return Math.round(baht * SATANG_PER_BAHT)
+  if (!Number.isFinite(baht)) throw new Error("Money must be finite")
+  const negative = baht < 0
+  const [mantissa, exponent = "0"] = String(Math.abs(baht)).toLowerCase().split("e")
+  const [whole, fraction = ""] = mantissa.split(".")
+  const coefficient = BigInt(whole + fraction)
+  const scale = fraction.length - Number(exponent) - 2
+  const power = BigInt(10) ** BigInt(Math.abs(scale))
+  // Exact decimal rounding; a half satang rounds away from zero.
+  const absolute = scale <= 0 ? coefficient * power : (coefficient + power / BigInt(2)) / power
+  const result = Number(negative ? -absolute : absolute)
+  if (!Number.isSafeInteger(result)) throw new Error("Money exceeds safe satang bounds")
+  return result
 }
 
 /** Convert integer satang to a baht number. For display/aggregation only. */
@@ -24,7 +35,10 @@ export function satangToBaht(satang: Satang): number {
 
 /** Safe integer sum of satang amounts. */
 export function sumSatang(amounts: Satang[]): Satang {
-  return amounts.reduce((acc, n) => acc + n, 0)
+  return amounts.reduce((acc, n) => {
+    if (!Number.isSafeInteger(n) || !Number.isSafeInteger(acc + n)) throw new Error("Unsafe integer-satang sum")
+    return acc + n
+  }, 0)
 }
 
 const thbFull = new Intl.NumberFormat("th-TH", {

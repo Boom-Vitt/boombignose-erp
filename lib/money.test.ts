@@ -10,6 +10,12 @@ import {
 } from "@/lib/money"
 
 describe("money conversions", () => {
+  it("rejects non-finite or unsafe input and unsafe integer sums", () => {
+    for (const value of [NaN, Infinity, Number.MAX_SAFE_INTEGER]) expect(() => bahtToSatang(value)).toThrow()
+    expect(() => sumSatang([Number.MAX_SAFE_INTEGER, 1])).toThrow()
+    expect(() => sumSatang([0.1])).toThrow()
+    expect(sumSatang([-100, 250])).toBe(150)
+  })
   it("converts baht to integer satang", () => {
     expect(bahtToSatang(123.45)).toBe(12345)
     expect(bahtToSatang(1)).toBe(100)
@@ -17,6 +23,7 @@ describe("money conversions", () => {
   })
 
   it("rounds fractional satang to the nearest integer", () => {
+    expect(bahtToSatang(1.005)).toBe(101)
     expect(bahtToSatang(0.005)).toBe(1)
     expect(bahtToSatang(10.999)).toBe(1100)
   })

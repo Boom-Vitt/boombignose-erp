@@ -76,17 +76,17 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "activities_client_id_fkey"
-      columns: ["client_id"]
+      foreignKeyName: "activities_client_id_fkey_tenant"
+      columns: ["org_id","client_id"]
 isOneToOne: false
       referencedRelation: "clients"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
-      foreignKeyName: "activities_deal_id_fkey"
-      columns: ["deal_id"]
+      foreignKeyName: "activities_deal_id_fkey_tenant"
+      columns: ["org_id","deal_id"]
 isOneToOne: false
       referencedRelation: "deals"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
       foreignKeyName: "activities_org_id_fkey"
       columns: ["org_id"]
@@ -148,11 +148,11 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "automation_templates_category_id_fkey"
-      columns: ["category_id"]
+      foreignKeyName: "automation_templates_category_id_fkey_tenant"
+      columns: ["org_id","category_id"]
 isOneToOne: false
       referencedRelation: "template_categories"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
       foreignKeyName: "automation_templates_org_id_fkey"
       columns: ["org_id"]
@@ -194,11 +194,11 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "contacts_client_id_fkey"
-      columns: ["client_id"]
+      foreignKeyName: "contacts_client_id_fkey_tenant"
+      columns: ["org_id","client_id"]
 isOneToOne: false
       referencedRelation: "clients"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
       foreignKeyName: "contacts_org_id_fkey"
       columns: ["org_id"]
@@ -226,11 +226,11 @@ isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "costs_project_id_fkey"
-      columns: ["project_id"]
+      foreignKeyName: "costs_project_id_fkey_tenant"
+      columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"deals": {
@@ -246,11 +246,11 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "deals_client_id_fkey"
-      columns: ["client_id"]
+      foreignKeyName: "deals_client_id_fkey_tenant"
+      columns: ["org_id","client_id"]
 isOneToOne: false
       referencedRelation: "clients"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
       foreignKeyName: "deals_org_id_fkey"
       columns: ["org_id"]
@@ -330,11 +330,11 @@ isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "invoices_project_id_fkey"
-      columns: ["project_id"]
+      foreignKeyName: "invoices_project_id_fkey_tenant"
+      columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"memberships": {
@@ -376,11 +376,11 @@ isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "milestones_project_id_fkey"
-      columns: ["project_id"]
+      foreignKeyName: "milestones_project_id_fkey_tenant"
+      columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"org_settings": {
@@ -612,11 +612,11 @@ isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "project_tasks_project_id_fkey"
-      columns: ["project_id"]
+      foreignKeyName: "project_tasks_project_id_fkey_tenant"
+      columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"projects": {
@@ -632,17 +632,17 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "projects_client_id_fkey"
-      columns: ["client_id"]
+      foreignKeyName: "projects_client_id_fkey_tenant"
+      columns: ["org_id","client_id"]
 isOneToOne: false
       referencedRelation: "clients"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
-      foreignKeyName: "projects_deal_id_fkey"
-      columns: ["deal_id"]
+      foreignKeyName: "projects_deal_id_fkey_tenant"
+      columns: ["org_id","deal_id"]
 isOneToOne: false
       referencedRelation: "deals"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
       foreignKeyName: "projects_org_id_fkey"
       columns: ["org_id"]
@@ -670,11 +670,11 @@ isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "quote_items_quote_id_fkey"
-      columns: ["quote_id"]
+      foreignKeyName: "quote_items_quote_id_fkey_tenant"
+      columns: ["org_id","quote_id"]
 isOneToOne: false
       referencedRelation: "quotes"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"quotes": {
@@ -690,17 +690,17 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "quotes_client_id_fkey"
-      columns: ["client_id"]
+      foreignKeyName: "quotes_client_id_fkey_tenant"
+      columns: ["org_id","client_id"]
 isOneToOne: false
       referencedRelation: "clients"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
-      foreignKeyName: "quotes_converted_invoice_id_fkey"
-      columns: ["converted_invoice_id"]
+      foreignKeyName: "quotes_converted_invoice_id_fkey_tenant"
+      columns: ["org_id","converted_invoice_id"]
 isOneToOne: false
       referencedRelation: "invoices"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
       foreignKeyName: "quotes_org_id_fkey"
       columns: ["org_id"]
@@ -708,11 +708,11 @@ isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "quotes_project_id_fkey"
-      columns: ["project_id"]
+      foreignKeyName: "quotes_project_id_fkey_tenant"
+      columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"reminders": {
@@ -768,11 +768,11 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "subscriptions_client_id_fkey"
-      columns: ["client_id"]
+      foreignKeyName: "subscriptions_client_id_fkey_tenant"
+      columns: ["org_id","client_id"]
 isOneToOne: false
       referencedRelation: "clients"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
       foreignKeyName: "subscriptions_org_id_fkey"
       columns: ["org_id"]
@@ -780,11 +780,11 @@ isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "subscriptions_project_id_fkey"
-      columns: ["project_id"]
+      foreignKeyName: "subscriptions_project_id_fkey_tenant"
+      columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"template_categories": {
@@ -826,16 +826,36 @@ isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "time_entries_project_id_fkey"
-      columns: ["project_id"]
+      foreignKeyName: "time_entries_project_id_fkey_tenant"
+      columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
-      referencedColumns: ["id"]
+      referencedColumns: ["org_id","id"]
     },{
-      foreignKeyName: "time_entries_task_id_fkey"
-      columns: ["task_id"]
+      foreignKeyName: "time_entries_task_id_fkey_tenant"
+      columns: ["org_id","task_id"]
 isOneToOne: false
       referencedRelation: "project_tasks"
+      referencedColumns: ["org_id","id"]
+    }
+                  ]
+                },"workspace_requests": {
+                  Row: {
+                    "created_at": string,"key": string,"name": string,"org_id": string | null,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"key": string,"name": string,"org_id"?: string | null,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"key"?: string,"name"?: string,"org_id"?: string | null,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "workspace_requests_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
       referencedColumns: ["id"]
     }
                   ]
@@ -845,7 +865,13 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "review_payment_claim":
+            "accept_workspace_invitation":
+{ Args: { "p_token": string }; Returns: string
+                           },
+"provision_workspace":
+{ Args: { "p_key": string,"p_name": string }; Returns: string
+                           },
+"review_payment_claim":
 { Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_org_id": string,"p_reference": string }; Returns: string
                            },
 "submit_payment_claim":
