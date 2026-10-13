@@ -16,8 +16,13 @@ try {
     assert.ok(Date.now() < deadline, 'command did not finish producing output');
     await setTimeout(5);
   }
-  await setTimeout(20);
+  // The ready file can appear before the pipe's in-flight chunks have been drained.
+  const settleDeadline = Date.now() + 3000;
   global.gc();
+  while (process.memoryUsage().arrayBuffers - before >= 1_000_000 && Date.now() < settleDeadline) {
+    await setTimeout(50);
+    global.gc();
+  }
   assert.ok(process.memoryUsage().arrayBuffers - before < 1_000_000, 'discarded output buffers remain retained');
   const output = await result;
   assert.equal(output.code, 0);
