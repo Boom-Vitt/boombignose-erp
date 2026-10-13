@@ -6,6 +6,8 @@ import { btn, el, errMsg } from './dom.ts';
 import { streamEvents } from './sse.ts';
 import type { ApiEvent } from './types.ts';
 import { mountConnectors } from './settings/connectors.ts';
+import { mountGeneral } from './settings/general.ts';
+import { mountHooks } from './settings/hooks.ts';
 import { mountMemory } from './settings/memory.ts';
 import { mountMessaging } from './settings/messaging.ts';
 import { mountProviders } from './settings/providers.ts';
@@ -18,9 +20,11 @@ declare global {
 }
 
 const SECTIONS: { id: string; label: string; mount: (pane: HTMLElement, api: Api) => void }[] = [
+  { id: 'general', label: 'General', mount: mountGeneral },
   { id: 'providers', label: 'Providers & models', mount: mountProviders },
   { id: 'connectors', label: 'Connectors', mount: mountConnectors },
   { id: 'messaging', label: 'Messaging', mount: mountMessaging },
+  { id: 'hooks', label: 'Hooks', mount: mountHooks },
   { id: 'skills', label: 'Skills', mount: mountSkills },
   { id: 'memory', label: 'Memory', mount: mountMemory },
   { id: 'schedules', label: 'Schedules', mount: mountSchedules },

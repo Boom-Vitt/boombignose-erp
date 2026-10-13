@@ -89,6 +89,8 @@ input:disabled { opacity: .6; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .key-row { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
 .key-state { margin-bottom: 6px; }
+.hook-list { display: grid; gap: 12px; }
+.hook-row { border-top: 1px solid var(--line); padding-top: 12px; }
 .split { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
 .plain-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
 .note-text { white-space: pre-wrap; word-break: break-word; }

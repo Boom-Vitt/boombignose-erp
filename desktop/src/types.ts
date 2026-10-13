@@ -20,6 +20,8 @@ export interface LineConfig {
   enabled: boolean; port: number; publicUrl?: string; slowResponseMs: number;
   allow: { users: string[]; groups: string[]; rooms: string[] };
 }
+export interface HookSpec { command: string; tools?: string[]; timeoutMs?: number }
+export interface HooksConfig { preTool?: HookSpec[]; postTool?: HookSpec[]; sessionEnd?: HookSpec[] }
 // The UI only edits the parts it shows and sends everything else back unchanged.
 export interface Config {
   version: 1;
@@ -27,7 +29,7 @@ export interface Config {
   providers: ProviderConfig[];
   agent: { maxTurns: number; workspace: string; compactAt: number; systemPrompt?: string };
   permissions: Record<string, Policy>;
-  hooks: Record<string, unknown>;
+  hooks: HooksConfig;
   mcp: { servers: Record<string, McpServerConfig> };
   line: LineConfig;
   api: { port: number };
