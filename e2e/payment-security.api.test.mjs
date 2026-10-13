@@ -131,7 +131,11 @@ test("verified invoice lines cannot mutate and a fully settled invoice cannot be
 test("pending customer claim prevents reassignment to another customer",async()=>{
   const inv=await invoice(); await claim(inv)
   const other=ok(await admin.from("clients").insert({org_id:orgs[0],name:"Other customer"}).select().single())
-  assert.ok((await member.from("invoices").update({client_id:other.id}).eq("id",inv.id)).error)
+  const attempt=await member.from("invoices").update({client_id:other.id}).eq("id",inv.id).select("id, client_id")
+  assert.ok(attempt.error || attempt.data?.length===0, "unauthorized customer reassignment must fail or affect no visible rows")
+  assert.equal(ok(await admin.from("invoices").select("client_id").eq("id",inv.id).single()).client_id,client.id)
+  assert.ok((await owner.from("invoices").update({client_id:other.id}).eq("id",inv.id)).error)
+  assert.equal(ok(await admin.from("invoices").select("client_id").eq("id",inv.id).single()).client_id,client.id)
 })
 test("line mutation and authoritative header total commit together before settlement",async()=>{
   const inv=await invoice()
