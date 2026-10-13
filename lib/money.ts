@@ -64,12 +64,27 @@ const thbCompact = new Intl.NumberFormat("th-TH", {
 
 /** Format integer satang as Thai Baht: 123456 -> "฿1,234.56". */
 export function formatTHB(satang: Satang): string {
-  return thbFull.format(satangToBaht(satang))
+  if (!Number.isSafeInteger(satang)) throw new Error("Invalid integer satang")
+  const absolute = BigInt(Math.abs(satang))
+  const whole = absolute / BigInt(100)
+  const fraction = String(absolute % BigInt(100)).padStart(2, "0")
+  const signedWhole = satang < 0 ? -whole : whole
+  const value = satang < 0 && whole === BigInt(0) ? -0 : signedWhole
+  return thbFull.formatToParts(value).map(part => part.type === "fraction" ? fraction : part.value).join("")
+}
+
+/** Exact decimal text for forms and CSV; Number division can lose a satang. */
+export function satangToBahtString(satang: Satang): string {
+  if (!Number.isSafeInteger(satang)) throw new Error("Invalid integer satang")
+  const absolute = BigInt(Math.abs(satang))
+  return `${satang < 0 ? "-" : ""}${absolute / BigInt(100)}.${String(absolute % BigInt(100)).padStart(2, "0")}`
 }
 
 /** Format integer satang with no decimals: 123456 -> "฿1,235". */
 export function formatTHBWhole(satang: Satang): string {
-  return thbWhole.format(satangToBaht(satang))
+  if (!Number.isSafeInteger(satang)) throw new Error("Invalid integer satang")
+  const rounded = (BigInt(Math.abs(satang)) + BigInt(50)) / BigInt(100)
+  return thbWhole.format(satang < 0 ? -rounded : rounded)
 }
 
 /** Compact format for dashboard cards: 1234567890 -> "฿12.3M". */

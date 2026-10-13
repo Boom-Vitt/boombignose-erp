@@ -162,8 +162,8 @@ on conflict do nothing;
 
 -- ── V3: Quotations + line items ─────────────────────────────────────────────
 insert into quotes (id, org_id, client_id, project_id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, notes, owner) values
-  ('90000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000002','QUO-2026-001','sent',    current_date - 4, current_date + 26, 17000000, 1000000, 16000000, 'CRM automation proposal — build + training', 'b0000000-0000-0000-0000-000000000001'),
-  ('90000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','QUO-2026-002','accepted',current_date - 9, current_date + 14,  8000000,       0,  8000000, 'LINE bot — phase 2 scope', 'b0000000-0000-0000-0000-000000000002')
+  ('90000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000002','QUO-2026-001','draft',    current_date - 4, current_date + 26, 17000000, 1000000, 16000000, 'CRM automation proposal — build + training', 'b0000000-0000-0000-0000-000000000001'),
+  ('90000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','QUO-2026-002','draft',current_date - 9, current_date + 14,  8000000,       0,  8000000, 'LINE bot — phase 2 scope', 'b0000000-0000-0000-0000-000000000002')
 on conflict (id) do nothing;
 
 insert into quote_items (org_id, quote_id, description, quantity, unit_price_satang, amount_satang, position) values
@@ -171,6 +171,9 @@ insert into quote_items (org_id, quote_id, description, quantity, unit_price_sat
   ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000001','Team training session',            2,  1000000,  2000000, 1),
   ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000002','LINE bot — phase 2 build',         1,  8000000,  8000000, 0)
 on conflict do nothing;
+update quotes set status='sent' where id in ('90000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000002');
+update quotes set status='accepted' where id='90000000-0000-0000-0000-000000000002';
+
 
 -- ── V3: Invoice line items (sum to the invoice amount) ──────────────────────
 insert into invoice_items (org_id, invoice_id, description, quantity, unit_price_satang, amount_satang, position) values

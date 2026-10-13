@@ -96,3 +96,49 @@ test("invitation acceptance checks intended recipient and preserves existing rol
   const expired=ok(await owner.from("invitations").update({token:randomUUID(),status:"pending",accepted_by:null,expires_at:"2000-01-01"}).eq("id",invite.id).select().single())
   assert.ok((await member.rpc("accept_workspace_invitation",{p_token:expired.token})).error)
 })
+async function acceptedQuote(discount=1000) {
+  const q=ok(await owner.from("quotes").insert({org_id:orgs[0],client_id:client.id,number:randomUUID(),discount_satang:discount}).select().single())
+  for (let n=0;n<2;n++) ok(await owner.from("quote_items").insert({org_id:orgs[0],quote_id:q.id,description:`Service ${n}`,quantity:1,unit_price_satang:5000,amount_satang:5000,position:n}))
+  ok(await owner.from("quotes").update({status:"sent"}).eq("id",q.id))
+  ok(await owner.from("quotes").update({status:"accepted"}).eq("id",q.id))
+  return q
+}
+test("accepted service quote converts once to source-linked project milestone and discounted invoice",async()=>{
+  const q=await acceptedQuote(), key=randomUUID()
+  const args={p_org_id:orgs[0],p_quote_id:q.id,p_key:key}
+  assert.ok((await member.rpc("convert_accepted_quote",args)).error)
+  const results=await Promise.all([owner.rpc("convert_accepted_quote",args),owner.rpc("convert_accepted_quote",args)])
+  const id=ok(results[0]);assert.equal(ok(results[1]),id)
+  const inv=ok(await owner.from("invoices").select().eq("id",id).single())
+  assert.equal(inv.amount_satang,9000);assert.equal(inv.discount_satang,1000)
+  assert.equal(inv.source_quote_id,q.id);assert.ok(inv.project_id);assert.ok(inv.source_milestone_id)
+  assert.equal(ok(await owner.from("invoice_items").select().eq("invoice_id",id)).length,2)
+  assert.equal(ok(await owner.from("projects").select().eq("source_quote_id",q.id)).length,1)
+  assert.equal(ok(await owner.from("milestones").select().eq("source_quote_id",q.id)).length,1)
+  assert.equal(ok(await owner.rpc("convert_accepted_quote",{...args,p_key:randomUUID()})),id)
+  assert.ok((await owner.from("quote_items").insert({org_id:orgs[0],quote_id:q.id,description:"Alter agreement",unit_price_satang:1,quantity:1,amount_satang:1})).error)
+})
+test("conversion rejects drafts, expired agreements and changed idempotency payload",async()=>{
+  const q=ok(await owner.from("quotes").insert({org_id:orgs[0],client_id:client.id,number:randomUUID()}).select().single())
+  assert.ok((await owner.rpc("convert_accepted_quote",{p_org_id:orgs[0],p_quote_id:q.id,p_key:randomUUID()})).error)
+  const accepted=await acceptedQuote(), key=randomUUID()
+  ok(await owner.rpc("convert_accepted_quote",{p_org_id:orgs[0],p_quote_id:accepted.id,p_key:key}))
+  assert.ok((await owner.rpc("convert_accepted_quote",{p_org_id:orgs[0],p_quote_id:q.id,p_key:key})).error)
+})
+test("conversion state and source links cannot be forged by direct authenticated writes",async()=>{
+  const q=await acceptedQuote()
+  assert.ok((await owner.from("quotes").update({status:"converted"}).eq("id",q.id)).error)
+  assert.ok((await owner.from("projects").insert({org_id:orgs[0],client_id:client.id,name:"Forged source",source_quote_id:q.id})).error)
+})
+test("source-linked project customer cannot change after conversion",async()=>{
+  const q=await acceptedQuote(), id=ok(await owner.rpc("convert_accepted_quote",{p_org_id:orgs[0],p_quote_id:q.id,p_key:randomUUID()}))
+  const inv=ok(await owner.from("invoices").select("project_id").eq("id",id).single())
+  const other=ok(await admin.from("clients").insert({org_id:orgs[0],name:"Wrong commercial customer"}).select().single())
+  assert.ok((await owner.from("projects").update({client_id:other.id}).eq("id",inv.project_id)).error)
+})
+test("concurrent distinct conversion keys serialize without FK lock deadlocks",async()=>{
+  const q=await acceptedQuote()
+  const results=await Promise.all(Array.from({length:12},()=>owner.rpc("convert_accepted_quote",{p_org_id:orgs[0],p_quote_id:q.id,p_key:randomUUID()})))
+  const ids=results.map(ok)
+  assert.equal(new Set(ids).size,1)
+})

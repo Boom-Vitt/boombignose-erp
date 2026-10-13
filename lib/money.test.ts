@@ -41,6 +41,10 @@ describe("money conversions", () => {
 })
 
 describe("THB formatting", () => {
+  it("preserves the last satang at safe integer bounds", () => {
+    expect(formatTHB(Number.MAX_SAFE_INTEGER)).toContain("90,071,992,547,409.91")
+    expect(formatTHB(-1)).toContain("0.01")
+  })
   it("formats with two decimals", () => {
     expect(formatTHB(123456)).toContain("1,234.56")
   })

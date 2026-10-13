@@ -307,14 +307,14 @@ isOneToOne: false
                   ]
                 },"invoices": {
                   Row: {
-                    "amount_satang": number,"client_id": string,"created_at": string,"due_date": string | null,"id": string,"is_recurring": boolean,"issue_date": string,"notes": string | null,"number": string,"org_id": string,"project_id": string | null,"recurring_interval": Database["public"]['Enums']["recurring_interval"] | null,"status": Database["public"]['Enums']["invoice_status"],"updated_at": string
+                    "amount_satang": number,"client_id": string,"created_at": string,"discount_satang": number,"due_date": string | null,"id": string,"is_recurring": boolean,"issue_date": string,"notes": string | null,"number": string,"org_id": string,"project_id": string | null,"recurring_interval": Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id": string | null,"source_quote_id": string | null,"status": Database["public"]['Enums']["invoice_status"],"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_satang"?: number,"client_id": string,"created_at"?: string,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"notes"?: string | null,"number": string,"org_id": string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string
+                    "amount_satang"?: number,"client_id": string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"notes"?: string | null,"number": string,"org_id": string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string
                   }
                   Update: {
-                    "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"notes"?: string | null,"number"?: string,"org_id"?: string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string
+                    "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"notes"?: string | null,"number"?: string,"org_id"?: string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -334,6 +334,18 @@ isOneToOne: false
       columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
+      referencedColumns: ["org_id","id"]
+    },{
+      foreignKeyName: "invoices_source_milestone_tenant"
+      columns: ["org_id","source_milestone_id"]
+isOneToOne: false
+      referencedRelation: "milestones"
+      referencedColumns: ["org_id","id"]
+    },{
+      foreignKeyName: "invoices_source_quote_tenant"
+      columns: ["org_id","source_quote_id"]
+isOneToOne: false
+      referencedRelation: "quotes"
       referencedColumns: ["org_id","id"]
     }
                   ]
@@ -359,14 +371,14 @@ isOneToOne: false
                   ]
                 },"milestones": {
                   Row: {
-                    "created_at": string,"done": boolean,"due_date": string | null,"id": string,"org_id": string,"project_id": string,"title": string,"updated_at": string
+                    "created_at": string,"done": boolean,"due_date": string | null,"id": string,"org_id": string,"project_id": string,"source_quote_id": string | null,"title": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id": string,"project_id": string,"title": string,"updated_at"?: string
+                    "created_at"?: string,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id": string,"project_id": string,"source_quote_id"?: string | null,"title": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id"?: string,"project_id"?: string,"title"?: string,"updated_at"?: string
+                    "created_at"?: string,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id"?: string,"project_id"?: string,"source_quote_id"?: string | null,"title"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -380,6 +392,12 @@ isOneToOne: false
       columns: ["org_id","project_id"]
 isOneToOne: false
       referencedRelation: "projects"
+      referencedColumns: ["org_id","id"]
+    },{
+      foreignKeyName: "milestones_source_quote_tenant"
+      columns: ["org_id","source_quote_id"]
+isOneToOne: false
+      referencedRelation: "quotes"
       referencedColumns: ["org_id","id"]
     }
                   ]
@@ -621,14 +639,14 @@ isOneToOne: false
                   ]
                 },"projects": {
                   Row: {
-                    "budget_satang": number | null,"client_id": string | null,"created_at": string,"deadline": string | null,"deal_id": string | null,"id": string,"name": string,"org_id": string,"owner": string | null,"status": Database["public"]['Enums']["project_status"],"updated_at": string
+                    "budget_satang": number | null,"client_id": string | null,"created_at": string,"deadline": string | null,"deal_id": string | null,"id": string,"name": string,"org_id": string,"owner": string | null,"source_quote_id": string | null,"status": Database["public"]['Enums']["project_status"],"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "budget_satang"?: number | null,"client_id"?: string | null,"created_at"?: string,"deadline"?: string | null,"deal_id"?: string | null,"id"?: string,"name": string,"org_id": string,"owner"?: string | null,"status"?: Database["public"]['Enums']["project_status"],"updated_at"?: string
+                    "budget_satang"?: number | null,"client_id"?: string | null,"created_at"?: string,"deadline"?: string | null,"deal_id"?: string | null,"id"?: string,"name": string,"org_id": string,"owner"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["project_status"],"updated_at"?: string
                   }
                   Update: {
-                    "budget_satang"?: number | null,"client_id"?: string | null,"created_at"?: string,"deadline"?: string | null,"deal_id"?: string | null,"id"?: string,"name"?: string,"org_id"?: string,"owner"?: string | null,"status"?: Database["public"]['Enums']["project_status"],"updated_at"?: string
+                    "budget_satang"?: number | null,"client_id"?: string | null,"created_at"?: string,"deadline"?: string | null,"deal_id"?: string | null,"id"?: string,"name"?: string,"org_id"?: string,"owner"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["project_status"],"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -649,6 +667,44 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "projects_source_quote_tenant"
+      columns: ["org_id","source_quote_id"]
+isOneToOne: false
+      referencedRelation: "quotes"
+      referencedColumns: ["org_id","id"]
+    }
+                  ]
+                },"quote_conversion_requests": {
+                  Row: {
+                    "created_at": string,"invoice_id": string | null,"key": string,"org_id": string,"quote_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"invoice_id"?: string | null,"key": string,"org_id": string,"quote_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"invoice_id"?: string | null,"key"?: string,"org_id"?: string,"quote_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "quote_conversion_requests_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "quote_conversion_requests_org_id_invoice_id_fkey"
+      columns: ["org_id","invoice_id"]
+isOneToOne: false
+      referencedRelation: "invoices"
+      referencedColumns: ["org_id","id"]
+    },{
+      foreignKeyName: "quote_conversion_requests_org_id_quote_id_fkey"
+      columns: ["org_id","quote_id"]
+isOneToOne: false
+      referencedRelation: "quotes"
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"quote_items": {
@@ -696,7 +752,7 @@ isOneToOne: false
       referencedRelation: "clients"
       referencedColumns: ["org_id","id"]
     },{
-      foreignKeyName: "quotes_converted_invoice_id_fkey_tenant"
+      foreignKeyName: "quotes_converted_invoice_tenant"
       columns: ["org_id","converted_invoice_id"]
 isOneToOne: false
       referencedRelation: "invoices"
@@ -867,6 +923,9 @@ isOneToOne: false
           Functions: {
             "accept_workspace_invitation":
 { Args: { "p_token": string }; Returns: string
+                           },
+"convert_accepted_quote":
+{ Args: { "p_key": string,"p_org_id": string,"p_quote_id": string }; Returns: string
                            },
 "provision_workspace":
 { Args: { "p_key": string,"p_name": string }; Returns: string
