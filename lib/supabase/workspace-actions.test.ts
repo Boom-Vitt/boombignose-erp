@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   user: {id:'actor',email:'invitee@example.test'} as {id:string,email:string}|null,
   rpc: vi.fn(), setCookie: vi.fn(), admin: vi.fn(),
@@ -21,6 +21,7 @@ beforeEach(() => {
  state.rpc.mockResolvedValue({data:orgId,error:null})
  state.admin.mockImplementation(() => {throw new Error('Acceptance must not use service-role writes')})
 })
+afterEach(() => { vi.unstubAllEnvs() })
 it('acceptance calls one authenticated atomic command and activates its returned org', async () => {
  await expect(actions.acceptInvitation({token:'valid-token'})).rejects.toThrow('REDIRECT:/dashboard')
  expect(state.rpc).toHaveBeenCalledExactlyOnceWith('accept_workspace_invitation',{p_token:'valid-token'})
@@ -52,4 +53,27 @@ it('signed-out provisioning reaches login without a database command',async()=>{
  state.user=null
  await expect(actions.provisionWorkspace({name:'Workspace',key})).rejects.toThrow('REDIRECT:/login?redirect=%2Fonboarding')
  expect(state.rpc).not.toHaveBeenCalled()
+})
+
+it.each([
+ ['http://127.0.0.1:3106', false],
+ ['http://localhost:3106', false],
+ ['http://[::1]:3106', false],
+ ['https://erp.example.test', true],
+ ['https://localhost:3106', true],
+ ['http://erp.example.test', true],
+ ['http://localhost.example.test', true],
+ ['http://127.1:3106', true],
+ ['http://2130706433:3106', true],
+ ['http://localhost.:3106', true],
+ ['http://localhost:3106/?host=erp.example.test', true],
+ ['http://localhost:99999', true],
+ ['http://localhost@erp.example.test', true],
+ ['invalid URL', true],
+ [undefined, true],
+] as const)('production workspace cookie uses only trusted configured loopback HTTP for its insecure exception: %s', async (appUrl, secure) => {
+ vi.stubEnv('NODE_ENV', 'production')
+ vi.stubEnv('NEXT_PUBLIC_APP_URL', appUrl)
+ await expect(actions.provisionWorkspace({name:'Workspace',key})).rejects.toThrow('REDIRECT:/dashboard')
+ expect(state.setCookie).toHaveBeenCalledWith('active_org',orgId,expect.objectContaining({secure,httpOnly:true,sameSite:'lax',path:'/'}))
 })

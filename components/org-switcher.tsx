@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
@@ -89,22 +90,24 @@ export function OrgSwitcher({
             <ChevronsUpDown className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel className="text-muted-foreground text-xs">
-              Workspaces
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {orgs.map((o) => (
-              <DropdownMenuItem
-                key={o.orgId}
-                onClick={() => switchTo(o.orgId)}
-                className="gap-2"
-              >
-                <span className="flex-1 truncate">{o.orgName}</span>
-                {o.orgId === currentOrgId ? (
-                  <Check className="size-4" />
-                ) : null}
-              </DropdownMenuItem>
-            ))}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-muted-foreground text-xs">
+                Workspaces
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {orgs.map((o) => (
+                <DropdownMenuItem
+                  key={o.orgId}
+                  onClick={() => switchTo(o.orgId)}
+                  className="gap-2"
+                >
+                  <span className="flex-1 truncate">{o.orgName}</span>
+                  {o.orgId === currentOrgId ? (
+                    <Check className="size-4" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
