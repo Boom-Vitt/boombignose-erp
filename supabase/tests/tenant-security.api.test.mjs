@@ -63,7 +63,7 @@ test("all tested parent references reject a member belonging to both organizatio
     ["project_tasks",{project_id:project.id,title:"Cross org"}],
     ["milestones",{project_id:project.id,title:"Cross org"}],
     ["quotes",{client_id:foreignClient.id,number:randomUUID()}],
-    ["subscriptions",{client_id:foreignClient.id,name:randomUUID()}],
+    ["subscriptions",{client_id:foreignClient.id,name:randomUUID(),amount_satang:101}],
     ["invoices",{client_id:client.id,project_id:project.id,number:randomUUID()}],
   ]
   for(const [table,fields] of cases) assert.ok((await owner.from(table).insert({org_id:orgs[0],...fields})).error,table)
