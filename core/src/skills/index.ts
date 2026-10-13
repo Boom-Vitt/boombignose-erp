@@ -16,16 +16,21 @@ const MAX_FILES = 200;
 const FRONTMATTER_RE = /^\uFEFF?---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/;
 const normBody = (s: string) => s.replace(/^(?:[ \t]*\r?\n)+/, '').trimEnd();
 
-/** Frontmatter subset: `key: value` lines, values plain, "double" (JSON escapes) or 'single' quoted. Other lines are ignored. */
+/** Frontmatter subset: plain/quoted values and folded (>) or literal (|) blocks. Other lines are ignored. */
 export function parseSkillFile(text: string): { meta: Record<string, string>; body: string } | undefined {
   const m = FRONTMATTER_RE.exec(text);
   if (!m) return undefined;
   const meta: Record<string, string> = {};
-  for (const line of (m[1] ?? '').split(/\r?\n/)) {
-    const kv = /^([A-Za-z0-9_-]+)[ \t]*:[ \t]*(.*)$/.exec(line);
+  const lines = (m[1] ?? '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const kv = /^([A-Za-z0-9_-]+)[ \t]*:[ \t]*(.*)$/.exec(lines[i]!);
     if (!kv) continue;
     let v = kv[2]!.trim();
-    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) {
+    if (/^[>|][+-]?$/.test(v)) {
+      const block: string[] = [];
+      while (i + 1 < lines.length && /^(?:[ \t]|$)/.test(lines[i + 1]!)) block.push(lines[++i]!.trim());
+      v = (v.startsWith('>') ? block.filter(Boolean).join(' ') : block.join('\n')).trim();
+    } else if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) {
       try { v = JSON.parse(v) as string; } catch { v = v.slice(1, -1); }
     } else if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) {
       v = v.slice(1, -1).replaceAll("''", "'");
@@ -67,7 +72,6 @@ function readSkill(dir: string, name: string): Read {
   if (!fmName) return { ok: false, reason: 'name is missing' };
   if (fmName !== name) return { ok: false, reason: `name "${fmName}" does not match the folder "${name}"` };
   if (!description) return { ok: false, reason: 'description is missing' };
-  if (/^[>|][+-]?$/.test(description)) return { ok: false, reason: 'multi-line descriptions are not supported; use one line' };
   if (description.length > MAX_DESCRIPTION) return { ok: false, reason: `description is over ${MAX_DESCRIPTION} characters` };
   return { ok: true, name, description, body: parsed.body };
 }
@@ -127,7 +131,10 @@ export function deleteSkill(dir: string, name: string): boolean {
 /** One line per skill for the system prompt; '' when there are none. */
 export function skillsIndex(dir: string): string {
   return listSkills(dir)
-    .map((s) => `- ${s.name}: ${s.description.length > 300 ? `${s.description.slice(0, 299)}…` : s.description}`)
+    .map((s) => {
+      const description = s.description.replace(/\s+/g, ' ');
+      return `- ${s.name}: ${description.length > 300 ? `${description.slice(0, 299)}…` : description}`;
+    })
     .join('\n');
 }
 

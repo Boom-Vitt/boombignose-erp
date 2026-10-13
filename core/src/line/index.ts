@@ -94,8 +94,11 @@ export function createLineGateway(opts: LineGatewayOptions) {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
     });
-    const text = await res.text().catch(() => '');
-    if (!res.ok) throw new Error(`LINE ${path} failed: ${res.status} ${text.slice(0, 200)}`);
+    let text = await res.text().catch(() => '');
+    if (!res.ok) {
+      for (const secret of [opts.accessToken, opts.channelSecret]) if (secret) text = text.replaceAll(secret, '***');
+      throw new Error(`LINE ${path} failed: ${res.status} ${text.slice(0, 200)}`);
+    }
   }
 
   /** The chat's latest reply token if it is still young; tokens are single use, so it is dropped either way. */
@@ -168,7 +171,12 @@ export function createLineGateway(opts: LineGatewayOptions) {
     // Too slow for the reply token: park the answer behind a "Get answer" button.
     const pending: Pending = { id: randomBytes(6).toString('hex'), to, state: 'PENDING' };
     remember(pending);
-    await sendMessages(to, [workingMessage(pending)]).catch(fail);
+    try { await sendMessages(to, [workingMessage(pending)]); } catch (e) {
+      fail(e);
+      pendings.delete(pending.id);
+      await send(to, await answer);
+      return;
+    }
     pending.text = await answer;
     pending.state = 'READY';
   }

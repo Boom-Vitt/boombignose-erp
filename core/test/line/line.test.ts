@@ -338,6 +338,19 @@ test('onMessage failing sends a short apology, keeps the error for status, and t
   assert.equal(s.texts(s.calls[1]!)[0], 'ok two');
 });
 
+test('LINE API errors redact credentials before truncating the response body', async (t) => {
+  for (const credential of [TOKEN, SECRET]) {
+    const gw = createLineGateway({
+      config: { enabled: true, port: 0, slowResponseMs: 45_000, allow: { users: [OWNER], groups: [], rooms: [] } },
+      channelSecret: SECRET, accessToken: TOKEN, onMessage: async () => '',
+      fetchImpl: async () => new Response('x'.repeat(195) + credential + 'ok', { status: 500 }),
+    });
+    t.after(() => gw.close());
+    assert.equal(await gw.askApproval(OWNER, 'Allow?'), false);
+    assert.equal(gw.status().lastError, `LINE /v2/bot/message/push failed: 500 ${'x'.repeat(195)}***ok`);
+  }
+});
+
 // ---- slow response
 
 test('slow response: Get answer button, PENDING → READY → DELIVERED', async (t) => {
@@ -404,6 +417,25 @@ test('a quick answer sends no button and cancels the slow timer', async (t) => {
   await s.advance(60_000);
   assert.equal(s.calls.length, 1);
   assert.deepEqual(s.gw.status().pending, []);
+});
+
+test('a failed slow button reply and push send the answer directly once the API recovers', async (t) => {
+  const answer = deferred();
+  let offline = true;
+  const s = await setup(t, { slowResponseMs: 1000, onMessage: () => answer.promise, api: () => offline ? 500 : 200 });
+  await s.post([s.text(OWNER, 'think hard')]);
+  await waitFor(() => s.live.length === 1);
+  await s.advance(1000);
+  await waitFor(() => /push failed: 500/.test(s.gw.status().lastError ?? ''));
+  assert.deepEqual(s.calls.map((c) => c.path), ['/v2/bot/message/reply', '/v2/bot/message/push']);
+  assert.ok(s.calls.every((c) => c.body.messages[0].template.actions[0].label === 'Get answer'));
+
+  offline = false;
+  answer.resolve('the recovered answer');
+  await waitFor(() => s.calls.length === 3, 'direct answer delivery');
+  assert.equal(s.calls[2]!.path, '/v2/bot/message/push');
+  assert.deepEqual(s.calls[2]!.body, { to: OWNER, messages: [{ type: 'text', text: 'the recovered answer' }] });
+  assert.deepEqual(s.gw.status().pending, [], 'no unreachable pending answer is retained');
 });
 
 test('slow answer delivered by tap is chunked too (first call by reply, rest by push)', async (t) => {

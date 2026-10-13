@@ -33,6 +33,26 @@ test('frontmatter: plain, quoted, CRLF, comments and unknown lines', () => {
   assert.deepEqual(parseSkillFile('---\n---\nbody')?.meta, {});
 });
 
+for (const marker of ['>', '>-', '>+', '|', '|-', '|+']) {
+  test(`frontmatter: ${marker} collects the full block description`, () => {
+    const text = `---\r\nname: demo\r\ndescription: ${marker}\r\n\r\n  First line.\r\n  Second line.\r\n\r\nlicense: MIT\r\n---\r\n\r\nBody.\r\n`;
+    assert.deepEqual(parseSkillFile(text), {
+      meta: { name: 'demo', description: marker.startsWith('>') ? 'First line. Second line.' : 'First line.\nSecond line.', license: 'MIT' },
+      body: 'Body.',
+    });
+  });
+}
+
+test('block descriptions load in full and appear on one line in the skills index', (t) => {
+  const dir = tmpSkills(t);
+  write(dir, 'folded/SKILL.md', skillMd('folded', '>\n  Work with PDFs.\n  Use for documents.'));
+  write(dir, 'literal/SKILL.md', skillMd('literal', '|\n  First paragraph.\n\n  Second paragraph.'));
+  assert.equal(loadSkill(dir, 'folded')!.description, 'Work with PDFs. Use for documents.');
+  assert.equal(loadSkill(dir, 'literal')!.description, 'First paragraph.\n\nSecond paragraph.');
+  assert.deepEqual(scanSkills(dir).skipped, []);
+  assert.equal(skillsIndex(dir), '- folded: Work with PDFs. Use for documents.\n- literal: First paragraph. Second paragraph.');
+});
+
 test('index lists name + description; missing dir is empty', (t) => {
   const dir = tmpSkills(t);
   assert.deepEqual(listSkills(dir), []);
@@ -55,7 +75,7 @@ test('invalid skills are skipped with a reason, never a crash', (t) => {
   write(dir, 'empty-desc/SKILL.md', '---\nname: empty-desc\ndescription: ""\n---\nbody');
   write(dir, 'wrong-name/SKILL.md', skillMd('other', 'mismatch'));
   write(dir, 'no-fm/SKILL.md', 'just markdown');
-  write(dir, 'folded/SKILL.md', '---\nname: folded\ndescription: >\n  multi\n  line\n---\nbody');
+  write(dir, 'empty-block/SKILL.md', skillMd('empty-block', '>\n  '));
   write(dir, 'no-file/readme.txt', 'x');
   write(dir, 'Bad_Name/SKILL.md', skillMd('Bad_Name', 'x'));
   write(dir, '.hidden/SKILL.md', skillMd('hidden', 'x'));
@@ -70,7 +90,7 @@ test('invalid skills are skipped with a reason, never a crash', (t) => {
   assert.match(reason('empty-desc')!, /description is missing/);
   assert.match(reason('wrong-name')!, /does not match the folder/);
   assert.match(reason('no-fm')!, /frontmatter/);
-  assert.match(reason('folded')!, /multi-line/);
+  assert.match(reason('empty-block')!, /description is missing/);
   assert.match(reason('no-file')!, /SKILL\.md is missing/);
   assert.match(reason('Bad_Name')!, /invalid folder name/);
   assert.match(reason('long')!, /over 1024/);
