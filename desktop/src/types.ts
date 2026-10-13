@@ -51,7 +51,7 @@ export type ApiEvent =
   | { type: 'notification'; title: string; body: string; sessionId?: string };
 
 // ---- responses
-export type Time = number | string; // epoch ms/s or ISO text: the contract does not say, so accept both
+export type Time = number | string; // API timestamps are epoch milliseconds; strings are accepted for display compatibility.
 export interface Health { ok: true; version: string; pid: number }
 export interface Status {
   version: string;

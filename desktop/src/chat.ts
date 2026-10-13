@@ -7,6 +7,8 @@ import { btn, confirmBtn, el, errMsg, formatTime, guarded, renderText, toast } f
 export interface Chat {
   root: HTMLElement;
   onEvent(e: ApiEvent): void;
+  /** Clear stale event state before the new stream's replay is read. */
+  onStreamOpen(): void;
   /** Reload the list and the open chat, e.g. after the event stream reconnects. */
   refresh(): void;
 }
@@ -227,8 +229,8 @@ export function createChat(api: Api): Chat {
     sending = true;
     updateComposer();
     let userBubble: HTMLElement | undefined;
+    let id = currentId;
     try {
-      let id = currentId;
       if (!id) {
         id = (await api.createSession()).id;
         currentId = id;
@@ -240,10 +242,11 @@ export function createChat(api: Api): Chat {
       userBubble = bubble('user', text).root;
       input.value = '';
       input.style.height = '';
-      await api.sendMessage(id, text);
       running.add(id);
+      await api.sendMessage(id, text);
       scheduleList();
     } catch (e) {
+      if (id && !(e instanceof ApiError && e.status === 409)) running.delete(id);
       userBubble?.remove();
       if (userBubble) input.value = text;
       toast(errMsg(e), 'error');
@@ -330,8 +333,14 @@ export function createChat(api: Api): Chat {
   return {
     root,
     onEvent,
-    refresh() {
+    onStreamOpen() {
       running.clear();
+      for (const a of approvals.values()) a.card?.remove();
+      approvals.clear();
+      renderList();
+      updateComposer();
+    },
+    refresh() {
       void refreshList();
       void reloadCurrent();
       updateComposer();

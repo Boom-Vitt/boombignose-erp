@@ -73,7 +73,7 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
         if (pub) {
           let u: URL;
           try { u = new URL(pub); } catch { throw new Error('Public URL is not a valid URL'); }
-          if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('Public URL must start with https://');
+          if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('Public URL must start with http:// or https://');
         }
         const allow = { users: users.value(), groups: groups.value(), rooms: rooms.value() };
         if (token.value.trim()) await api.putSecret(ACCESS_NAME, token.value.trim());

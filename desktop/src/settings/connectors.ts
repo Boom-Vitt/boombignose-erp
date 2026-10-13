@@ -1,16 +1,10 @@
 // Settings: Connectors (MCP servers).
 import type { Api } from '../api.ts';
-import type { McpServerConfig, McpServerInfo, McpToolInfo } from '../types.ts';
+import type { McpServerInfo, McpToolInfo } from '../types.ts';
 import { badge, btn, check, confirmBtn, el, errMsg, field, guarded, load, select, toast } from '../dom.ts';
+import { addConnector } from './connector-form.ts';
 
 const BUILTIN = 'rea';
-const NAME_RE = /^[A-Za-z0-9_-]{1,32}$/;
-const ENV_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const HEADER_RE = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
-
-/** Splits on spaces, keeping "double" and 'single' quoted parts together. */
-const splitArgs = (s: string): string[] => (s.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((a) => a.replace(/^(["'])(.*)\1$/, '$2'));
-const secretName = (server: string, key: string) => `MCP_${server}_${key}`.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
 
 export function mountConnectors(pane: HTMLElement, api: Api): void {
   let servers: McpServerInfo[] = [];
@@ -96,7 +90,7 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
   }
 
   // ---- add form
-  function kvEditor(label: string, namePlaceholder: string, nameRe: RegExp) {
+  function kvEditor(label: string, namePlaceholder: string) {
     const rows = el('div', { class: 'kv-rows' });
     const addRow = () => {
       const k = el('input', { type: 'text', placeholder: namePlaceholder, 'aria-label': `${label} name`, autocomplete: 'off', spellcheck: 'false' });
@@ -112,8 +106,6 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
         for (const row of Array.from(rows.children)) {
           const [k, v] = Array.from(row.querySelectorAll('input')).map((i) => i.value.trim());
           if (!k && !v) continue;
-          if (!nameRe.test(k)) throw new Error(`"${k}" is not a valid ${label.toLowerCase()} name`);
-          if (!v) throw new Error(`Enter a value for ${k}`);
           out.push([k, v]);
         }
         return out;
@@ -127,8 +119,8 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
     const command = el('input', { type: 'text', placeholder: 'npx', autocomplete: 'off', spellcheck: 'false' });
     const args = el('input', { type: 'text', placeholder: '-y some-package@1.0.0 mcp', autocomplete: 'off', spellcheck: 'false' });
     const url = el('input', { type: 'url', placeholder: 'https://example.com/mcp', autocomplete: 'off', spellcheck: 'false' });
-    const env = kvEditor('Environment variable', 'NAME', ENV_RE);
-    const headers = kvEditor('Header', 'Authorization', HEADER_RE);
+    const env = kvEditor('Environment variable', 'NAME');
+    const headers = kvEditor('Header', 'Authorization');
     const stdio = el('div', {}, field('Command', command), field('Arguments', args, 'Separated by spaces; use quotes for an argument with spaces.'), env.root);
     const http = el('div', { hidden: true }, field('URL', url), headers.root);
     transport.addEventListener('change', () => { stdio.hidden = transport.value !== 'stdio'; http.hidden = transport.value !== 'http'; });
@@ -144,26 +136,9 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
       ev.preventDefault();
       void guarded(async () => {
         const n = name.value.trim();
-        if (!NAME_RE.test(n)) throw new Error('Name: 1 to 32 letters, digits, "-" or "_"');
-        if (servers.some((s) => s.name === n)) throw new Error(`A connector named ${n} already exists`);
-        let config: McpServerConfig;
-        const refs = async (pairs: [string, string][]) => {
-          const out: Record<string, string> = {};
-          for (const [k, v] of pairs) { const sn = secretName(n, k); await api.putSecret(sn, v); out[k] = '${' + sn + '}'; }
-          return Object.keys(out).length ? out : undefined;
-        };
-        if (transport.value === 'stdio') {
-          if (!command.value.trim()) throw new Error('Enter a command');
-          const pairs = env.values();
-          config = { transport: 'stdio', command: command.value.trim(), args: splitArgs(args.value), env: await refs(pairs), enabled: true };
-        } else {
-          let u: URL;
-          try { u = new URL(url.value.trim()); } catch { throw new Error('Enter a valid URL'); }
-          if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('The URL must start with http:// or https://');
-          const pairs = headers.values();
-          config = { transport: 'http', url: u.toString(), headers: await refs(pairs), enabled: true };
-        }
-        await api.addMcp(n, config);
+        const kind = transport.value === 'stdio' ? 'stdio' : 'http';
+        await addConnector(api, { name: n, transport: kind, command: command.value, args: args.value, url: url.value,
+          pairs: kind === 'stdio' ? env.values() : headers.values() });
         toast(`Added ${n}`);
         form.reset();
         env.clear(); headers.clear();

@@ -96,7 +96,7 @@ function shell(api: Api): void {
     settings.hidden = !section;
     chatLink.setAttribute('aria-current', section ? 'false' : 'page');
     for (const l of sectionLinks) l.a.setAttribute('aria-current', l.s === section ? 'page' : 'false');
-    if (section) { settings.replaceChildren(); settings.scrollTop = 0; section.mount(settings, api); }
+    if (section) { const host = el('div'); settings.replaceChildren(host); settings.scrollTop = 0; section.mount(host, api); }
     else void showStatus();
   }
   window.onhashchange = route;
@@ -116,6 +116,7 @@ function shell(api: Api): void {
       conn.textContent = connected ? 'Connected' : 'Reconnecting…';
       conn.classList.toggle('down', !connected);
       if (connected) {
+        chat.onStreamOpen();
         banner.hidden = true;
         failures = 0;
         if (wasDown) chat.refresh();
