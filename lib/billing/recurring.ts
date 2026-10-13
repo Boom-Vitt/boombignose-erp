@@ -1,5 +1,3 @@
-import { addWeeks, addMonths, addQuarters, addYears } from "date-fns"
-
 import type { Enums } from "@/lib/types/database"
 
 /**
@@ -21,7 +19,11 @@ export type SubscriptionLike = {
 
 /** Parse 'YYYY-MM-DD' to a Date at UTC midnight (stable, DST-free). */
 function parseISO(dateISO: string): Date {
-  return new Date(`${dateISO}T00:00:00Z`)
+  const parsed = new Date(`${dateISO}T00:00:00Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO) || !Number.isFinite(parsed.getTime()) || toISO(parsed) !== dateISO) {
+    throw new Error("Invalid date")
+  }
+  return parsed
 }
 
 /** Format a Date back to 'YYYY-MM-DD' from its UTC parts. */
@@ -30,36 +32,34 @@ function toISO(d: Date): string {
 }
 
 /** Advance an ISO date by one interval. */
-export function addInterval(dateISO: string, interval: RecurringInterval): string {
+export function addInterval(dateISO: string, interval: RecurringInterval, startISO = dateISO): string {
   const d = parseISO(dateISO)
-  switch (interval) {
-    case "weekly":
-      return toISO(addWeeks(d, 1))
-    case "monthly":
-      return toISO(addMonths(d, 1))
-    case "quarterly":
-      return toISO(addQuarters(d, 1))
-    case "yearly":
-      return toISO(addYears(d, 1))
+  const anchor = parseISO(startISO)
+  if (interval === "weekly") {
+    d.setUTCDate(d.getUTCDate() + 7)
+    return toISO(d)
   }
+  const months = { monthly: 1, quarterly: 3, yearly: 12 }[interval]
+  const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, 1))
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
+  target.setUTCDate(Math.min(anchor.getUTCDate(), lastDay))
+  return toISO(target)
 }
 
 /**
- * Advance a run date forward until it is strictly after `today`. Guarantees the
- * next scheduled run is in the future even if several periods were missed (the
- * cron generates one invoice per pass; the caller loops if it wants to backfill).
+ * Preview the next scheduled date after handling ONE due occurrence. Missed
+ * periods remain due for repeated invocations. Database commands own the actual
+ * schedule advancement; this helper never skips unbilled periods.
  */
 export function nextRunAfter(
   fromISO: string,
   interval: RecurringInterval,
-  todayISO: string
+  todayISO: string,
+  startISO = fromISO
 ): string {
-  let next = fromISO
-  // Bounded to avoid an infinite loop on bad data.
-  for (let i = 0; i < 1000 && next <= todayISO; i++) {
-    next = addInterval(next, interval)
-  }
-  return next
+  parseISO(fromISO)
+  parseISO(todayISO)
+  return fromISO <= todayISO ? addInterval(fromISO, interval, startISO) : fromISO
 }
 
 /** A subscription is due when active, auto-generating, and scheduled on/before today. */
