@@ -6,6 +6,7 @@ import { cookies } from "next/headers"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
+import { workspaceCookieIsSecure } from "@/lib/supabase/workspace-cookie"
 import { requireOrgContext, requireCapability, ACTIVE_ORG_COOKIE } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
 
@@ -191,7 +192,7 @@ async function activateWorkspace(orgId: string) {
   const cookieStore = await cookies()
   cookieStore.set(ACTIVE_ORG_COOKIE, orgId, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: workspaceCookieIsSecure(process.env.NEXT_PUBLIC_APP_URL, process.env.NODE_ENV),
     sameSite: "lax",
     path: "/",
     maxAge: ONE_YEAR,
