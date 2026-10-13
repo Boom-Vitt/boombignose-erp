@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/index.html src/style.css dist/",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\"",
     "tauri": "tauri"
   },
   "devDependencies": {
