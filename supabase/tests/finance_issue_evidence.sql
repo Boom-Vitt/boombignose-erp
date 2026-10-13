@@ -1,5 +1,5 @@
 begin;
-select plan(18);
+select plan(21);
 insert into auth.users(id,email,email_confirmed_at) values('b9000000-0000-4000-8000-000000000001','synthetic-finance@example.invalid',now());
 insert into organizations(id,name,slug) values('b9000000-0000-4000-8000-000000000002','Synthetic financial evidence','synthetic-finance-evidence');
 insert into memberships(org_id,user_id,role) values('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000001','owner');
@@ -28,6 +28,9 @@ select throws_ok($$update invoices set status='draft' where id='b9000000-0000-40
 select is(issue_invoice('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000004',(select source_version from invoice_snapshots where id=(select id from evidence_result where kind='snapshot')),'b9000000-0000-4000-8000-000000000011'),(select id from evidence_result where kind='snapshot'),'same-key issued retry durable');
 insert into evidence_result select 'claim',submit_internal_payment_claim('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000004',101,'Synthetic receipt report','b9000000-0000-4000-8000-000000000012');
 select is((select count(*)::int from payments where org_id='b9000000-0000-4000-8000-000000000002'),0,'staff report cannot settle');
+select throws_ok($$select review_payment_claim_with_evidence('b9000000-0000-4000-8000-000000000002',(select id from evidence_result where kind='claim'),101,'Synthetic actual bank evidence','b9000000-0000-4000-8000-000000000020','verified','-infinity','cash')$$,'P0001','Invalid verification evidence','nonfinite bank date rejected');
+select is((select count(*)::int from payments where org_id='b9000000-0000-4000-8000-000000000002'),0,'invalid bank date writes no cash');
+select throws_ok($$select reconcile_legacy_payment_with_evidence('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000099',101,'Synthetic actual bank evidence','b9000000-0000-4000-8000-000000000021','-infinity','cash')$$,'P0001','Invalid reconciliation evidence','legacy reconciliation rejects nonfinite date before write');
 insert into evidence_result select 'receipt',review_payment_claim_with_evidence('b9000000-0000-4000-8000-000000000002',(select id from evidence_result where kind='claim'),101,'Synthetic actual bank evidence','b9000000-0000-4000-8000-000000000013','verified','2026-07-02','cash');
 select is((select (paid_at at time zone 'Asia/Bangkok')::date::text from payments where id=(select id from evidence_result where kind='receipt')),'2026-07-02','actual bank date retained');
 select is((select method::text from payments where id=(select id from evidence_result where kind='receipt')),'cash','actual method retained');
