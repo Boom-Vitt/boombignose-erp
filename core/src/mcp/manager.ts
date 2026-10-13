@@ -8,11 +8,16 @@ export class McpManager {
   private servers: Record<string, McpServerConfig>;
   private env: Record<string, string>;
   private entries = new Map<string, Entry>();
+  private testing = new Set<McpClient>();
+  private generation = 0;
   constructor(servers: Record<string, McpServerConfig>, env: Record<string, string>) { this.servers = structuredClone(servers); this.env = { ...env }; }
   async start(): Promise<void> {
+    const generation = this.generation;
     for (const [name, config] of Object.entries(this.servers)) {
+      if (generation !== this.generation) return;
       if (!config.enabled || this.entries.get(name)?.client.connected) continue;
       await this.entries.get(name)?.client.close();
+      if (generation !== this.generation) return;
       const entry: Entry = { client: new McpClient(config, this.env), specs: [] }; this.entries.set(name, entry);
       try { await entry.client.connect(); entry.specs = await entry.client.listTools(); }
       catch (e) { entry.error = e instanceof Error ? e.message : String(e); await entry.client.close(); }
@@ -40,12 +45,13 @@ export class McpManager {
     return output;
   }
   async test(name: string): Promise<{ ok: boolean; tools: number; error?: string }> {
-    const config = this.servers[name];
+    const config = Object.hasOwn(this.servers, name) ? this.servers[name] : undefined;
     if (!config) return { ok: false, tools: 0, error: 'Unknown MCP server' };
     const client = new McpClient(config, this.env);
+    this.testing.add(client);
     try { await client.connect(); return { ok: true, tools: (await client.listTools()).length }; }
     catch (e) { return { ok: false, tools: 0, error: e instanceof Error ? e.message : String(e) }; }
-    finally { await client.close(); }
+    finally { this.testing.delete(client); await client.close(); }
   }
   status(): { name: string; transport: 'stdio' | 'http'; enabled: boolean; connected: boolean; tools: { name: string; selected: boolean }[]; error?: string }[] {
     return Object.entries(this.servers).map(([name, config]) => {
@@ -56,13 +62,21 @@ export class McpManager {
       };
     });
   }
-  async update(servers: Record<string, McpServerConfig>): Promise<void> {
+  listTools(name: string): ToolSpec[] { return structuredClone(this.entries.get(name)?.specs ?? []); }
+  async update(servers: Record<string, McpServerConfig>, env = this.env): Promise<void> {
+    const generation = this.generation;
+    const envChanged = JSON.stringify(env) !== JSON.stringify(this.env);
     for (const [name, entry] of this.entries) {
-      if (JSON.stringify(this.servers[name]) !== JSON.stringify(servers[name])) { await entry.client.close(); this.entries.delete(name); }
+      if (envChanged || JSON.stringify(this.servers[name]) !== JSON.stringify(servers[name])) { await entry.client.close(); this.entries.delete(name); }
     }
-    this.servers = structuredClone(servers); await this.start();
+    this.env = { ...env };
+    this.servers = structuredClone(servers);
+    if (generation === this.generation) await this.start();
   }
   async stop(): Promise<void> {
+    this.generation++;
+    for (const client of this.testing) await client.close();
+    this.testing.clear();
     for (const entry of this.entries.values()) await entry.client.close();
     this.entries.clear();
   }

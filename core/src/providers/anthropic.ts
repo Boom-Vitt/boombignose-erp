@@ -9,7 +9,7 @@ export function anthropic(cfg: ProviderConfig, apiKey: string | undefined, fetch
     if (apiKey) headers['x-api-key'] = apiKey;
     try {
       const response = await fetchImpl(`${cfg.baseUrl.replace(/\/$/, '')}/v1/messages`, {
-        method: 'POST', headers, signal: req.signal,
+        method: 'POST', headers, signal: req.signal, redirect: 'error',
         body: JSON.stringify({ model: req.model, system: req.system, max_tokens: req.maxTokens, stream: true,
           tools: req.tools.map(t => ({ name: t.name, description: t.description, input_schema: t.inputSchema })),
           messages: req.messages.map(m => ({ role: m.role, content: m.content.map(b => b.type === 'tool_result'

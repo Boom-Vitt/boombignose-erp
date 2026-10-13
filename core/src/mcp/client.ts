@@ -88,7 +88,7 @@ export class McpClient {
   private async post(message: Rpc, signal?: AbortSignal, timeoutMs = 60_000): Promise<any> {
     if (this.config.transport !== 'http') throw new Error('Not an HTTP server');
     const response = await fetch(this.config.url, {
-      method: 'POST', signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]),
+      method: 'POST', redirect: 'error', signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]),
       headers: { ...this.headers, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
         ...(this.session ? { 'Mcp-Session-Id': this.session } : {}), 'MCP-Protocol-Version': this.version },
       body: JSON.stringify(message),
@@ -168,7 +168,7 @@ export class McpClient {
       await closed;
     }
     if (this.config.transport === 'http' && this.session) {
-      await fetch(this.config.url, { method: 'DELETE', headers: { ...this.headers, 'Mcp-Session-Id': this.session, 'MCP-Protocol-Version': this.version }, signal: AbortSignal.timeout(2000) }).then(r => r.body?.cancel()).catch(() => {});
+      await fetch(this.config.url, { method: 'DELETE', redirect: 'error', headers: { ...this.headers, 'Mcp-Session-Id': this.session, 'MCP-Protocol-Version': this.version }, signal: AbortSignal.timeout(2000) }).then(r => r.body?.cancel()).catch(() => {});
     }
     this.session = undefined;
   }

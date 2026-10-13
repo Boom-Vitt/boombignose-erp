@@ -223,7 +223,10 @@ export interface Config {
 - `mcp/manager.ts`: `McpManager(servers: Record<string, McpServerConfig>, env: Record<string,string>)`:
   `start()` connects enabled servers, `tools(): Tool[]` (selected tools only; name `mcp__<server>__<tool>`
   sanitised to 64 chars; defaultPolicy `ask`), `test(name)` → `{ ok, tools: number, error? }` (works for disabled
-  servers too), `status()`, `update(servers)` (reconnect what changed), `stop()`.
+  servers too), `status()`, `listTools(name)` (cached descriptors, including descriptions),
+  `update(servers, env?)` (reconnect changed configs or secrets), `stop()`.
+  Provider and MCP HTTP requests reject redirects (`redirect: 'error'`), including MCP session cleanup, so
+  authentication headers never follow a redirect to another origin.
 
 ### core-services
 - `store/index.ts`: `openStore(file: string): Store` on `node:sqlite` (WAL). FTS5 tables use `tokenize='trigram'`
@@ -258,6 +261,12 @@ export interface Config {
   now?, timers? }`. Behaviour in section 7.
 
 ### core-app
+- `app/runtime.ts` exports `Runtime` and `RunProfile`: each run takes one snapshot containing provider config,
+  model, assembled system prompt, permissions, hooks, workspace and loop limits, plus an optional `toolFilter`.
+  `Runtime.start(sessionId, input, {profile?, origin?, userId?, approve?})` returns `{runId, result}`; later agent
+  profiles can supply this snapshot without changing the loop. Nested approvals are surfaced by the runtime's
+  approver, since delegated runs intentionally suppress loop events. Non-owner LINE runs omit automatic memory
+  injection as well as raising allow policies to ask.
 - `app/runtime.ts`: builds the provider (active config + key), the tool list (builtin + memory + session_search +
   skills + schedule + MCP), the system prompt (`agent.systemPrompt` or a short default, + memory notes + skills
   index + today's date), runs `runAgent` per session (one run per session at a time), persists `added` and
@@ -291,10 +300,16 @@ export interface Config {
   `Access-Control-Allow-Headers: Authorization, Content-Type`, `Access-Control-Max-Age: 600`. Other origins get no
   CORS headers.
   JSON bodies ≤ 1 MiB. Errors: `{ "error": "<message>" }`. Secrets are only ever returned masked.
+- Every API timestamp is a number in epoch milliseconds: sessions and memory `updatedAt`, jobs
+  `nextRunAt`/`lastRunAt`, and LINE `lastEventAt`. Disabled jobs have `nextRunAt: null`; optional timestamps are
+  omitted until present. `daemon.json.startedAt` uses the same unit.
 - Events: `GET /api/events` → `text/event-stream`; each event is one `data: <json>` line, JSON =
   `AgentEvent & { sessionId, runId }`, plus `{type:'run_start', sessionId, runId}`,
   `{type:'session_updated', sessionId}`, `{type:'notification', title, body, sessionId?}`. `: ping` every 15 s.
   Clients read it with `fetch` + a stream reader (EventSource cannot send the header).
+  Every new connection first replays one `run_start` per active run and one `approval_request` per pending
+  API approval, with the same `sessionId`/`runId` and approval shape as live events, then streams live events.
+  CLI TTY and LINE confirm-button approvals stay in their originating channel.
 - Routes:
   - `GET /api/health` → `{ ok: true, version, pid }`; `GET /api/status` → `{ version, provider: {id, kind, model},
     line: {enabled, running, webhookUrl}, mcp: [{name, enabled, connected, tools}], schedules: n }`.
@@ -307,12 +322,19 @@ export interface Config {
     `headers` values are masked unless they are pure `${NAME}` references; `secrets` lists every known secret name
     (each provider's `apiKeyEnv`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, plus any other name in `.env`)
     with `''` when unset; `PUT /api/settings` `{config}` (full
-    config, validated, `400` on bad shape) → same shape as GET; `PUT /api/secrets` `{name, value}` (`''` deletes)
+    config, validated, `400` on bad shape) → same shape as GET. An incoming MCP `env`/`headers` value equal to
+    the masked form of its stored value preserves the original value (whole-config read-modify-write is safe).
+    LINE and MCP changes apply live; API port changes apply on daemon restart.
+    `PUT /api/secrets` `{name, value}` (`''` deletes)
     → `{name, masked}`.
   - `GET /api/mcp` → `{ servers: [{name, transport, enabled, connected, error?, tools?: [{name, selected}]}] }`;
     `POST /api/mcp` `{name, config: McpServerConfig}`; `PATCH /api/mcp/:name` `{enabled?, tools?}`;
     `DELETE /api/mcp/:name`; `POST /api/mcp/:name/test` → `{ok, tools, error?}`; `GET /api/mcp/:name/tools` →
     `{tools: [{name, description, selected}]}`.
+    MCP server names must match `^[a-zA-Z0-9-]{1,32}$` at `POST /api/mcp`, `PUT /api/settings`, and CLI `mcp add`;
+    invalid API input returns 400. REA is built in: `DELETE /api/mcp/rea` returns
+    `400 {error: "rea is built in: disable it instead"}`; enable/disable is supported, and a full config without
+    REA restores the built-in disabled entry.
   - `GET /api/skills` → `{skills: [{name, description}]}`; `GET /api/skills/:name` → `{name, description, body}`;
     `PUT /api/skills/:name` `{description, body}`; `DELETE /api/skills/:name`.
   - `GET /api/memory?kind=&q=` → `{notes: [{id, kind, text, updatedAt}]}`; `POST /api/memory` `{kind, text}`;
@@ -322,6 +344,10 @@ export interface Config {
     `DELETE /api/schedules/:id`.
   - `GET /api/line/status` → `{enabled, running, port, publicUrl?, webhookUrl?, tokenSet, secretSet, lastEventAt?,
     lastError?}`. LINE settings change through `/api/settings` (section `line`) and `/api/secrets`.
+  Mutations without a more specific response above return `{ok:true}`. Memory create/update returns the note
+  `{id,kind,text,updatedAt}`; schedule create returns `{id,cron,prompt,delivery,enabled}`. Missing resources return
+  404. Deleting an active session returns 409; interrupt it first. An absent active run returns `{ok:false}` on
+  interrupt. Memory ids are positive integers.
 
 ## 7. LINE gateway behaviour
 

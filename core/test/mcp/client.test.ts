@@ -148,3 +148,18 @@ test('MCP results and errors preserve short literal values while masking expande
   await assert.rejects(broken.connect(), e => e instanceof Error
     && e.message.includes('exited (1)') && e.message.includes('found 12 matches in 1 file; debug; ••••') && !e.message.includes(env.VALUE));
 });
+
+test('manager stop aborts in-flight test clients and initialization without leaving a server running', async t => {
+  let seen!: () => void;
+  const arrived = new Promise<void>(resolve => { seen = resolve; });
+  const server = http.createServer((req, _res) => { req.resume(); seen(); });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); }));
+  const manager = new McpManager({ waiting: { transport: 'http', url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, enabled: false } }, {});
+  t.after(() => manager.stop());
+  const testing = manager.test('waiting'); await arrived;
+  await manager.stop();
+  const result = await testing;
+  assert.equal(result.ok, false); assert.equal(result.tools, 0);
+  assert.equal(manager.status()[0]!.connected, false);
+});
