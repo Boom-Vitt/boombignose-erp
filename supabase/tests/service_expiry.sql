@@ -8,6 +8,7 @@ values('ee200000-0000-4000-8000-000000000001','a0000000-0000-0000-0000-000000000
 insert into public.quote_items(org_id,quote_id,description,quantity,unit_price_satang) values('a0000000-0000-0000-0000-000000000001','ee200000-0000-4000-8000-000000000001','Past agreement',1,1000);
 update public.quotes set status='sent' where id='ee200000-0000-4000-8000-000000000001';
 update public.quotes set status='accepted' where id='ee200000-0000-4000-8000-000000000001';
+set constraints all immediate;
 alter table public.quotes disable trigger guard_quote_record;
 update public.quotes set valid_until=current_date-1 where id='ee200000-0000-4000-8000-000000000001';
 alter table public.quotes enable trigger guard_quote_record;
