@@ -115,10 +115,11 @@ export class Runtime {
     if (this.runs.has(sessionId)) throw new Error('session is already running');
     const config = this.opts.config(), origin = options.origin ?? session.origin;
     const nonOwner = origin.kind === 'line' && !config.line.allow.users.includes(options.userId ?? '');
-    const context = nonOwner ? session.context.map(m => ({ ...m, content: m.content.map(b => b.type === 'tool_result'
-      ? { ...b, content: '[earlier tool output hidden from non-owner sender]' }
-      : b.type === 'text' && b.text.startsWith('[Summary of earlier conversation]\n')
-        ? { ...b, text: '[earlier internal summary hidden from non-owner sender]' } : b) })) : session.context;
+    const context = nonOwner ? session.context.flatMap(m => {
+      if (m.role === 'assistant' && m.content.some(b => b.type === 'tool_use')) return [];
+      const content = m.content.filter(b => b.type === 'text' && !b.text.startsWith('[Summary of earlier conversation]\n'));
+      return content.length ? [{ ...m, content }] : [];
+    }) : session.context;
     const profile = options.profile ? { ...options.profile, provider: structuredClone(options.profile.provider),
       permissions: { ...options.profile.permissions }, hooks: structuredClone(options.profile.hooks) } : this.profile(config, !nonOwner);
     const allTools = [...builtinTools(this.opts.home), ...memoryTools(this.store), sessionSearchTool(this.store),
@@ -145,13 +146,19 @@ export class Runtime {
         onEvent: e => {
           if (e.type === 'text_delta') { streamText(e.text); return; }
           streamText('', true);
-          if (!['approval_request', 'approval_result', 'run_end'].includes(e.type)) this.emit(safeValue({ ...e, sessionId, runId }, redaction));
+          if (!['approval_request', 'approval_result', 'run_end'].includes(e.type)) {
+            const event = safeValue({ ...e, sessionId, runId }, redaction);
+            // shortcut: cut previews lose a possible secret suffix; redact in the loop if all 2000 characters are needed.
+            if (event.type === 'tool_end' && e.type === 'tool_end' && e.output.length === 2000)
+              event.output = event.output.slice(0, Math.max(0, event.output.length - Math.max(0, redaction.maxSecretLength - 1)));
+            this.emit(event);
+          }
         },
       });
       const current = this.cleaner(), clean = (text: string) => current(redaction(text)), completed = safeValue(raw, clean);
       this.store.appendMessages(sessionId, completed.added);
       this.store.setContext(sessionId, completed.context);
-      if (!session.title) this.store.setTitle(sessionId, clean(input.replace(/\s+/g, ' ').slice(0, 80)));
+      if (!session.title) this.store.setTitle(sessionId, clean(input.replace(/\s+/g, ' ')).slice(0, 80));
       this.runs.delete(sessionId);
       this.emit({ type: 'run_end', status: completed.status, text: completed.text, ...(completed.error ? { error: completed.error } : {}), sessionId, runId });
       this.emit({ type: 'session_updated', sessionId });

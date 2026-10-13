@@ -10,7 +10,7 @@ import { createApiServer } from '../api/index.ts';
 import type { Config } from '../types.ts';
 import { Runtime } from './runtime.ts';
 import type { RuntimeOptions } from './runtime.ts';
-import { restoreMaskedConfig, validateConfig } from './settings.ts';
+import { validateConfig } from './settings.ts';
 
 export interface DaemonOptions {
   home?: string; providerFactory?: RuntimeOptions['providerFactory'];
@@ -60,8 +60,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
       if (closed) throw new Error('daemon is closing');
       const value = typeof input === 'function' ? input(structuredClone(config)) : input;
       validateConfig(value);
-      const next = restoreMaskedConfig(value, config);
-      saveConfig(next, home); config = next; await reload();
+      saveConfig(value, home); config = value; await reload();
     }),
     reloadSecrets: () => serial(reload),
   });

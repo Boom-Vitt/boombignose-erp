@@ -267,9 +267,9 @@ export interface Config {
   profiles can supply this snapshot without changing the loop. Nested approvals are surfaced by the runtime's
   approver, since delegated runs intentionally suppress loop events. Non-owner LINE runs omit automatic memory
   injection as well as raising allow policies to ask.
-  Earlier tool-result bodies are replaced by a fixed placeholder in non-owner LINE model context; the saved
-  context keeps those placeholders, while the messages table retains the full transcript for the owner.
-  Internal compaction summaries are also hidden because they can contain earlier private tool output.
+  Non-owner LINE context keeps only user text and assistant replies without tool calls; tool-bearing assistant
+  messages (including intermediate text), tool blocks and internal compaction summaries are dropped. Owner runs
+  keep full context; the messages table retains the full transcript when visitor context is saved.
 - `app/runtime.ts`: builds the provider (active config + key), the tool list (builtin + memory + session_search +
   skills + schedule + MCP), the system prompt (`agent.systemPrompt` or a short default, + memory notes + skills
   index + today's date), runs `runAgent` per session (one run per session at a time), persists `added` and
@@ -277,6 +277,8 @@ export interface Config {
   (desktop → API event + `POST /api/approvals/:id`; cli = `chat -q` in-process → TTY prompt, denied without a TTY;
   line → LINE confirm buttons; cron → the job's delivery channel; 10 min timeout = deny), and delivers cron results
   (desktop → `notification` event + session; line → push). Keeps one session per LINE chat (`findSessionByOrigin`).
+  First-message titles are redacted before truncation. A 2000-character tool preview omits a possible partial-secret
+  suffix after redaction, so truncated credentials cannot reach API/CLI events.
   **LINE senders outside `allow.users`** (members of an allowlisted group or room) run with every `allow` policy
   raised to `ask`, so their requests reach the owner's disk, notes, sessions, web or memory only after a tap from an
   `allow.users` member.
@@ -343,7 +345,9 @@ export interface Config {
     (each provider's `apiKeyEnv`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, plus any other name in `.env`)
     with `''` when unset; `PUT /api/settings` `{config}` (full
     config, validated, `400` on bad shape) → same shape as GET. An incoming MCP `env`/`headers` value equal to
-    the masked form of its stored value preserves the original value (whole-config read-modify-write is safe).
+    the masked form of its stored value preserves the original value. The same applies to any string leaf equal
+    to the blanket-redacted form GET returned for that stored leaf, including workspace, prompts, hooks and URLs;
+    restore these before validation. Explicit new values still apply (whole-config read-modify-write is safe).
     LINE and MCP changes apply live; API port changes apply on daemon restart.
     `PUT /api/secrets` `{name, value}` (`''` deletes)
     → `{name, masked}`.

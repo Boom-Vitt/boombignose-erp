@@ -507,18 +507,28 @@ test('SSE masks secrets split across deltas and flushes text before tool activit
   assert.equal(stream.values.filter(e => e.runId === stopped.runId && e.type === 'text_delta').map(e => e.text).join(''), prefix + maskSecret(sensitive) + ' tail');
 });
 
-test('non-owner LINE group context hides earlier owner tool results while preserving the full transcript', async t => {
+test('non-owner LINE context keeps visible chat text and drops owner tool turns and summaries', async t => {
   const home = testHome(t), marker = 'owner-file-marker';
-  configured(home, undefined, c => { c.line.allow = { users: ['owner'], groups: ['group'], rooms: ['room'] }; });
+  configured(home, undefined, c => { c.line.allow = { users: ['owner'], groups: ['group'], rooms: ['room'] }; c.permissions.write_file = 'allow'; });
   writeFileSync(join(home, 'owner.txt'), marker);
   let visitor = false, calls = 0;
   const provider: Provider = { kind: 'openai-compatible', async *stream(req) {
     if (visitor) {
-      assert.ok(!JSON.stringify(req.messages).includes(marker), 'private tool result reached the visitor provider request');
-      assert.ok(req.messages.some(m => m.content.some(b => b.type === 'tool_result' && b.content === '[earlier tool output hidden from non-owner sender]')));
+      assert.ok(!JSON.stringify(req.messages).includes(marker), 'private owner data reached the visitor provider request');
+      assert.deepEqual(req.messages, [
+        { role: 'user', content: [{ type: 'text', text: 'read file' }] },
+        { role: 'assistant', content: [{ type: 'text', text: 'File checked.' }] },
+        { role: 'user', content: [{ type: 'text', text: 'what else was in the file?' }] },
+      ]);
       yield { type: 'text_delta', text: 'Owner approval is required to read that file again.' };
-    } else if (++calls === 1) yield { type: 'tool_call', id: 'read', name: 'read_file', input: { path: 'owner.txt' } };
-    else yield { type: 'text_delta', text: 'File checked.' };
+    } else if (++calls === 1) {
+      yield { type: 'text_delta', text: `Private notes say ${marker}; now checking the file.` };
+      yield { type: 'tool_call', id: 'write', name: 'write_file', input: { path: 'owner.txt', content: marker } };
+    } else if (calls === 2) {
+      assert.ok(req.messages.some(m => m.content.some(b => b.type === 'tool_use' && b.input.content === marker)));
+      assert.ok(req.messages.some(m => m.content.some(b => b.type === 'text' && b.text.includes(marker))));
+      yield { type: 'tool_call', id: 'read', name: 'read_file', input: { path: 'owner.txt' } };
+    } else yield { type: 'text_delta', text: 'File checked.' };
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider });
@@ -532,6 +542,63 @@ test('non-owner LINE group context hides earlier owner tool results while preser
   assert.ok(!JSON.stringify(a.runtime.store.getSession(session.id)!.context).includes(marker));
   assert.ok(JSON.stringify(a.runtime.store.getMessages(session.id)).includes(marker));
   assert.equal(a.runtime.store.listSessions().length, 1);
+});
+
+test('settings round trip preserves every masked config string and still accepts explicit changes', async t => {
+  const home = testHome(t), baseUrl = 'https://mock.invalid/v1';
+  const original = configured(home, baseUrl, c => {
+    c.agent.systemPrompt = `Work under ${home}`;
+    c.hooks.preTool = [{ command: `cd ${home}` }];
+    c.line.publicUrl = baseUrl;
+    c.mcp.servers.local = { ...fakeMcp, args: [home], env: { ROOT: home, URL: baseUrl }, enabled: false };
+  });
+  const a = await app(t, { home }), settings = (await call(a, '/api/settings')).body;
+  assert.equal(settings.config.agent.workspace, maskSecret(home));
+  assert.equal(settings.config.agent.systemPrompt, `Work under ${maskSecret(home)}`);
+  assert.equal(settings.config.hooks.preTool[0].command, `cd ${maskSecret(home)}`);
+  assert.equal(settings.config.providers[0].baseUrl, maskSecret(baseUrl));
+  assert.equal(settings.config.line.publicUrl, maskSecret(baseUrl));
+  assert.deepEqual(settings.config.mcp.servers.local.args, [maskSecret(home)]);
+  assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
+  assert.deepEqual(loadConfig(home), original);
+  const changed = structuredClone(settings);
+  changed.config.agent.workspace = join(home, 'new-workspace');
+  changed.config.agent.systemPrompt = 'New prompt'; changed.config.hooks.preTool[0].command = 'true';
+  assert.equal((await call(a, '/api/settings', 'PUT', changed)).status, 200);
+  const saved = loadConfig(home);
+  assert.equal(saved.agent.workspace, changed.config.agent.workspace);
+  assert.equal(saved.agent.systemPrompt, 'New prompt'); assert.equal(saved.hooks.preTool![0]!.command, 'true');
+  assert.equal(saved.providers[0]!.baseUrl, baseUrl); assert.equal(saved.line.publicUrl, baseUrl);
+  assert.deepEqual(saved.mcp.servers.local, original.mcp.servers.local);
+  changed.config.providers[0].baseUrl = 'invalid-url';
+  assert.equal((await call(a, '/api/settings', 'PUT', changed)).status, 400);
+  assert.deepEqual(loadConfig(home), saved);
+});
+
+test('session titles and truncated tool previews never leak a secret crossing the cut', async t => {
+  const home = testHome(t), sensitive = 'private-' + 'x'.repeat(16), input = 'a'.repeat(60) + sensitive + ' suffix';
+  configured(home); setSecret('VALUE', sensitive, home);
+  writeFileSync(join(home, 'long.txt'), 'A'.repeat(1980) + sensitive + ' tail');
+  writeFileSync(join(home, 'short.txt'), sensitive);
+  let calls = 0;
+  const provider: Provider = { kind: 'openai-compatible', async *stream() {
+    if (++calls === 1) {
+      yield { type: 'tool_call', id: 'long', name: 'read_file', input: { path: 'long.txt' } };
+      yield { type: 'tool_call', id: 'short', name: 'read_file', input: { path: 'short.txt' } };
+    } else yield { type: 'text_delta', text: 'done' };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await app(t, { home, providerFactory: () => provider }), stream = await events(a, t);
+  const id = a.runtime.store.createSession({ origin: { kind: 'desktop' } }).id;
+  assert.equal((await a.runtime.start(id, input).result).status, 'done');
+  const title = a.runtime.store.getSession(id)!.title;
+  assert.equal(title, ('a'.repeat(60) + maskSecret(sensitive) + ' suffix').slice(0, 80));
+  assert.ok(!title.includes('x'.repeat(8)));
+  assert.equal((await call(a, '/api/sessions')).body.sessions[0].title, title);
+  const preview = (await stream.wait(e => e.type === 'tool_end' && e.callId === 'long')).output;
+  assert.ok(preview.length > 0 && preview.length <= 2000); assert.match(preview, /^A+$/);
+  assert.equal((await stream.wait(e => e.type === 'tool_end' && e.callId === 'short')).output, maskSecret(sensitive));
+  assert.ok(!JSON.stringify(a.runtime.store.getMessages(id)).includes(sensitive));
 });
 
 test('rotated secrets remain masked in tool events, stored/replayed approvals and transcript', async t => {

@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { VERSION, paths, maskSecret, setSecret } from '../config.ts';
 import { deleteSkill, listSkills, loadSkill, saveSkill } from '../skills/index.ts';
-import { isObject, safeValue, settingsResponse, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
+import { isObject, restoreMaskedConfig, safeValue, settingsResponse, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
 import type { Runtime } from '../app/runtime.ts';
 import type { Config, Delivery } from '../types.ts';
 import type { Scheduler } from '../cron/index.ts';
@@ -132,8 +132,11 @@ export function createApiServer(opts: ApiOptions) {
       }
       if (area === 'settings' && !id) {
         if (method === 'PUT') {
-          const b = await body(req); validate(() => validateConfig(b.config));
-          await opts.updateSettings(b.config as Config);
+          const b = await body(req);
+          await opts.updateSettings(c => validate(() => {
+            const next = restoreMaskedConfig(b.config as Config, c, runtime.cleaner());
+            validateConfig(next); return next;
+          }));
         } else if (method !== 'GET') return missing();
         return send(res, settingsResponse(opts.config(), opts.home));
       }

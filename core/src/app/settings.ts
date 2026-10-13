@@ -54,8 +54,14 @@ export function validateConfig(v: unknown): asserts v is Config {
   requireValue(isObject(v.api) && integer(v.api.port, 0, 65535), 'invalid API port');
 }
 
-export function restoreMaskedConfig(input: Config, stored: Config): Config {
-  const next = structuredClone(input);
+export function restoreMaskedConfig(input: Config, stored: Config, clean: (text: string) => string): Config {
+  const restore = (value: unknown, old: unknown): unknown => {
+    if (typeof value === 'string' && typeof old === 'string' && value !== old && value === clean(old)) return old;
+    if (Array.isArray(value)) return value.map((v, i) => restore(v, Array.isArray(old) ? old[i] : undefined));
+    if (isObject(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, restore(v, isObject(old) && Object.hasOwn(old, k) ? old[k] : undefined)]));
+    return value;
+  };
+  const next = restore(input, stored) as Config;
   next.mcp.servers.rea ??= structuredClone(defaultConfig().mcp.servers.rea!);
   for (const [name, server] of Object.entries(next.mcp.servers)) {
     const prev = stored.mcp.servers[name];
