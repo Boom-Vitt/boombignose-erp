@@ -1,6 +1,0 @@
-{
-  "identifier": "default",
-  "description": "Main window",
-  "windows": ["main"],
-  "permissions": ["core:default"]
-}

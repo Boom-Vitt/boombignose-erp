@@ -46,7 +46,19 @@ export async function connect(url: string) {
   return { call, evaluate, errors, close: () => socket.close() };
 }
 
-export async function openUi(t: TestContext, info: { port: number; token: string }) {
+export interface UiOptions {
+  /** Load the page as the BigNose OS panel (window.__BIGNOSE_OS__). */
+  os?: boolean;
+  /** Fixed page size, e.g. a 420 px panel. */
+  viewport?: { width: number; height: number };
+  /** Answers for Tauri commands other than daemon_info; every command is recorded in window.__invokes. */
+  commands?: Record<string, unknown>;
+  hash?: string;
+  /** False when the page stops at the startup screen instead of the connected shell. */
+  shell?: boolean;
+}
+
+export async function openUi(t: TestContext, info: { port: number; token: string }, options: UiOptions = {}) {
   const profile = mkdtempSync(join(tmpdir(), 'bn-chrome-'));
   const server = createServer((req, res) => {
     const path = resolve(root, 'desktop/dist', '.' + new URL(req.url!, 'http://local').pathname.replace(/\/$/, '/index.html'));
@@ -84,8 +96,10 @@ export async function openUi(t: TestContext, info: { port: number; token: string
   cdp = await connect(pages.find(p => p.type === 'page')!.webSocketDebuggerUrl);
   const page = cdp;
   await page.call('Page.enable'); await page.call('Runtime.enable');
-  await page.call('Page.addScriptToEvaluateOnNewDocument', { source: `window.__TAURI__ = {core:{invoke:async()=>(${JSON.stringify({ port: info.port, token: info.token, spawned: false })})}};` });
-  await page.call('Page.navigate', { url: `http://127.0.0.1:${(server.address() as { port: number }).port}/` });
+  const daemon = { port: info.port, token: info.token, spawned: false };
+  await page.call('Page.addScriptToEvaluateOnNewDocument', { source: `window.__invokes=[];const answers=${JSON.stringify(options.commands ?? {})};window.__TAURI__ = {core:{invoke:async(cmd)=>{window.__invokes.push(cmd);return cmd in answers?answers[cmd]:(${JSON.stringify(daemon)})}}};${options.os ? 'window.__BIGNOSE_OS__=true;' : ''}` });
+  if (options.viewport) await page.call('Emulation.setDeviceMetricsOverride', { ...options.viewport, deviceScaleFactor: 1, mobile: false });
+  await page.call('Page.navigate', { url: `http://127.0.0.1:${(server.address() as { port: number }).port}/${options.hash ?? ''}` });
   const wait = (expression: string, label = expression) => until(() => page.evaluate(expression), label);
   const click = async (label: string, scope = 'document') => {
     await wait(`Array.from((${scope})?.querySelectorAll('button,a') ?? []).some(b=>b.textContent===${JSON.stringify(label)} && !b.disabled)`);
@@ -93,6 +107,6 @@ export async function openUi(t: TestContext, info: { port: number; token: string
   };
   const fill = (selector: string, value: string) => page.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   const field = (label: string, value: string, scope = 'document') => page.evaluate(`(()=>{const e=Array.from(${scope}.querySelectorAll('label')).find(l=>l.querySelector('.field-label')?.textContent===${JSON.stringify(label)}).querySelector('input,textarea,select');e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-  await wait(`document.querySelector('.nav-conn')?.textContent==='Connected'`);
+  if (options.shell !== false) await wait(`document.querySelector('.nav-conn')?.textContent==='Connected'`);
   return { cdp: page, wait, click, fill, field };
 }
