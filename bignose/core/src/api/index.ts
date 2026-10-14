@@ -164,7 +164,7 @@ export function createApiServer(opts: ApiOptions) {
           return send(res, { id: store.createSession({ title: b.title as string | undefined, origin: { kind: 'desktop' }, agentId: agentId(b.agentId, true) }).id });
         }
         const s = id && store.getSession(id); if (!s) return missing();
-        if (!action && method === 'GET') return send(res, { id: s.id, agentId: s.agentId, title: s.title, messages: store.getMessages(s.id) });
+        if (!action && method === 'GET') return send(res, { id: s.id, agentId: s.agentId, title: s.title, messages: store.getMessages(s.id), notices: store.getNotices(s.id), live: runtime.liveTurn(s.id) ?? null });
         if (!action && method === 'DELETE') {
           if (runtime.isRunning(s.id)) throw new HttpError(409, 'session is running');
           store.deleteSession(s.id); runtime.emit({ type: 'session_updated', sessionId: s.id }); return send(res, { ok: true });

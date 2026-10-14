@@ -373,3 +373,171 @@ test('T16 leaving while the return refresh is pending defers recovery until the 
   assert.match(messages.textContent, /Next return history/);
   assert.doesNotMatch(messages.textContent, /Loading…/);
 });
+
+// ---- turn persistence: stored notices and the live turn come back with the session
+const said = (role: 'user' | 'assistant', text: string) => ({ role, content: [{ type: 'text', text }] });
+const usedTool = (id: string, name: string) => ({ role: 'assistant', content: [{ type: 'tool_use', id, name, input: { path: 'a.txt' } }] });
+const detail = (id: string, extra: Record<string, unknown>) => json({ id, agentId: 'a1', title: `Saved ${id}`, messages: [], notices: [], live: null, ...extra });
+const kinds = (messages: TestNode) => messages.children.map(c => c.className.trim());
+const bubbles = (messages: TestNode, role: string) => messages.querySelectorAll('.msg').filter(m => m.className.split(' ').includes(role));
+
+test('run outcome note survives the session_updated reload', async t => {
+  t.after(installDom());
+  const reads: PromiseWithResolvers<Response>[] = [];
+  const { chat, open, messages } = historySetup(() => { const read = Promise.withResolvers<Response>(); reads.push(read); return read.promise; });
+  await flush(); open('s1'); reads[0]!.resolve(detail('s1', { messages: [said('user', 'hello?')] })); await flush();
+  // The run fails: the daemon stores the note, then emits run_end, then session_updated; each makes the chat read the session again.
+  chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  chat.onEvent({ type: 'run_end', sessionId: 's1', runId: 'r1', status: 'error', text: '', error: 'Provider HTTP 401: bad key' });
+  chat.onEvent({ type: 'session_updated', sessionId: 's1' });
+  assert.ok(reads.length >= 3, 'run_end and session_updated each reload');
+  for (const read of reads.slice(1)) { // the answers arrive one after another, as over a real connection
+    read.resolve(detail('s1', { messages: [said('user', 'hello?')], notices: [{ after: 1, level: 'error', text: 'Error: Provider HTTP 401: bad key', at: 2 }] }));
+    await flush();
+  }
+  assert.deepEqual(messages.querySelectorAll('.note').map(n => [n.className.trim(), n.textContent]), [['note error', 'Error: Provider HTTP 401: bad key']]);
+});
+
+test('stored notices render in order after reopen', async t => {
+  t.after(installDom());
+  const { open, messages } = historySetup(async id => detail(id, {
+    messages: [said('user', 'q1'), said('assistant', 'a1'), said('user', 'q2'), said('assistant', 'a2')],
+    notices: [{ after: 2, level: 'info', text: 'Stopped.', at: 1 }, { after: 2, level: 'warn', text: 'Cut at max_tokens', at: 2 }, { after: 4, level: 'error', text: 'Error: later', at: 3 }],
+  }));
+  await flush(); open('s1'); await flush();
+  assert.deepEqual(kinds(messages), ['msg user', 'msg assistant', 'note', 'note warn', 'msg user', 'msg assistant', 'note error']);
+  assert.deepEqual(messages.querySelectorAll('.note').map(n => n.textContent), ['Stopped.', 'Cut at max_tokens', 'Error: later']);
+});
+
+test('switching chats keeps the live turn', async t => {
+  t.after(installDom());
+  const tool = (callId: string, extra = {}) => ({ callId, name: 'list_files', input: {}, done: false, ...extra });
+  let s1: Record<string, unknown> = { messages: [said('user', 'MY QUESTION'), usedTool('c1', 'read_file'), usedTool('c2', 'list_files')], live: { runId: 'r1', text: 'half an ', tools: [tool('c2')] } };
+  const { chat, open, messages } = historySetup(async id => id === 's1' ? detail(id, s1) : detail(id, { messages: [said('assistant', 'other chat')] }));
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); await flush();
+  assert.match(messages.textContent, /MY QUESTION/);
+  assert.equal(messages.querySelectorAll('.tool').length, 2);
+  assert.equal(bubbles(messages, 'assistant').map(b => b.textContent).join('|'), 'half an ');
+  // Away to another chat while the run goes on; the daemon moves on meanwhile.
+  open('s2'); await flush();
+  assert.match(messages.textContent, /other chat/); assert.doesNotMatch(messages.textContent, /MY QUESTION/);
+  s1 = { messages: s1.messages, live: { runId: 'r1', text: 'half an answer', tools: [tool('c2', { done: true, isError: false, output: 'AAA' })] } };
+  open('s1'); await flush();
+  assert.match(messages.textContent, /MY QUESTION/);
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['half an answer']);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['running', 'done']);
+  // Later events update the same bubble and the same row.
+  chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', text: ' continues' });
+  chat.onEvent({ type: 'tool_end', sessionId: 's1', runId: 'r1', callId: 'c1', name: 'read_file', isError: false, output: 'BBB' });
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['half an answer continues']);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['done', 'done']);
+  assert.equal(messages.querySelectorAll('.tool').length, 2);
+});
+
+test('stream reconnect keeps the live turn', async t => {
+  t.after(installDom());
+  let live = { runId: 'r1', text: 'partial', tools: [] as unknown[] };
+  const { chat, root, open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'MY QUESTION')], live }));
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); await flush();
+  chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', text: ' more' });
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['partial more']);
+  // The event stream drops and reconnects; the run went on meanwhile.
+  live = { runId: 'r1', text: 'partial more and more', tools: [] };
+  chat.onStreamOpen();
+  chat.refresh();
+  chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' }); // the replay of the active run
+  for (let i = 0; i < 3; i++) await flush();
+  assert.match(messages.textContent, /MY QUESTION/);
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['partial more and more']);
+  assert.equal(root.querySelectorAll('button').find(b => b.textContent === 'Stop')!.hidden, false);
+  chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', text: ' end' });
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['partial more and more end']);
+});
+
+test('events that arrive while the history loads are applied once, after the render', async t => {
+  t.after(installDom());
+  const first = Promise.withResolvers<Response>();
+  let reads = 0;
+  const { chat, open, messages } = historySetup(async id => ++reads === 1 ? first.promise : assert.fail('no second read'));
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); await flush();
+  const delta = (seq: number, text: string) => chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', seq, text });
+  // The daemon answered with the text up to event 1; events 1 and 2 reach the client before the answer does.
+  delta(1, 'a'); delta(2, 'b');
+  first.resolve(detail('s1', { messages: [said('user', 'q')], live: { runId: 'r1', seq: 1, text: 'a', tools: [] } }));
+  for (let i = 0; i < 3; i++) await flush();
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['ab']); // 1 was in the answer, 2 was not: ABCD never becomes ABD or AABCD
+  delta(2, 'b'); delta(3, 'c'); // a late copy of 2 is ignored
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['abc']);
+  assert.equal(reads, 1);
+});
+
+test('a restore in the middle of a batch does not add a second row for the next tool', async t => {
+  t.after(installDom());
+  const batch = { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'list_files', input: {} }, { type: 'tool_use', id: 'c2', name: 'list_files', input: {} }] };
+  const { chat, open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'q'), batch], live: { runId: 'r1', seq: 2, text: '', tools: [{ callId: 'c1', name: 'list_files', input: {}, done: false }] } }));
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); await flush();
+  assert.equal(messages.querySelectorAll('.tool').length, 2);
+  const end = (seq: number, callId: string) => chat.onEvent({ type: 'tool_end', sessionId: 's1', runId: 'r1', seq, callId, name: 'list_files', isError: false, output: 'ok' });
+  end(3, 'c1');
+  chat.onEvent({ type: 'tool_start', sessionId: 's1', runId: 'r1', seq: 4, callId: 'c2', name: 'list_files', input: {} });
+  end(5, 'c2');
+  assert.equal(messages.querySelectorAll('.tool').length, 2);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['done', 'done']);
+});
+
+test('a tool call without a result is not shown as running when no run is going', async t => {
+  t.after(installDom());
+  let live: unknown = null;
+  const { chat, open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'q'), usedTool('c1', 'write_file')], live }));
+  await flush(); open('s1'); await flush(); // the daemon was killed mid-run: the call has no result and nothing is running
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => [s.className.trim(), s.textContent]), [['tool-status error', 'error']]);
+  assert.match(messages.querySelector('.tool-out')!.textContent, /did not finish/);
+  live = { runId: 'r1', seq: 1, text: '', tools: [] }; // while a run is going the same call really is running
+  chat.refresh(); await flush();
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['running']);
+});
+
+test('a run_end error is shown when the daemon could not store a note', async t => {
+  t.after(installDom());
+  const reads: PromiseWithResolvers<Response>[] = [];
+  const { chat, open, messages } = historySetup(() => { const read = Promise.withResolvers<Response>(); reads.push(read); return read.promise; });
+  await flush(); open('s1'); reads[0]!.resolve(detail('s1', { messages: [said('user', 'hello?')] })); await flush();
+  chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  chat.onEvent({ type: 'run_end', sessionId: 's1', runId: 'r1', status: 'error', text: '', error: 'disk full' });
+  chat.onEvent({ type: 'session_updated', sessionId: 's1' });
+  for (const read of reads.slice(1)) { read.resolve(detail('s1', { messages: [said('user', 'hello?')], notices: [] })); await flush(); }
+  assert.deepEqual(messages.querySelectorAll('.note').map(n => [n.className.trim(), n.textContent]), [['note error', 'Error: disk full']]);
+  // The next run starts clean.
+  chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r2' });
+  chat.refresh(); await flush(); reads.at(-1)!.resolve(detail('s1', { messages: [said('user', 'again')], live: { runId: 'r2', seq: 0, text: '', tools: [] } })); await flush();
+  assert.equal(messages.querySelectorAll('.note').length, 0);
+});
+
+test('a finished call id that comes back in a later turn gets its own row', async t => {
+  t.after(installDom());
+  const finished = [usedTool('c1', 'read_file'), { role: 'user', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'first' }] }];
+  const { chat, open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'q'), ...finished], live: { runId: 'r1', seq: 0, text: '', tools: [] } }));
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); await flush();
+  chat.onEvent({ type: 'tool_start', sessionId: 's1', runId: 'r1', seq: 1, callId: 'c1', name: 'read_file', input: {} }); // a provider reusing the id
+  assert.equal(messages.querySelectorAll('.tool').length, 2);
+  chat.onEvent({ type: 'tool_end', sessionId: 's1', runId: 'r1', seq: 2, callId: 'c1', name: 'read_file', isError: false, output: 'second' });
+  assert.deepEqual(messages.querySelectorAll('.tool-out').map(o => o.textContent), ['first', 'second']);
+});
+
+test('events held during a read that fails are still shown', async t => {
+  t.after(installDom());
+  const reads: PromiseWithResolvers<Response>[] = [];
+  const { chat, open, messages } = historySetup(() => { const read = Promise.withResolvers<Response>(); reads.push(read); return read.promise; });
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); reads[0]!.resolve(detail('s1', { messages: [said('user', 'q')], live: { runId: 'r1', seq: 1, text: 'A', tools: [] } })); await flush();
+  const delta = (seq: number, text: string) => chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', seq, text });
+  chat.refresh(); delta(2, 'B'); // held while the reload is in flight
+  reads[1]!.resolve(json({ error: 'database is locked' }, 500)); await flush(); await flush();
+  delta(3, 'C');
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['ABC']);
+});

@@ -1,4 +1,4 @@
-import type { Provider, Message, Tool, Policy, HooksConfig, Approver, Origin, AgentEvent, RunStatus, Usage, ToolUseBlock, ToolResult, ContentBlock } from '../types.ts';
+import type { Provider, Message, Tool, Policy, HooksConfig, Approver, Origin, AgentEvent, RunStatus, StopReason, Usage, ToolUseBlock, ToolResult, ContentBlock } from '../types.ts';
 import { randomUUID } from 'node:crypto';
 import { effectivePolicy, checkPermission } from './permissions.ts';
 import { runHooks } from './hooks.ts';
@@ -6,18 +6,19 @@ import { withAbort } from './abort.ts';
 import { budgetResult, isContextOverflow, pruneResults, resultCap, safeName } from './budget.ts';
 import { coerceArgs } from '../tools/coerce.ts';
 export interface RunOptions { provider: Provider; model: string; system: string; context: Message[]; input: string; tools: Tool[]; maxTurns: number; maxTokens: number; contextWindow: number; compactAt: number; permissions: Record<string, Policy>; hooks: HooksConfig; approve?: Approver; sessionId: string; origin: Origin; cwd: string; signal: AbortSignal; onEvent?: (event: AgentEvent) => void; depth?: number;
+  onMessage?: (message: Message) => void /* each finished step (assistant message, tool results) as it is added; not the input */;
   spillDir?: string; redact?: (text: string) => string /* tool output over the per-result budget is saved to a file in spillDir (redacted) */ }
-export interface RunResult { context: Message[]; added: Message[]; status: RunStatus; text: string; usage: Usage; error?: string }
+export interface RunResult { context: Message[]; added: Message[]; status: RunStatus; text: string; usage: Usage; error?: string; warning?: string }
 export async function runAgent(opts: RunOptions): Promise<RunResult> {
   let context = structuredClone(opts.context);
   // Sessions stored before names were checked may hold a name the provider rejects; fix it so the session works again.
   for (const m of context) for (const b of m.content) if (b.type === 'tool_use') b.name = safeName(b.name);
   const added: Message[] = [], usage: Usage = { inputTokens: 0, outputTokens: 0 };
-  let status: RunStatus = 'max_turns', text = '', error: string | undefined, turns = 0, lastInput = 0;
+  let status: RunStatus = 'max_turns', text = '', error: string | undefined, turns = 0, lastInput = 0, lastStop: StopReason | undefined;
   const depth = opts.depth ?? 0;
   const emit = (event: AgentEvent) => opts.onEvent?.(event);
-  const append = (message: Message) => { context.push(message); added.push(message); };
-  append({ role: 'user', content: [{ type: 'text', text: opts.input }] });
+  const append = (message: Message, step = true) => { context.push(message); added.push(message); if (step) opts.onMessage?.(message); };
+  append({ role: 'user', content: [{ type: 'text', text: opts.input }] }, false);
   // Everything the provider counts: system prompt, tool schemas and messages, with room kept for the reply (at most half the window).
   const fixed = (opts.system.length + JSON.stringify(opts.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))).length) / 4;
   const size = () => Math.max(lastInput, JSON.stringify(context).length / 4 + fixed);
@@ -75,7 +76,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
       }
       const content: ContentBlock[] = [], calls = new Map<string, ToolUseBlock>(), complete = new Set<string>(), invalid = new Map<string, string>();
       let streamError: unknown;
-      text = '';
+      text = ''; lastStop = undefined;
       const iterator = opts.provider.stream(baseRequest())[Symbol.asyncIterator]();
       turns++;
       try {
@@ -93,7 +94,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
             if (!call) { call = { type: 'tool_use', id: e.id, name: e.name, input: {} }; calls.set(e.id, call); content.push(call); }
             if (e.type === 'tool_call') { call.name = e.name; call.input = e.input; complete.add(e.id); if (e.error) invalid.set(e.id, e.error); }
           } else if (e.type === 'done') {
-            lastInput = e.usage.inputTokens;
+            lastInput = e.usage.inputTokens; lastStop = e.stopReason;
             usage.inputTokens += e.usage.inputTokens; usage.outputTokens += e.usage.outputTokens;
           }
         }
@@ -134,7 +135,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
           result = blocked ?? await withAbort(tool.run(input, {
             sessionId: opts.sessionId, origin: opts.origin, cwd: opts.cwd, signal: opts.signal, depth,
             ...(depth < 1 ? { delegate: async (task: string) => {
-              const nested = await runAgent({ ...opts, context: [], input: task, tools: opts.tools.filter(t => t.name !== 'delegate'), depth: depth + 1, onEvent: undefined });
+              const nested = await runAgent({ ...opts, context: [], input: task, tools: opts.tools.filter(t => t.name !== 'delegate'), depth: depth + 1, onEvent: undefined, onMessage: undefined });
               if (nested.status !== 'done') throw new Error(nested.error ?? `Delegate stopped: ${nested.status}`);
               return nested.text;
             } } : {}),
@@ -154,7 +155,11 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
     status = opts.signal.aborted ? 'interrupted' : 'error';
     if (status === 'error') error = e instanceof Error ? e.message : String(e);
   }
+  // A finished run can still have failed the user: a reply cut at the output limit, or none at all.
+  const warning = status !== 'done' ? undefined : lastStop === 'max_tokens'
+    ? 'The reply was cut off at the output limit (max_tokens). Send another message to continue, or raise the limit in the agent settings.'
+    : !text.trim() ? 'The model returned an empty reply.' : undefined;
   if (depth === 0) await runHooks(opts.hooks.sessionEnd, { event: 'sessionEnd', sessionId: opts.sessionId, status });
-  emit({ type: 'run_end', status, text, ...(error ? { error } : {}) });
-  return { context, added, status, text, usage, ...(error ? { error } : {}) };
+  emit({ type: 'run_end', status, text, ...(error ? { error } : {}), ...(warning ? { warning } : {}) });
+  return { context, added, status, text, usage, ...(error ? { error } : {}), ...(warning ? { warning } : {}) };
 }

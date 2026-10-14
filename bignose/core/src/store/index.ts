@@ -7,6 +7,9 @@ import type { Agent, Delivery, Message, Origin } from '../types.ts';
 export type MemoryKind = 'user' | 'agent';
 export interface SessionInfo { id: string; agentId: string; title: string; origin: Origin; createdAt: number; updatedAt: number }
 export interface Session extends SessionInfo { context: Message[] }
+export type NoticeLevel = 'info' | 'warn' | 'error';
+/** A run outcome note (error, stopped, turn limit, cut reply, empty reply); `after` = how many messages came before it. */
+export interface Notice { after: number; level: NoticeLevel; text: string; at: number }
 export interface MessageHit { sessionId: string; title: string; snippet: string; at: number }
 export interface MemoryNote { id: number; agentId: string | null; kind: MemoryKind; text: string; createdAt: number; updatedAt: number }
 export interface MemoryHit extends MemoryNote { snippet: string }
@@ -37,6 +40,13 @@ CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
   INSERT INTO messages_fts(rowid, text) VALUES (new.id, new.text); END;
 CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
   INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, old.text); END;
+CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE OF text ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, old.text);
+  INSERT INTO messages_fts(rowid, text) VALUES (new.id, new.text); END;
+CREATE TABLE IF NOT EXISTS notices (
+  id INTEGER PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  after_messages INTEGER NOT NULL, level TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS notices_session ON notices(session_id, id);
 CREATE TABLE IF NOT EXISTS memory (
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('user', 'agent')), text TEXT NOT NULL,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -170,15 +180,28 @@ export function openStore(file: string) {
     setTitle(id: string, title: string): void {
       run('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?', title, Date.now(), id);
     },
-    /** Transcript: append-only; only text blocks are indexed for search. */
-    appendMessages(id: string, msgs: Message[]): void {
+    /** Transcript: append-only; only text blocks are indexed for search. Returns the new row ids, in order. */
+    appendMessages(id: string, msgs: Message[]): number[] {
       const now = Date.now();
-      tx(() => {
-        for (const m of msgs) {
-          run('INSERT INTO messages (session_id, role, content, text, at) VALUES (?, ?, ?, ?, ?)', id, m.role, JSON.stringify(m.content), textOf(m), now);
-        }
+      return tx(() => {
+        const ids = msgs.map((m) => Number(run('INSERT INTO messages (session_id, role, content, text, at) VALUES (?, ?, ?, ?, ?)', id, m.role, JSON.stringify(m.content), textOf(m), now).lastInsertRowid));
         touch(id);
+        return ids;
       });
+    },
+    /** Rewrites rows from `appendMessages` whose content changed (a secret learned after they were saved); rows stay in place. */
+    updateMessages(ids: number[], msgs: Message[]): void {
+      tx(() => ids.forEach((rowId, i) => {
+        const m = msgs[i], content = m && JSON.stringify(m.content);
+        if (m) run('UPDATE messages SET content = ?, text = ? WHERE id = ? AND content != ?', content, textOf(m), rowId, content);
+      }));
+    },
+    /** Run outcome note, placed after the messages saved so far. */
+    addNotice(id: string, level: NoticeLevel, text: string): void {
+      run('INSERT INTO notices (session_id, after_messages, level, text, at) VALUES (?, (SELECT count(*) FROM messages WHERE session_id = ?), ?, ?, ?)', id, id, level, text, Date.now());
+    },
+    getNotices(id: string): Notice[] {
+      return all('SELECT after_messages, level, text, at FROM notices WHERE session_id = ? ORDER BY id', id).map((r) => ({ after: r.after_messages, level: r.level, text: r.text, at: r.at }));
     },
     getMessages(id: string): Message[] {
       return all('SELECT role, content FROM messages WHERE session_id = ? ORDER BY id', id).map((r) => ({ role: r.role, content: JSON.parse(r.content) }));
