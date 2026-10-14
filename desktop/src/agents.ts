@@ -1,6 +1,7 @@
 // Agent management uses the same controls and local API as Settings.
 import type { Api } from './api.ts';
 import type { Agent, AgentInput, Policy } from './types.ts';
+import { modelField } from './models.ts';
 import { badge, btn, check, confirmBtn, el, field, guarded, load, select, toast } from './dom.ts';
 
 export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: string) => void): void {
@@ -44,7 +45,22 @@ export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: str
       const icon = el('input', { value: a?.icon ?? '🤖', maxlength: 16, required: true });
       const instructions = el('textarea', { rows: 6, value: a?.instructions ?? '' });
       const provider = select(config.providers.map(p => [p.id, p.label || p.id]), a?.provider ?? config.active.provider);
-      const model = el('input', { value: a?.model ?? config.active.model, required: true });
+      const model = el('input', { value: a?.model ?? config.active.model, required: true, list: 'agent-models' });
+      const modelRoot = modelField(api, provider, model, 'agent-models');
+      const maxTokens = el('input', { type: 'number', min: 1, max: 1000000, step: 1, value: String(a?.maxTokens ?? ''), 'aria-describedby': 'agent-max-tokens-error' });
+      const tokensError = el('div', { id: 'agent-max-tokens-error', class: 'notice error', role: 'alert', hidden: true });
+      const tokensField = field('Max tokens', maxTokens, "Blank uses the provider's setting. Thinking models (for example qwen3 or deepseek-r1) spend tokens on thinking first, so leave it blank unless you need a limit.");
+      tokensField.append(tokensError);
+      function validateTokens(): boolean {
+        const n = Number(maxTokens.value);
+        const valid = !maxTokens.validity.badInput && (maxTokens.value === '' || (Number.isInteger(n) && n >= 1 && n <= 1000000));
+        tokensError.textContent = valid ? '' : 'Max tokens must be a whole number between 1 and 1000000';
+        tokensError.hidden = valid;
+        maxTokens.setAttribute('aria-invalid', String(!valid));
+        return valid;
+      }
+      maxTokens.addEventListener('input', validateTokens);
+      maxTokens.addEventListener('invalid', validateTokens);
       const connectors = choices('Connectors', servers.map(s => s.name), a?.connectors ?? null);
       const allowedSkills = choices('Skills', skills.map(s => s.name), a?.skills ?? null);
       const answersLine = check('Answers LINE', a?.id === lineId);
@@ -65,12 +81,14 @@ export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: str
       const form = el('form', { class: 'card agent-form' },
         el('h3', {}, a ? `Edit ${a.name}` : 'Create an agent'),
         el('div', { class: 'grid2' }, field('Name', name), field('Icon', icon)), field('Instructions', instructions),
-        el('div', { class: 'grid2' }, field('Provider', provider), field('Model', model)),
+        el('div', { class: 'grid2' }, field('Provider', provider), modelRoot),
+        tokensField,
         el('fieldset', {}, el('legend', {}, 'Tool permissions'), permissions, btn('Add permission', () => addPermission(), 'small')),
         connectors.root, allowedSkills.root, answersLine.root,
         el('div', { class: 'actions' }, submit, btn('Cancel', () => editor.replaceChildren())));
       form.addEventListener('submit', ev => {
         ev.preventDefault();
+        if (!validateTokens()) return;
         void guarded(async () => {
           const policies: Record<string, Policy> = Object.create(null);
           for (const row of rows) {
@@ -81,6 +99,7 @@ export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: str
           }
           const input: AgentInput = { name: name.value.trim(), icon: icon.value.trim(), instructions: instructions.value,
             provider: provider.value, model: model.value.trim(), permissions: policies,
+            maxTokens: maxTokens.value === '' ? null : Number(maxTokens.value),
             connectors: connectors.value(), skills: allowedSkills.value() };
           if (!input.name || !input.icon || !input.model) throw new Error('Enter a name, icon and model');
           const saved = a ? await api.patchAgent(a.id, input) : await api.createAgent(input);

@@ -137,3 +137,52 @@ This section overrides anything above that conflicts with it.
   the streamed tool activity and the final message. Use Playwright against the dev web UI, or an equivalent.
 - Owner-run (manual, real model key): BigNose's "Hermes Reverser" produces the Hermes Desktop report. This check is not
   automated.
+
+## Owner update (2026-10-14): LINE and Ollama first, agents on any model, the BoomBigNose icon
+The owner wrote: "create app bignose and can connect with line and can create agents using fable5.1 xhigh", then
+corrected it the same day: "not building fable 5 agent let user can agent with any model inside", "note that we will
+use line not use anthropic since user can use ollama first" and "change logo bignose app to boombignose logo, find it in
+my github profile logo".
+This section overrides anything above that conflicts with it. The contract is `docs/design.md` section 13.
+
+- **LINE and a local model first.** The main path is talking to BigNose on LINE with a model running locally in Ollama.
+  A fresh install uses the "Ollama (local)" provider (`http://127.0.0.1:11434/v1`, API key optional, no key sends no
+  `Authorization` header) and picks an installed Ollama model on first start when Ollama is running. Anthropic and the
+  other providers keep working as in v1 but are not the focus.
+- **Agents on any model.** The user creates an agent with any configured provider and any model id. The model field is
+  free text with suggestions from the provider's own model list; when Ollama is not running or has no models the app
+  says what to do (`ollama serve`, `ollama pull <model>`) and typing a model id still works. An agent can set an optional
+  max tokens. There is no per-agent effort. Agents made before this update keep working.
+- **Ollama context size.** Ollama runs with its own context size (`OLLAMA_CONTEXT_LENGTH`, as small as 4096 tokens) and
+  cuts longer prompts silently. `bignose doctor` and the provider settings explain how to raise it and warn when a loaded
+  model runs with less than the provider's context window; the Ollama preset's context window (32768) matches the
+  advised `OLLAMA_CONTEXT_LENGTH=32768`, so compaction starts in time.
+- **Slow local answers on LINE.** A slow local model keeps the v1 flow: after the slow-response time LINE shows the
+  `Get answer` button and the answer arrives when it is ready.
+- **Connect LINE from the app.** The Messaging page checks the channel token (bot name and basic ID), sets the webhook
+  URL on LINE, and runs LINE's webhook test, showing each result. The public URL must be HTTPS. The daemon answers
+  `GET /line/webhook/health` so the owner can check a tunnel in a browser.
+- **LINE fixes.** Cached answers resume without duplicates; setup and status say what is missing; dedupe survives a
+  settings reload; a DM shows LINE's loading indicator while BigNose works; LINE replies are asked to be plain text.
+- **v1 follow-ups.** Closing the daemon stops runs first; a non-owner in a LINE group can no longer overwrite the owner's
+  context; slash-command errors reach LINE users; the file tools also refuse `~/.git-credentials`, `~/.npmrc`,
+  `~/.pypirc`, `~/.kube` and `~/.config/gcloud`.
+- **App icon.** The app icon is the owner's BoomBigNose logo (from the owner's GitHub profile picture), regenerated for
+  every icon size from one committed 1024 px master.
+- Builders and reviewers are unchanged (Codex builds, independent reviewers review). Never push.
+
+### Added success criteria
+- `pnpm install && pnpm -r typecheck && pnpm -r test` pass.
+- Ollama: the default config uses the Ollama preset; the OpenAI-compatible adapter handles a real-shaped Ollama
+  streaming tool-call response (recorded fixture) and sends no `Authorization` header without a key; the model list
+  route answers with the models or the clear "not running" / "no models" text; doctor and the provider settings show
+  the context note and the context warning (tests use a fake Ollama server, never a real one).
+- Agents: create and edit with any provider and model id and an optional max tokens, persisted and validated; old agents
+  still load; a desktop e2e creates an agent with a typed model id and chats with a mock OpenAI-compatible server.
+- LINE: connection check, webhook set and test, and the health route against a mocked LINE API; a test for each LINE fix
+  and each v1 follow-up; a slow mock model still gives the `Get answer` flow; the v1 webhook tests (signature 200/401,
+  allowlist, reply to push fallback, slow button flow) still pass.
+- `pnpm --filter desktop tauri build --bundles app` produces `BigNose.app` with CFBundleName `BigNose` and the
+  regenerated BoomBigNose `icon.icns`.
+- Owner-run (manual, never in tests): a real chat with a local Ollama model, and a real LINE channel connected through a
+  public HTTPS tunnel, including a slow answer fetched with `Get answer`.

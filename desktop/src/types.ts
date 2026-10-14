@@ -11,10 +11,13 @@ export type ProviderKind = 'anthropic' | 'openai-compatible';
 export type Policy = 'allow' | 'ask' | 'deny';
 export interface Agent {
   id: string; name: string; icon: string; instructions: string; provider: string; model: string;
+  maxTokens?: number;
   permissions: Record<string, Policy>; connectors: string[] | null; skills: string[] | null;
   createdAt: number; updatedAt: number;
 }
-export type AgentInput = Omit<Agent, 'id' | 'createdAt' | 'updatedAt'>;
+export type AgentInput = Omit<Agent, 'id' | 'createdAt' | 'updatedAt' | 'maxTokens'> & {
+  maxTokens?: number | null;
+};
 export interface Command { name: string; description: string; usage: string; kind: string }
 export interface ProviderConfig {
   id: string; kind: ProviderKind; label?: string; baseUrl: string;
@@ -77,6 +80,9 @@ export interface McpServerInfo {
 }
 export interface McpToolInfo { name: string; description?: string; selected: boolean }
 export interface TestResult { ok: boolean; tools: number; error?: string }
+export interface ModelInfo { id: string; label?: string }
+export interface ProviderStatus { note?: string; warnings: string[] }
+export interface ModelListResult { ok: boolean; models: ModelInfo[]; error?: string }
 export interface SkillSummary { name: string; description: string }
 export interface Skill extends SkillSummary { body: string }
 export type MemoryKind = 'user' | 'agent';
@@ -88,5 +94,11 @@ export interface Job {
 }
 export interface LineStatus {
   enabled: boolean; running: boolean; port: number; publicUrl?: string; webhookUrl?: string;
+  healthUrl?: string; warnings: string[];
   tokenSet: boolean; secretSet: boolean; lastEventAt?: Time; lastError?: string;
 }
+export interface LineConnectResult {
+  ok: boolean; bot?: { displayName: string; basicId: string }; webhookUrl?: string;
+  steps: { name: 'token' | 'webhook'; ok: boolean; detail: string }[];
+}
+export interface LineTestResult { ok: boolean; running: boolean; statusCode?: number; reason?: string; detail: string }

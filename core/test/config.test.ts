@@ -30,10 +30,14 @@ test('defaults when there is no config file', (t) => {
   const cfg = loadConfig();
   assert.deepEqual(cfg, defaultConfig());
   assert.equal(cfg.version, 1);
-  assert.deepEqual(cfg.active, { provider: 'anthropic', model: 'claude-sonnet-5-5' });
+  assert.deepEqual(cfg.active, { provider: 'ollama', model: 'qwen3' });
   assert.deepEqual(cfg.providers.map((p) => p.id), ['anthropic', 'openai', 'openrouter', 'ollama']);
-  assert.equal(cfg.providers[0]!.apiKeyEnv, 'ANTHROPIC_API_KEY');
-  assert.equal(cfg.providers[3]!.apiKeyEnv, undefined);
+  assert.deepEqual(cfg.providers, [
+    { id: 'anthropic', kind: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKeyEnv: 'ANTHROPIC_API_KEY', contextWindow: 200000, maxTokens: 8192 },
+    { id: 'openai', kind: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY', contextWindow: 128000 },
+    { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', apiKeyEnv: 'OPENROUTER_API_KEY', contextWindow: 128000 },
+    { id: 'ollama', kind: 'openai-compatible', label: 'Ollama (local)', baseUrl: 'http://127.0.0.1:11434/v1', apiKeyEnv: 'OLLAMA_API_KEY', contextWindow: 32768 },
+  ]);
   assert.equal(cfg.agent.workspace, os.homedir());
   assert.equal(cfg.api.port, 47821);
   assert.equal(cfg.line.port, 47822);
@@ -63,13 +67,28 @@ test('deep merge: file values win, untouched defaults (rea) stay, arrays replace
     mcp: { servers: { mine: { transport: 'http', url: 'http://x/mcp', enabled: true } } },
   }));
   const cfg = loadConfig();
-  assert.deepEqual(cfg.active, { provider: 'anthropic', model: 'other-model' });
+  assert.deepEqual(cfg.active, { provider: 'ollama', model: 'other-model' });
   assert.equal(cfg.api.port, 1234);
   assert.deepEqual(cfg.providers.map((p) => p.id), ['only']);
   assert.deepEqual(cfg.line.allow, { users: ['U1'], groups: [], rooms: [] });
   assert.equal(cfg.line.slowResponseMs, 45000);
   assert.deepEqual(Object.keys(cfg.mcp.servers).sort(), ['mine', 'rea']);
   assert.equal(cfg.mcp.servers.rea!.enabled, false);
+});
+
+test('stored providers and active model keep the existing install unchanged', (t) => {
+  const home = tmpHome(t);
+  const stored = {
+    active: { provider: 'anthropic', model: 'my-model' },
+    providers: [
+      { id: 'anthropic', kind: 'anthropic', baseUrl: 'https://example.invalid', apiKeyEnv: 'MY_KEY' },
+      { id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://localhost:11434/v1', contextWindow: 32000 },
+    ],
+  };
+  fs.writeFileSync(paths(home).config, JSON.stringify(stored));
+  const cfg = loadConfig();
+  assert.deepEqual(cfg.active, stored.active);
+  assert.deepEqual(cfg.providers, stored.providers);
 });
 
 test('a file entry for rea overrides the default one', (t) => {
@@ -177,7 +196,9 @@ test('getApiKey reads the provider apiKeyEnv from .env', (t) => {
   setSecret('OPENAI_API_KEY', '');
   assert.equal(getApiKey(cfg, 'anthropic'), 'fake-anthropic');
   assert.equal(getApiKey(cfg, 'openai'), undefined, 'empty = unset');
-  assert.equal(getApiKey(cfg, 'ollama'), undefined, 'provider without apiKeyEnv');
+  assert.equal(getApiKey(cfg, 'ollama'), undefined, 'optional key is unset');
+  setSecret('OLLAMA_API_KEY', 'fake-local');
+  assert.equal(getApiKey(cfg, 'ollama'), 'fake-local');
   assert.equal(getApiKey(cfg, 'nope'), undefined, 'unknown provider');
 });
 

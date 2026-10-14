@@ -16,13 +16,14 @@ export function validateMcpName(name: unknown): asserts name is string {
 }
 export function validateAgent(v: unknown, config: Config, patch = false): asserts v is AgentInput {
   requireValue(isObject(v), 'agent must be an object');
-  const fields = ['name', 'icon', 'instructions', 'provider', 'model', 'permissions', 'connectors', 'skills'];
+  const fields = ['name', 'icon', 'instructions', 'provider', 'model', 'permissions', 'connectors', 'skills', 'maxTokens'];
   requireValue(Object.keys(v).every(k => fields.includes(k)), 'unknown agent field');
   if (!patch || Object.hasOwn(v, 'name')) requireValue(typeof v.name === 'string' && v.name.trim().length >= 1 && v.name.trim().length <= 64, 'name must be 1-64 characters');
   if (Object.hasOwn(v, 'icon')) requireValue(typeof v.icon === 'string' && v.icon.length >= 1 && v.icon.length <= 16, 'icon must be 1-16 characters');
   if (Object.hasOwn(v, 'instructions')) requireValue(typeof v.instructions === 'string', 'instructions must be a string');
   if (Object.hasOwn(v, 'provider')) requireValue(config.providers.some(p => p.id === v.provider), 'provider is not configured');
-  if (Object.hasOwn(v, 'model')) requireValue(string(v.model), 'model is required');
+  if (Object.hasOwn(v, 'model')) requireValue(typeof v.model === 'string' && v.model.trim().length >= 1 && v.model.length <= 200 && !/[\x00-\x1f\x7f-\x9f]/.test(v.model), 'invalid model');
+  if (Object.hasOwn(v, 'maxTokens')) requireValue(v.maxTokens === null || integer(v.maxTokens, 1, 1000000), 'invalid maxTokens');
   if (Object.hasOwn(v, 'permissions')) requireValue(isObject(v.permissions) && Object.values(v.permissions).every(x => ['allow', 'ask', 'deny'].includes(x as string)), 'invalid permissions');
   for (const field of ['connectors', 'skills']) if (Object.hasOwn(v, field)) requireValue(v[field] === null || (strings(v[field]) && (v[field] as string[]).every(x => !!x.trim())), `${field} must be null or an array of names`);
 }
