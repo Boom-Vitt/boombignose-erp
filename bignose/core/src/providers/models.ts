@@ -39,7 +39,7 @@ export async function listModels(cfg: ProviderConfig, apiKey: string | undefined
     ...(cfg.kind === 'anthropic' && typeof model.display_name === 'string' ? { label: model.display_name } : {}),
   }));
   if (!models.length) throw fail(isOllama(cfg)
-    ? 'Ollama has no models yet (install one with "ollama pull qwen3")'
+    ? 'Ollama has no models yet (install one with "ollama pull qwen3:4b")'
     : 'The provider returned no models');
   return models;
 }
