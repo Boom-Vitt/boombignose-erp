@@ -24,15 +24,30 @@ describe("addInterval", () => {
   it("clamps month-end overflow (Jan 31 → Feb 28)", () => {
     expect(addInterval("2026-01-31", "monthly")).toBe("2026-02-28")
   })
+  it("restores the start day after a shorter month", () => {
+    expect(addInterval("2026-02-28", "monthly", "2026-01-31")).toBe("2026-03-31")
+  })
+  it("restores leap day in the next leap year", () => {
+    expect(addInterval("2027-02-28", "yearly", "2024-02-29")).toBe("2028-02-29")
+  })
+  it("anchors quarterly year-boundary billing", () => {
+    expect(addInterval("2026-11-30", "quarterly", "2026-08-31")).toBe("2027-02-28")
+    expect(addInterval("2027-02-28", "quarterly", "2026-08-31")).toBe("2027-05-31")
+  })
+  it("rejects impossible calendar dates instead of normalizing them", () => {
+    expect(() => addInterval("2026-02-30", "monthly")).toThrow("Invalid date")
+  })
 })
 
 describe("nextRunAfter", () => {
   it("advances to the first date strictly after today", () => {
     expect(nextRunAfter("2026-07-02", "monthly", "2026-07-02")).toBe("2026-08-02")
   })
-  it("skips over several missed periods", () => {
-    // From April, monthly, today July → first future run is August.
-    expect(nextRunAfter("2026-04-10", "monthly", "2026-07-15")).toBe("2026-08-10")
+  it("advances only one scheduled occurrence when several periods were missed", () => {
+    expect(nextRunAfter("2026-04-10", "monthly", "2026-07-15")).toBe("2026-05-10")
+  })
+  it("does not skip weekly occurrences within the same month", () => {
+    expect(nextRunAfter("2026-07-02", "weekly", "2026-07-30")).toBe("2026-07-09")
   })
   it("leaves a future date untouched", () => {
     expect(nextRunAfter("2026-09-01", "monthly", "2026-07-02")).toBe("2026-09-01")

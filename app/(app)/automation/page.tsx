@@ -75,7 +75,7 @@ export default async function AutomationPage() {
       .order("due_date", { ascending: true }),
     supabase
       .from("outbound_events")
-      .select("id, event_type, status, created_at")
+      .select("id, event_type, status, created_at, attempts")
       .eq("org_id", ctx.orgId)
       .order("created_at", { ascending: false })
       .limit(EVENT_LIMIT),
@@ -96,7 +96,7 @@ export default async function AutomationPage() {
         <EmptyState
           icon={Workflow}
           title="No automation activity yet"
-          description="When a deal or activity follow-up comes due, the cron scan creates a reminder here and queues an outbound event for n8n. Trigger POST /api/cron/followups to populate it."
+          description="Due follow-ups appear after a scheduled scan. Delivery activity and failures appear here for review."
         />
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
@@ -184,6 +184,7 @@ export default async function AutomationPage() {
                     <TableRow>
                       <TableHead>Event</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Attempts</TableHead>
                       <TableHead className="text-right">Queued</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -196,6 +197,7 @@ export default async function AutomationPage() {
                         <TableCell>
                           <EventStatusBadge status={event.status} />
                         </TableCell>
+                        <TableCell className="text-right text-xs">{event.attempts}</TableCell>
                         <TableCell className="text-muted-foreground text-right text-xs">
                           {formatTimestamp(event.created_at)}
                         </TableCell>
