@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "BigNose",
+  "mainBinaryName": "BigNose",
+  "version": "0.1.0",
+  "identifier": "com.boombignose.bignose",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "pnpm run build"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "BigNose",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 820,
+        "minHeight": 540
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:*"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app"
+    ],
+    "category": "Productivity",
+    "icon": [
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/32x32.png",
+      "icons/icon.png",
+      "icons/icon.icns"
+    ],
+    "resources": {
+      "../../core/src": "core/src",
+      "../../core/package.json": "core/package.json"
+    }
+  }
+}
