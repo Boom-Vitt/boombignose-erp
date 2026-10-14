@@ -15,6 +15,7 @@ import {
   EXPECTED_PROJECT_ID,
   mapStatusEnvToServerEnv,
   prepareCachedBuild,
+  runCli,
   runDoctor,
   runServe,
   runStop,
@@ -192,6 +193,7 @@ describe("local stack manager", () => {
     const sha = "a".repeat(40)
     const buildEnvs: Array<Record<string, string | undefined>> = []
     let archivedWithGit = false
+    let archiveArgs: string[] = []
     let envExistedDuringBuild = false
 
     const runner = {
@@ -205,6 +207,7 @@ describe("local stack manager", () => {
         }
         if (cmd === "git" && args.includes("archive")) {
           archivedWithGit = true
+          archiveArgs = args
           const outIdx = args.indexOf("-o")
           writeFileSync(args[outIdx + 1], "fake-tar")
           return { code: 0, stdout: "", stderr: "" }
@@ -251,6 +254,8 @@ describe("local stack manager", () => {
     })
 
     expect(archivedWithGit).toBe(true)
+    expect(archiveArgs).toContain(sha)
+    expect(archiveArgs).not.toContain("HEAD")
     expect(envExistedDuringBuild).toBe(false)
     expect(existsSync(path.join(res.buildDir, ".env.local"))).toBe(false)
     for (const env of buildEnvs) {
@@ -429,6 +434,8 @@ describe("local stack manager", () => {
 
     let parentAlive = true
     let killedWith: string | null = null
+    let spawnArgs: string[] = []
+    let spawnEnv: Record<string, string | undefined> = {}
     const fakeChild = new EventEmitter() as EventEmitter & {
       stdout: EventEmitter
       stderr: EventEmitter
@@ -460,7 +467,13 @@ describe("local stack manager", () => {
         }
         return { code: 0, stdout: "", stderr: "" }
       },
-      spawn() {
+      spawn(
+        _cmd: string,
+        args: string[],
+        opts: { env?: Record<string, string | undefined> }
+      ) {
+        spawnArgs = args
+        spawnEnv = opts.env ?? {}
         setTimeout(() => {
           parentAlive = false
         }, 30)
@@ -473,6 +486,12 @@ describe("local stack manager", () => {
       cacheDir,
       port: 3991,
       runner,
+      env: {
+        PATH: "/usr/bin",
+        HOME: "/home/test",
+        CRON_SECRET: "cron-hidden",
+        RESEND_API_KEY: "resend-hidden",
+      },
       checkPort: async () => true,
       probeLogin: async () => true,
       isParentAlive: () => parentAlive,
@@ -483,6 +502,78 @@ describe("local stack manager", () => {
 
     expect(killedWith).toBe("SIGTERM")
     expect(code).toBe(0)
+    expect(spawnArgs.join(" ")).toContain("-H 127.0.0.1")
+    expect(Object.keys(spawnEnv).sort()).toEqual([
+      "HOME",
+      "NEXT_PUBLIC_APP_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NODE_ENV",
+      "PATH",
+      "SUPABASE_SERVICE_ROLE_KEY",
+    ])
+  })
+
+  it("a build leaves unrelated files in the cache dir alone", async () => {
+    const erpDir = makeTempErpDir(true)
+    const cacheDir = makeTempErpDir(false)
+    const sha = "4".repeat(40)
+    const oldSha = "5".repeat(40)
+    mkdirSync(path.join(cacheDir, oldSha, ".next"), { recursive: true })
+    mkdirSync(path.join(cacheDir, "my-notes"), { recursive: true })
+    writeFileSync(path.join(cacheDir, "my-notes", "a.txt"), "keep")
+    writeFileSync(path.join(cacheDir, "readme.md"), "keep")
+
+    const runner = {
+      async exec(
+        cmd: string,
+        args: string[],
+        opts: { cwd?: string } = {}
+      ) {
+        if (cmd === "git" && args.includes("rev-parse")) {
+          return { code: 0, stdout: `${sha}\n`, stderr: "" }
+        }
+        if (cmd === "git" && args.includes("archive")) {
+          writeFileSync(args[args.indexOf("-o") + 1], "fake-tar")
+        }
+        if (args.includes("build") && opts.cwd) {
+          mkdirSync(path.join(opts.cwd, ".next"), { recursive: true })
+          writeFileSync(path.join(opts.cwd, ".next", "BUILD_ID"), "b4")
+        }
+        return { code: 0, stdout: "", stderr: "" }
+      },
+      spawn() {
+        throw new Error("unexpected spawn")
+      },
+    }
+
+    await prepareCachedBuild({
+      erpDir,
+      cacheDir,
+      runner,
+      parentEnv: { PATH: "/usr/bin" },
+      stderr: { write() {} },
+    })
+
+    expect(existsSync(path.join(cacheDir, sha, ".next", "BUILD_ID"))).toBe(true)
+    expect(existsSync(path.join(cacheDir, oldSha))).toBe(false)
+    expect(existsSync(path.join(cacheDir, "my-notes", "a.txt"))).toBe(true)
+    expect(existsSync(path.join(cacheDir, "readme.md"))).toBe(true)
+  })
+
+  it("serve accepts the -- that pnpm forwards before its flags", async () => {
+    let errText = ""
+    const code = await runCli(["serve", "--", "--port", "3993"], {
+      erpDir: makeTempErpDir(true),
+      checkPort: async () => false,
+      stderr: {
+        write(s: string) {
+          errText += s
+        },
+      },
+    })
+    expect(code).toBe(1)
+    expect(errText).toContain("3993")
   })
 
   it("a busy port gives a clear message", async () => {

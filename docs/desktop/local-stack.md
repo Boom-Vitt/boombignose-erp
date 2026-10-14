@@ -14,7 +14,7 @@
   Applies pending local migrations via `supabase migration up --local`.
 - `pnpm local:stop` (`node scripts/local/stack.mjs stop`)
   Runs plain `supabase stop` for `boombignose-erp` with data preserved.
-- `pnpm local:serve -- --port <N> [--cache-dir <D>]` (`node scripts/local/stack.mjs serve --port <N> [--cache-dir <D>]`)
+- `pnpm local:serve --port <N> [--cache-dir <D>]` (`node scripts/local/stack.mjs serve --port <N> [--cache-dir <D>]`)
   Builds the committed `HEAD` in an isolated cache directory and runs `next start -H 127.0.0.1 -p <N>`. Prints `ready http://127.0.0.1:<N>` once `GET /login` responds, forwards `SIGTERM`/`SIGINT` to the server, and exits automatically if its parent process dies.
 
 ## Data-Safety Rules
@@ -26,8 +26,8 @@
 ## Build Cache & Desktop App Lifecycle
 
 - Default cache directory: `~/.bignose/erp` (or `$BIGNOSE_HOME/erp`, overridable via `--cache-dir`).
-- For each commit SHA (`git rev-parse HEAD`), `serve` exports a clean tree from `git archive` (with no `.env*` files so nothing from `.env.local` is ever inlined), runs `pnpm install --frozen-lockfile --prefer-offline --ignore-scripts`, and runs `next build` with no `NEXT_PUBLIC_*` variables in the build environment.
-- Only the current build and the `last-good` build are retained on disk; older commit builds are pruned. A `.build.lock` file serializes concurrent builds.
+- For each commit SHA (`git rev-parse HEAD`, then archived by that SHA), `serve` exports a clean tree from `git archive` (with no `.env*` files so nothing from `.env.local` is ever inlined), runs `pnpm install --frozen-lockfile --prefer-offline --ignore-scripts`, and runs `next build` with no `NEXT_PUBLIC_*` variables in the build environment.
+- Only the current build and the `last-good` build are retained on disk; older commit builds are pruned. Pruning only touches `<sha>`, `<sha>.tmp` and `<sha>.tar` entries, so other files in a mistyped `--cache-dir` are never deleted. A `.build.lock` file serializes concurrent builds.
 - The first launch after a new commit requires network access because `next/font/google` fetches Google Fonts at build time. When a rebuild fails (for example while offline), `serve` logs a notice and falls back to the `last-good` build.
 - BigNose OS desktop serves the ERP on port `3100`, matching `site_url = "http://127.0.0.1:3100"` in `supabase/config.toml`.
 - Port `3100` is also the BBN worktree `portBase`, so a worktree's `.env.worktree` can be assigned `PORT=3100`. If port `3100` (or any requested `--port`) is already in use, `serve` exits immediately with a clear busy-port message.
@@ -36,7 +36,7 @@
 ## Runtime Public Env & Desktop Runtime Limits
 
 - `app/layout.tsx` mounts `<PublicEnvScript />` from `lib/supabase/public-env/`, which calls `await connection()` (`next/server`) at request time and renders `<script id="erp-public-env" type="application/json">` containing `{ "url", "anonKey" }` with `<` escaped as `\u003c`.
-- `lib/supabase/client.ts` reads the runtime script tag first and falls back to `process.env.NEXT_PUBLIC_*`, allowing a single cached build to run against any local Supabase stack. Web/Hostinger deployments continue to work as before.
+- `lib/supabase/client.ts` reads the runtime script tag first and falls back to the build-time `process.env.NEXT_PUBLIC_*` values (literal references, so Next.js inlines them), allowing a single cached build to run against any local Supabase stack. Web/Hostinger deployments continue to work as before.
 - Because `<PublicEnvScript />` awaits `connection()` in the root layout, every route renders dynamically at request time, web builds included.
 - `serve` starts `next start` with a strict allowlist environment:
   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` read at runtime from `supabase status -o env` (never persisted to disk or printed; non-local hosts outside `127.0.0.1`/`localhost`/`::1` are refused),

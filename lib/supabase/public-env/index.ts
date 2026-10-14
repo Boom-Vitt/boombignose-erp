@@ -18,9 +18,15 @@ export function serializePublicEnv(
   return JSON.stringify(payload).replace(/</g, "\\u003c")
 }
 
+// Callers pass literal `process.env.NEXT_PUBLIC_*` reads: Next.js only inlines build-time values for literal references, never for an aliased `process.env`.
+export interface PublicEnvFallback {
+  NEXT_PUBLIC_SUPABASE_URL?: string
+  NEXT_PUBLIC_SUPABASE_ANON_KEY?: string
+}
+
 export function readPublicEnv(
   doc?: { getElementById(id: string): { textContent: string | null } | null } | null,
-  env: NodeJS.ProcessEnv = process.env
+  env: PublicEnvFallback = {}
 ): PublicSupabaseEnv {
   const targetDoc =
     doc !== undefined
