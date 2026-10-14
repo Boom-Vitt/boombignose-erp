@@ -7,7 +7,9 @@ const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1320, height: 900 } })
 
 await page.goto(`${base}/login`)
-await page.getByRole("button", { name: /use demo account/i }).click()
+await page.getByLabel("Email").fill("demo@boombignose.org")
+await page.getByLabel("Password").fill("BoomDemo123!")
+await page.getByRole("button", { name: "Sign in", exact: true }).click()
 await page.waitForURL("**/dashboard")
 await page.waitForTimeout(900)
 

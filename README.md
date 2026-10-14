@@ -147,7 +147,9 @@ pnpm dev                 # http://localhost:3000
 | `nattapong@boombignose.org` | `BoomDemo123!` | member |
 | `praewa@boombignose.org` | `BoomDemo123!` | member |
 
-> หน้า login มีปุ่ม **"Use demo account"** กดครั้งเดียวเข้าได้เลย
+> ปุ่ม **"Use demo account"** ในหน้า login ปิดไว้เป็นค่าเริ่มต้น ถ้าต้องการตอน dev ให้ตั้ง `NEXT_PUBLIC_DEMO_LOGIN_EMAIL` และ `NEXT_PUBLIC_DEMO_LOGIN_PASSWORD` ใน `.env.local` (ห้ามตั้งบน production)
+>
+> สมัครบัญชีใหม่ต้องยืนยันอีเมลก่อนเข้าระบบ: local stack ส่งอีเมลยืนยันไปที่ Inbucket (`http://127.0.0.1:54424` หรือพอร์ต `[inbucket]` ของ lane นั้น)
 
 ---
 

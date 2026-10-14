@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test"
+import { test, expect } from "@playwright/test"
+import { loginDemo } from "./auth"
 
 /**
  * V3 feature smoke tests: quotes, timesheets, and recurring subscriptions.
@@ -6,12 +7,6 @@ import { test, expect, type Page } from "@playwright/test"
  * (`set -a && . ./.env.local`). Assertions check structural presence, never
  * exact seeded money values (the seed may vary).
  */
-
-async function loginDemo(page: Page) {
-  await page.goto("/login")
-  await page.getByRole("button", { name: /use demo account/i }).click()
-  await page.waitForURL("**/dashboard")
-}
 
 test.describe("V3 routes", () => {
   test.beforeEach(async ({ page }) => {
