@@ -121,10 +121,10 @@ on conflict do nothing;
 
 -- ── Finance: invoices (varied statuses) ─────────────────────────────────────
 insert into invoices (id, org_id, client_id, project_id, number, status, issue_date, due_date, amount_satang, is_recurring, recurring_interval, notes) values
-  ('f0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','INV-2026-001','paid',          current_date - 25, current_date - 10,  9000000, false, null,     'Deposit 50% — LINE bot project'),
+  ('f0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','INV-2026-001','sent',          current_date - 25, current_date - 10,  9000000, false, null,     'Deposit 50% — LINE bot project'),
   ('f0000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000002','INV-2026-002','sent',          current_date - 8,  current_date + 7,  12500000, false, null,     'Deposit — CRM automation'),
   ('f0000000-0000-0000-0000-000000000003','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000004',null,                                   'INV-2026-003','overdue',       current_date - 30, current_date - 8,   5500000, false, null,     'Discovery workshop — Siam Property'),
-  ('f0000000-0000-0000-0000-000000000004','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003','e0000000-0000-0000-0000-000000000003','INV-2026-004','partially_paid',current_date - 15, current_date + 5,   8000000, false, null,     'Course onboarding — milestone 2'),
+  ('f0000000-0000-0000-0000-000000000004','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003','e0000000-0000-0000-0000-000000000003','INV-2026-004','sent',current_date - 15, current_date + 5,   8000000, false, null,     'Course onboarding — milestone 2'),
   ('f0000000-0000-0000-0000-000000000005','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003',null,                                   'INV-2026-005','sent',          current_date - 3,  current_date + 27,  3500000, true,  'monthly','Lanna EdTech — monthly support retainer'),
   ('f0000000-0000-0000-0000-000000000006','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002',null,                                   'INV-2026-006','draft',         current_date,      current_date + 30,  4000000, true,  'monthly','Krua Thai — monthly automation retainer (draft)')
 on conflict (id) do nothing;
@@ -162,8 +162,8 @@ on conflict do nothing;
 
 -- ── V3: Quotations + line items ─────────────────────────────────────────────
 insert into quotes (id, org_id, client_id, project_id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, notes, owner) values
-  ('90000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000002','QUO-2026-001','sent',    current_date - 4, current_date + 26, 17000000, 1000000, 16000000, 'CRM automation proposal — build + training', 'b0000000-0000-0000-0000-000000000001'),
-  ('90000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','QUO-2026-002','accepted',current_date - 9, current_date + 14,  8000000,       0,  8000000, 'LINE bot — phase 2 scope', 'b0000000-0000-0000-0000-000000000002')
+  ('90000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000002','QUO-2026-001','draft',    current_date - 4, current_date + 26, 17000000, 1000000, 16000000, 'CRM automation proposal — build + training', 'b0000000-0000-0000-0000-000000000001'),
+  ('90000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','QUO-2026-002','draft',current_date - 9, current_date + 14,  8000000,       0,  8000000, 'LINE bot — phase 2 scope', 'b0000000-0000-0000-0000-000000000002')
 on conflict (id) do nothing;
 
 insert into quote_items (org_id, quote_id, description, quantity, unit_price_satang, amount_satang, position) values
@@ -171,6 +171,9 @@ insert into quote_items (org_id, quote_id, description, quantity, unit_price_sat
   ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000001','Team training session',            2,  1000000,  2000000, 1),
   ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000002','LINE bot — phase 2 build',         1,  8000000,  8000000, 0)
 on conflict do nothing;
+update quotes set status='sent' where id in ('90000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000002');
+update quotes set status='accepted' where id='90000000-0000-0000-0000-000000000002';
+
 
 -- ── V3: Invoice line items (sum to the invoice amount) ──────────────────────
 insert into invoice_items (org_id, invoice_id, description, quantity, unit_price_satang, amount_satang, position) values

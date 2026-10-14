@@ -38,7 +38,7 @@ export async function writeAudit(ctx: OrgContext, entry: AuditEntry): Promise<vo
       action: entry.action,
       summary: entry.summary,
       // Column type is Json; Record<string, unknown> is not assignable to it.
-      meta: (entry.meta ?? {}) as Json,
+      meta: (entry.meta ?? {}) as Exclude<Json, null>,
     })
     if (error) {
       console.error("writeAudit: insert failed", error.message)

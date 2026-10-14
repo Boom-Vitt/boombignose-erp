@@ -10,6 +10,12 @@ import {
 } from "@/lib/money"
 
 describe("money conversions", () => {
+  it("rejects non-finite or unsafe input and unsafe integer sums", () => {
+    for (const value of [NaN, Infinity, Number.MAX_SAFE_INTEGER]) expect(() => bahtToSatang(value)).toThrow()
+    expect(() => sumSatang([Number.MAX_SAFE_INTEGER, 1])).toThrow()
+    expect(() => sumSatang([0.1])).toThrow()
+    expect(sumSatang([-100, 250])).toBe(150)
+  })
   it("converts baht to integer satang", () => {
     expect(bahtToSatang(123.45)).toBe(12345)
     expect(bahtToSatang(1)).toBe(100)
@@ -17,6 +23,7 @@ describe("money conversions", () => {
   })
 
   it("rounds fractional satang to the nearest integer", () => {
+    expect(bahtToSatang(1.005)).toBe(101)
     expect(bahtToSatang(0.005)).toBe(1)
     expect(bahtToSatang(10.999)).toBe(1100)
   })
@@ -34,6 +41,10 @@ describe("money conversions", () => {
 })
 
 describe("THB formatting", () => {
+  it("preserves the last satang at safe integer bounds", () => {
+    expect(formatTHB(Number.MAX_SAFE_INTEGER)).toContain("90,071,992,547,409.91")
+    expect(formatTHB(-1)).toContain("0.01")
+  })
   it("formats with two decimals", () => {
     expect(formatTHB(123456)).toContain("1,234.56")
   })

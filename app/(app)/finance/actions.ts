@@ -9,6 +9,7 @@ import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang, formatTHBWhole } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
+import { paymentAmount } from "@/lib/payments/input"
 import { nextDocumentNumber } from "@/lib/documents/numbering"
 
 const INVOICE_STATUSES = [
@@ -28,15 +29,6 @@ const COST_CATEGORIES = [
   "infra",
   "marketing",
   "salary",
-  "other",
-] as const
-
-const PAYMENT_METHODS = [
-  "transfer",
-  "cash",
-  "card",
-  "promptpay",
-  "cheque",
   "other",
 ] as const
 
@@ -188,86 +180,38 @@ export async function updateInvoice(
 // Payments (with invoice status recompute)
 // ---------------------------------------------------------------------------
 
-const RecordPayment = z.object({
-  invoice_id: z.string().min(1),
-  amountBaht: z.coerce.number().positive("Amount must be greater than 0"),
-  paid_at: optionalDate,
-  method: z.enum(PAYMENT_METHODS).default("transfer"),
-  notes: optionalString,
+// Manual settlement is disabled until its evidence command is supplied.
+// Customer reports are reviewed through reviewPaymentClaim, atomically in Postgres.
+export async function recordPayment(input: unknown): Promise<{ error?: string }> {
+  void input
+  return { error: "Use the payment claim verification queue and provide matching receipt evidence." }
+}
+
+const ReviewClaim = z.object({
+  claimId: z.guid(), invoiceId: z.guid(), key: z.uuid(),
+  amountBaht: z.string(), reference: z.string().trim().min(3).max(500),
+  decision: z.enum(["verified", "rejected"]),
 })
 
-export async function recordPayment(
-  input: z.input<typeof RecordPayment>
-): Promise<{ error?: string }> {
+export async function reviewPaymentClaim(input: z.input<typeof ReviewClaim>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  const parsed = RecordPayment.safeParse(input)
-  if (!parsed.success) return { error: "Invalid input" }
+  try { requireCapability(ctx, "payment:verify") }
+  catch { return { error: "Only owners and admins can verify receipts." } }
+  const parsed = ReviewClaim.safeParse(input)
+  if (!parsed.success) return { error: "Invalid verification details" }
   const d = parsed.data
-
+  let amount = 0
+  try { if (d.decision === "verified") amount = paymentAmount(d.amountBaht) }
+  catch { return { error: "Enter a valid positive THB amount" } }
   const supabase = await createSupabaseClient()
-
-  // Load the invoice (amount + current stored status) to recompute after insert.
-  const { data: invoice, error: invErr } = await supabase
-    .from("invoices")
-    .select("id, number, amount_satang, status")
-    .eq("id", d.invoice_id)
-    .eq("org_id", ctx.orgId)
-    .single()
-
-  if (invErr || !invoice) return { error: "Invoice not found" }
-
-  // Insert the payment.
-  const { error: payErr } = await supabase.from("payments").insert({
-    org_id: ctx.orgId,
-    invoice_id: d.invoice_id,
-    amount_satang: bahtToSatang(d.amountBaht),
-    paid_at: d.paid_at ?? undefined,
-    method: d.method,
-    notes: d.notes,
+  // invoiceId is only used for revalidation; the DB resolves the actual claim's invoice.
+  const { error } = await supabase.rpc("review_payment_claim", {
+    p_org_id: ctx.orgId, p_claim_id: d.claimId, p_key: d.key,
+    p_amount_satang: amount, p_reference: d.reference, p_decision: d.decision,
   })
-
-  if (payErr) return { error: payErr.message }
-
-  // Recompute total paid from all payments on this invoice.
-  const { data: payments, error: sumErr } = await supabase
-    .from("payments")
-    .select("amount_satang")
-    .eq("invoice_id", d.invoice_id)
-    .eq("org_id", ctx.orgId)
-
-  if (sumErr) return { error: sumErr.message }
-
-  const totalPaid = (payments ?? []).reduce((acc, p) => acc + p.amount_satang, 0)
-
-  // Only transition sent/partially_paid/paid/overdue invoices. Leave draft/cancelled as-is.
-  if (invoice.status !== "draft" && invoice.status !== "cancelled") {
-    let nextStatus = invoice.status
-    if (invoice.amount_satang > 0 && totalPaid >= invoice.amount_satang) {
-      nextStatus = "paid"
-    } else if (totalPaid > 0) {
-      nextStatus = "partially_paid"
-    }
-
-    if (nextStatus !== invoice.status) {
-      const { error: updErr } = await supabase
-        .from("invoices")
-        .update({ status: nextStatus })
-        .eq("id", d.invoice_id)
-        .eq("org_id", ctx.orgId)
-      if (updErr) return { error: updErr.message }
-    }
-  }
-
-  await writeAudit(ctx, {
-    entity: "payment",
-    entityId: d.invoice_id,
-    action: "payment_recorded",
-    summary: `Recorded ${formatTHBWhole(bahtToSatang(d.amountBaht))} payment on invoice ${invoice.number}`,
-    meta: { invoiceId: d.invoice_id, method: d.method },
-  })
-
+  if (error) return { error: error.message }
   revalidatePath("/finance")
-  revalidatePath(`/finance/invoices/${d.invoice_id}`)
+  revalidatePath(`/finance/invoices/${d.invoiceId}`)
   return {}
 }
 

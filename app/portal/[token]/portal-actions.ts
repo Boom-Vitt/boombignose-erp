@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { paymentAmount } from "@/lib/payments/input"
 
 /**
  * PUBLIC, tokenized client-portal actions. There is NO user session here, so
@@ -77,66 +78,25 @@ export async function portalAcceptQuote(
 
 const MarkInvoicePaid = z.object({
   token: TokenSchema,
-  invoiceId: z.string().min(1),
+  invoiceId: z.guid(),
+  amountBaht: z.string(),
+  reference: z.string().trim().min(1).max(500),
+  key: z.uuid(),
 })
 
-export async function portalMarkInvoicePaid(
-  input: z.input<typeof MarkInvoicePaid>
-): Promise<{ error?: string }> {
+// Kept as an exported compatibility name; the action now reports a pending claim.
+export async function portalMarkInvoicePaid(input: z.input<typeof MarkInvoicePaid>): Promise<{ error?: string }> {
   const parsed = MarkInvoicePaid.safeParse(input)
-  if (!parsed.success) return { error: "Invalid request" }
-  const { token, invoiceId } = parsed.data
-
-  const supabase = createAdminClient()
-  const client = await resolveClient(supabase, token)
-  if (!client) return { error: "This portal is unavailable." }
-
-  // Load the invoice, strictly scoped to the resolved client.
-  const { data: invoice, error: invErr } = await supabase
-    .from("invoices")
-    .select("id, amount_satang, status")
-    .eq("id", invoiceId)
-    .eq("client_id", client.id)
-    .eq("org_id", client.org_id)
-    .maybeSingle()
-
-  if (invErr || !invoice) return { error: "Invoice not found." }
-  if (invoice.status === "paid" || invoice.status === "cancelled") {
-    return { error: "This invoice can no longer be marked as paid." }
-  }
-
-  // Sum existing payments to compute the outstanding amount to settle.
-  const { data: payments, error: sumErr } = await supabase
-    .from("payments")
-    .select("amount_satang")
-    .eq("invoice_id", invoice.id)
-    .eq("org_id", client.org_id)
-
-  if (sumErr) return { error: "Could not record payment." }
-
-  const paid = (payments ?? []).reduce((acc, p) => acc + p.amount_satang, 0)
-  const outstanding = Math.max(0, invoice.amount_satang - paid)
-
-  if (outstanding > 0) {
-    const { error: payErr } = await supabase.from("payments").insert({
-      org_id: client.org_id,
-      invoice_id: invoice.id,
-      amount_satang: outstanding,
-      method: "transfer",
-      notes: "Marked paid via client portal",
-    })
-    if (payErr) return { error: "Could not record payment." }
-  }
-
-  const { error: updErr } = await supabase
-    .from("invoices")
-    .update({ status: "paid" })
-    .eq("id", invoice.id)
-    .eq("client_id", client.id)
-    .eq("org_id", client.org_id)
-
-  if (updErr) return { error: "Could not update the invoice." }
-
+  if (!parsed.success) return { error: "Invalid payment report" }
+  let amount: number
+  try { amount = paymentAmount(parsed.data.amountBaht) }
+  catch { return { error: "Enter a valid positive payment amount" } }
+  const { token, invoiceId, reference, key } = parsed.data
+  const { error } = await createAdminClient().rpc("submit_payment_claim", {
+    p_token: token, p_invoice_id: invoiceId, p_amount_satang: amount,
+    p_reference: reference, p_key: key,
+  })
+  if (error) return { error: "This payment report could not be submitted. Check the invoice or contact your account manager." }
   revalidatePath(`/portal/${token}`)
   return {}
 }

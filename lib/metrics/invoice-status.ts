@@ -30,7 +30,7 @@ export function deriveInvoiceStatus(
   if (amount_satang > 0 && paidSatang >= amount_satang) return "paid"
   if (isPastDue(due_date, todayISOStr)) return "overdue"
   if (paidSatang > 0) return "partially_paid"
-  return status
+  return "sent"
 }
 
 /** Amount still owed on an invoice (never negative). */

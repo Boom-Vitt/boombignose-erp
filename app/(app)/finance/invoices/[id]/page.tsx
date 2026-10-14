@@ -43,7 +43,7 @@ import {
   InvoiceItemsEditor,
   type InvoiceItemRow,
 } from "../../_components/invoice-items-editor"
-import { PaymentForm } from "../../_components/payment-form"
+import { ReviewClaimForm } from "../../_components/review-claim-form"
 import { SyncInvoiceButton } from "../../_components/sync-invoice-button"
 import { EmailInvoiceButton } from "../../_components/email-invoice-button"
 import type { Option } from "../../_components/form-fields"
@@ -80,11 +80,13 @@ export default async function InvoiceDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const today = todayISO()
 
   const [
+    claimsRes,
+    legacyRes,
     invoiceRes,
     itemsRes,
     paymentsRes,
@@ -93,35 +95,37 @@ export default async function InvoiceDetailPage({
     connRes,
     syncRes,
   ] = await Promise.all([
+    supabase.from("payment_claims").select("id, amount_satang, reference, status").eq("org_id", ctx.orgId).eq("invoice_id",id).order("created_at"),
+    supabase.from("payments").select("id, amount_satang, notes").eq("org_id", ctx.orgId).eq("verification_state","legacy_unverified").eq("org_id",ctx.orgId).eq("invoice_id",id),
     supabase
       .from("invoices")
       .select(
         "id, number, amount_satang, status, issue_date, due_date, is_recurring, recurring_interval, notes, client_id, project_id, clients(name), projects(name)"
-      )
+      ).eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
     supabase
       .from("invoice_items")
-      .select("id, description, quantity, unit_price_satang, amount_satang")
+      .select("id, description, quantity, unit_price_satang, amount_satang").eq("org_id", ctx.orgId)
       .eq("invoice_id", id)
       .order("position", { ascending: true }),
     supabase
       .from("payments")
-      .select("id, amount_satang, paid_at, method, notes")
+      .select("id, amount_satang, paid_at, method, notes").eq("verification_state", "verified").eq("org_id", ctx.orgId)
       .eq("invoice_id", id)
       .order("paid_at", { ascending: false }),
-    supabase.from("clients").select("id, name").order("name"),
-    supabase.from("projects").select("id, name").order("name"),
+    supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
+    supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase
       .from("accounting_connections")
-      .select("provider, status")
+      .select("provider, status").eq("org_id", ctx.orgId)
       .maybeSingle(),
     // One sync-map row exists PER PROVIDER (the unique key includes provider),
     // so after a provider switch there can be several rows for this invoice.
     // Take the most recently synced rather than assuming a single row.
     supabase
       .from("accounting_sync_map")
-      .select("external_id, provider, status, last_synced_at")
+      .select("external_id, provider, status, last_synced_at").eq("org_id", ctx.orgId)
       .eq("local_entity", "invoice")
       .eq("local_id", id)
       .order("last_synced_at", { ascending: false, nullsFirst: false })
@@ -297,7 +301,7 @@ export default async function InvoiceDetailPage({
                 items={itemRows}
                 addAction={addInvoiceItem}
                 deleteAction={removeInvoiceItem}
-                locked={invoice.status === "paid"}
+                locked={paid > 0 || (claimsRes.data ?? []).some(claim => claim.status === "pending")}
               />
             </CardContent>
           </Card>
@@ -347,14 +351,15 @@ export default async function InvoiceDetailPage({
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Record payment</CardTitle>
+              <CardTitle className="text-base">ตรวจสอบการชำระ / Payment claims</CardTitle>
             </CardHeader>
             <CardContent>
-              <PaymentForm
-                invoiceId={invoice.id}
-                today={today}
-                suggestedBaht={satangToBaht(outstanding)}
-              />
+              <p className="text-sm text-muted-foreground mb-4">Customer reports await verification. Only verified receipts reduce the open balance.</p>
+              {claimsRes.error ? <p role="alert">Payment queue unavailable. Reload before approving.</p> : (claimsRes.data ?? []).map(claim => <div key={claim.id} className="space-y-2 border-b py-4">
+                <p>{formatTHB(claim.amount_satang)} · {claim.reference} · {claim.status}</p>
+                {claim.status === "pending" && ctx.role !== "member" ? <ReviewClaimForm claimId={claim.id} invoiceId={invoice.id} suggestedBaht={satangToBaht(claim.amount_satang).toFixed(2)} /> : null}
+              </div>)}
+              {legacyRes.data?.length ? <p role="alert" className="mt-4 text-sm">Legacy receipts need reconciliation. {legacyRes.data.length} retained receipts are excluded from verified cash and balances until reviewed against bank evidence.</p> : null}
             </CardContent>
           </Card>
         </div>

@@ -34,7 +34,7 @@ test.describe("V3 routes", () => {
     await page.goto("/quotes")
     await expect(page.getByRole("heading", { name: "Quotes" })).toBeVisible()
     await expect(
-      page.getByRole("link", { name: /new quote/i }).first()
+      page.locator('a[href="/quotes/new"]').first()
     ).toBeVisible()
 
     // Either a seeded table renders or the empty state does.
@@ -59,11 +59,11 @@ test.describe("V3 routes", () => {
 
     // Stat cards this-month.
     await expect(page.getByText("Hours this month")).toBeVisible()
-    await expect(page.getByText("Utilization")).toBeVisible()
+    await expect(page.getByText("Utilization", { exact: true })).toBeVisible()
 
     // Log-time form: project select + hours input.
-    await expect(page.getByText("Log time")).toBeVisible()
-    await expect(page.getByText("Project", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Log time", exact: true })).toBeVisible()
+    await expect(page.getByRole("combobox", { name: "Project", exact: true })).toBeVisible()
     await expect(page.getByLabel("Hours")).toBeVisible()
   })
 
@@ -75,7 +75,7 @@ test.describe("V3 routes", () => {
       page.getByRole("heading", { name: "Subscriptions" })
     ).toBeVisible()
     await expect(
-      page.getByRole("link", { name: /new subscription/i }).first()
+      page.locator('a[href="/finance/subscriptions/new"]').first()
     ).toBeVisible()
 
     const tables = await page.locator("table").count()
@@ -113,7 +113,7 @@ test.describe("V3 routes", () => {
 
     await expect(page.getByText("Line items")).toBeVisible()
     await expect(
-      page.getByRole("link", { name: /download pdf/i })
+      page.locator('a[href$="/pdf"]').first()
     ).toBeVisible()
   })
 })

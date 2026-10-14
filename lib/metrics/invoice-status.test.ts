@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest"
+it("a stored paid flag without verified receipts is still open", () => {
+  expect(deriveInvoiceStatus({status:"paid",amount_satang:10000,due_date:null},0,"2026-10-13")).toBe("sent")
+})
 
 import {
   deriveInvoiceStatus,

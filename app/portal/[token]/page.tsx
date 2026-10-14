@@ -104,11 +104,11 @@ export default async function ClientPortalPage({
   // outstanding, an effective status, and an inline item summary (the PDF
   // routes require a session, so they are intentionally not linked here).
   const invoiceIds = invoices.map((i) => i.id)
-  const [paymentsRes, itemsRes] = await Promise.all([
+  const [paymentsRes, itemsRes, claimsRes] = await Promise.all([
     invoiceIds.length
       ? supabase
           .from("payments")
-          .select("invoice_id, amount_satang")
+          .select("invoice_id, amount_satang").eq("verification_state", "verified")
           .in("invoice_id", invoiceIds)
           .eq("org_id", client.org_id)
       : Promise.resolve({ data: [] as { invoice_id: string; amount_satang: number }[] }),
@@ -127,7 +127,10 @@ export default async function ClientPortalPage({
             amount_satang: number
           }[],
         }),
+    supabase.from("payment_claims").select("invoice_id, status").eq("org_id",client.org_id).eq("client_id",client.id).eq("status","pending"),
   ])
+
+  const pendingInvoiceIds = new Set((claimsRes.data ?? []).map(c=>c.invoice_id))
 
   const paidByInvoice = new Map<string, number>()
   for (const p of paymentsRes.data ?? []) {
@@ -233,7 +236,7 @@ export default async function ClientPortalPage({
                       <InvoiceStatusBadge status={effectiveStatus} />
                     </div>
                     {canPay ? (
-                      <MarkInvoicePaidButton token={token} invoiceId={inv.id} />
+                      pendingInvoiceIds.has(inv.id) ? <span>รอตรวจสอบ / Pending verification</span> : <MarkInvoicePaidButton token={token} invoiceId={inv.id} />
                     ) : null}
                   </div>
 

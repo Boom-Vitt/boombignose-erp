@@ -21,6 +21,7 @@ export type Capability =
   | "invoice:delete"
   | "cost:delete"
   | "subscription:manage" // generate-now / delete a subscription
+  | "payment:verify"
   | "audit:view" // view the audit log
 
 const ALL_STAFF: Role[] = ["owner", "admin"]
@@ -43,6 +44,7 @@ export const CAPABILITY_ROLES: Record<Capability, Role[]> = {
   "cost:delete": ALL_STAFF,
   "subscription:manage": ALL_STAFF,
   "audit:view": ALL_STAFF,
+  "payment:verify": ALL_STAFF,
 }
 
 /** True when `role` holds `capability`. */

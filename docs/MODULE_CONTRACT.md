@@ -20,13 +20,7 @@ app/(app)/clients/
     clients-table.tsx
 ```
 
-**Do NOT touch** (owned by the foundation / other lanes):
-`package.json`, `pnpm-lock.yaml`, `lib/**`, `components/ui/**`, `components/nav.ts`,
-`components/app-sidebar.tsx`, `app/layout.tsx`, `app/(app)/layout.tsx`,
-`middleware.ts`, `supabase/**`, or any other module's folder.
-**Do NOT** run `pnpm install`, `pnpm dlx shadcn ...`, `pnpm build`, or `pnpm dev`.
-All dependencies and UI components are already installed. The orchestrator runs
-the integrated build/typecheck — you just write correct code per this contract.
+This approved phased plan supersedes the original blanket lane restrictions. See [TASK_REGISTRY.md](TASK_REGISTRY.md) for owners/status and [erp-workflows.md](contracts/erp-workflows.md) for frozen contracts. Coordinator owns SQL, generated types, permissions and contracts. Org/onboarding owns auth/CRM reads; services owns quotes/projects; payments owns portal/finance except subscriptions; automation owns subscription/cron/outbox. QA owns dependencies/test configuration/CI/isolation. Shared UI remains frozen unless coordinator assigns it. Only one writer per worktree/branch. Shared-schema changes are serialized; independent reviewers verify exact commits. Tests and builds run only against isolated worktree runtime/data, with no server reuse.
 
 ## 2. Data, auth, and org scoping
 
@@ -36,8 +30,7 @@ import { requireOrgContext } from "@/lib/auth"          // { userId, email, orgI
 ```
 
 - Reads happen in **server components**; mutations in **server actions** (`"use server"`).
-- RLS already scopes every query to the caller's org. Still set `org_id: ctx.orgId`
-  on every insert (defense in depth). Never trust a client-supplied org id.
+- RLS scopes rows to all of the caller's memberships, not the active org. Every application business query MUST filter `org_id: ctx.orgId` from server-derived membership context; every insert sets it. Never trust a client-supplied org id.
 - Role: `ctx.role` is `"owner" | "admin" | "member"`. Use `requireRole(ctx, ["owner","admin"])`
   for destructive/financial actions where appropriate (members can do normal CRUD).
 

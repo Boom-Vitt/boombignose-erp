@@ -1,0 +1,22 @@
+begin;
+select plan(7);
+insert into organizations(id,name,slug) values('b8000000-0000-4000-8000-000000000001','Synthetic automation rollback','synthetic-automation-rollback');
+insert into clients(id,org_id,name) values('b8000000-0000-4000-8000-000000000002','b8000000-0000-4000-8000-000000000001','Synthetic client');
+insert into deals(id,org_id,client_id,title) values('b8000000-0000-4000-8000-000000000003','b8000000-0000-4000-8000-000000000001','b8000000-0000-4000-8000-000000000002','Synthetic deal');
+insert into subscriptions(id,org_id,client_id,name,amount_satang,interval,start_date,next_run_date)
+ values('b8000000-0000-4000-8000-000000000004','b8000000-0000-4000-8000-000000000001','b8000000-0000-4000-8000-000000000002','Synthetic subscription',101,'weekly','2026-07-02','2026-07-02');
+create function pg_temp.fail_outbox() returns trigger language plpgsql as $$ begin raise exception 'Injected outbox failure'; end $$;
+create trigger synthetic_outbox_failure before insert on outbound_events for each row execute function pg_temp.fail_outbox();
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select throws_ok($$select enqueue_reminders('b8000000-0000-4000-8000-000000000001','[{"entity":"deal","entityId":"b8000000-0000-4000-8000-000000000003","title":"Synthetic","dueDate":"2026-07-02"}]')$$,'P0001','Injected outbox failure','failed event write rolls back reminder');
+select is((select count(*)::int from reminders where org_id='b8000000-0000-4000-8000-000000000001'),0,'no orphan reminder');
+select is((select count(*)::int from outbound_events where org_id='b8000000-0000-4000-8000-000000000001'),0,'no partial outbox');
+drop trigger synthetic_outbox_failure on outbound_events;
+create function pg_temp.fail_occurrence_audit() returns trigger language plpgsql as $$ begin if new.action='subscription_occurrence_generated' then raise exception 'Injected billing audit failure'; end if; return new; end $$;
+create trigger synthetic_billing_failure before insert on audit_log for each row execute function pg_temp.fail_occurrence_audit();
+select throws_ok($$select generate_subscription_occurrence('b8000000-0000-4000-8000-000000000001','b8000000-0000-4000-8000-000000000004','2026-07-02')$$,'P0001','Injected billing audit failure','late billing failure rolls back whole transaction');
+select is((select count(*)::int from invoices where org_id='b8000000-0000-4000-8000-000000000001'),0,'no draft invoice leaked');
+select is((select next_run_date::text from subscriptions where id='b8000000-0000-4000-8000-000000000004'),'2026-07-02','schedule unchanged');
+select is((select last_generated_on::text from subscriptions where id='b8000000-0000-4000-8000-000000000004'),null,'last occurrence unchanged');
+select * from finish();
+rollback;
