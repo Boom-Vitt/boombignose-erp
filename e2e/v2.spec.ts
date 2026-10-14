@@ -1,5 +1,6 @@
-import { test, expect, type Page } from "@playwright/test"
+import { test, expect } from "@playwright/test"
 import { createClient } from "@supabase/supabase-js"
+import { loginDemo } from "./auth"
 
 /**
  * V2 feature smoke tests: CSV export (satang→baht), saved-view/stage filtering,
@@ -13,12 +14,6 @@ const admin = () =>
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   )
-
-async function loginDemo(page: Page) {
-  await page.goto("/login")
-  await page.getByRole("button", { name: /use demo account/i }).click()
-  await page.waitForURL("**/dashboard")
-}
 
 test("invoices CSV exports amounts in baht, not satang", async ({ page }) => {
   await loginDemo(page)

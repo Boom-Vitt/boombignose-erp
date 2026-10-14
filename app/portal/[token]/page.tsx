@@ -2,6 +2,7 @@ import { FileText, Receipt, FolderKanban, Lock } from "lucide-react"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { formatTHB } from "@/lib/money"
+import type { Enums } from "@/lib/types/database"
 import { todayISO } from "@/lib/dates"
 import {
   deriveInvoiceStatus,
@@ -31,6 +32,12 @@ import { MarkInvoicePaidButton } from "./_components/mark-invoice-paid-button"
 // PUBLIC route (no session). Served with the service-role admin client, scoped
 // strictly to the one client resolved from the opaque token. Never cache.
 export const dynamic = "force-dynamic"
+
+// Allowlist of customer-facing statuses. Drafts and cancelled invoices are
+// internal and never leave the workspace; a quote only reaches `converted`
+// from `accepted`, so the client has already seen it.
+const PORTAL_QUOTE_STATUSES: Enums<"quote_status">[] = ["sent", "accepted", "declined", "expired", "converted"]
+const PORTAL_INVOICE_STATUSES: Enums<"invoice_status">[] = ["sent", "partially_paid", "paid", "overdue"]
 
 function Unavailable() {
   return (
@@ -81,12 +88,14 @@ export default async function ClientPortalPage({
       .select("id, number, status, total_satang")
       .eq("client_id", client.id)
       .eq("org_id", client.org_id)
+      .in("status", PORTAL_QUOTE_STATUSES)
       .order("created_at", { ascending: false }),
     supabase
       .from("invoices")
       .select("id, number, status, amount_satang, issue_date, due_date")
       .eq("client_id", client.id)
       .eq("org_id", client.org_id)
+      .in("status", PORTAL_INVOICE_STATUSES)
       .order("created_at", { ascending: false }),
     supabase
       .from("projects")

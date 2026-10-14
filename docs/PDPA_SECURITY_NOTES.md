@@ -35,8 +35,9 @@
   missing/mismatch.
 
 ### Recommended before real data
-- Turn on **email confirmation** + a password policy in Supabase Auth; lock the
-  allowed redirect URLs.
+- **Email confirmation** + the app's password policy (10+ chars, lower/upper/digit)
+  are on in `supabase/config.toml`; apply the same to the hosted project's Auth
+  settings, and lock the allowed redirect URLs.
 - Add a CI grep that fails the build if `SUPABASE_SERVICE_ROLE_KEY` appears under
   `app/`, `components/`, or `lib/`.
 

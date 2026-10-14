@@ -19,6 +19,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
+// Local-dev convenience, off by default: the demo button renders only when both
+// vars are set at build time. Never set them for a real deployment.
+const DEMO_EMAIL = process.env.NEXT_PUBLIC_DEMO_LOGIN_EMAIL
+const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_LOGIN_PASSWORD
+
 function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
@@ -84,22 +89,17 @@ function LoginForm() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="size-4 animate-spin" /> : "Sign in"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              disabled={loading}
-              onClick={() => {
-                setEmail("demo@boombignose.org")
-                setPassword("BoomDemo123!")
-                void signIn("demo@boombignose.org", "BoomDemo123!")
-              }}
-            >
-              Use demo account
-            </Button>
-            <p className="text-muted-foreground text-center text-xs">
-              Demo: demo@boombignose.org · BoomDemo123!
-            </p>
+            {DEMO_EMAIL && DEMO_PASSWORD ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={loading}
+                onClick={() => void signIn(DEMO_EMAIL, DEMO_PASSWORD)}
+              >
+                Use demo account
+              </Button>
+            ) : null}
           </CardFooter>
         </form>
       </Card>
