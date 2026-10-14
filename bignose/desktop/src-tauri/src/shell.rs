@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItemBuilder, SubmenuBuilder};
-use tauri::webview::WebviewBuilder;
+use tauri::webview::{NewWindowResponse, WebviewBuilder};
 use tauri::window::WindowBuilder;
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Rect, Url, WebviewUrl, Window, Wry};
 
@@ -103,14 +103,49 @@ pub fn is_erp_origin(url: &Url) -> bool {
     url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(ERP_PORT)
 }
 
+fn open_in_browser(url: &Url) {
+    let _ = std::process::Command::new("open").arg(url.as_str()).spawn(); // fixed argv, no shell
+}
+
 fn allow_navigation(url: &Url) -> bool {
     if is_erp_origin(url) || url.as_str() == "about:blank" {
         return true;
     }
     if matches!(url.scheme(), "http" | "https") {
-        let _ = std::process::Command::new("open").arg(url.as_str()).spawn(); // fixed argv, no shell
+        open_in_browser(url);
     }
     false
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum NewWindow {
+    /// An ERP page (quote and invoice PDF, print view) opens in its own window, with the ERP's session cookie.
+    InApp,
+    Browser,
+    Deny,
+}
+
+/// `target="_blank"` and `window.open`: only the ERP itself opens in the app; other web links go to the browser.
+pub fn new_window_action(url: &Url) -> NewWindow {
+    if is_erp_origin(url) {
+        NewWindow::InApp
+    } else if matches!(url.scheme(), "http" | "https") {
+        NewWindow::Browser
+    } else {
+        NewWindow::Deny
+    }
+}
+
+fn allow_new_window(url: Url) -> NewWindowResponse<Wry> {
+    match new_window_action(&url) {
+        // WebKit gives the new window the same configuration, so it shares the ERP webview's cookies
+        NewWindow::InApp => NewWindowResponse::Allow,
+        NewWindow::Browser => {
+            open_in_browser(&url);
+            NewWindowResponse::Deny
+        }
+        NewWindow::Deny => NewWindowResponse::Deny,
+    }
 }
 
 // ---- menu
@@ -230,7 +265,7 @@ pub fn erp_ready(app: &AppHandle) {
     let Some(f) = layout(w, h, Some(PANEL_OPEN_W)).erp else { return };
     let spec = main_webview();
     let Ok(url) = Url::parse(&spec.url) else { return };
-    let erp = WebviewBuilder::new(spec.label, WebviewUrl::External(url)).on_navigation(allow_navigation);
+    let erp = WebviewBuilder::new(spec.label, WebviewUrl::External(url)).on_navigation(allow_navigation).on_new_window(|url, _| allow_new_window(url));
     if let Err(e) = window.add_child(erp, LogicalPosition::new(f.x, f.y), LogicalSize::new(f.w, f.h)) {
         eprintln!("cannot open the ERP webview: {e}");
     }
@@ -327,6 +362,20 @@ mod tests {
         assert!(!erp("https://127.0.0.1:3100/"));
         assert!(!erp("http://localhost:3100/"));
         assert!(!erp("http://127.0.0.1.evil.example:3100/"));
+    }
+
+    #[test]
+    fn new_windows_open_in_app_for_the_erp_and_in_the_browser_for_other_web_links() {
+        let action = |s: &str| new_window_action(&Url::parse(s).unwrap());
+        assert_eq!(action("http://127.0.0.1:3100/quotes/abc/pdf"), NewWindow::InApp);
+        assert_eq!(action("http://127.0.0.1:3100/reports/print"), NewWindow::InApp);
+        assert_eq!(action("https://example.com/docs"), NewWindow::Browser);
+        assert_eq!(action("http://localhost:3100/"), NewWindow::Browser);
+        assert_eq!(action("http://127.0.0.1:3101/"), NewWindow::Browser);
+        assert_eq!(action("file:///etc/passwd"), NewWindow::Deny);
+        assert_eq!(action("tauri://localhost/index.html"), NewWindow::Deny);
+        assert_eq!(action("about:blank"), NewWindow::Deny);
+        assert_eq!(action("javascript:alert(1)"), NewWindow::Deny);
     }
 
     #[test]

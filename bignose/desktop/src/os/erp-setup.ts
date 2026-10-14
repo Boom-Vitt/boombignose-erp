@@ -12,10 +12,17 @@ export const ERP_MODEL = 'google/gemini-4-argon';
 /** Node and the ERP's MCP server, from the Rust `os_info` command (a Finder launch has no shell PATH). */
 export interface OsInfo { node: string; erpDir: string; mcpServer: string }
 
-// ERP text can carry a prompt injection and web_fetch would let it send data out, so nothing but the read-only erp tools runs.
-// Names are core/src/tools/index.ts built-ins; MCP tools are mcp__<server>__<tool> and ask by default, which would make every read an approval card.
+// ERP text can carry a prompt injection, so the assistant gets an allow-list: everything is denied except the read-only
+// erp tools. The built-ins read local files (read_file, list_files, search_files) and web_fetch sends data out, so none may run.
+// `*` also covers tools added later. Every core tool is named too, because an exact name in the owner's global permissions
+// beats the agent's `*` when core/src/app/runtime.ts merges the two. MCP tools are mcp__<server>__<tool> and ask by default,
+// so the erp tools are allowed to keep a read from becoming an approval card.
+const NEVER = [
+  'shell', 'read_file', 'write_file', 'edit_file', 'list_files', 'search_files', 'web_fetch', 'delegate', // core/src/tools/index.ts
+  'memory_read', 'memory_write', 'session_search', 'skill_load', 'skill_save', 'schedule_create', 'schedule_list', 'schedule_delete',
+];
 export const ERP_PERMISSIONS: Record<string, Policy> = {
-  shell: 'deny', write_file: 'deny', edit_file: 'deny', web_fetch: 'deny', delegate: 'deny',
+  '*': 'deny', ...Object.fromEntries(NEVER.map((tool) => [tool, 'deny' as Policy])),
   'mcp__erp__*': 'allow',
 };
 

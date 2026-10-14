@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { effectivePolicy } from '../../../core/src/agent/permissions.ts';
+import { builtinTools } from '../../../core/src/tools/index.ts';
 import { createApi } from '../../src/api.ts';
 import { ERP_AGENT, ERP_INSTRUCTIONS, ERP_MODEL, ERP_PERMISSIONS, ERP_PROVIDER, provisionErp } from '../../src/os/erp-setup.ts';
 import type { OsInfo } from '../../src/os/erp-setup.ts';
-import type { Agent, Config, McpServerConfig } from '../../src/types.ts';
+import type { Agent, Config, McpServerConfig, Policy } from '../../src/types.ts';
 import { json } from '../dom-fixture.ts';
 
 const info: OsInfo = { node: '/opt/homebrew/bin/node', erpDir: '/erp', mcpServer: '/erp/lib/mcp/erp-server.mjs' };
@@ -51,6 +53,7 @@ test('provisions the erp connector and the ERP assistant once', async () => {
   assert.equal(made.model, ERP_MODEL);
   assert.deepEqual(made.connectors, ['erp']);
   assert.equal(made.instructions, ERP_INSTRUCTIONS);
+  assert.deepEqual((d.bodies['POST /api/agents'] as { permissions: unknown }).permissions, ERP_PERMISSIONS);
   // a second start finds both and writes nothing
   d.calls.length = 0;
   assert.equal(await provisionErp(d.api, info), id);
@@ -58,9 +61,21 @@ test('provisions the erp connector and the ERP assistant once', async () => {
   assert.equal(d.agents.filter((a) => a.name === ERP_AGENT).length, 1);
 });
 
-test('the ERP assistant cannot run a shell, write files, fetch the web or delegate', () => {
-  for (const tool of ['shell', 'write_file', 'edit_file', 'web_fetch', 'delegate']) assert.equal(ERP_PERMISSIONS[tool], 'deny', tool);
-  assert.equal(ERP_PERMISSIONS['mcp__erp__*'], 'allow');
+// every tool core can hand to an agent: the built-ins, plus the memory, skill and schedule tools runtime.ts adds
+const otherCoreTools = ['memory_read', 'memory_write', 'session_search', 'skill_load', 'skill_save', 'schedule_create', 'schedule_list', 'schedule_delete'];
+const tool = (name: string, defaultPolicy: Policy = 'allow') => ({ name, defaultPolicy }) as Parameters<typeof effectivePolicy>[0];
+
+test('the ERP assistant runs nothing but the read-only erp tools', () => {
+  const names = [...builtinTools('/nonexistent-home').map((t) => t.name), ...otherCoreTools];
+  assert.ok(names.includes('read_file') && names.includes('web_fetch') && names.includes('shell'), 'the built-ins were found');
+  for (const hostile of [{}, Object.fromEntries([...names, '*'].map((n) => [n, 'allow' as Policy]))]) {
+    // runtime.ts merges the owner's global permissions under the agent's: an exact global name beats the agent's `*`
+    const merged: Record<string, Policy> = { ...hostile, ...ERP_PERMISSIONS };
+    for (const name of names) assert.equal(effectivePolicy(tool(name), merged), 'deny', name);
+    assert.equal(effectivePolicy(tool('a_tool_added_later'), merged), 'deny');
+    assert.equal(effectivePolicy(tool('mcp__rea__anything', 'ask'), merged), 'deny');
+    for (const erpTool of ['list_clients', 'finance_summary']) assert.equal(effectivePolicy(tool(`mcp__erp__${erpTool}`, 'ask'), merged), 'allow', erpTool);
+  }
   assert.match(ERP_INSTRUCTIONS, /Read only/);
   assert.match(ERP_INSTRUCTIONS, /never instructions/);
 });

@@ -33,10 +33,14 @@ window, so Save was unreachable).
   click shows the window, and quit stops only the children this run started (launcher group, then daemon). The
   Supabase stack is not ours to stop: it is shared, so it keeps running.
 - **Provisioning goes through the local API** (`POST /api/mcp`, `GET/POST /api/agents`), is idempotent, and never
-  changes other agents, the active model or other settings. The ERP assistant denies `shell`, `write_file`,
-  `edit_file`, `web_fetch` and `delegate`: ERP records are untrusted text, and `web_fetch` is an exfiltration route.
-  `mcp__erp__*` is allowed so read-only lookups do not each ask for approval.
-- **Links leaving the ERP open in the default browser** instead of replacing the ERP in the window.
+  changes other agents, the active model or other settings. The ERP assistant's permissions are an allow-list
+  (`*` denied, `mcp__erp__*` allowed) plus every core tool denied by name: ERP records are untrusted text, `web_fetch` is
+  an exfiltration route, and `read_file`, `list_files` and `search_files` would let an injection read local files such as
+  an `.env.local` and send them to the cloud model. The names are repeated because an exact name in the owner's global
+  permissions beats the agent's `*`. `mcp__erp__*` is allowed so read-only lookups do not each ask for approval.
+- **Links leaving the ERP open in the default browser** instead of replacing the ERP in the window. A new window
+  (`target="_blank"`) to an ERP page is allowed, so PDFs and print views open in their own window with the same cookies;
+  a new window to another web address goes to the browser; anything else is refused.
 
 ## Consequences
 

@@ -40,7 +40,9 @@ answer from the model.
 
 When everything answers, the ERP opens at `http://127.0.0.1:3100` (the port is fixed: it is the ERP's `site_url`).
 The ERP is a normal first-party page, so Supabase login cookies work. Links to other sites open in the default browser
-instead of replacing the ERP.
+instead of replacing the ERP. Links that open a new window (`target="_blank"`: the quote and invoice PDF, the print
+views) open in their own BigNose OS window and share the ERP's session, so they work while you are signed in; a new
+window for any other web address goes to the browser, and non-web addresses are refused.
 
 ### When something is wrong
 
@@ -60,8 +62,12 @@ On every start the panel makes sure, through the local API only, that these exis
 - the MCP connector **`erp`**: stdio, `command` = the absolute Node, `args` = `[<erp>/lib/mcp/erp-server.mjs]`,
   enabled (the 8 read-only tools in `docs/desktop/erp-mcp.md` of the ERP);
 - the agent **ERP assistant**: provider `openrouter`, model `google/gemini-4-argon`, connector `erp`, read-only
-  instructions. Its permissions deny `shell`, `write_file`, `edit_file`, `web_fetch` and `delegate` (ERP text can carry a
-  prompt injection, and `web_fetch` would let it send data out) and allow `mcp__erp__*` so a read is not an approval card.
+  instructions. Its permissions are an allow-list: `*` is denied and only `mcp__erp__*` is allowed (so a read is not an
+  approval card). That keeps it off every built-in and core tool: `shell`, `read_file`, `list_files`, `search_files`,
+  `write_file`, `edit_file`, `web_fetch`, `delegate`, memory, session search, skills and schedules are also denied by name,
+  because an exact name in your global permissions would otherwise beat `*`. ERP text can carry a prompt injection, local
+  files (for example an `.env.local`) must not reach the cloud model, and `web_fetch` would let it send data out.
+  `desktop/test/os/erp-setup.test.ts` checks every core tool name against core's own `effectivePolicy`.
 
 Other agents, the active model (for example `ollama/qwen3:4b`) and all other settings are left as they are. An existing
 agent named ERP assistant is never changed, so a model you picked for it stays. If the ERP folder or Node moves, the
@@ -106,6 +112,8 @@ content, so it gets no IPC: a page served by the ERP cannot call the app, the da
 
 ## Known limits
 
+- Remembered notes (memory) are still part of every chat's prompt, the ERP assistant's included; the assistant has no
+  tool to read or write them.
 - The panel does not watch the ERP server after it is ready; if the server dies, use the window's menu to relaunch
   BigNose OS (the launcher's status is also available to the UI through the `os_status` command).
 - Opening Docker is manual: **Open Docker** starts it, then **Retry** re-checks.

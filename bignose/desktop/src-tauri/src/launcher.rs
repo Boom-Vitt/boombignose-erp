@@ -330,7 +330,8 @@ impl Launcher {
                 if self.current(gen) {
                     on_ready();
                 }
-            } else {
+            } else if !announced {
+                // after `ready`, later output (Next warnings, request logs) goes to the log only: Ready stays until the child exits
                 self.set(gen, Status::Starting { step: "erp", detail: Some(short(l)) });
             }
         }) {
@@ -561,6 +562,25 @@ else if (cmd === 'serve') {
         // quit: the serve child (and its group) goes away
         launcher.stop();
         assert!(!launcher.running());
+    }
+
+    #[test]
+    fn ready_stays_ready_when_serve_keeps_logging() {
+        // Next prints warnings and request logs after `ready`; none of them may push the status back to Starting
+        let script = FAKE.replace("setInterval(() => {}, 1000);", "for (let i = 1; i <= 3; i++) console.log('late ' + i); setInterval(() => {}, 1000);");
+        let plan = fake_plan(&script, 3192);
+        let log_path = plan.home.join("logs/erp.log");
+        let launcher = Launcher::default();
+        launcher.start_with(move || Ok(plan), Arc::new(|| {}));
+        wait_for(&launcher, "ready", |s| matches!(s, Status::Ready { .. }));
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !std::fs::read_to_string(&log_path).unwrap_or_default().contains("late 3") {
+            assert!(Instant::now() < deadline, "the late lines never arrived");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::thread::sleep(Duration::from_millis(300)); // the last line has been handled by now
+        assert_eq!(launcher.status(), Status::Ready { url: "http://127.0.0.1:3192".into() });
+        launcher.stop();
     }
 
     #[test]
