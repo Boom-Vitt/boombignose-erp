@@ -94,7 +94,8 @@ async function cacheOutput(
   }
 }
 
-const DealId = z.string().uuid()
+// guid, not uuid: zod 4's uuid() enforces RFC version/variant bits the seed ids lack.
+const DealId = z.guid()
 
 export async function summarizeDeal(dealId: string): Promise<AIResult> {
   const ctx = await requireOrgContext()
