@@ -155,6 +155,24 @@ export function tokenStepFromCurve(
   )
 }
 
+export const TOKEN_SPEED = 0.085
+export const TOKEN_ENDPOINT_HOLD = 0.12
+
+/**
+ * Advances the token cycle and clamps arc-length progress `u` to [0, 1] with a
+ * hold window at `u = 1` (`TOKEN_ENDPOINT_HOLD`), so the final waypoint step
+ * ("06 Payment Allocation") stays lit at the endpoint before the cycle wraps.
+ */
+export function advanceTokenCycle(
+  cycle: number,
+  dt: number
+): { cycle: number; progress: number } {
+  const period = 1 + TOKEN_ENDPOINT_HOLD
+  const nextCycle = (cycle + Math.max(0, dt) * TOKEN_SPEED) % period
+  const progress = Math.min(nextCycle, 1)
+  return { cycle: nextCycle, progress }
+}
+
 export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneModel {
   const d: BlueprintOrgSummary = {
     orgRole: raw.orgRole,

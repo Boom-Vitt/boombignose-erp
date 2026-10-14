@@ -1,5 +1,6 @@
 import * as THREE from "three"
 import {
+  advanceTokenCycle,
   tokenStepFromCurve,
   type AssemblyId,
   type BlueprintSceneModel,
@@ -336,6 +337,7 @@ export function createBlueprintEngine(
     return dynCurve
   }
 
+  let tokenCycle = 0.15
   let tokenProgress = 0.15
   const tmpVec = new THREE.Vector3()
 
@@ -435,7 +437,9 @@ export function createBlueprintEngine(
     currentCamTarget.lerp(targetCamTarget, k)
     currentZoom = THREE.MathUtils.lerp(currentZoom, targetZoom, k)
 
-    tokenProgress = (tokenProgress + dt * 0.085) % 1
+    const nextToken = advanceTokenCycle(tokenCycle, dt)
+    tokenCycle = nextToken.cycle
+    tokenProgress = nextToken.progress
     tokenMesh.rotation.y += dt * 1.1
 
     const dynCurve = applyPositions(currentExplode)

@@ -1,8 +1,11 @@
 import * as THREE from "three"
 import { describe, expect, it, vi } from "vitest"
 import {
+  advanceTokenCycle,
   BLUEPRINT_FIXTURE_DATA,
   buildBlueprintScene,
+  TOKEN_ENDPOINT_HOLD,
+  TOKEN_SPEED,
   tokenStepFromCurve,
 } from "./scene-data"
 
@@ -53,6 +56,13 @@ vi.mock("@/lib/supabase/server", () => ({
               resolve,
               reject
             )
+          }
+          if (!filters.includes(`org_id=${mockState.orgId}`)) {
+            return Promise.resolve({
+              data: null,
+              count: null,
+              error: { message: `Missing tenant org_id filter on ${table}` },
+            }).then(resolve, reject)
           }
           const key = filters.join("|")
           const exactCount = mockState.counts[key] ?? mockState.counts[table] ?? 0
@@ -252,5 +262,39 @@ describe("buildBlueprintScene", () => {
         }
       }
     }
+  })
+
+  it("visits all token steps including the final step 06 under jittered frame deltas", () => {
+    const scene = buildBlueprintScene(BLUEPRINT_FIXTURE_DATA)
+    const waypoints = scene.tokenPath.map((w) => new THREE.Vector3(...w.position))
+    const curve = new THREE.CatmullRomCurve3(waypoints, false, "centripetal")
+    const n = waypoints.length
+
+    let cycle = 0.15
+    let progress = 0.15
+    let emitTimer = 0
+    const seenSteps = new Set<number>()
+    const totalDuration = (1 + TOKEN_ENDPOINT_HOLD + 0.1) / TOKEN_SPEED
+    let elapsed = 0
+    let frame = 0
+
+    while (elapsed < totalDuration) {
+      const jitter = ((frame % 7) - 3) * 0.0004
+      const dt = 1 / 60 + jitter
+      elapsed += dt
+      frame++
+
+      const next = advanceTokenCycle(cycle, dt)
+      cycle = next.cycle
+      progress = next.progress
+
+      emitTimer += dt
+      if (emitTimer >= 0.12) {
+        emitTimer = 0
+        seenSteps.add(tokenStepFromCurve(curve, progress, n))
+      }
+    }
+
+    expect([...seenSteps].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5])
   })
 })
