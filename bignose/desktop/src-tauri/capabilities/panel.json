@@ -1,0 +1,6 @@
+{
+  "identifier": "panel",
+  "description": "The BigNose panel (local app content). The ERP webview is not listed anywhere, so it has no IPC.",
+  "webviews": ["panel"],
+  "permissions": ["core:default"]
+}

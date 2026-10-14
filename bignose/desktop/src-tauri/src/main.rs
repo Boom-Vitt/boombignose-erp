@@ -2,11 +2,13 @@
 
 mod launcher;
 mod lifecycle;
+mod shell;
 mod sidecar;
 
 use launcher::{Launcher, Status};
 use lifecycle::{CloseAction, Quitting};
 use serde::Serialize;
+use shell::Shell;
 use sidecar::{DaemonInfo, Sidecar};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, RunEvent, State, WindowEvent};
@@ -68,9 +70,15 @@ fn os_open_docker() -> Result<(), String> {
     launcher::open_docker()
 }
 
-/// (Re)start doctor -> up -> serve; the ERP window content follows once the server answers.
+#[tauri::command]
+fn os_toggle_panel(app: AppHandle) -> bool {
+    shell::toggle_panel(&app)
+}
+
+/// (Re)start doctor -> up -> serve; the ERP opens beside the panel once the server answers.
 fn start_launcher(app: &AppHandle) {
-    app.state::<Launcher>().start(|| {});
+    let handle = app.clone();
+    app.state::<Launcher>().start(move || shell::erp_ready(&handle));
 }
 
 fn main() {
@@ -78,17 +86,24 @@ fn main() {
         .manage(Sidecar::default())
         .manage(Quitting::default())
         .manage(Launcher::default())
+        .manage(Shell::default())
         .on_window_event(|window, event| {
             // the close button hides the window; the daemon and schedules keep running
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                let quitting = window.app_handle().state::<Quitting>().get();
-                if lifecycle::on_close_requested(quitting) == CloseAction::Hide {
-                    api.prevent_close();
-                    let _ = window.hide();
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    let quitting = window.app_handle().state::<Quitting>().get();
+                    if lifecycle::on_close_requested(quitting) == CloseAction::Hide {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
+                WindowEvent::Resized(_) => shell::on_resized(window),
+                _ => {}
             }
         })
+        .on_menu_event(|app, event| shell::on_menu_event(app, event.id().as_ref()))
         .setup(|app| {
+            shell::create(app)?;
             // start the daemon at launch; the UI's first `daemon_info` call waits for the same result
             let sidecar = app.state::<Sidecar>().inner().clone();
             let core = core_dir(app.handle());
@@ -98,7 +113,7 @@ fn main() {
             start_launcher(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![daemon_info, os_info, os_status, os_retry, os_open_docker])
+        .invoke_handler(tauri::generate_handler![daemon_info, os_info, os_status, os_retry, os_open_docker, os_toggle_panel])
         .build(tauri::generate_context!())
         .expect("error while building BigNose OS")
         .run(|app, event| match event {
@@ -109,7 +124,7 @@ fn main() {
             }
             // a Dock click brings the hidden window back
             RunEvent::Reopen { .. } => {
-                if let Some(w) = app.get_webview_window("main") {
+                if let Some(w) = app.get_window(shell::WINDOW) {
                     if lifecycle::on_reopen(w.is_visible().unwrap_or(false)) {
                         let _ = w.unminimize();
                         let _ = w.show();

@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn main_webview_is_the_erp_on_127_0_0_1_3100() {
+    fn erp_url_and_serve_args_use_port_3100() {
         assert_eq!(ERP_PORT, 3100);
         assert_eq!(erp_url(), "http://127.0.0.1:3100");
         assert_eq!(erp_url_for(ERP_PORT), erp_url());
