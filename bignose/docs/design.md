@@ -73,7 +73,8 @@ export interface Usage { inputTokens: number; outputTokens: number }
 export type ProviderEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'tool_call_start'; id: string; name: string }                                  // as soon as the name is known
-  | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown> }       // arguments complete
+  | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown>;        // arguments complete
+      error?: string }                                                                      // set when they were malformed: input is {} and the loop answers the call with this error
   | { type: 'done'; stopReason: StopReason; usage: Usage };
 export interface Provider { readonly kind: ProviderKind; stream(req: ProviderRequest): AsyncIterable<ProviderEvent> }
 
@@ -167,7 +168,8 @@ export interface Config {
 ## 5. Module contracts
 
 ### core-agent
-- `providers/index.ts`: `createProvider(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl = fetch): Provider`.
+- `providers/index.ts`: `createProvider(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl = fetch, retry?: Partial<RetryOptions>): Provider`
+  (retries and error text: section 15).
   - anthropic: `POST {baseUrl}/v1/messages`, headers `x-api-key`, `anthropic-version: 2023-06-01`, body
     `{model, system, messages, tools:[{name, description, input_schema}], max_tokens, stream: true}`; tool results go
     as `user` blocks `{type:'tool_result', tool_use_id, content, is_error}`. Parse SSE `message_start`,
@@ -181,8 +183,8 @@ export interface Config {
     `arguments` concatenated), `finish_reason` (`tool_calls` → tool_use, `length` → max_tokens, else end_turn),
     trailing usage chunk, `data: [DONE]`.
   - Shared SSE reader (`providers/sse.ts`) handling CRLF, multi-line `data:`, comments, chunk boundaries anywhere.
-  - Non-2xx: throw `Error` with status and a redacted, truncated body. Tool names sent to providers must match
-    `^[a-zA-Z0-9_-]{1,64}$`.
+  - Non-2xx: throw an `Error` (a `ProviderError`) `Provider HTTP <status>: <message>` with the message of the JSON error body only,
+    redacted and cut (section 15). Tool names sent to providers must match `^[a-zA-Z0-9_-]{1,64}$`.
 - `agent/loop.ts`: `runAgent(opts: RunOptions): Promise<RunResult>` with
   `RunOptions = { provider, model, system, context: Message[], input: string, tools: Tool[], maxTurns, maxTokens,
   contextWindow, compactAt, permissions: Record<string, Policy>, hooks: HooksConfig, approve?: Approver,
@@ -190,13 +192,17 @@ export interface Config {
   `RunResult = { context: Message[] /* new model context, compacted if needed */, added: Message[] /* transcript
   messages of this run, input included */, status: RunStatus, text: string, usage: Usage, error?: string }`.
   - One turn = one provider call. Tool calls of a turn run in order; every `tool_use` gets a `tool_result`
-    (errors, denials and interrupts included) so the context stays valid.
+    (errors, denials and interrupts included) so the context stays valid. A call with an unknown or illegal name or with
+    malformed arguments gets an error result the model can fix; the run goes on (section 15).
   - Max turns: stop with `max_turns` after `maxTurns` provider calls. Interrupt: `signal` aborts the provider call and
     the running tool; status `interrupted`. Provider errors: status `error`, never a throw.
-  - Compaction: before a provider call, when the estimated context (last `usage.inputTokens`, else chars/4) exceeds
-    `compactAt * contextWindow`, summarise all but the recent tail (never split a tool_use from its tool_result) with
-    one provider call without tools, replace them with one user message `[Summary of earlier conversation]\n…`,
-    emit `compaction`.
+  - Compaction: before a provider call, when the estimated request (the larger of the last `usage.inputTokens` and
+    chars/4 of system prompt + tool schemas + messages) exceeds `(contextWindow - maxTokens) * compactAt` (the reply budget
+    is kept free; it never reserves more than half the window), summarise all but the recent tail (never split a tool_use
+    from its tool_result) with one provider call without tools, replace them with one user message
+    `[Summary of earlier conversation]\n…`, emit `compaction`. Tool results inside the summary request are cut to 2000
+    characters each. Tool results too large to summarise away are pruned, and a context-length error from the provider
+    triggers a compaction and one more try (section 15).
   - Delegate: when `depth < 1`, `ctx.delegate(task)` runs a nested `runAgent` with fresh context `[task]`, the same
     tools minus `delegate`, no `onEvent` text streaming, and returns its final text.
 - `agent/permissions.ts`: effective policy = `permissions[name]` ?? longest matching `prefix*` key ??
@@ -910,3 +916,70 @@ isolated `BIGNOSE_HOME`; none may reach the owner's Ollama (127.0.0.1:11434), LI
   duplicate request). The result shows a summary (code 0: all checks passed; otherwise: some checks failed) and every
   line as text; an error shows its message and a Retry button; a new run replaces the old result. Text nodes only (no
   `innerHTML`). No upload, telemetry, new route or new screen.
+
+## 15. Run robustness (stream `bignose-run-robustness`)
+The agent loop and the providers recover instead of breaking. Zero runtime dependencies; no new events.
+
+### 15.1 Tool calls the model gets wrong (`agent/loop.ts`, `providers/common.ts`, `tools/coerce.ts`)
+- Malformed, cut-off or non-object arguments no longer throw inside the provider. The adapter emits
+  `{type:'tool_call', id, name, input: {}, error}` with `error` = `Invalid tool arguments: <reason>. Send the call again with a
+  complete JSON object.` The loop does not run that tool; it answers the call with `{isError: true, content: error}` and keeps
+  running the other calls of the turn, then gives the model another turn.
+- Tool names: a call whose name is not `^[a-zA-Z0-9_-]{1,64}$` (for example `functions.read_file`) is answered with
+  `Unknown tool: <name cut to 100 characters>`. The stored `tool_use` carries a sanitised name (other characters become `_`,
+  at most 64, `invalid_tool` when nothing is left), so no later request is rejected. A stored context with an illegal name is
+  repaired in memory at the start of the next run (sessions that broke before this change work again). `tool_start` still
+  shows the name the model used.
+- Arguments are coerced from the tool's own `inputSchema` before `run`: a string for a property of type `integer`/`number`
+  that reads as a number (`"10"`) becomes a number; `"true"`/`"false"` for a `boolean` becomes a boolean. Nothing else changes;
+  the tool still validates. This covers built-in and MCP tools.
+
+### 15.2 Context budget (`agent/loop.ts`, `agent/budget.ts`)
+- `RunOptions` gains `spillDir?: string` and `redact?: (text: string) => string`. The runtime passes
+  `<BIGNOSE_HOME>/tool-results` and its secret cleaner.
+- Per-result cap = 0.6 x `contextWindow` characters (15% of the window at 4 characters a token), at least 2000 and at most
+  100000 (the tools' own cap). A result over the cap is redacted (`RunOptions.redact`) as a whole, then becomes its first 1500 characters plus a note with the original size and,
+  when `spillDir` is set, the path of a file (`<uuid>.txt`, mode 0600, redacted) that holds the full output; the model can read
+  it in parts with `read_file` (by lines, so a one-line output cannot be paged). If the file cannot be written, or there is no `spillDir`, the note says the rest was truncated.
+  `tool_end.output`, the `postTool` hook and the stored `tool_result` all carry the budgeted text. The MCP client keeps its own
+  100 kB cap below this one.
+- After compaction (or when compaction has nothing to cut, as in a short session with one huge result), if the request is
+  still over the limit the loop prunes the oldest tool results longer than 1000 characters to their first 500 characters (of the
+  redacted text) plus `[Tool output cleared to save context space]`, until the estimate fits. The caller's context and the `added` transcript are not
+  mutated; the pruned form is what `RunResult.context` keeps.
+- A provider error that says the request was too large (`context length`, `context window`, `prompt is too long`, `too many
+  tokens`, `maximum context`, HTTP 413 / `payload too large`) before any output arrived does not end the run: the loop
+  compacts and prunes harder (pruning about half the context) and asks again, at most twice per run, without using up a turn.
+  A third overflow ends the run with that error.
+- Redaction comes before every cut: the preview, the pruned head, the spill file and the history of the summary request are all
+  taken from text that `redact` has already run over, so a secret that crosses a cut never leaves a readable prefix.
+- The summary request is bounded too: it carries only the newest `max(4 * limit, 8000)` characters of the history (half of that
+  after a forced compaction), where `limit` is the compaction threshold in tokens. If the provider still answers that request with
+  a context-length error (Thai text costs about 4 times what chars / 4 assumes), the history is quartered and the request is sent
+  again, within the same two-overflow budget as above, so one oversized turn cannot leave the session dead.
+- Argument coercion (15.1) happens once, right after the tool is found: the approval request (and its `approval_request` event),
+  the `preTool` and `postTool` hooks and `run` all receive the coerced input, so a guard that checks `replaceAll === true` sees
+  what the tool will run with. `tool_start` still shows the arguments as the model sent them.
+
+### 15.3 Retries (`providers/retry.ts`, applied by `createProvider`)
+- A stream attempt is repeated only while it has yielded no event, so output that has already streamed is never replayed.
+  Retried: HTTP 429, 500, 502, 503, 529, and socket failures `ECONNREFUSED`, `ECONNRESET`, `EPIPE`, `ETIMEDOUT`, `EAI_AGAIN`,
+  `UND_ERR_SOCKET`, `UND_ERR_CONNECT_TIMEOUT`. Not retried: other statuses (400/401/403/404...), provider error chunks, parse
+  errors, aborts.
+- Defaults `RetryOptions = {retries: 3, baseMs: 500, maxMs: 30000, sleep}`: waits of 500, 1000, 2000 ms. A `Retry-After`
+  header (seconds or HTTP date) replaces the backoff; one longer than `maxMs` fails at once instead of waiting. The wait ends
+  at once when the run's `signal` aborts (the abort reason is thrown). Tests pass `sleep` to avoid real waiting.
+
+### 15.4 Error text (`providers/errors.ts`)
+- HTTP errors: `Provider HTTP <status>: <message>`. For a JSON body only `error.message` (or `message`, or a string `error`)
+  is shown; plain-text bodies are cut to 300 characters; HTML (content type or leading tag) is never shown: the text is
+  `Provider HTTP <status>: the server answered with a web page, not an API response`. The key redaction always runs before a
+  cut (the 300-character body cut and the 1000-character cut of the whole message), so a key echoed across a cut is masked.
+- Network errors name the origin (scheme, host, port; never the path, query or credentials) and the cause:
+  `Cannot reach the provider at <origin> (connection refused, ECONNREFUSED)` (also host not found, timed out ...) and
+  `The provider at <origin> closed the connection before finishing (socket closed, UND_ERR_SOCKET)`. For an Ollama provider
+  (`isOllama`) a refused connection reads `Ollama is not running at <origin> (start it with "ollama serve" or open the Ollama
+  app)`, the same text the doctor and Settings show. Any other undici `fetch failed` / `terminated` becomes
+  `Network error talking to <origin>: <cause> (fetch failed)`. The text reaches the desktop chat, the CLI and LINE as the run error.
+- OpenAI-compatible `delta.tool_calls` are keyed by `index`; servers that omit it are keyed by call `id`, and a fragment with
+  neither continues the latest call.

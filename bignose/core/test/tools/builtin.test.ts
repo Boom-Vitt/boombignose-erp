@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { builtinTools } from '../../src/tools/index.ts';
-import type { ToolContext } from '../../src/types.ts';
+import { runAgent } from '../../src/agent/loop.ts';
+import type { ToolContext, ProviderEvent } from '../../src/types.ts';
 
 function setup(t: { after(fn: () => void): void }) {
   const dir = mkdtempSync(tmpdir() + '/bn-');
@@ -192,4 +193,29 @@ test('web_fetch extracts HTML text, caps response bodies and honours abort witho
   const pending = run('web_fetch', { url: 'http://public.test/slow' }, { ...ctx, signal: controller.signal });
   setTimeout(() => controller.abort(), 20);
   assert.equal((await pending).content, 'interrupted');
+});
+
+test('string-typed numeric arguments are coerced', async t => {
+  // Models (and Ollama-served ones in particular) often send numbers and booleans as strings. The loop fixes them from the tool schema.
+  const { dir, tools } = setup(t);
+  writeFileSync(dir + '/a.txt', 'one\ntwo\nthree\nfour');
+  writeFileSync(dir + '/b.txt', 'x x');
+  const call = (id: string, name: string, input: Record<string, unknown>): ProviderEvent => ({ type: 'tool_call', id, name, input });
+  const steps: ProviderEvent[][] = [[
+    call('r', 'read_file', { path: 'a.txt', offset: '1', limit: '2' }),
+    call('e', 'edit_file', { path: 'b.txt', oldText: 'x', newText: 'y', replaceAll: 'true' }),
+    call('s', 'shell', { command: 'echo coerced', timeoutMs: '5000' }),
+    call('n', 'read_file', { path: 'a.txt', offset: 'ten' }),
+    { type: 'done', stopReason: 'tool_use', usage: { inputTokens: 1, outputTokens: 1 } },
+  ], [{ type: 'done', stopReason: 'end_turn', usage: { inputTokens: 1, outputTokens: 1 } }]];
+  let i = 0;
+  const r = await runAgent({ provider: { kind: 'anthropic', async *stream() { yield* steps[i++] ?? []; } }, model: 'fake', system: '', context: [], input: 'go', tools,
+    maxTurns: 3, maxTokens: 100, contextWindow: 100_000, compactAt: 0.8, permissions: { edit_file: 'allow', shell: 'allow' }, hooks: {}, sessionId: 's', origin: { kind: 'cli' },
+    cwd: dir, signal: new AbortController().signal });
+  const results = r.context.flatMap(m => m.content.flatMap(b => b.type === 'tool_result' ? [b] : []));
+  assert.deepEqual(results.map(b => [b.toolUseId, b.content.trim(), b.isError]), [
+    ['r', 'two\nthree', false], ['e', 'edited', false], ['s', 'coerced', false],
+    ['n', 'offset must be an integer >= 0', true],
+  ]);
+  assert.equal(readFileSync(dir + '/b.txt', 'utf8'), 'y y');
 });

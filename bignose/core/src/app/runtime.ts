@@ -202,6 +202,7 @@ export class Runtime {
         const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
         raw = await runAgent({ ...profile, system: [profile.system, nonOwner ? '' : profile.memory,
           origin.kind === 'line' ? 'You are replying in a LINE chat. Write plain text: short paragraphs, no Markdown headings, tables or bold markers, and put each URL on its own line. Keep answers brief unless the user asks for detail.' : ''].filter(Boolean).join('\n\n'), provider, tools, permissions, sessionId, origin, signal: controller.signal,
+          spillDir: join(this.opts.home, 'tool-results'), redact: text => this.cleaner()(redaction(text)),
           context, input: modelInput, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
           onEvent: e => {
             if (e.type === 'text_delta') { streamText(e.text); return; }

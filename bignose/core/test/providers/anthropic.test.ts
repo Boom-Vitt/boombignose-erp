@@ -43,3 +43,17 @@ test('anthropic refuses truncated streams and unfinished tool blocks', async () 
     await assert.rejects(collect(p.stream(request)), /stream|unfinished/i);
   }
 });
+
+test('anthropic cut-off or non-object tool arguments become a tool_call error', async () => {
+  const start = 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t1","name":"read_file","input":{}}}\n\n';
+  const stop = 'data: {"type":"content_block_stop","index":0}\n\ndata: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n\ndata: {"type":"message_stop"}\n\n';
+  for (const json of ['{"path": ', '["a.txt"]']) {
+    const text = start + `data: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: json } })}\n\n` + stop;
+    const provider = createProvider({ id: 'a', kind: 'anthropic', baseUrl: 'https://example.invalid' }, undefined, async () => streamed(text));
+    const events = await collect(provider.stream(request));
+    const call = events.find(e => e.type === 'tool_call');
+    assert.deepEqual({ ...call, error: undefined }, { type: 'tool_call', id: 't1', name: 'read_file', input: {}, error: undefined });
+    assert.match((call as { error: string }).error, /^Invalid tool arguments: /);
+    assert.deepEqual(events.at(-1), { type: 'done', stopReason: 'max_tokens', usage: { inputTokens: 0, outputTokens: 0 } });
+  }
+});

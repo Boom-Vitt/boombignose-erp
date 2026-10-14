@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { runAgent } from '../../src/agent/loop.ts';
 import type { RunOptions } from '../../src/agent/loop.ts';
+import { validateTools } from '../../src/providers/common.ts';
 import type { AgentEvent, Message, Provider, ProviderEvent, ProviderRequest, Tool } from '../../src/types.ts';
 
 const done: ProviderEvent = { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 12, outputTokens: 3 } };
@@ -198,4 +199,188 @@ test('delegate reports an error when its nested run exhausts maxTurns', async ()
   const r = await runAgent(options(p, { tools: [echo, delegate], maxTurns: 1 }));
   assert.equal(r.status, 'max_turns');
   assert.deepEqual(results(r.context), [{ type: 'tool_result', toolUseId: 'd', content: 'Delegate stopped: max_turns', isError: true }]);
+});
+
+/** Like `scripted`, but rejects what a real provider rejects: illegal tool names. */
+function strict(steps: ProviderEvent[][], requests: ProviderRequest[] = []): Provider {
+  const inner = scripted(steps, requests);
+  return { kind: inner.kind, async *stream(req) { validateTools(req); yield* inner.stream(req); } };
+}
+const text = (t: string): ProviderEvent => ({ type: 'text_delta', text: t });
+
+test('invalid tool name returns a tool error and the session keeps working', async () => {
+  const p = strict([[call('a', 'functions.read_file'), { ...done, stopReason: 'tool_use' }], [text('recovered'), done], [text('later'), done]]);
+  const first = await runAgent(options(p));
+  assert.equal(first.status, 'done'); assert.equal(first.text, 'recovered');
+  assert.deepEqual(results(first.context), [{ type: 'tool_result', toolUseId: 'a', content: 'Unknown tool: functions.read_file', isError: true }]);
+  const second = await runAgent(options(p, { context: first.context, input: 'again' }));
+  assert.equal(second.status, 'done'); assert.equal(second.text, 'later');
+  // A session stored before this fix still holds the raw name; it heals on the next run.
+  const legacy: Message[] = [
+    { role: 'user', content: [{ type: 'text', text: 'old' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'x', name: 'functions.read_file', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'x', content: 'Unknown tool: functions.read_file', isError: true }] },
+  ];
+  const healed = await runAgent(options(strict([[text('ok'), done]]), { context: legacy }));
+  assert.equal(healed.status, 'done');
+  assert.equal(legacy[1]?.content[0]?.type === 'tool_use' && legacy[1].content[0].name, 'functions.read_file', 'the caller context is not mutated');
+  // An absurd name cannot break the request either.
+  const long = await runAgent(options(strict([[call('b', 'x.'.repeat(100)), { ...done, stopReason: 'tool_use' }], [text('fine'), done]])));
+  assert.equal(long.status, 'done'); assert.equal(results(long.context)[0]?.isError, true);
+});
+
+test('malformed tool arguments return a tool error and sibling calls still run', async () => {
+  const ran: string[] = [], events: AgentEvent[] = [], requests: ProviderRequest[] = [];
+  const tool: Tool = { ...echo, async run(i) { ran.push(String(i.value)); return { content: String(i.value) }; } };
+  const bad: ProviderEvent = { type: 'tool_call', id: 'bad', name: 'echo', input: {}, error: 'Invalid tool arguments: Unexpected end of JSON input. Send the call again with a complete JSON object.' };
+  const r = await runAgent(options(scripted([[bad, call('ok'), { ...done, stopReason: 'tool_use' }], [text('fixed'), done]], requests), { tools: [tool], onEvent: e => events.push(e) }));
+  assert.equal(r.status, 'done'); assert.equal(r.text, 'fixed');
+  assert.deepEqual(ran, ['ok'], 'the malformed call never reaches the tool');
+  assert.deepEqual(results(r.context), [
+    { type: 'tool_result', toolUseId: 'bad', content: bad.error, isError: true },
+    { type: 'tool_result', toolUseId: 'ok', content: 'ok', isError: false },
+  ]);
+  assert.equal(requests.length, 2, 'the model gets another turn to fix the call');
+  assert.deepEqual(events.filter(e => e.type === 'tool_end').map(e => e.type === 'tool_end' && e.isError), [true, false]);
+  // A provider failure after the calls still fails the run and answers every call (unchanged).
+  const broken = await runAgent(options({ kind: 'anthropic', async *stream() { yield call('a'); throw new Error('offline'); } }));
+  assert.equal(broken.status, 'error'); assert.equal(results(broken.context)[0]?.isError, true);
+});
+
+test('compaction counts system, tools and reply budget', async () => {
+  const context: Message[] = Array.from({ length: 6 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: `message ${i} ` + 'm'.repeat(280) }] }));
+  const compacted = async (extra: Partial<RunOptions>) => {
+    const requests: ProviderRequest[] = [], events: AgentEvent[] = [];
+    const r = await runAgent(options(scripted([[text('summary'), done], [text('answer'), done]], requests), { context, contextWindow: 1000, onEvent: e => events.push(e), ...extra }));
+    assert.equal(r.status, 'done');
+    const summarised = events.some(e => e.type === 'compaction');
+    assert.equal(requests[0]?.tools.length === 0, summarised, 'a compaction request is the one without tools');
+    return summarised;
+  };
+  assert.equal(await compacted({}), false, 'a small context with a small prompt stays as it is');
+  assert.equal(await compacted({ system: 'system prompt '.repeat(100) }), true, 'a long system prompt counts');
+  assert.equal(await compacted({ tools: [{ ...echo, description: 'tool schema '.repeat(100) }] }), true, 'long tool schemas count');
+  assert.equal(await compacted({ maxTokens: 450 }), true, 'the reply budget counts');
+});
+
+test('oversized recent tool output is pruned and runs recover', async () => {
+  // Fake server with a hard limit: the request must stay under 1000 tokens (chars / 4), like OpenAI answering 400.
+  const limit = 1000, seen: number[] = [];
+  const server = (steps: ProviderEvent[][]): Provider => {
+    const inner = scripted(steps);
+    return { kind: 'openai-compatible', async *stream(req) {
+      const tokens = (req.system.length + JSON.stringify(req.messages).length + JSON.stringify(req.tools).length) / 4;
+      seen.push(tokens);
+      if (tokens > limit) throw new Error(`Provider HTTP 400: This model's maximum context length is ${limit} tokens. However, your messages resulted in ${Math.round(tokens)} tokens.`);
+      yield* inner.stream(req);
+    } };
+  };
+  const context: Message[] = [
+    { role: 'user', content: [{ type: 'text', text: 'read the log' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'big', name: 'echo', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'big', content: 'z'.repeat(8000) }] },
+  ];
+  const first = await runAgent(options(server([[text('summarised the log'), done]]), { context, contextWindow: limit }));
+  assert.equal(first.status, 'done'); assert.equal(first.text, 'summarised the log');
+  const stored = results(first.context)[0]!;
+  assert.ok(stored.content.length < 1500 && stored.content.startsWith('zzz') && /cleared to save context space/.test(stored.content));
+  assert.equal(results(first.context).length, 1);
+  assert.equal(context[2]?.content[0]?.type === 'tool_result' && context[2].content[0].content.length, 8000, 'the caller context is not mutated');
+  const again = await runAgent(options(server([[text('and again'), done]]), { context: first.context, input: 'next question', contextWindow: limit }));
+  assert.equal(again.status, 'done'); assert.ok(seen.every(t => t <= limit), `requests stayed under the limit: ${seen}`);
+});
+
+test('a provider context-length error compacts and retries once', async () => {
+  // The estimate (chars / 4) says there is room, but the provider counts more tokens: the 400 forces a compaction.
+  const context: Message[] = Array.from({ length: 6 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: `turn ${i} ` + 'ก'.repeat(500) }] }));
+  let main = 0, summaries = 0;
+  const events: AgentEvent[] = [];
+  const p: Provider = { kind: 'openai-compatible', async *stream(req) {
+    if (!req.tools.length) { summaries++; yield text('older turns'); yield done; return; }
+    if (main++ === 0) throw new Error("Provider HTTP 400: This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.");
+    yield text('answer'); yield done;
+  } };
+  const r = await runAgent(options(p, { context, contextWindow: 100_000, onEvent: e => events.push(e) }));
+  assert.equal(r.status, 'done'); assert.equal(r.text, 'answer');
+  assert.equal(summaries, 1); assert.ok(events.some(e => e.type === 'compaction'));
+  // A second overflow in a row is a real failure, not a loop.
+  const stuck: Provider = { kind: 'openai-compatible', async *stream(req) { if (!req.tools.length) { yield text('s'); yield done; return; } throw new Error('Provider HTTP 413: Payload Too Large'); } };
+  const failed = await runAgent(options(stuck, { context, contextWindow: 100_000, maxTurns: 20 }));
+  assert.equal(failed.status, 'error'); assert.match(failed.error!, /413/);
+  // Other errors are not retried.
+  let calls = 0;
+  const other = await runAgent(options({ kind: 'anthropic', async *stream() { calls++; throw new Error('Provider HTTP 401: bad key'); } }, { context }));
+  assert.equal(other.status, 'error'); assert.equal(calls, 1);
+});
+
+const pieces = (secret: string) => Array.from({ length: secret.length - 7 }, (_, i) => secret.slice(i, i + 8));
+const mask = (secret: string) => (s: string) => s.replaceAll(secret, 'MASKED');
+
+test('pruned tool output and the summary request are redacted before they are cut', async () => {
+  const secret = 'TopSecret' + 'q7'.repeat(15);
+  // The prune head keeps 500 characters; the secret starts at 480.
+  const big: Message[] = [
+    { role: 'user', content: [{ type: 'text', text: 'read it' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'big', name: 'echo', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'big', content: 'y'.repeat(480) + secret + 'z'.repeat(8000) }] },
+  ];
+  const pruned = await runAgent(options(scripted([[text('ok'), done]]), { context: big, contextWindow: 1000, redact: mask(secret) }));
+  const stored = results(pruned.context)[0]!.content;
+  assert.match(stored, /cleared to save context space/); assert.ok(stored.includes('MASKED'));
+  for (const piece of pieces(secret)) assert.ok(!stored.includes(piece), `pruned result leaks ${piece}`);
+  // The summary request cuts a tool result at 2000 characters; the secret crosses that cut and a 1000-character tool input cut.
+  const old: Message[] = [
+    { role: 'user', content: [{ type: 'text', text: 'start' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'old', name: 'echo', input: { value: 'v'.repeat(980) + secret } }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'old', content: 'r'.repeat(1980) + secret }] },
+    ...[1, 2, 3, 4].map(i => ({ role: i % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: `recent ${i}` }] }) as Message),
+  ];
+  const requests: ProviderRequest[] = [];
+  await runAgent(options(scripted([[text('summary'), done], [text('answer'), done]], requests), { context: old, contextWindow: 80, redact: mask(secret) }));
+  const sent = JSON.stringify(requests[0]!.messages);
+  for (const piece of pieces(secret)) assert.ok(!sent.includes(piece), `summary request leaks ${piece}`);
+});
+
+test('approval, hooks and the tool all see the coerced arguments', async t => {
+  const dir = mkdtempSync(tmpdir() + '/bn-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const seen: unknown[] = [], approved: unknown[] = [], events: AgentEvent[] = [];
+  const tool: Tool = { name: 'count', description: '', defaultPolicy: 'ask', inputSchema: { type: 'object', properties: { n: { type: 'integer' }, all: { type: 'boolean' } } },
+    async run(i) { seen.push(i); return { content: 'ok' }; } };
+  const raw: ProviderEvent = { type: 'tool_call', id: 'a', name: 'count', input: { n: '5', all: 'true' } };
+  const r = await runAgent(options(scripted([[raw, done], [done]]), { tools: [tool], onEvent: e => events.push(e),
+    approve: async req => { approved.push(req.input); return true; },
+    hooks: { preTool: [{ command: `cat >> '${dir}/pre'` }], postTool: [{ command: `cat >> '${dir}/post'` }] } }));
+  assert.equal(r.status, 'done');
+  const coerced = { n: 5, all: true };
+  assert.deepEqual(seen, [coerced]); assert.deepEqual(approved, [coerced]);
+  assert.deepEqual(JSON.parse(readFileSync(dir + '/pre', 'utf8')).input, coerced);
+  assert.deepEqual(JSON.parse(readFileSync(dir + '/post', 'utf8')).input, coerced);
+  const request = events.find(e => e.type === 'approval_request');
+  assert.deepEqual(request?.type === 'approval_request' && request.input, coerced);
+});
+
+test('a summary request that overflows too is shrunk and retried instead of killing the session', async () => {
+  // Thai text costs about one token a character, four times what chars / 4 assumes. The fake enforces its limit on every request.
+  const tokens = (s: string) => { let n = 0; for (const c of s) n += c.charCodeAt(0) > 127 ? 1 : 0.25; return n; };
+  const windowTokens = 8000, thai = (n: number, tag: string) => `${tag} ` + 'ก'.repeat(n);
+  const context: Message[] = [...Array.from({ length: 6 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: thai(3000, `old ${i}`) }] }) as Message),
+    ...['recent a', 'recent b', 'recent c'].map((t, i) => ({ role: i % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: t }] }) as Message)];
+  const sizes: number[] = [];
+  const server: Provider = { kind: 'openai-compatible', async *stream(req) {
+    const used = tokens(req.system) + tokens(JSON.stringify(req.messages)) + tokens(JSON.stringify(req.tools));
+    sizes.push(Math.round(used));
+    if (used > windowTokens) throw new Error(`Provider HTTP 400: This model's maximum context length is ${windowTokens} tokens. However, your messages resulted in ${Math.round(used)} tokens.`);
+    yield text(req.tools.length ? 'answer' : 'earlier Thai conversation'); yield done;
+  } };
+  const run = () => runAgent(options(server, { context, contextWindow: windowTokens, maxTurns: 10 }));
+  const first = await run();
+  assert.equal(first.status, 'done', first.error); assert.equal(first.text, 'answer');
+  assert.ok(sizes.some(n => n > windowTokens), 'the fake did overflow before the loop recovered');
+  const second = await runAgent(options(server, { context: first.context, input: 'and again', contextWindow: windowTokens, maxTurns: 10 }));
+  assert.equal(second.status, 'done', second.error);
+  // After two overflows in a row the run still ends with the error instead of looping.
+  const hopeless: Provider = { kind: 'openai-compatible', async *stream() { throw new Error('Provider HTTP 400: maximum context length exceeded'); } };
+  const failed = await runAgent(options(hopeless, { context, contextWindow: windowTokens, maxTurns: 20 }));
+  assert.equal(failed.status, 'error'); assert.match(failed.error!, /maximum context length/);
 });
