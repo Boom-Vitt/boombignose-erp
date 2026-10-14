@@ -180,12 +180,12 @@ test('transcript finishes tool rows only for actual results and reloads after an
     assert.fail(path);
   }) as typeof fetch });
   const chat = createChat(api), root = chat.root as unknown as TestNode; await flush();
-  root.querySelector('.session')!.fire('click'); await flush();
-  assert.equal(root.querySelector('.tool-status')!.textContent, 'running');
+  (chat.sidebar as unknown as TestNode).querySelector('.session')!.fire('click'); await flush();
+  assert.equal(root.querySelector('.tool-status')!.textContent, 'Running');
   assert.equal(root.querySelector('.tool-out')!.textContent, '');
   finished = true;
   chat.onEvent({ type: 'run_end', sessionId: 's1', runId: 'r1', status: 'error', text: 'Error notice' }); await flush();
-  assert.equal(root.querySelector('.tool-status')!.textContent, 'done');
+  assert.equal(root.querySelector('.tool-status')!.textContent, 'Done');
   assert.equal(root.querySelector('.tool-out')!.textContent, 'real output');
   assert.match(root.textContent, /Error notice/);
 });
