@@ -264,3 +264,20 @@ test('steps are redacted like the run end, including a secret that appears durin
   assert.ok(!h.store.getSession(session.id)!.title.includes('q'.repeat(12)));
   assert.equal(h.store.searchMessages('q'.repeat(12)).length, 0); // the search index follows the rewritten rows
 });
+
+test('a failed step save does not stop the run or leave an unanswered tool call in the saved context', async t => {
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream(req) {
+    if (req.messages.length === 1) { yield { type: 'tool_call', id: 'c1', name: 'memory_read', input: {} }; yield done; return; }
+    yield { type: 'text_delta', text: 'all done' }; yield done;
+  } }));
+  const real = h.store.appendMessages.bind(h.store);
+  let calls = 0;
+  h.store.appendMessages = (...args) => { if (++calls === 2) throw new Error('database is locked'); return real(...args); }; // call 1 = the prompt, 2 = the tool_use step
+  const session = h.store.createSession({ origin: { kind: 'desktop' }, agentId: h.store.listAgents()[0]!.id });
+  const result = await h.runtime.start(session.id, 'work').result;
+  assert.equal(result.status, 'done');
+  const shape = (messages: { role: string; content: { type: string }[] }[]) => messages.map(m => `${m.role}:${m.content.map(b => b.type).join('+')}`);
+  const expected = ['user:text', 'assistant:tool_use', 'user:tool_result', 'assistant:text'];
+  assert.deepEqual(shape(h.store.getMessages(session.id)), expected); // the run end wrote what the failed save missed, once
+  assert.deepEqual(shape(h.store.getSession(session.id)!.context), expected);
+});

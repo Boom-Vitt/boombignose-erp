@@ -516,3 +516,28 @@ test('a run_end error is shown when the daemon could not store a note', async t 
   chat.refresh(); await flush(); reads.at(-1)!.resolve(detail('s1', { messages: [said('user', 'again')], live: { runId: 'r2', seq: 0, text: '', tools: [] } })); await flush();
   assert.equal(messages.querySelectorAll('.note').length, 0);
 });
+
+test('a finished call id that comes back in a later turn gets its own row', async t => {
+  t.after(installDom());
+  const finished = [usedTool('c1', 'read_file'), { role: 'user', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'first' }] }];
+  const { chat, open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'q'), ...finished], live: { runId: 'r1', seq: 0, text: '', tools: [] } }));
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); await flush();
+  chat.onEvent({ type: 'tool_start', sessionId: 's1', runId: 'r1', seq: 1, callId: 'c1', name: 'read_file', input: {} }); // a provider reusing the id
+  assert.equal(messages.querySelectorAll('.tool').length, 2);
+  chat.onEvent({ type: 'tool_end', sessionId: 's1', runId: 'r1', seq: 2, callId: 'c1', name: 'read_file', isError: false, output: 'second' });
+  assert.deepEqual(messages.querySelectorAll('.tool-out').map(o => o.textContent), ['first', 'second']);
+});
+
+test('events held during a read that fails are still shown', async t => {
+  t.after(installDom());
+  const reads: PromiseWithResolvers<Response>[] = [];
+  const { chat, open, messages } = historySetup(() => { const read = Promise.withResolvers<Response>(); reads.push(read); return read.promise; });
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); reads[0]!.resolve(detail('s1', { messages: [said('user', 'q')], live: { runId: 'r1', seq: 1, text: 'A', tools: [] } })); await flush();
+  const delta = (seq: number, text: string) => chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', seq, text });
+  chat.refresh(); delta(2, 'B'); // held while the reload is in flight
+  reads[1]!.resolve(json({ error: 'database is locked' }, 500)); await flush(); await flush();
+  delta(3, 'C');
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['ABC']);
+});

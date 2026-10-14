@@ -178,6 +178,7 @@ export class Runtime {
     // The turn is saved as it happens: the prompt and the title now, every finished step below, so a crash or kill keeps them.
     // The same cleaning as the run end uses, applied when each step is saved; the end rewrites any row a later-learned secret reaches.
     const saved: number[] = [];
+    let saveFailed = false;
     const save = (...messages: Message[]) => {
       const current = this.cleaner();
       saved.push(...this.store.appendMessages(sessionId, safeValue(messages, text => current(redaction(text)))));
@@ -225,8 +226,10 @@ export class Runtime {
           context, input: modelInput, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
           onMessage: m => {
             if (m.role === 'assistant') streamText('', true); // the held-back tail is part of this message
-            save(m);
-            if (m.role === 'assistant') live.text = ''; else live.tools.clear(); // now in stored history
+            // A failed save must not stop the run: that would leave the context with a tool_use nobody answered. Later saves are skipped
+            // so `saved` stays a prefix of the transcript, and the run end writes the rest.
+            if (!saveFailed) try { save(m); } catch { saveFailed = true; }
+            if (m.role === 'assistant') live.text = ''; else live.tools.clear(); // in stored history, or about to be
           },
           onEvent: e => {
             if (e.type === 'text_delta') { streamText(e.text); return; }
@@ -250,6 +253,7 @@ export class Runtime {
       const current = this.cleaner(), clean = (text: string) => current(redaction(text)), completed = safeValue(raw, clean);
       const transcript = slash ? [{ role: 'user' as const, content: [{ type: 'text' as const, text: clean(input) }] }, ...completed.added.slice(1)] : completed.added;
       this.store.updateMessages(saved, transcript);
+      if (transcript.length > saved.length) this.store.appendMessages(sessionId, transcript.slice(saved.length)); // steps whose own save failed
       this.store.setContext(sessionId, nonOwner ? [...safeValue(session.context, clean),
         { role: 'user', content: [{ type: 'text', text: clean(input) }] },
         ...(completed.status !== 'error' && completed.text ? [{ role: 'assistant' as const, content: [{ type: 'text' as const, text: completed.text }] }] : [])] : completed.context);

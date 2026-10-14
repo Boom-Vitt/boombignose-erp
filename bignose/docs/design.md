@@ -996,6 +996,10 @@ crash, a reload, a chat switch or an event-stream reconnect does not lose it.
   message after its provider call, the batch of tool results after its tools): not the input, and not a `delegate` sub-run's messages.
   The runtime appends each to the transcript. A crash or kill mid-run keeps the prompt and every finished step. The end of the run
   appends nothing: `appendMessages` returns the row ids and the run keeps them.
+- A failed step save (a locked database, an I/O error) does not stop the run: that would leave the context with a `tool_use` nobody
+  answered, and the chat would be refused by the provider from then on. The runtime skips every later step save, so the saved rows
+  stay a prefix of the transcript, and the run end appends the missing rest once (`transcript.slice(saved.length)`). If that write
+  fails too, the run rejects before `setContext`, as before this stream.
 - The model context (`sessions.context`) is still written once, at the end: a half-finished turn must never leave a `tool_use`
   without its result there. After a crash the transcript shows the turn; the model's context does not include it.
 - Redaction keeps its order. Each step is cleaned when it is saved, with the run-start cleaner plus a fresh one. At the end the
@@ -1029,12 +1033,14 @@ crash, a reload, a chat switch or an event-stream reconnect does not lose it.
 - Desktop (`desktop/src/chat.ts`): `renderHistory(messages, notices, live)` renders notices between messages by `after`, then the
   live text as the open assistant bubble and live tools on their rows, so later `text_delta` and `tool_end` events continue the same
   bubble and row. This runs for opening a chat, switching back to one, and `refresh()` after an event-stream reconnect.
-  - Tool rows are keyed by `callId`: a `tool_start` for a call already on screen (restored from history or from `live`) reuses its row.
+  - Tool rows are keyed by `callId`: a `tool_start` for a call already on screen and still running (restored from history or from
+    `live`) reuses its row. A finished call's id that a provider reuses in a later turn gets a new row.
   - Events and snapshots line up by `seq`. While a read is in flight the chat holds back text and tool events for the open chat;
     after the render it records `{runId, seq}` of the snapshot and replays the held events through the same check. An event of the
     same run with `seq` at or below the recorded one is dropped (already in the snapshot, or a late copy), any other is applied
     and advances the record. No re-read is needed, and no text is lost or shown twice. Events without `seq` (an older daemon)
-    are always applied. `running` still comes only from the event stream (replayed `run_start`).
+    are always applied. If the read fails and is still the current one, the held events are replayed anyway. `running` still comes
+    only from the event stream (replayed `run_start`).
   - `live === null` means no run is going: a tool call in `messages` without a result (the daemon was killed mid-run) is shown
     as finished with an error, "Interrupted: the run did not finish.", not as running forever.
   - `run_end` no longer builds its own note: it reloads the session, and the stored note comes back with it, so `session_updated`

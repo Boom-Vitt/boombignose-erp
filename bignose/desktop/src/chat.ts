@@ -18,7 +18,7 @@ export interface Chat {
 }
 
 interface Approval { sessionId: string; tool: string; input: Record<string, unknown>; state: 'pending' | 'allowed' | 'denied'; card?: HTMLElement }
-interface ToolRow { root: HTMLElement; finish(isError: boolean, output: string): void }
+interface ToolRow { root: HTMLElement; done: boolean; finish(isError: boolean, output: string): void }
 
 const pretty = (v: unknown) => JSON.stringify(v, null, 2);
 const SUMMARY_PREFIX = '[Summary of earlier conversation]';
@@ -117,7 +117,9 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
         el('div', { class: 'tool-label' }, 'Result'), out));
     return {
       root: row,
+      done: false,
       finish(isError, output) {
+        this.done = true;
         status.className = `tool-status ${isError ? 'error' : 'done'}`;
         status.textContent = isError ? 'error' : 'done';
         out.textContent = output || '(no output)';
@@ -126,7 +128,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   }
 
   function addToolRow(callId: string, name: string, input: Record<string, unknown>): void {
-    if (tools.has(callId)) return; // already on screen (restored from history or from the live turn)
+    if (tools.get(callId)?.done === false) return; // already on screen and running (restored from history or from the live turn); a finished call's id may come back in a later turn
     const row = toolRow(name, input);
     tools.set(callId, row);
     append(row.root);
@@ -273,14 +275,16 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     // Text and tool events that arrive during the read are held back and replayed after the render; the numbered ones the answer
     // already includes are dropped by the `seen` check in onEvent, so nothing is lost and nothing is shown twice.
     const held: ApiEvent[] = reading = [];
+    const current = () => seq === loadSeq && id === currentId;
     try {
       const s = await api.getSession(id);
-      if (seq !== loadSeq || id !== currentId) return;
+      if (!current()) return;
       renderHistory(s.messages, s.notices, s.live);
       showApprovals();
-      reading = null;
-      for (const e of held) onEvent(e);
-    } finally { if (reading === held) reading = null; }
+    } finally {
+      if (reading === held) reading = null;
+      if (current()) for (const e of held) onEvent(e); // after the render, or after a failed read: show what came in meanwhile
+    }
   }
 
   // ---- agents and commands
