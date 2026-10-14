@@ -89,6 +89,25 @@ test('T09 an explicit settings update can restart an exited connector', async t 
   assert.equal(readFileSync(starts, 'utf8'), 'started\nstarted\n');
 });
 
+test('T09 a settings update that replaces a connector is not reported as closed', async t => {
+  const { manager, config, call } = await fixture(t);
+  const updating = manager.update({ fake: { ...config, args: [...config.args!, '--banner'] } });
+  await manager.waitFor(['fake'], AbortSignal.timeout(1000));
+  await bounded(updating);
+  assert.equal(manager.status()[0]!.error, undefined);
+  assert.match((await bounded(call('echo'))).content, /connector fake closed/);
+});
+
+test('T09 an explicit start clears the exited entry while its replacement starts', async t => {
+  const { manager, starts, call } = await fixture(t);
+  await bounded(call('exit'));
+  const starting = manager.start();
+  await manager.waitFor(['fake'], AbortSignal.timeout(1000));
+  await bounded(starting);
+  assert.equal(manager.status()[0]!.error, undefined);
+  assert.equal(readFileSync(starts, 'utf8'), 'started\nstarted\n');
+});
+
 test('T09 a signal exit keeps its signal and redacts stderr', async t => {
   const { manager, call } = await fixture(t, ['--exit-signal']);
   const result = await bounded(call('exit'));
@@ -100,7 +119,9 @@ test('T09 a signal exit keeps its signal and redacts stderr', async t => {
 
 test('T09 a tool handed out before stop fails promptly with a named closed error', async t => {
   const { manager, call } = await fixture(t);
-  await bounded(manager.stop());
+  const stopping = manager.stop();
+  assert.equal(manager.status()[0]!.error, undefined);
+  await bounded(stopping);
   const result = await bounded(call('echo'));
   assert.equal(result.isError, true);
   assert.match(result.content, /connector fake closed/);
