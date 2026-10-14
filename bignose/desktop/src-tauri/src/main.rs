@@ -1,12 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod launcher;
 mod lifecycle;
 mod sidecar;
 
+use launcher::{Launcher, Status};
 use lifecycle::{CloseAction, Quitting};
+use serde::Serialize;
 use sidecar::{DaemonInfo, Sidecar};
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, State, WindowEvent};
 
 /// Bundled `core/` resource, else the repo's `core/` (dev).
 fn core_dir(app: &AppHandle) -> PathBuf {
@@ -27,10 +30,54 @@ async fn daemon_info(app: AppHandle) -> Result<DaemonInfo, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Where the startup screen and the ERP connector find Node and the ERP folder.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OsInfo {
+    node: String,
+    erp_dir: String,
+    mcp_server: String,
+}
+
+#[tauri::command]
+async fn os_info() -> Result<OsInfo, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let erp = launcher::erp_dir(&sidecar::home_dir()?);
+        Ok(OsInfo {
+            node: sidecar::node_runtime()?.node,
+            erp_dir: erp.display().to_string(),
+            mcp_server: launcher::mcp_server_path(&erp).display().to_string(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn os_status(launcher: State<Launcher>) -> Status {
+    launcher.status()
+}
+
+#[tauri::command]
+fn os_retry(app: AppHandle) {
+    start_launcher(&app);
+}
+
+#[tauri::command]
+fn os_open_docker() -> Result<(), String> {
+    launcher::open_docker()
+}
+
+/// (Re)start doctor -> up -> serve; the ERP window content follows once the server answers.
+fn start_launcher(app: &AppHandle) {
+    app.state::<Launcher>().start(|| {});
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Sidecar::default())
         .manage(Quitting::default())
+        .manage(Launcher::default())
         .on_window_event(|window, event| {
             // the close button hides the window; the daemon and schedules keep running
             if let WindowEvent::CloseRequested { api, .. } = event {
@@ -48,9 +95,10 @@ fn main() {
             std::thread::spawn(move || {
                 let _ = sidecar.ensure(&core);
             });
+            start_launcher(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![daemon_info])
+        .invoke_handler(tauri::generate_handler![daemon_info, os_info, os_status, os_retry, os_open_docker])
         .build(tauri::generate_context!())
         .expect("error while building BigNose OS")
         .run(|app, event| match event {
@@ -71,12 +119,15 @@ fn main() {
             }
             // Cmd+Q and the Quit menu item end here: stop every child this run started
             RunEvent::Exit => {
-                for child in lifecycle::children_to_stop(false, app.state::<Sidecar>().spawned()) {
+                let launcher = app.state::<Launcher>();
+                let sidecar = app.state::<Sidecar>();
+                for child in lifecycle::children_to_stop(launcher.running(), sidecar.spawned()) {
                     match child {
-                        lifecycle::Child::Daemon => app.state::<Sidecar>().stop(),
-                        lifecycle::Child::ErpLauncher => {}
+                        lifecycle::Child::ErpLauncher => launcher.stop(),
+                        lifecycle::Child::Daemon => sidecar.stop(),
                     }
                 }
+                launcher.stop(); // also retires a run that is still between steps
             }
             _ => {}
         });
