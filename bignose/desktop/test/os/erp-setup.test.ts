@@ -65,6 +65,12 @@ test('provisions the erp connector and the ERP assistant once', async () => {
 const otherCoreTools = ['memory_read', 'memory_write', 'session_search', 'skill_load', 'skill_save', 'schedule_create', 'schedule_list', 'schedule_delete'];
 const tool = (name: string, defaultPolicy: Policy = 'allow') => ({ name, defaultPolicy }) as Parameters<typeof effectivePolicy>[0];
 
+test('the ERP assistant is provisioned with maxTokens 4096', async () => {
+  const d = fakeDaemon();
+  await provisionErp(d.api, info);
+  assert.equal((d.bodies['POST /api/agents'] as { maxTokens: unknown }).maxTokens, 4096);
+});
+
 test('the ERP assistant runs nothing but the read-only erp tools', () => {
   const names = [...builtinTools('/nonexistent-home').map((t) => t.name), ...otherCoreTools];
   assert.ok(names.includes('read_file') && names.includes('web_fetch') && names.includes('shell'), 'the built-ins were found');

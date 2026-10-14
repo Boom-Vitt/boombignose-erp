@@ -73,6 +73,16 @@ Other agents, the active model (for example `ollama/qwen3:4b`) and all other set
 agent named ERP assistant is never changed, so a model you picked for it stays. If the ERP folder or Node moves, the
 `erp` connector is replaced with the new command; a connector you disabled is enabled again.
 
+**Output cap (OpenRouter).** Without a `max_tokens`, OpenRouter reserves the model's full output and answers
+`402 ... You requested up to 65536 tokens` when the account cannot cover that. So a new ERP assistant is created with
+`maxTokens` 4096, and the default `openrouter` provider has `maxTokens` 8192. A provider saved in `config.json` replaces
+the defaults, so `loadConfig` gives a saved provider that has no `maxTokens` the default one with the same id (a number
+you set is never changed; `openrouter` is the one that matters). Trade-off: every OpenRouter agent without its own
+`maxTokens` is now capped at 8192 output tokens, and the cap counts reasoning tokens, so a long reply from a thinking
+model can stop at `max_tokens` (the agent form's "leave it blank" now means 8192 on OpenRouter). To lift the cap, set a
+larger `maxTokens` on the provider or on the agent; clearing the provider's field in Settings does not stick, because the
+next daemon start puts 8192 back. The daemon and CLI save the filled value, after which it counts as one you set.
+
 **Privacy (PDPA).** Answers about ERP data go through the model provider (OpenRouter): ERP records the assistant reads
 are sent to it. The tools are read-only and leave out contact details, notes, tax ids and bank references (see the ERP's
 `docs/desktop/erp-mcp.md`), but client names can be natural persons.

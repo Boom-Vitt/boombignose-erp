@@ -35,7 +35,7 @@ test('defaults when there is no config file', (t) => {
   assert.deepEqual(cfg.providers, [
     { id: 'anthropic', kind: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKeyEnv: 'ANTHROPIC_API_KEY', contextWindow: 200000, maxTokens: 8192 },
     { id: 'openai', kind: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY', contextWindow: 128000 },
-    { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', apiKeyEnv: 'OPENROUTER_API_KEY', contextWindow: 128000 },
+    { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', apiKeyEnv: 'OPENROUTER_API_KEY', contextWindow: 128000, maxTokens: 8192 },
     { id: 'ollama', kind: 'openai-compatible', label: 'Ollama (local)', baseUrl: 'http://127.0.0.1:11434/v1', apiKeyEnv: 'OLLAMA_API_KEY', contextWindow: 32768 },
   ]);
   assert.equal(cfg.agent.workspace, os.homedir());
@@ -88,7 +88,34 @@ test('stored providers and active model keep the existing install unchanged', (t
   fs.writeFileSync(paths(home).config, JSON.stringify(stored));
   const cfg = loadConfig();
   assert.deepEqual(cfg.active, stored.active);
-  assert.deepEqual(cfg.providers, stored.providers);
+  // the only addition is the default cap (anthropic: 8192) that the saved entry lacked
+  assert.deepEqual(cfg.providers, [{ ...stored.providers[0], maxTokens: 8192 }, stored.providers[1]]);
+});
+
+test('a saved openrouter provider without maxTokens gets the default', (t) => {
+  const home = tmpHome(t);
+  const stored = {
+    providers: [
+      { id: 'openai', kind: 'openai-compatible', baseUrl: 'https://api.openai.com/v1' },
+      { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://example.invalid/v1', apiKeyEnv: 'MY_KEY' },
+      { id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://localhost:11434/v1', contextWindow: 32000 },
+    ],
+  };
+  fs.writeFileSync(paths(home).config, JSON.stringify(stored));
+  const cfg = loadConfig();
+  assert.equal(defaultConfig().providers.find((p) => p.id === 'openrouter')!.maxTokens, 8192);
+  assert.deepEqual(cfg.providers[1], { ...stored.providers[1], maxTokens: 8192 });
+  // no default cap, nothing is added (and no undefined key)
+  assert.deepEqual(cfg.providers[0], stored.providers[0]);
+  assert.deepEqual(cfg.providers[2], stored.providers[2]);
+  assert.equal(Object.hasOwn(cfg.providers[2]!, 'maxTokens'), false);
+});
+
+test('a user-set provider maxTokens is kept', (t) => {
+  const home = tmpHome(t);
+  const stored = { providers: [{ id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', maxTokens: 32000 }] };
+  fs.writeFileSync(paths(home).config, JSON.stringify(stored));
+  assert.deepEqual(loadConfig().providers, stored.providers);
 });
 
 test('a file entry for rea overrides the default one', (t) => {

@@ -51,7 +51,7 @@ export function defaultConfig(): Config {
     providers: [
       { id: 'anthropic', kind: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKeyEnv: 'ANTHROPIC_API_KEY', contextWindow: 200000, maxTokens: 8192 },
       { id: 'openai', kind: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY', contextWindow: 128000 },
-      { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', apiKeyEnv: 'OPENROUTER_API_KEY', contextWindow: 128000 },
+      { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', apiKeyEnv: 'OPENROUTER_API_KEY', contextWindow: 128000, maxTokens: 8192 },
       { id: 'ollama', kind: 'openai-compatible', label: 'Ollama (local)', baseUrl: 'http://127.0.0.1:11434/v1', apiKeyEnv: 'OLLAMA_API_KEY', contextWindow: 32768 },
     ],
     agent: { maxTurns: 30, workspace: homedir(), compactAt: 0.8 },
@@ -87,7 +87,13 @@ export function loadConfig(home: string = homeDir()): Config {
     throw new Error(`invalid config ${file}: ${(e as Error).message}`);
   }
   if (!isObj(parsed)) throw new Error(`invalid config ${file}: expected a JSON object`);
-  return merge(base, parsed) as Config;
+  const cfg = merge(base, parsed) as Config;
+  // a saved providers array replaces the defaults: give a saved provider the default cap it lacks (OpenRouter 402s without one)
+  for (const p of cfg.providers) {
+    const def = base.providers.find((d) => d.id === p.id);
+    if (p.maxTokens === undefined && def?.maxTokens !== undefined) p.maxTokens = def.maxTokens;
+  }
+  return cfg;
 }
 
 // 0600: MCP env/headers may carry literal values even though secrets belong in .env
