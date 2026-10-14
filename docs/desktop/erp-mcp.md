@@ -51,7 +51,7 @@ All list tools accept `limit` (`1..100`, default `50`) and `offset` (`>= 0`, def
 | `list_projects` | `org_id?`, `status?`, `client_id?`, `limit?`, `offset?` | Lists delivery projects with status, deadline, and `budget_satang`/`budget_thb`. |
 | `list_invoices` | `org_id?`, `status?`, `client_id?`, `limit?`, `offset?` | Lists invoices with number, status, dates, `amount_satang`/`amount_thb`, and `discount_satang`/`discount_thb`. |
 | `list_payment_claims` | `org_id?`, `status?`, `client_id?`, `invoice_id?`, `limit?`, `offset?` | Lists customer/staff payment claims with status, source, and `amount_satang`/`amount_thb`. |
-| `finance_summary` | `org_id?` | Returns workspace financial totals (cash balance, monthly burn, invoiced total, verified paid, unpaid balance, costs, subscription MRR, open quotes, pipeline, and pending payment claims) in satang and THB. |
+| `finance_summary` | `org_id?` | Returns workspace financial totals (cash balance, monthly burn, invoiced total, verified paid, unpaid balance, costs, subscription MRR, open quotes, pipeline, and pending payment claims) in satang and THB. Mirrors the dashboard: monthly burn is the org setting, else this month's costs (Asia/Bangkok); unpaid counts every non-draft, non-cancelled invoice with a balance after verified payments only, even if its stored status is `paid`. Errors rather than return a total from a partial read. |
 
 ## Workspace Scoping (`org_id`)
 

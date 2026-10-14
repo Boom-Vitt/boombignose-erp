@@ -3,15 +3,26 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { createInterface } from "node:readline"
-import { describe, expect, it } from "vitest"
+import { PassThrough } from "node:stream"
+import { describe, expect, it, vi } from "vitest"
+import {
+  costsForMonth,
+  subscriptionMrr,
+  unpaidCount,
+  unpaidTotal,
+} from "@/lib/metrics/finance"
 import {
   assertLocalSupabaseUrl,
   createFakeDataLayer,
   createSupabaseDataLayer,
   formatTHB,
 } from "./data.mjs"
-import { createErpMcpServer, DEFAULT_ERP_DIR } from "./erp-server.mjs"
-import { TOOLS } from "./tools.mjs"
+import {
+  createErpMcpServer,
+  DEFAULT_ERP_DIR,
+  startStdioServer,
+} from "./erp-server.mjs"
+import { runTool, TOOLS } from "./tools.mjs"
 
 const ORG_A = "11111111-1111-4111-8111-111111111111"
 const ORG_B = "22222222-2222-4222-8222-222222222222"
@@ -707,5 +718,289 @@ describe("ERP MCP server", () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
+  })
+  describe("finance_summary matches the dashboard", () => {
+    const baht = (n: number) => n * 100
+    const invoice = (id: string, status: string, amountBaht: number) => ({
+      id,
+      org_id: ORG_A,
+      status,
+      amount_satang: baht(amountBaht),
+      discount_satang: 0,
+    })
+    const payment = (id: string, invoiceId: string, amountBaht: number, state: string) => ({
+      id,
+      org_id: ORG_A,
+      invoice_id: invoiceId,
+      amount_satang: baht(amountBaht),
+      paid_at: "2026-10-02T03:00:00Z",
+      verification_state: state,
+    })
+    const cost = (id: string, incurredOn: string, amountBaht: number) => ({
+      id,
+      org_id: ORG_A,
+      category: "software",
+      amount_satang: baht(amountBaht),
+      incurred_on: incurredOn,
+    })
+    const store = (burnSatang: number | null = null) => ({
+      organizations: [{ id: ORG_A, name: "Alpha Co", slug: "alpha" }],
+      org_settings: [
+        { org_id: ORG_A, cash_balance_satang: baht(100_000), monthly_burn_satang: burnSatang },
+      ],
+      invoices: [
+        invoice("inv-legacy", "paid", 10_000),
+        invoice("inv-part", "sent", 30_000),
+        invoice("inv-done", "paid", 5_000),
+        invoice("inv-draft", "draft", 7_000),
+        invoice("inv-void", "cancelled", 9_000),
+      ],
+      payments: [
+        payment("pay-1", "inv-legacy", 10_000, "legacy_unverified"),
+        payment("pay-2", "inv-part", 12_000, "verified"),
+        payment("pay-3", "inv-done", 5_000, "verified"),
+      ],
+      costs: [
+        cost("cost-jan", "2026-01-10", 50_000),
+        cost("cost-may", "2026-05-10", 50_000),
+        cost("cost-sep", "2026-09-30", 20_000),
+        cost("cost-oct", "2026-10-01", 50_000),
+      ],
+      subscriptions: [
+        { id: "sub-1", org_id: ORG_A, status: "active", amount_satang: baht(1_000), interval: "monthly" },
+        { id: "sub-2", org_id: ORG_A, status: "paused", amount_satang: baht(9_000), interval: "monthly" },
+      ],
+    })
+    async function summary(data: ReturnType<typeof store>, now: string) {
+      const server = createErpMcpServer({
+        dataLayer: createFakeDataLayer(data),
+        erpOrgId: ORG_A,
+        now: new Date(now),
+      })
+      const res = (await server.handleMessage({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "finance_summary", arguments: {} },
+      })) as unknown as ToolCallResponse
+      expect(res.result.isError).toBeUndefined()
+      return JSON.parse(res.result.content[0].text)
+    }
+
+    it("burn without a setting is this month's costs, not every cost ever", async () => {
+      const data = store()
+      const out = await summary(data, "2026-10-15T05:00:00Z")
+      expect(out.monthly_burn_satang).toBe(baht(50_000))
+      expect(out.monthly_burn_satang).toBe(costsForMonth(data.costs, "2026-10"))
+      expect(out.costs_total_satang).toBe(baht(170_000))
+    })
+
+    it("the burn month is the Asia/Bangkok month", async () => {
+      const data = store()
+      // 18:30Z on 30 Sep is 01:30 on 1 Oct in Bangkok.
+      const bangkokOct = await summary(data, "2026-09-30T18:30:00Z")
+      expect(bangkokOct.monthly_burn_satang).toBe(baht(50_000))
+      // 16:30Z on 30 Sep is 23:30 on 30 Sep in Bangkok.
+      const bangkokSep = await summary(data, "2026-09-30T16:30:00Z")
+      expect(bangkokSep.monthly_burn_satang).toBe(baht(20_000))
+    })
+
+    it("a monthly_burn setting still wins over costs", async () => {
+      const out = await summary(store(baht(12_345)), "2026-10-15T05:00:00Z")
+      expect(out.monthly_burn_satang).toBe(baht(12_345))
+    })
+
+    it("a paid invoice backed only by an unverified payment is unpaid", async () => {
+      const data = store()
+      const out = await summary(data, "2026-10-15T05:00:00Z")
+      // inv-legacy 10,000 (legacy receipt only) + inv-part 30,000 - 12,000 verified.
+      expect(out.unpaid_satang).toBe(baht(28_000))
+      expect(out.unpaid_invoice_count).toBe(2)
+
+      const verifiedPaid = new Map<string, number>()
+      for (const p of data.payments.filter((x) => x.verification_state === "verified")) {
+        verifiedPaid.set(p.invoice_id, (verifiedPaid.get(p.invoice_id) ?? 0) + p.amount_satang)
+      }
+      const withPaid = data.invoices.map((i) => ({
+        status: i.status,
+        amount_satang: i.amount_satang,
+        paid_satang: verifiedPaid.get(i.id) ?? 0,
+      })) as Parameters<typeof unpaidTotal>[0]
+      expect(out.unpaid_satang).toBe(unpaidTotal(withPaid))
+      expect(out.unpaid_invoice_count).toBe(unpaidCount(withPaid))
+    })
+
+    it("MRR counts active subscriptions like the dashboard", async () => {
+      const data = store()
+      const out = await summary(data, "2026-10-15T05:00:00Z")
+      expect(out.mrr_satang).toBe(
+        subscriptionMrr(data.subscriptions as Parameters<typeof subscriptionMrr>[0])
+      )
+    })
+  })
+
+  it("a large reply followed by EOF is written out completely", async () => {
+    const serverScript = path.join(DEFAULT_ERP_DIR, "lib", "mcp", "erp-server.mjs")
+    const child = spawn(process.execPath, [serverScript], {
+      cwd: DEFAULT_ERP_DIR,
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+    // ping echoes the id, so a long id makes a reply far above the 64 KB pipe buffer.
+    const bigId = "x".repeat(300_000)
+    child.stdout.pause()
+    child.stdin.end(`${JSON.stringify({ jsonrpc: "2.0", id: bigId, method: "ping" })}\n`)
+    await new Promise((resolve) => setTimeout(resolve, 500)) // slow reader
+
+    const chunks: Buffer[] = []
+    child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk))
+    child.stdout.resume()
+    const exitCode = await new Promise<number | null>((resolve) => {
+      child.on("close", (code) => resolve(code))
+    })
+
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(Buffer.concat(chunks).toString("utf8"))).toEqual({
+      jsonrpc: "2.0",
+      id: bigId,
+      result: {},
+    })
+  })
+
+  it("internal errors are redacted before they reach stderr", async () => {
+    const secret = ["srv", "z".repeat(20)].join("_")
+    const line = '{"jsonrpc":"2.0","id":77,"method":"ping"}\n'
+    const stdin = new PassThrough()
+    const stdout = new PassThrough()
+    const stderr = new PassThrough()
+    let errText = ""
+    let outText = ""
+    stderr.on("data", (chunk) => (errText += String(chunk)))
+    stdout.on("data", (chunk) => (outText += String(chunk)))
+
+    // Make serialising the ping reply fail once, with the secret in the error message.
+    const realStringify = JSON.stringify
+    let thrown = false
+    const spy = vi.spyOn(JSON, "stringify").mockImplementation(((
+      value: unknown,
+      ...rest: unknown[]
+    ) => {
+      if (!thrown && (value as { id?: unknown } | null)?.id === 77) {
+        thrown = true
+        throw new Error(`boom ${secret}`)
+      }
+      return (realStringify as (...a: unknown[]) => string)(value, ...rest)
+    }) as typeof JSON.stringify)
+    try {
+      const { done } = startStdioServer({
+        stdin,
+        stdout,
+        stderr,
+        exitOnClose: false,
+        serverOptions: { secrets: [secret], dataLayer: createFakeDataLayer({}) },
+      })
+      stdin.end(line)
+      await done
+    } finally {
+      spy.mockRestore()
+    }
+
+    expect(errText).toContain("Internal MCP server error")
+    expect(errText).toContain("[REDACTED]")
+    expect(errText).not.toContain(secret)
+    expect(outText).not.toContain(secret)
+  })
+
+  describe("finance inputs are read in full", () => {
+    type Call = { table: string; col: string; val: string; range?: [number, number] }
+    // Mimics PostgREST: max_rows caps each response, count is the full total.
+    function pagedSupabase(rowsByTable: Record<string, Array<Record<string, unknown>>>, maxRows = 1000) {
+      const calls: Call[] = []
+      return {
+        calls,
+        client: {
+          from(table: string) {
+            let range: [number, number] | undefined
+            const builder = {
+              select: () => builder,
+              order: () => builder,
+              eq(col: string, val: string) {
+                calls.push({ table, col, val, range })
+                return builder
+              },
+              range(from: number, to: number) {
+                range = [from, to]
+                calls.push({ table, col: "range", val: `${from}-${to}`, range })
+                return builder
+              },
+              then(resolve: (v: unknown) => void) {
+                const all = rowsByTable[table] ?? []
+                const [from, to] = range ?? [0, all.length - 1]
+                resolve({
+                  data: all.slice(from, Math.min(to + 1, from + maxRows)),
+                  error: null,
+                  count: all.length,
+                })
+              },
+            }
+            return builder
+          },
+        },
+      }
+    }
+    const invoices = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `inv-${i}`,
+        org_id: ORG_A,
+        status: "sent",
+        amount_satang: 100,
+      }))
+
+    it("pages past PostgREST max_rows so totals are not cut off", async () => {
+      const { client, calls } = pagedSupabase({ invoices: invoices(2500) })
+      const layer = createSupabaseDataLayer(client)
+      const inputs = await layer.getFinanceInputs(ORG_A)
+      expect(inputs.invoices).toHaveLength(2500)
+      expect(new Set(inputs.invoices.map((r) => String(r.id))).size).toBe(2500)
+      expect(
+        calls.filter((c) => c.table === "invoices" && c.col === "range").map((c) => c.val)
+      ).toEqual(["0-999", "1000-1999", "2000-2999"])
+      for (const call of calls.filter((c) => c.col !== "range")) {
+        expect(call).toMatchObject({ col: "org_id", val: ORG_A })
+      }
+
+      const out = (await runTool(
+        "finance_summary",
+        { org_id: ORG_A },
+        {
+          dataLayer: {
+            ...layer,
+            listOrganizations: async () => ({
+              rows: [{ id: ORG_A, name: "Alpha Co", slug: "alpha" }],
+              total: 1,
+            }),
+          },
+        }
+      )) as Record<string, unknown>
+      expect(out.invoiced_total_satang).toBe(250_000)
+      expect(out.unpaid_invoice_count).toBe(2500)
+    })
+
+    it("fails instead of returning a short set", async () => {
+      // The server claims 1500 rows but stops serving after the first page.
+      const { client } = pagedSupabase({ invoices: invoices(1500) }, 1000)
+      const wrapped = {
+        from(table: string) {
+          const builder = client.from(table)
+          const realRange = builder.range
+          builder.range = (from: number, to: number) =>
+            realRange(from >= 1000 ? 9_999 : from, from >= 1000 ? 9_999 : to)
+          return builder
+        },
+      }
+      const layer = createSupabaseDataLayer(wrapped)
+      await expect(layer.getFinanceInputs(ORG_A)).rejects.toThrow(
+        /Incomplete read of invoices/
+      )
+    })
   })
 })
