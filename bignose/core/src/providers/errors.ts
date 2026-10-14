@@ -50,7 +50,9 @@ export async function checkResponse(response: Response, apiKey?: string): Promis
     // A proxy's error page (nginx, Cloudflare) is noise for the user: say what it is and nothing more.
     const html = /html/i.test(response.headers.get('content-type') ?? '') || /^\s*<(!doctype|html|head|body)\b/i.test(text);
     const message = html ? undefined : bodyMessage(text);
-    throw make(`Provider HTTP ${response.status}${html ? ': the server answered with a web page, not an API response' : message ? `: ${message.slice(0, 300)}` : ''}`, apiKey,
+    // Redact first, then cut: a key echoed across the cut must not leave a readable prefix.
+    const shown = message && safeError(message, apiKey).message.slice(0, 300);
+    throw make(`Provider HTTP ${response.status}${html ? ': the server answered with a web page, not an API response' : shown ? `: ${shown}` : ''}`, apiKey,
       { status: response.status, retryable: RETRY_STATUS.has(response.status), retryAfterMs: retryAfter(response.headers.get('retry-after')) });
   }
   if (!response.body) throw new Error('Provider returned an empty stream');

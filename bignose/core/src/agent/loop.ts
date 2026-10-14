@@ -23,6 +23,8 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
   const size = () => Math.max(lastInput, JSON.stringify(context).length / 4 + fixed);
   const limit = Math.max(opts.contextWindow - opts.maxTokens, opts.contextWindow / 2) * opts.compactAt;
   const cap = resultCap(opts.contextWindow);
+  // Every text is redacted before it is cut anywhere in the loop (history, preview, prune head).
+  const clean = opts.redact ?? ((s: string) => s);
   let force = false, overflows = 0;
   const baseRequest = () => ({ model: opts.model, system: opts.system, messages: context, tools: opts.tools, maxTokens: opts.maxTokens, signal: opts.signal });
   try {
@@ -34,22 +36,32 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
         for (let i = 0; i < cut; i++) if (context[i]!.content.some(b => b.type === 'tool_use' && tailResults.has(b.id))) cut = i;
         if (cut === 1 && context[0]?.content.some(b => b.type === 'text' && b.text.startsWith('[Summary of earlier conversation]\n'))) cut = 0;
         if (cut > 0) {
-          let summary = '';
           const history = context.slice(0, cut).flatMap(m => m.content.map(b => {
-            if (b.type === 'text') return `${m.role}: ${b.text}`;
-            if (b.type === 'tool_use') return `assistant called ${b.name}(${JSON.stringify(b.input).slice(0, 1000)}) [${b.id}]`;
-            return `tool result [${b.toolUseId}]${b.isError ? ' (error)' : ''}: ${b.content.slice(0, 2000)}`;
+            if (b.type === 'text') return `${m.role}: ${clean(b.text)}`;
+            if (b.type === 'tool_use') return `assistant called ${b.name}(${clean(JSON.stringify(b.input)).slice(0, 1000)}) [${b.id}]`;
+            return `tool result [${b.toolUseId}]${b.isError ? ' (error)' : ''}: ${clean(b.content).slice(0, 2000)}`;
           })).join('\n');
-          const iterator = opts.provider.stream({ ...baseRequest(), system: 'Summarise the conversation for continuation. Preserve decisions, facts, tool findings and unfinished work.', messages: [{ role: 'user', content: [{ type: 'text', text: history }] }], tools: [] })[Symbol.asyncIterator]();
+          const summarise = async (text: string) => {
+            let out = '';
+            const iterator = opts.provider.stream({ ...baseRequest(), system: 'Summarise the conversation for continuation. Preserve decisions, facts, tool findings and unfinished work.', messages: [{ role: 'user', content: [{ type: 'text', text }] }], tools: [] })[Symbol.asyncIterator]();
+            try {
+              while (true) {
+                const next = await withAbort(iterator.next(), opts.signal);
+                if (next.done) break;
+                if (next.value.type === 'text_delta') out += next.value.text;
+                if (next.value.type === 'done') { usage.inputTokens += next.value.usage.inputTokens; usage.outputTokens += next.value.usage.outputTokens; }
+              }
+            } finally { void iterator.return?.().catch(() => {}); }
+            return out;
+          };
+          // The summary request must fit too: keep only the newest part of the history (half as much after an overflow), and if the
+          // provider still refuses it, quarter the history and ask again within the same two-overflow budget. At least 8000 characters.
+          let keep = Math.max(limit * 4, 8000) / (force ? 2 : 1), summary = '';
           turns++;
-          try {
-            while (true) {
-              const next = await withAbort(iterator.next(), opts.signal);
-              if (next.done) break;
-              if (next.value.type === 'text_delta') summary += next.value.text;
-              if (next.value.type === 'done') { usage.inputTokens += next.value.usage.inputTokens; usage.outputTokens += next.value.usage.outputTokens; }
-            }
-          } finally { void iterator.return?.().catch(() => {}); }
+          for (;;) {
+            try { summary = await summarise(history.slice(-keep)); break; }
+            catch (e) { if (!isContextOverflow(e) || overflows++ >= 2) throw e; keep /= 4; }
+          }
           if (!summary.trim()) throw new Error('Compaction returned an empty summary');
           context = [{ role: 'user', content: [{ type: 'text', text: `[Summary of earlier conversation]\n${summary}` }] }, ...context.slice(cut)];
           lastInput = 0;
@@ -58,7 +70,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
         }
         // Recent tool output the summary cannot touch: shrink the oldest large results until the request fits.
         const excess = (force ? size() / 2 : size() - limit) * 4;
-        if (excess > 0) { context = pruneResults(context, excess); lastInput = 0; }
+        if (excess > 0) { context = pruneResults(context, excess, clean); lastInput = 0; }
         force = false;
       }
       const content: ContentBlock[] = [], calls = new Map<string, ToolUseBlock>(), complete = new Set<string>(), invalid = new Map<string, string>();
@@ -99,7 +111,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
       const replies: ContentBlock[] = [];
       for (const call of orderedCalls) {
         emit({ type: 'tool_start', callId: call.id, name: call.name, input: call.input });
-        let result: ToolResult;
+        let result: ToolResult, input = call.input;
         try {
           opts.signal.throwIfAborted();
           if (streamError) throw streamError;
@@ -107,18 +119,19 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
           if (invalid.has(call.id)) throw new Error(invalid.get(call.id));
           const tool = opts.tools.find(t => t.name === call.name);
           if (!tool) throw new Error(`Unknown tool: ${call.name.slice(0, 100)}`);
+          input = coerceArgs(call.input, tool.inputSchema); // once, so approval, hooks and the tool all see the same arguments
           const policy = effectivePolicy(tool, opts.permissions);
-          const req = { id: randomUUID(), sessionId: opts.sessionId, origin: opts.origin, tool: call.name, input: call.input };
+          const req = { id: randomUUID(), sessionId: opts.sessionId, origin: opts.origin, tool: call.name, input };
           let denied: ToolResult | undefined;
           if (policy === 'ask') {
             let allowed = false;
-            emit({ type: 'approval_request', approvalId: req.id, tool: call.name, input: call.input });
+            emit({ type: 'approval_request', approvalId: req.id, tool: call.name, input });
             try { denied = await withAbort(checkPermission(policy, req, opts.approve), opts.signal); allowed = denied === undefined; }
             finally { emit({ type: 'approval_result', approvalId: req.id, allowed: !opts.signal.aborted && allowed }); }
           } else denied = await checkPermission(policy, req, opts.approve);
-          const blocked = denied ?? await runHooks(opts.hooks.preTool, { event: 'preTool', sessionId: opts.sessionId, tool: call.name, input: call.input }, opts.signal);
+          const blocked = denied ?? await runHooks(opts.hooks.preTool, { event: 'preTool', sessionId: opts.sessionId, tool: call.name, input }, opts.signal);
           opts.signal.throwIfAborted();
-          result = blocked ?? await withAbort(tool.run(coerceArgs(call.input, tool.inputSchema), {
+          result = blocked ?? await withAbort(tool.run(input, {
             sessionId: opts.sessionId, origin: opts.origin, cwd: opts.cwd, signal: opts.signal, depth,
             ...(depth < 1 ? { delegate: async (task: string) => {
               const nested = await runAgent({ ...opts, context: [], input: task, tools: opts.tools.filter(t => t.name !== 'delegate'), depth: depth + 1, onEvent: undefined });
@@ -130,7 +143,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
         const output = await budgetResult(result.content, cap, opts.spillDir, opts.redact);
         replies.push({ type: 'tool_result', toolUseId: call.id, content: output, isError: result.isError ?? false });
         emit({ type: 'tool_end', callId: call.id, name: call.name, isError: result.isError ?? false, output: output.slice(0, 2000) });
-        await runHooks(opts.hooks.postTool, { event: 'postTool', sessionId: opts.sessionId, tool: call.name, input: call.input, output, isError: result.isError ?? false });
+        await runHooks(opts.hooks.postTool, { event: 'postTool', sessionId: opts.sessionId, tool: call.name, input, output, isError: result.isError ?? false });
       }
       if (replies.length) append({ role: 'user', content: replies });
       opts.signal.throwIfAborted();

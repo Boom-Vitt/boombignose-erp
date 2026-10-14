@@ -938,19 +938,28 @@ The agent loop and the providers recover instead of breaking. Zero runtime depen
 - `RunOptions` gains `spillDir?: string` and `redact?: (text: string) => string`. The runtime passes
   `<BIGNOSE_HOME>/tool-results` and its secret cleaner.
 - Per-result cap = 0.6 x `contextWindow` characters (15% of the window at 4 characters a token), at least 2000 and at most
-  100000 (the tools' own cap). A result over the cap becomes its first 1500 characters plus a note with the original size and,
+  100000 (the tools' own cap). A result over the cap is redacted (`RunOptions.redact`) as a whole, then becomes its first 1500 characters plus a note with the original size and,
   when `spillDir` is set, the path of a file (`<uuid>.txt`, mode 0600, redacted) that holds the full output; the model can read
-  it in parts with `read_file`. If the file cannot be written, or there is no `spillDir`, the note says the rest was truncated.
+  it in parts with `read_file` (by lines, so a one-line output cannot be paged). If the file cannot be written, or there is no `spillDir`, the note says the rest was truncated.
   `tool_end.output`, the `postTool` hook and the stored `tool_result` all carry the budgeted text. The MCP client keeps its own
   100 kB cap below this one.
 - After compaction (or when compaction has nothing to cut, as in a short session with one huge result), if the request is
-  still over the limit the loop prunes the oldest tool results longer than 1000 characters to their first 500 characters plus
-  `[Tool output cleared to save context space]`, until the estimate fits. The caller's context and the `added` transcript are not
+  still over the limit the loop prunes the oldest tool results longer than 1000 characters to their first 500 characters (of the
+  redacted text) plus `[Tool output cleared to save context space]`, until the estimate fits. The caller's context and the `added` transcript are not
   mutated; the pruned form is what `RunResult.context` keeps.
 - A provider error that says the request was too large (`context length`, `context window`, `prompt is too long`, `too many
   tokens`, `maximum context`, HTTP 413 / `payload too large`) before any output arrived does not end the run: the loop
   compacts and prunes harder (pruning about half the context) and asks again, at most twice per run, without using up a turn.
   A third overflow ends the run with that error.
+- Redaction comes before every cut: the preview, the pruned head, the spill file and the history of the summary request are all
+  taken from text that `redact` has already run over, so a secret that crosses a cut never leaves a readable prefix.
+- The summary request is bounded too: it carries only the newest `max(4 * limit, 8000)` characters of the history (half of that
+  after a forced compaction), where `limit` is the compaction threshold in tokens. If the provider still answers that request with
+  a context-length error (Thai text costs about 4 times what chars / 4 assumes), the history is quartered and the request is sent
+  again, within the same two-overflow budget as above, so one oversized turn cannot leave the session dead.
+- Argument coercion (15.1) happens once, right after the tool is found: the approval request (and its `approval_request` event),
+  the `preTool` and `postTool` hooks and `run` all receive the coerced input, so a guard that checks `replaceAll === true` sees
+  what the tool will run with. `tool_start` still shows the arguments as the model sent them.
 
 ### 15.3 Retries (`providers/retry.ts`, applied by `createProvider`)
 - A stream attempt is repeated only while it has yielded no event, so output that has already streamed is never replayed.
@@ -964,8 +973,8 @@ The agent loop and the providers recover instead of breaking. Zero runtime depen
 ### 15.4 Error text (`providers/errors.ts`)
 - HTTP errors: `Provider HTTP <status>: <message>`. For a JSON body only `error.message` (or `message`, or a string `error`)
   is shown; plain-text bodies are cut to 300 characters; HTML (content type or leading tag) is never shown: the text is
-  `Provider HTTP <status>: the server answered with a web page, not an API response`. Everything passes through the key
-  redaction, then is cut to 1000 characters.
+  `Provider HTTP <status>: the server answered with a web page, not an API response`. The key redaction always runs before a
+  cut (the 300-character body cut and the 1000-character cut of the whole message), so a key echoed across a cut is masked.
 - Network errors name the origin (scheme, host, port; never the path, query or credentials) and the cause:
   `Cannot reach the provider at <origin> (connection refused, ECONNREFUSED)` (also host not found, timed out ...) and
   `The provider at <origin> closed the connection before finishing (socket closed, UND_ERR_SOCKET)`. For an Ollama provider

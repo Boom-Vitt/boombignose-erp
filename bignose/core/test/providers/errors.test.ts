@@ -81,3 +81,13 @@ test('errors never contain the API key', async () => {
     }
   }
 });
+
+test('a key echoed across the body cut is fully masked', async () => {
+  const key = 'sk-' + 'ab12'.repeat(16); // 67 characters, built at runtime
+  const bodies = [JSON.stringify({ error: { message: 'x'.repeat(270) + key + ' end' } }), 'y'.repeat(270) + key + ' end', JSON.stringify({ message: 'z'.repeat(295) + key })];
+  for (const body of bodies) {
+    const message = await failure(openaiCfg, (async () => new Response(body, { status: 401 })) as typeof fetch, key);
+    for (let i = 0; i + 8 <= key.length; i++) assert.ok(!message.includes(key.slice(i, i + 8)), `leaked ${key.slice(i, i + 8)} in ${message.slice(-60)}`);
+    assert.ok(message.length < 400);
+  }
+});

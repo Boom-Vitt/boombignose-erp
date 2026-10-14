@@ -60,3 +60,22 @@ test('oversized tool results are budgeted to the context window', async t => {
   assert.equal(readFileSync(join(home, 'redacted', readdirSync(join(home, 'redacted'))[0]!), 'utf8').endsWith('MASK'), true);
   assert.equal(redacted.r.status, 'done');
 });
+
+const fragments = (secret: string) => Array.from({ length: secret.length - 7 }, (_, i) => secret.slice(i, i + 8));
+
+test('a secret crossing the preview cut is masked before the cut', async t => {
+  const home = mkdtempSync(join(tmpdir(), 'bn-budget-'));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const secret = 'TopSecret' + 'q7'.repeat(15); // 39 characters, built at runtime
+  const leaky: Tool = { name: 'big', description: '', inputSchema: {}, defaultPolicy: 'allow', async run() { return { content: 'HEAD' + 'x'.repeat(1480) + secret + 'x'.repeat(48_000) + 'TAIL' }; } };
+  const { r, events } = await run({ tools: [leaky, small], spillDir: join(home, 'spill'), redact: s => s.replaceAll(secret, 'MASKED') }, home);
+  const stored = toolResults(r)[0]!.content;
+  const end = events.find(e => e.type === 'tool_end' && e.name === 'big');
+  const file = readFileSync(join(home, 'spill', readdirSync(join(home, 'spill'))[0]!), 'utf8');
+  assert.ok(stored.includes('MASKED') && file.includes('MASKED'));
+  for (const piece of fragments(secret)) {
+    assert.ok(!stored.includes(piece), `stored result leaks ${piece}`);
+    assert.ok(!(end?.type === 'tool_end' && end.output.includes(piece)), `tool_end leaks ${piece}`);
+    assert.ok(!file.includes(piece), `spill file leaks ${piece}`);
+  }
+});

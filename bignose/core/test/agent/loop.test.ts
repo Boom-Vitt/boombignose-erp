@@ -312,3 +312,75 @@ test('a provider context-length error compacts and retries once', async () => {
   const other = await runAgent(options({ kind: 'anthropic', async *stream() { calls++; throw new Error('Provider HTTP 401: bad key'); } }, { context }));
   assert.equal(other.status, 'error'); assert.equal(calls, 1);
 });
+
+const pieces = (secret: string) => Array.from({ length: secret.length - 7 }, (_, i) => secret.slice(i, i + 8));
+const mask = (secret: string) => (s: string) => s.replaceAll(secret, 'MASKED');
+
+test('pruned tool output and the summary request are redacted before they are cut', async () => {
+  const secret = 'TopSecret' + 'q7'.repeat(15);
+  // The prune head keeps 500 characters; the secret starts at 480.
+  const big: Message[] = [
+    { role: 'user', content: [{ type: 'text', text: 'read it' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'big', name: 'echo', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'big', content: 'y'.repeat(480) + secret + 'z'.repeat(8000) }] },
+  ];
+  const pruned = await runAgent(options(scripted([[text('ok'), done]]), { context: big, contextWindow: 1000, redact: mask(secret) }));
+  const stored = results(pruned.context)[0]!.content;
+  assert.match(stored, /cleared to save context space/); assert.ok(stored.includes('MASKED'));
+  for (const piece of pieces(secret)) assert.ok(!stored.includes(piece), `pruned result leaks ${piece}`);
+  // The summary request cuts a tool result at 2000 characters; the secret crosses that cut and a 1000-character tool input cut.
+  const old: Message[] = [
+    { role: 'user', content: [{ type: 'text', text: 'start' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'old', name: 'echo', input: { value: 'v'.repeat(980) + secret } }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'old', content: 'r'.repeat(1980) + secret }] },
+    ...[1, 2, 3, 4].map(i => ({ role: i % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: `recent ${i}` }] }) as Message),
+  ];
+  const requests: ProviderRequest[] = [];
+  await runAgent(options(scripted([[text('summary'), done], [text('answer'), done]], requests), { context: old, contextWindow: 80, redact: mask(secret) }));
+  const sent = JSON.stringify(requests[0]!.messages);
+  for (const piece of pieces(secret)) assert.ok(!sent.includes(piece), `summary request leaks ${piece}`);
+});
+
+test('approval, hooks and the tool all see the coerced arguments', async t => {
+  const dir = mkdtempSync(tmpdir() + '/bn-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const seen: unknown[] = [], approved: unknown[] = [], events: AgentEvent[] = [];
+  const tool: Tool = { name: 'count', description: '', defaultPolicy: 'ask', inputSchema: { type: 'object', properties: { n: { type: 'integer' }, all: { type: 'boolean' } } },
+    async run(i) { seen.push(i); return { content: 'ok' }; } };
+  const raw: ProviderEvent = { type: 'tool_call', id: 'a', name: 'count', input: { n: '5', all: 'true' } };
+  const r = await runAgent(options(scripted([[raw, done], [done]]), { tools: [tool], onEvent: e => events.push(e),
+    approve: async req => { approved.push(req.input); return true; },
+    hooks: { preTool: [{ command: `cat >> '${dir}/pre'` }], postTool: [{ command: `cat >> '${dir}/post'` }] } }));
+  assert.equal(r.status, 'done');
+  const coerced = { n: 5, all: true };
+  assert.deepEqual(seen, [coerced]); assert.deepEqual(approved, [coerced]);
+  assert.deepEqual(JSON.parse(readFileSync(dir + '/pre', 'utf8')).input, coerced);
+  assert.deepEqual(JSON.parse(readFileSync(dir + '/post', 'utf8')).input, coerced);
+  const request = events.find(e => e.type === 'approval_request');
+  assert.deepEqual(request?.type === 'approval_request' && request.input, coerced);
+});
+
+test('a summary request that overflows too is shrunk and retried instead of killing the session', async () => {
+  // Thai text costs about one token a character, four times what chars / 4 assumes. The fake enforces its limit on every request.
+  const tokens = (s: string) => { let n = 0; for (const c of s) n += c.charCodeAt(0) > 127 ? 1 : 0.25; return n; };
+  const windowTokens = 8000, thai = (n: number, tag: string) => `${tag} ` + 'ก'.repeat(n);
+  const context: Message[] = [...Array.from({ length: 6 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: thai(3000, `old ${i}`) }] }) as Message),
+    ...['recent a', 'recent b', 'recent c'].map((t, i) => ({ role: i % 2 ? 'assistant' : 'user', content: [{ type: 'text', text: t }] }) as Message)];
+  const sizes: number[] = [];
+  const server: Provider = { kind: 'openai-compatible', async *stream(req) {
+    const used = tokens(req.system) + tokens(JSON.stringify(req.messages)) + tokens(JSON.stringify(req.tools));
+    sizes.push(Math.round(used));
+    if (used > windowTokens) throw new Error(`Provider HTTP 400: This model's maximum context length is ${windowTokens} tokens. However, your messages resulted in ${Math.round(used)} tokens.`);
+    yield text(req.tools.length ? 'answer' : 'earlier Thai conversation'); yield done;
+  } };
+  const run = () => runAgent(options(server, { context, contextWindow: windowTokens, maxTurns: 10 }));
+  const first = await run();
+  assert.equal(first.status, 'done', first.error); assert.equal(first.text, 'answer');
+  assert.ok(sizes.some(n => n > windowTokens), 'the fake did overflow before the loop recovered');
+  const second = await runAgent(options(server, { context: first.context, input: 'and again', contextWindow: windowTokens, maxTurns: 10 }));
+  assert.equal(second.status, 'done', second.error);
+  // After two overflows in a row the run still ends with the error instead of looping.
+  const hopeless: Provider = { kind: 'openai-compatible', async *stream() { throw new Error('Provider HTTP 400: maximum context length exceeded'); } };
+  const failed = await runAgent(options(hopeless, { context, contextWindow: windowTokens, maxTurns: 20 }));
+  assert.equal(failed.status, 'error'); assert.match(failed.error!, /maximum context length/);
+});
