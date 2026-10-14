@@ -117,7 +117,8 @@ test('test webhook checks prerequisites and returns LINE success or failure deta
 });
 
 test('public URL spaces are trimmed on save and on connect/test for legacy config', async t => {
-  const s = await setup(t, c => { c.line.publicUrl = '  https://tunnel.example/base/  '; });
+  const s = await setup(t, c => { c.line.publicUrl = ' '.repeat(250) + 'https://tunnel.example/base/' + ' '.repeat(250); });
+  assert.deepEqual([s.a.lineStatus().webhookUrl, s.a.lineStatus().healthUrl, s.a.lineStatus().warnings], ['https://tunnel.example/base/line/webhook', 'https://tunnel.example/base/line/webhook/health', ['Nobody is allowed yet: add your LINE user ID (U…) under Allowed users.']]);
   setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', s.home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', s.home);
   assert.equal((await s.call('line/connect')).body.webhookUrl, 'https://tunnel.example/base/line/webhook');
   const config = s.a.config(); config.line.publicUrl = '  https://new.example/base///  '; config.line.enabled = true;
@@ -129,6 +130,7 @@ test('public URL spaces are trimmed on save and on connect/test for legacy confi
 
 test('trimming an unchanged legacy HTTP URL still permits unrelated whole-config saves', async t => {
   const s = await setup(t, c => { c.line.publicUrl = '  http://old.example  '; });
+  assert.equal(s.a.lineStatus().warnings[1], 'Public URL must use HTTPS.');
   const config = s.a.config(); config.providers[0]!.label = 'Changed';
   assert.equal((await s.call('settings', 'PUT', { config })).status, 200);
   assert.equal(s.a.config().line.publicUrl, 'http://old.example');

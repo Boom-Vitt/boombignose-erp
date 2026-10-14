@@ -39,6 +39,7 @@ export function mountProviders(pane: HTMLElement, api: Api, currentAgent?: strin
 
     const cards = config.providers.map((p, index) => {
       const status = statuses[index]!;
+      const optionalKey = p.kind === 'openai-compatible' && (p.id === 'ollama' || new URL(p.baseUrl).port === '11434');
       const url = el('input', { type: 'url', value: p.baseUrl, autocomplete: 'off', spellcheck: 'false' });
       const ctx = el('input', { type: 'number', min: 1000, step: 1000, value: p.contextWindow ?? '' });
       const key = el('input', { type: 'password', autocomplete: 'new-password', placeholder: 'Paste a new key to replace it' });
@@ -61,7 +62,7 @@ export function mountProviders(pane: HTMLElement, api: Api, currentAgent?: strin
 
       const keyRow = p.apiKeyEnv
         ? el('div', { class: 'key-row' },
-            el('div', { class: 'key-state' }, status.note ? 'API key (optional): ' : 'API key: ', masked ? el('code', {}, masked) : el('span', { class: 'muted' }, 'not set')),
+            el('div', { class: 'key-state' }, optionalKey ? 'API key (optional): ' : 'API key: ', masked ? el('code', {}, masked) : el('span', { class: 'muted' }, 'not set')),
             field('Replace key', key),
             el('div', { class: 'actions' },
               btn('Save key', (b) => void guarded(async () => {

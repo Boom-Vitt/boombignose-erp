@@ -37,7 +37,8 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
         connectResult.replaceChildren(
           ...result.steps.map(s => el('p', { class: s.ok ? 'muted' : 'notice error' }, `${s.name === 'token' ? 'Token' : 'Webhook'}: ${s.ok ? 'ok' : 'failed'} — ${s.detail}`)),
           ...(result.bot ? [el('p', {}, `${result.bot.displayName} (${result.bot.basicId})`)] : []));
-        renderStatus(await api.lineStatus());
+        try { renderStatus(await api.lineStatus()); }
+        catch (e) { connectResult.append(el('p', { class: 'notice error' }, errMsg(e))); }
       } catch (e) { connectResult.replaceChildren(el('p', { class: 'notice error' }, errMsg(e))); }
     }, b));
     const test = btn('Test webhook', b => void guarded(async () => {

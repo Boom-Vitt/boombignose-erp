@@ -61,6 +61,22 @@ test('existing config avoids first-run discovery and keeps the saved model', asy
   assert.equal(app.config().active.model, 'saved'); assert.equal(app.runtime.store.listAgents()[0]!.model, 'saved');
 });
 
+test('an offline first launch never repicks the model after the default agent exists', async t => {
+  const home = testHome(t);
+  const first = await startDaemon({ home, fetchImpl: async () => { throw new Error('fake offline'); } });
+  t.after(() => first.close());
+  assert.equal(first.runtime.store.listAgents()[0]!.model, 'qwen3');
+  await first.close();
+  assert.equal(existsSync(join(home, 'config.json')), false);
+  let calls = 0;
+  const restarted = await startDaemon({ home, fetchImpl: async () => {
+    calls++; return Response.json({ data: [{ id: 'llama3.2:latest' }] });
+  } }); t.after(() => restarted.close());
+  assert.equal(restarted.config().active.model, restarted.runtime.store.listAgents()[0]!.model);
+  assert.equal(restarted.config().active.model, 'qwen3');
+  assert.equal(calls, 0);
+});
+
 test('first-run discovery has a two-second timeout', async t => {
   const home = testHome(t), started = Date.now();
   const app = await startDaemon({ home, fetchImpl: async (_, init) => {
@@ -79,6 +95,6 @@ test('doctor reports Ollama model count, context warning and note without requir
   assert.ok(report.lines.some(s => /warn Ollama is running a:1.*4096-token/.test(s)));
   assert.ok(report.lines.includes(`note ${OLLAMA_CONTEXT_NOTE}`)); assert.ok(!report.lines.some(s => /key is unset/.test(s)));
   const offline = await doctor(home, async () => { throw new Error('fake offline'); });
-  assert.equal(offline.code, 0); assert.ok(offline.lines.some(s => s.startsWith('warn Ollama is not running')));
+  assert.equal(offline.code, 0); assert.equal(offline.lines.filter(s => s.startsWith('warn Ollama is not running')).length, 1);
   assert.equal(existsSync(join(home, 'bignose.db')), false);
 });

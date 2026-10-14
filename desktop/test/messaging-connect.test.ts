@@ -72,6 +72,9 @@ test('Connect displays both successful steps and bot identity using the authenti
   assert.equal(call.method, 'POST'); assert.deepEqual(call.body, {});
   assert.equal(call.headers.Authorization, 'Bearer test-token');
   assert.equal(h.calls.filter(c => c.path === '/api/line/status').length, 2);
+  h.api.lineStatus = async () => { throw new Error('Status unavailable'); };
+  button(h.pane, 'Connect').fire('click'); await flush();
+  assert.match(result.textContent, /Token: ok.*Connected.*Webhook: ok.*Webhook set/);
 });
 
 for (const tokenOk of [true, false]) test(`Connect shows failed webhook and ${tokenOk ? 'successful' : 'failed'} token steps`, async t => {

@@ -710,7 +710,7 @@ export function ollamaWarnings(cfg: ProviderConfig, apiKey: string | undefined, 
   `Ollama is running <name> with a <n>-token context, below this provider's Context window (<cw>). Restart Ollama with OLLAMA_CONTEXT_LENGTH=<cw>, or set Context window to <n>.`
   A non-2xx answer, a body that is not the expected JSON, or no loaded model -> `[]`. It never throws. (Ollama only
   reports the context size of a loaded model; the note covers the rest.)
-- First run (daemon start, 13.6): with no config file yet and an Ollama active provider, the daemon lists Ollama's
+- First run (daemon start, 13.6): with no config file and no agents yet and an Ollama active provider, the daemon lists Ollama's
   models (2 s timeout). When the list has models and none is the active id or `<active id>:latest`, it sets
   `active.model` to the first listed id that starts with `<active id>:` (for example `qwen3:14b`), else to the first
   listed id, and saves the config before the default agent is created. Any failure keeps

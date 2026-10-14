@@ -32,7 +32,10 @@ export async function doctor(home = homeDir(), fetchImpl: typeof fetch = fetch):
     if (isOllama(provider)) {
       try { lines.push(`ok Ollama has ${(await listModels(provider, key, fetchImpl)).length} models`); }
       catch (e) { lines.push(`warn ${e instanceof Error ? e.message : String(e)}`); }
-      for (const warning of await ollamaWarnings(provider, key, fetchImpl)) lines.push(`warn ${warning}`);
+      for (const warning of await ollamaWarnings(provider, key, fetchImpl)) {
+        const line = `warn ${warning}`;
+        if (!lines.includes(line)) lines.push(line);
+      }
       lines.push(`note ${OLLAMA_CONTEXT_NOTE}`);
     } else lines.push(provider.apiKeyEnv && !getApiKey(config, provider.id, home) ? `warn active provider key is unset (${provider.apiKeyEnv})` : 'ok active provider');
     if (config.line.enabled) {

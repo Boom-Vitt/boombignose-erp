@@ -15,13 +15,15 @@ test('Providers loads model suggestions and Ollama note/warnings with an optiona
   const stored = structuredClone(config);
   stored.providers = [{ id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1/v1', apiKeyEnv: 'OLLAMA_API_KEY' },
     { id: 'remote', kind: 'anthropic', baseUrl: 'http://127.0.0.1:1' }];
+  let statusFailed = false;
   const pending = Promise.withResolvers<Response>(); const writes: any[] = [];
   const api = createApi({ port: 1, token: 'test-token', fetch: (async (url, init) => {
     const path = new URL(String(url)).pathname;
     if (path === '/api/settings') return json({ config: stored, secrets: {} });
-    if (path === '/api/agents') return json({ agents: [{ ...agent, provider: 'ollama' }] });
+    if (path === '/api/agents') return json({ agents: [{ ...agent, provider: stored.providers[0]!.id }] });
+    if (path.endsWith('/status') && statusFailed) return json({ error: 'Status unavailable' }, 500);
     if (path.endsWith('/status')) return json(path.includes('/ollama/') ? { note: 'Ollama context note', warnings: ['Small context'] } : { warnings: [] });
-    if (path === '/api/providers/ollama/models') return pending.promise;
+    if (path === `/api/providers/${stored.providers[0]!.id}/models`) return pending.promise;
     if (path === '/api/providers/remote/models') return json({ ok: false, models: [], error: 'No models' });
     if (init?.method === 'PATCH') { writes.push(JSON.parse(String(init.body))); return json(agent); }
     assert.fail(path);
@@ -37,4 +39,10 @@ test('Providers loads model suggestions and Ollama note/warnings with an optiona
   assert.equal(model.value, 'typed/custom'); assert.match(pane.textContent, /Couldn't load the model list: No models\. You can still type a model id\./);
   pane.querySelectorAll('button').find(b => b.textContent === 'Save')!.fire('click'); await flush();
   assert.deepEqual(writes, [{ provider: 'remote', model: 'typed/custom' }]);
+  statusFailed = true;
+  for (const [id, baseUrl] of [['ollama', 'http://127.0.0.1:1/v1'], ['local', 'http://127.0.0.1:11434/v1']]) {
+    Object.assign(stored.providers[0]!, { id, baseUrl });
+    mountProviders(pane as unknown as HTMLElement, api); await flush();
+    assert.ok(pane.textContent.includes('API key (optional): not set'));
+  }
 });
