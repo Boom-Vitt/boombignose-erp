@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { moneyInput } from "@/lib/payments/input"
 import { toast } from "sonner"
 
 import {
@@ -21,15 +22,6 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 
 import { SelectField, type Option } from "./form-fields"
-
-const STATUS_OPTIONS: Option[] = [
-  { value: "draft", label: "Draft" },
-  { value: "sent", label: "Sent" },
-  { value: "partially_paid", label: "Partially paid" },
-  { value: "paid", label: "Paid" },
-  { value: "overdue", label: "Overdue" },
-  { value: "cancelled", label: "Cancelled" },
-]
 
 const INTERVAL_OPTIONS: Option[] = [
   { value: "weekly", label: "Weekly" },
@@ -53,7 +45,7 @@ const Schema = z
     ]),
     issue_date: z.string().optional(),
     due_date: z.string().optional(),
-    amountBaht: z.coerce.number().min(0, "Amount must be 0 or more"),
+    amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter an exact THB amount with up to two decimals"),
     is_recurring: z.boolean(),
     recurring_interval: z
       .enum(["weekly", "monthly", "quarterly", "yearly"])
@@ -77,7 +69,7 @@ export type InvoiceFormValues = {
   status: Values["status"]
   issue_date: string
   due_date: string
-  amountBaht: number
+  amountBaht: string
   is_recurring: boolean
   recurring_interval?: Values["recurring_interval"]
   notes: string
@@ -161,12 +153,7 @@ export function InvoiceForm({
               </FormItem>
             )}
           />
-          <SelectField
-            name="status"
-            label="Status"
-            placeholder="Select status"
-            options={STATUS_OPTIONS}
-          />
+          <FormField control={form.control} name="status" render={({ field }) => <FormItem><FormLabel>Status</FormLabel><FormControl><Input {...field} readOnly /></FormControl><FormDescription>Payment status is derived from verified receipts. Use the issue action to issue a draft.</FormDescription></FormItem>} />
         </div>
 
         <div className="grid gap-5 sm:grid-cols-3">

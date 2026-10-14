@@ -55,4 +55,13 @@ describe("renderDocumentHtml", () => {
     const html = renderDocumentHtml({ ...doc, items: [] })
     expect(html).toContain("No line items.")
   })
+
+  it("shows verified receipts and outstanding separately from document total", () => {
+    const html = renderDocumentHtml({ ...doc, verifiedPaidSatang: 10001, outstandingSatang: 79999 })
+    expect(html).toContain("รับเงินที่ตรวจสอบแล้ว / Verified receipts")
+    expect(html).toContain("ยอดคงค้าง / Outstanding")
+    expect(html).toContain("100.01")
+    expect(html).toContain("799.99")
+    expect(html).toContain('lang="th"')
+  })
 })

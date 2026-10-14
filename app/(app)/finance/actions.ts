@@ -5,11 +5,11 @@ import { redirect } from "next/navigation"
 import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireCapability } from "@/lib/auth"
-import { bahtToSatang, formatTHBWhole } from "@/lib/money"
+import { requireOrgContext, requireCapability, requireRole } from "@/lib/auth"
+import { formatTHBWhole } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
-import { paymentAmount } from "@/lib/payments/input"
+import { paymentAmount, moneyInput } from "@/lib/payments/input"
 import { nextDocumentNumber } from "@/lib/documents/numbering"
 
 const INVOICE_STATUSES = [
@@ -62,7 +62,7 @@ const CreateInvoice = z.object({
   status: z.enum(INVOICE_STATUSES).default("draft"),
   issue_date: optionalDate,
   due_date: optionalDate,
-  amountBaht: z.coerce.number().min(0, "Amount must be 0 or more"),
+  amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter a nonnegative THB amount with up to two decimals"),
   is_recurring: z.coerce.boolean().default(false),
   recurring_interval: z.enum(RECURRING_INTERVALS).nullish(),
   notes: optionalString,
@@ -72,6 +72,8 @@ export async function createInvoice(
   input: z.input<typeof CreateInvoice>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try { requireRole(ctx, ["owner", "admin"]) }
+  catch { return { error: "Only owners and admins can manage invoices." } }
   const parsed = CreateInvoice.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
@@ -106,7 +108,7 @@ export async function createInvoice(
       status: d.status,
       issue_date: d.issue_date ?? undefined,
       due_date: d.due_date,
-      amount_satang: bahtToSatang(d.amountBaht),
+      amount_satang: moneyInput(d.amountBaht),
       is_recurring: d.is_recurring,
       recurring_interval: d.is_recurring ? (d.recurring_interval ?? null) : null,
       notes: d.notes,
@@ -120,7 +122,7 @@ export async function createInvoice(
     entity: "invoice",
     entityId: data.id,
     action: "created",
-    summary: `Created invoice ${number} for ${formatTHBWhole(bahtToSatang(d.amountBaht))}`,
+    summary: `Created invoice ${number} for ${formatTHBWhole(moneyInput(d.amountBaht))}`,
   })
 
   revalidatePath("/finance")
@@ -137,7 +139,7 @@ const UpdateInvoice = z.object({
   status: z.enum(INVOICE_STATUSES),
   issue_date: optionalDate,
   due_date: optionalDate,
-  amountBaht: z.coerce.number().min(0, "Amount must be 0 or more"),
+  amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter a nonnegative THB amount with up to two decimals"),
   is_recurring: z.coerce.boolean(),
   recurring_interval: z.enum(RECURRING_INTERVALS).nullish(),
   notes: optionalString,
@@ -147,6 +149,8 @@ export async function updateInvoice(
   input: z.input<typeof UpdateInvoice>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try { requireRole(ctx, ["owner", "admin"]) }
+  catch { return { error: "Only owners and admins can manage invoices." } }
   const parsed = UpdateInvoice.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
@@ -161,7 +165,7 @@ export async function updateInvoice(
       status: d.status,
       issue_date: d.issue_date ?? undefined,
       due_date: d.due_date,
-      amount_satang: bahtToSatang(d.amountBaht),
+      amount_satang: moneyInput(d.amountBaht),
       is_recurring: d.is_recurring,
       recurring_interval: d.is_recurring ? (d.recurring_interval ?? null) : null,
       notes: d.notes,
@@ -180,18 +184,65 @@ export async function updateInvoice(
 // Payments (with invoice status recompute)
 // ---------------------------------------------------------------------------
 
-// Manual settlement is disabled until its evidence command is supplied.
-// Customer reports are reviewed through reviewPaymentClaim, atomically in Postgres.
-export async function recordPayment(input: unknown): Promise<{ error?: string }> {
-  void input
-  return { error: "Use the payment claim verification queue and provide matching receipt evidence." }
+const StaffClaim = z.object({
+  invoiceId: z.guid(), key: z.uuid(), amountBaht: z.string(),
+  reference: z.string().trim().min(3).max(500),
+})
+
+/** Compatibility name: reporting a payment creates a pending claim, never cash. */
+export async function recordPayment(input: z.input<typeof StaffClaim>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "payment:verify") }
+  catch { return { error: "Only owners and admins can report staff payment claims." } }
+  const parsed = StaffClaim.safeParse(input)
+  if (!parsed.success) return { error: "Invalid payment report" }
+  const d = parsed.data
+  let amount: number
+  try { amount = paymentAmount(d.amountBaht) }
+  catch { return { error: "Enter a valid positive THB amount with up to two decimals" } }
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.rpc("submit_internal_payment_claim", {
+    p_org_id: ctx.orgId, p_invoice_id: d.invoiceId, p_amount_satang: amount,
+    p_reference: d.reference, p_key: d.key,
+  })
+  if (error) return { error: error.message }
+  revalidatePath("/finance")
+  revalidatePath(`/finance/invoices/${d.invoiceId}`)
+  return {}
+}
+
+const EvidenceFields = {
+  paidOn: z.iso.date().refine(value => value <= todayISO(), "Bank date cannot be in the future").optional(),
+  method: z.enum(["transfer", "cash", "card", "promptpay", "cheque", "other"]).optional(),
+}
+const ReconcileLegacy = StaffClaim.extend({ legacyPaymentId: z.guid(), ...EvidenceFields }).refine(value => !!value.paidOn === !!value.method, "Provide bank date and payment method together")
+
+export async function reconcileLegacyPayment(input: z.input<typeof ReconcileLegacy>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "payment:verify") }
+  catch { return { error: "Only owners and admins can reconcile legacy receipts." } }
+  const parsed = ReconcileLegacy.safeParse(input)
+  if (!parsed.success) return { error: "Invalid reconciliation details" }
+  const d = parsed.data
+  let amount: number
+  try { amount = paymentAmount(d.amountBaht) }
+  catch { return { error: "Enter a valid positive THB amount with up to two decimals" } }
+  const supabase = await createSupabaseClient()
+  const args = { p_org_id: ctx.orgId, p_legacy_payment_id: d.legacyPaymentId, p_amount_satang: amount, p_reference: d.reference, p_key: d.key }
+  const { error } = d.paidOn && d.method
+    ? await supabase.rpc("reconcile_legacy_payment_with_evidence", { ...args, p_paid_on: d.paidOn, p_method: d.method })
+    : await supabase.rpc("reconcile_legacy_payment", args)
+  if (error) return { error: error.message }
+  revalidatePath("/finance")
+  revalidatePath(`/finance/invoices/${d.invoiceId}`)
+  return {}
 }
 
 const ReviewClaim = z.object({
   claimId: z.guid(), invoiceId: z.guid(), key: z.uuid(),
   amountBaht: z.string(), reference: z.string().trim().min(3).max(500),
-  decision: z.enum(["verified", "rejected"]),
-})
+  decision: z.enum(["verified", "rejected"]), ...EvidenceFields,
+}).refine(value => !!value.paidOn === !!value.method, "Provide bank date and payment method together")
 
 export async function reviewPaymentClaim(input: z.input<typeof ReviewClaim>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
@@ -205,10 +256,10 @@ export async function reviewPaymentClaim(input: z.input<typeof ReviewClaim>): Pr
   catch { return { error: "Enter a valid positive THB amount" } }
   const supabase = await createSupabaseClient()
   // invoiceId is only used for revalidation; the DB resolves the actual claim's invoice.
-  const { error } = await supabase.rpc("review_payment_claim", {
-    p_org_id: ctx.orgId, p_claim_id: d.claimId, p_key: d.key,
-    p_amount_satang: amount, p_reference: d.reference, p_decision: d.decision,
-  })
+  const args = { p_org_id: ctx.orgId, p_claim_id: d.claimId, p_key: d.key, p_amount_satang: amount, p_reference: d.reference, p_decision: d.decision }
+  const { error } = d.paidOn && d.method
+    ? await supabase.rpc("review_payment_claim_with_evidence", { ...args, p_paid_on: d.paidOn, p_method: d.method })
+    : await supabase.rpc("review_payment_claim", args)
   if (error) return { error: error.message }
   revalidatePath("/finance")
   revalidatePath(`/finance/invoices/${d.invoiceId}`)
@@ -221,7 +272,7 @@ export async function reviewPaymentClaim(input: z.input<typeof ReviewClaim>): Pr
 
 const CreateCost = z.object({
   category: z.enum(COST_CATEGORIES).default("other"),
-  amountBaht: z.coerce.number().min(0, "Amount must be 0 or more"),
+  amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter a nonnegative THB amount with up to two decimals"),
   incurred_on: optionalDate,
   vendor: optionalString,
   project_id: optionalId,
@@ -242,7 +293,7 @@ export async function createCost(
     .insert({
       org_id: ctx.orgId,
       category: d.category,
-      amount_satang: bahtToSatang(d.amountBaht),
+      amount_satang: moneyInput(d.amountBaht),
       incurred_on: d.incurred_on ?? undefined,
       vendor: d.vendor,
       project_id: d.project_id,
@@ -257,7 +308,7 @@ export async function createCost(
     entity: "cost",
     entityId: cost.id,
     action: "created",
-    summary: `Recorded ${formatTHBWhole(bahtToSatang(d.amountBaht))} ${d.category} cost`,
+    summary: `Recorded ${formatTHBWhole(moneyInput(d.amountBaht))} ${d.category} cost`,
     meta: { category: d.category, vendor: d.vendor ?? null },
   })
 
@@ -289,5 +340,44 @@ export async function deleteCost(
   if (error) return { error: error.message }
 
   revalidatePath("/finance")
+  return {}
+}
+
+const IssueInvoice = z.object({ invoiceId: z.guid(), expectedVersion: z.number().int().min(1).max(2147483647), key: z.uuid() })
+export async function issueInvoice(input: z.input<typeof IssueInvoice>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireRole(ctx, ["owner", "admin"]) }
+  catch { return { error: "Only owners and admins can issue invoices." } }
+  const parsed = IssueInvoice.safeParse(input)
+  if (!parsed.success) return { error: "Invalid issue request" }
+  const d = parsed.data
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.rpc("issue_invoice", { p_org_id: ctx.orgId, p_invoice_id: d.invoiceId, p_expected_version: d.expectedVersion, p_key: d.key })
+  if (error) return { error: error.message }
+  revalidatePath("/finance")
+  revalidatePath(`/finance/invoices/${d.invoiceId}`)
+  return {}
+}
+
+const BusinessProfile = z.object({
+  expectedOrgId: z.guid(),
+  legalName: z.string().trim().min(1).max(200), address: z.string().trim().min(1).max(1000),
+  taxId: z.string().trim().refine(value => value === "" || /^[0-9]{13}$/.test(value), "Enter a 13-digit tax ID or leave it blank"), taxStatus: z.enum(["unknown", "not_registered", "registered"]),
+}).refine(value => value.taxStatus !== "registered" || value.taxId.length === 13, "Registered VAT profile needs a tax ID")
+export async function updateBusinessProfile(input: z.input<typeof BusinessProfile>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireRole(ctx, ["owner", "admin"]) }
+  catch { return { error: "Only owners and admins can update the business profile." } }
+  const parsed = BusinessProfile.safeParse(input)
+  if (!parsed.success) return { error: "Enter the legal business name, address and explicit tax status." }
+  const d = parsed.data
+  if (d.expectedOrgId !== ctx.orgId) return { error: "Workspace changed. Reload this form before saving the business profile." }
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.rpc("update_business_profile", {
+    p_org_id: ctx.orgId, p_legal_name: d.legalName, p_business_address: d.address,
+    p_tax_id: d.taxId, p_tax_status: d.taxStatus,
+  })
+  if (error) return { error: error.message }
+  revalidatePath("/finance/business-profile")
   return {}
 }

@@ -16,12 +16,13 @@ import type { Option } from "../../_components/form-fields"
 export const dynamic = "force-dynamic"
 
 export default async function NewCostPage() {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const projectsRes = await supabase
     .from("projects")
     .select("id, name")
+    .eq("org_id", ctx.orgId)
     .order("name")
 
   const projects: Option[] = (projectsRes.data ?? []).map((p) => ({

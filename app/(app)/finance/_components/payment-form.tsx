@@ -1,126 +1,62 @@
 "use client"
 
+import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
 import { toast } from "sonner"
-
-import {
-  Form,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormMessage,
-} from "@/components/ui/form"
+import type { Enums } from "@/lib/types/database"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { paymentAmount } from "@/lib/payments/input"
+import { paymentCommandKey } from "@/lib/payments/retry-command"
+import { recordPayment, reconcileLegacyPayment } from "../actions"
 
-import { recordPayment } from "../actions"
-import { SelectField, type Option } from "./form-fields"
-
-const METHOD_OPTIONS: Option[] = [
-  { value: "transfer", label: "Bank transfer" },
-  { value: "promptpay", label: "PromptPay" },
-  { value: "cash", label: "Cash" },
-  { value: "card", label: "Card" },
-  { value: "cheque", label: "Cheque" },
-  { value: "other", label: "Other" },
-]
-
-const Schema = z.object({
-  amountBaht: z.coerce.number().positive("Amount must be greater than 0"),
-  paid_at: z.string().optional(),
-  method: z.enum(["transfer", "cash", "card", "promptpay", "cheque", "other"]),
-})
-
-type Values = z.infer<typeof Schema>
-
-export function PaymentForm({
-  invoiceId,
-  today,
-  suggestedBaht,
-}: {
-  invoiceId: string
-  today: string
-  suggestedBaht: number
+/** Bank reports stay pending. Legacy matching creates a new linked receipt. */
+export function PaymentForm({ orgId, invoiceId, suggestedBaht, legacyPaymentId, today }: {
+  orgId: string; invoiceId: string; suggestedBaht: string; legacyPaymentId?: string; today: string
 }) {
   const router = useRouter()
-  const form = useForm<z.input<typeof Schema>, unknown, Values>({
-    resolver: zodResolver(Schema),
-    defaultValues: {
-      amountBaht: suggestedBaht,
-      paid_at: today,
-      method: "transfer",
-    },
-  })
+  const [amount, setAmount] = useState(suggestedBaht)
+  const [paidOn, setPaidOn] = useState(today)
+  const [method, setMethod] = useState<Enums<"payment_method">>("transfer")
+  const [reference, setReference] = useState("")
+  const [confirmed, setConfirmed] = useState(false)
+  const [pending, startTransition] = useTransition()
+  const command = useRef<{ details: string; key: string } | null>(null)
+  const scope = `${orgId}/${invoiceId}/${legacyPaymentId ?? "staff-report"}`
+  const reconcile = !!legacyPaymentId
 
-  return (
-    <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(async (values) => {
-          const res = await recordPayment({ invoice_id: invoiceId, ...values })
-          if (res?.error) {
-            toast.error(res.error)
-            return
-          }
-          toast.success("Payment recorded")
-          form.reset({ amountBaht: 0, paid_at: today, method: values.method })
-          router.refresh()
-        })}
-        className="space-y-4"
-      >
-        <div className="grid gap-4 sm:grid-cols-3">
-          <FormField
-            control={form.control}
-            name="amountBaht"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Amount (฿)</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    name={field.name}
-                    ref={field.ref}
-                    onBlur={field.onBlur}
-                    value={(field.value ?? "") as number | string}
-                    onChange={field.onChange}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="paid_at"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Paid at</FormLabel>
-                <FormControl>
-                  <Input type="date" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <SelectField
-            name="method"
-            label="Method"
-            placeholder="Select method"
-            options={METHOD_OPTIONS}
-          />
-        </div>
-        <div className="flex justify-end">
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            Record payment
-          </Button>
-        </div>
-      </form>
-    </Form>
-  )
+  function submit() {
+    try { paymentAmount(amount) } catch { toast.error("Enter a positive THB amount with up to two decimals"); return }
+    if (reference.trim().length < 3 || (reconcile && !confirmed)) return
+    const details = JSON.stringify([amount, reference.trim(), ...(reconcile ? [paidOn, method] : [])])
+    if (command.current?.details !== details) {
+      let key: string
+      try { key = paymentCommandKey(sessionStorage, scope, [amount, reference.trim(), ...(reconcile ? [paidOn, method] : [])], () => crypto.randomUUID()) }
+      catch { key = crypto.randomUUID() }
+      command.current = { details, key }
+    }
+    const key = command.current.key
+    startTransition(async () => {
+      try {
+        const input = { invoiceId, amountBaht: amount, reference: reference.trim(), key }
+        const result = legacyPaymentId
+          ? await reconcileLegacyPayment({ ...input, legacyPaymentId, paidOn, method })
+          : await recordPayment(input)
+        if (result.error) { toast.error(result.error); return }
+        toast.success(reconcile ? "สร้างใบรับเงินที่ตรวจสอบแล้ว / Legacy receipt reconciled" : "รอตรวจสอบ / Payment claim submitted")
+        router.refresh()
+      } catch { toast.error("Could not confirm the response. Retry unchanged details to recover the original result.") }
+    })
+  }
+  return <div className="space-y-3">
+    <label className="block text-sm">{reconcile ? "Verified legacy amount (THB)" : "Reported amount (THB)"}
+      <Input inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} disabled={pending} />
+    </label>
+    <label className="block text-sm">{reconcile ? "Legacy bank evidence reference" : "Staff payment report reference"}
+      <Input value={reference} onChange={event => setReference(event.target.value)} maxLength={500} disabled={pending} placeholder="Statement transaction or receipt reference" />
+    </label>
+    {reconcile ? <><label className="block text-sm">Legacy bank receipt date<Input disabled={pending} type="date" max={today} value={paidOn} onChange={event=>setPaidOn(event.target.value)} /></label><label className="block text-sm">Legacy receipt method<select disabled={pending} className="block w-full rounded border p-2 bg-background" value={method} onChange={event=>setMethod(event.target.value as Enums<"payment_method">)}>{["transfer","promptpay","cash","card","cheque","other"].map(value=><option key={value} value={value}>{value}</option>)}</select></label></> : null}
+    {reconcile ? <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={pending} />I matched this retained receipt to actual bank evidence. A new verified receipt will be linked; the original stays in the history.</label> : <p className="text-xs text-muted-foreground">บันทึกคำแจ้งชำระ รอเจ้าหน้าที่ตรวจสอบ / This report has no effect on received cash until verified.</p>}
+    <Button onClick={submit} disabled={pending || reference.trim().length < 3 || (reconcile && !confirmed)}>{reconcile ? "Reconcile legacy receipt" : "Report payment for verification"}</Button>
+  </div>
 }
