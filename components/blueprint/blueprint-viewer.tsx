@@ -31,12 +31,26 @@ export function BlueprintViewer({ model }: { model: BlueprintSceneModel }) {
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
     const initialReduced = mq.matches
-    const onMotionChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
+    const onMotionChange = (e: MediaQueryListEvent) => {
+      setReducedMotion(e.matches)
+      engineRef.current?.setReducedMotion(e.matches)
+    }
     mq.addEventListener("change", onMotionChange)
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedId(null)
+        engineRef.current?.selectAssembly(null)
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
 
     const host = hostRef.current
     if (!host) {
-      return () => mq.removeEventListener("change", onMotionChange)
+      return () => {
+        mq.removeEventListener("change", onMotionChange)
+        window.removeEventListener("keydown", onKeyDown)
+      }
     }
 
     const engine = createBlueprintEngine(host, model, {
@@ -59,19 +73,12 @@ export function BlueprintViewer({ model }: { model: BlueprintSceneModel }) {
       return () => {
         window.clearTimeout(initTimer)
         mq.removeEventListener("change", onMotionChange)
+        window.removeEventListener("keydown", onKeyDown)
       }
     }
 
     engineRef.current = engine
     engine.selectAssembly("01-crm-deals")
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSelectedId(null)
-        engine.selectAssembly(null)
-      }
-    }
-    window.addEventListener("keydown", onKeyDown)
 
     return () => {
       window.clearTimeout(initTimer)
@@ -545,7 +552,7 @@ export function BlueprintViewer({ model }: { model: BlueprintSceneModel }) {
               <span>UNIT: SATANG BIGINT (100 = 1 THB)</span>
             </div>
             <p className="mt-1">
-              Operational layer for service workflows; 15 registered sidebar routes and 25 SQL migrations.
+              Operational layer for service workflows; Postgres Row Level Security on every tenant table.
             </p>
           </footer>
         </div>

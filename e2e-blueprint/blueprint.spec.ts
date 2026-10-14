@@ -120,6 +120,9 @@ test("no WebGL shows the fallback with all text", async ({ page }) => {
 
   await page.getByTestId("callout-05").click()
   await expect(page.getByTestId("detail-rule-en")).toContainText("pending-only")
+
+  await page.keyboard.press("Escape")
+  await expect(page.getByTestId("detail-title")).toHaveCount(0)
 })
 
 test("no horizontal overflow at 375px", async ({ page }) => {

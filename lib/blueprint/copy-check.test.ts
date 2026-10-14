@@ -38,7 +38,11 @@ const BANNED_PHRASES: RegExp[] = [
 const FORBIDDEN_CLAIMS: { label: string; pattern: RegExp }[] = [
   {
     label: "tax/statutory compliance",
-    pattern: /\b(tax[- ]compliant|statutory[- ]compliant|statutory tax invoice|ใบกำกับภาษีเต็มรูป)\b/i,
+    pattern: /\b(tax[- ]compliant|statutory[- ]compliant|statutory tax invoice)\b/i,
+  },
+  {
+    label: "tax/statutory compliance (Thai)",
+    pattern: /ใบกำกับภาษีเต็มรูป/,
   },
   {
     label: "Odoo parity",
@@ -62,7 +66,11 @@ const FORBIDDEN_CLAIMS: { label: string; pattern: RegExp }[] = [
   },
   {
     label: "LINE sending from the ERP",
-    pattern: /\b(sends?\s+line\s+messages?|line\s+messaging\s+built[- ]in|ส่ง\s*line\s*จากระบบ)\b/i,
+    pattern: /\b(sends?\s+line\s+messages?|line\s+messaging\s+built[- ]in)\b/i,
+  },
+  {
+    label: "LINE sending from the ERP (Thai)",
+    pattern: /ส่ง\s*line\s*จากระบบ/i,
   },
   {
     label: "Live campus",

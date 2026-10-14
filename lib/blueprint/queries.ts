@@ -1,17 +1,30 @@
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import type { Enums } from "@/lib/types/database"
 import type { BlueprintOrgSummary } from "./scene-data"
 
-const ACTIVE_PROJECT_STATUSES = new Set([
+const ACTIVE_PROJECT_STATUSES: Enums<"project_status">[] = [
   "not_started",
   "in_progress",
   "review",
   "support",
-])
+]
+
+const OPEN_QUOTE_STATUSES: Enums<"quote_status">[] = [
+  "draft",
+  "sent",
+  "accepted",
+]
+
+const ACCEPTED_OR_CONVERTED_QUOTE_STATUSES: Enums<"quote_status">[] = [
+  "accepted",
+  "converted",
+]
 
 /**
- * Fetches aggregate counts and status totals for the signed-in user's active
- * organization via RLS. Never reads names, emails, notes, or personal data.
+ * Fetches exact head counts and status totals for the signed-in user's active
+ * organization via RLS (`{ count: "exact", head: true }`), avoiding PostgREST
+ * row-fetch caps (`max_rows = 1000`). Never reads names, emails, notes, or personal data.
  */
 export async function getBlueprintOrgSummary(): Promise<BlueprintOrgSummary> {
   const ctx = await requireOrgContext()
@@ -19,102 +32,109 @@ export async function getBlueprintOrgSummary(): Promise<BlueprintOrgSummary> {
   const orgId = ctx.orgId
 
   const [
-    clientsRes,
-    dealsRes,
-    quotesRes,
-    projectsRes,
-    milestonesRes,
-    timeEntriesRes,
-    invoicesRes,
-    claimsRes,
-    paymentsRes,
-    allocationsRes,
-    subscriptionsRes,
-    outboundRes,
-    aiOutputsRes,
-    membershipsRes,
+    clientsTotalRes,
+    dealsTotalRes,
+    dealsWonRes,
+    dealsOpenRes,
+    quotesTotalRes,
+    quotesAcceptedOrConvertedRes,
+    quotesOpenRes,
+    projectsTotalRes,
+    projectsActiveRes,
+    milestonesTotalRes,
+    milestonesDoneRes,
+    timeEntriesTotalRes,
+    invoicesTotalRes,
+    invoicesIssuedRes,
+    invoicesPaidRes,
+    paymentClaimsPendingRes,
+    paymentClaimsVerifiedRes,
+    paymentsVerifiedRes,
+    paymentAllocationsTotalRes,
+    subscriptionsActiveRes,
+    outboundEventsQueuedRes,
+    outboundEventsDeliveredRes,
+    aiOutputsCachedRes,
   ] = await Promise.all([
-    supabase.from("clients").select("id").eq("org_id", orgId),
-    supabase.from("deals").select("stage").eq("org_id", orgId),
-    supabase.from("quotes").select("status").eq("org_id", orgId),
-    supabase.from("projects").select("status").eq("org_id", orgId),
-    supabase.from("milestones").select("done").eq("org_id", orgId),
-    supabase.from("time_entries").select("id").eq("org_id", orgId),
-    supabase.from("invoices").select("status,issued_snapshot_id").eq("org_id", orgId),
-    supabase.from("payment_claims").select("status").eq("org_id", orgId),
-    supabase.from("payments").select("verification_state").eq("org_id", orgId),
-    supabase.from("payment_allocations").select("id").eq("org_id", orgId),
-    supabase.from("subscriptions").select("status").eq("org_id", orgId),
-    supabase.from("outbound_events").select("status").eq("org_id", orgId),
-    supabase.from("ai_outputs").select("kind").eq("org_id", orgId),
-    supabase.from("memberships").select("role").eq("org_id", orgId),
+    supabase.from("clients").select("id", { count: "exact", head: true }).eq("org_id", orgId),
+    supabase.from("deals").select("id", { count: "exact", head: true }).eq("org_id", orgId),
+    supabase.from("deals").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("stage", "won"),
+    supabase.from("deals").select("id", { count: "exact", head: true }).eq("org_id", orgId).not("stage", "in", "(won,lost)"),
+    supabase.from("quotes").select("id", { count: "exact", head: true }).eq("org_id", orgId),
+    supabase.from("quotes").select("id", { count: "exact", head: true }).eq("org_id", orgId).in("status", ACCEPTED_OR_CONVERTED_QUOTE_STATUSES),
+    supabase.from("quotes").select("id", { count: "exact", head: true }).eq("org_id", orgId).in("status", OPEN_QUOTE_STATUSES),
+    supabase.from("projects").select("id", { count: "exact", head: true }).eq("org_id", orgId),
+    supabase.from("projects").select("id", { count: "exact", head: true }).eq("org_id", orgId).in("status", ACTIVE_PROJECT_STATUSES),
+    supabase.from("milestones").select("id", { count: "exact", head: true }).eq("org_id", orgId),
+    supabase.from("milestones").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("done", true),
+    supabase.from("time_entries").select("id", { count: "exact", head: true }).eq("org_id", orgId),
+    supabase.from("invoices").select("id", { count: "exact", head: true }).eq("org_id", orgId),
+    supabase.from("invoices").select("id", { count: "exact", head: true }).eq("org_id", orgId).not("issued_snapshot_id", "is", null),
+    supabase.from("invoices").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "paid"),
+    supabase.from("payment_claims").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "pending"),
+    supabase.from("payment_claims").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "verified"),
+    supabase.from("payments").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("verification_state", "verified"),
+    supabase.from("payment_allocations").select("id", { count: "exact", head: true }).eq("org_id", orgId),
+    supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "active"),
+    supabase.from("outbound_events").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "queued"),
+    supabase.from("outbound_events").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "delivered"),
+    supabase.from("ai_outputs").select("id", { count: "exact", head: true }).eq("org_id", orgId),
   ])
 
   const results = [
-    clientsRes,
-    dealsRes,
-    quotesRes,
-    projectsRes,
-    milestonesRes,
-    timeEntriesRes,
-    invoicesRes,
-    claimsRes,
-    paymentsRes,
-    allocationsRes,
-    subscriptionsRes,
-    outboundRes,
-    aiOutputsRes,
-    membershipsRes,
+    clientsTotalRes,
+    dealsTotalRes,
+    dealsWonRes,
+    dealsOpenRes,
+    quotesTotalRes,
+    quotesAcceptedOrConvertedRes,
+    quotesOpenRes,
+    projectsTotalRes,
+    projectsActiveRes,
+    milestonesTotalRes,
+    milestonesDoneRes,
+    timeEntriesTotalRes,
+    invoicesTotalRes,
+    invoicesIssuedRes,
+    invoicesPaidRes,
+    paymentClaimsPendingRes,
+    paymentClaimsVerifiedRes,
+    paymentsVerifiedRes,
+    paymentAllocationsTotalRes,
+    subscriptionsActiveRes,
+    outboundEventsQueuedRes,
+    outboundEventsDeliveredRes,
+    aiOutputsCachedRes,
   ]
 
   if (results.some((r) => r.error)) {
     throw new Error("Unable to load blueprint summary data.")
   }
 
-  const clients = clientsRes.data ?? []
-  const deals = dealsRes.data ?? []
-  const quotes = quotesRes.data ?? []
-  const projects = projectsRes.data ?? []
-  const milestones = milestonesRes.data ?? []
-  const timeEntries = timeEntriesRes.data ?? []
-  const invoices = invoicesRes.data ?? []
-  const claims = claimsRes.data ?? []
-  const payments = paymentsRes.data ?? []
-  const allocations = allocationsRes.data ?? []
-  const subscriptions = subscriptionsRes.data ?? []
-  const outbound = outboundRes.data ?? []
-  const aiOutputs = aiOutputsRes.data ?? []
-  const memberships = membershipsRes.data ?? []
-
   return {
     orgRole: ctx.role,
-    clientsTotal: clients.length,
-    dealsTotal: deals.length,
-    dealsWon: deals.filter((d) => d.stage === "won").length,
-    dealsOpen: deals.filter((d) => d.stage !== "won" && d.stage !== "lost").length,
-    quotesTotal: quotes.length,
-    quotesAcceptedOrConverted: quotes.filter(
-      (q) => q.status === "accepted" || q.status === "converted"
-    ).length,
-    quotesOpen: quotes.filter(
-      (q) => q.status === "draft" || q.status === "sent" || q.status === "accepted"
-    ).length,
-    projectsTotal: projects.length,
-    projectsActive: projects.filter((p) => ACTIVE_PROJECT_STATUSES.has(p.status)).length,
-    milestonesTotal: milestones.length,
-    milestonesDone: milestones.filter((m) => m.done).length,
-    timeEntriesTotal: timeEntries.length,
-    invoicesTotal: invoices.length,
-    invoicesIssued: invoices.filter((i) => i.issued_snapshot_id !== null).length,
-    invoicesPaid: invoices.filter((i) => i.status === "paid").length,
-    paymentClaimsPending: claims.filter((c) => c.status === "pending").length,
-    paymentClaimsVerified: claims.filter((c) => c.status === "verified").length,
-    paymentsVerified: payments.filter((p) => p.verification_state === "verified").length,
-    paymentAllocationsTotal: allocations.length,
-    subscriptionsActive: subscriptions.filter((s) => s.status === "active").length,
-    outboundEventsQueued: outbound.filter((o) => o.status === "queued").length,
-    outboundEventsDelivered: outbound.filter((o) => o.status === "delivered").length,
-    aiOutputsCached: aiOutputs.length,
-    membershipsTotal: memberships.length,
+    clientsTotal: clientsTotalRes.count ?? 0,
+    dealsTotal: dealsTotalRes.count ?? 0,
+    dealsWon: dealsWonRes.count ?? 0,
+    dealsOpen: dealsOpenRes.count ?? 0,
+    quotesTotal: quotesTotalRes.count ?? 0,
+    quotesAcceptedOrConverted: quotesAcceptedOrConvertedRes.count ?? 0,
+    quotesOpen: quotesOpenRes.count ?? 0,
+    projectsTotal: projectsTotalRes.count ?? 0,
+    projectsActive: projectsActiveRes.count ?? 0,
+    milestonesTotal: milestonesTotalRes.count ?? 0,
+    milestonesDone: milestonesDoneRes.count ?? 0,
+    timeEntriesTotal: timeEntriesTotalRes.count ?? 0,
+    invoicesTotal: invoicesTotalRes.count ?? 0,
+    invoicesIssued: invoicesIssuedRes.count ?? 0,
+    invoicesPaid: invoicesPaidRes.count ?? 0,
+    paymentClaimsPending: paymentClaimsPendingRes.count ?? 0,
+    paymentClaimsVerified: paymentClaimsVerifiedRes.count ?? 0,
+    paymentsVerified: paymentsVerifiedRes.count ?? 0,
+    paymentAllocationsTotal: paymentAllocationsTotalRes.count ?? 0,
+    subscriptionsActive: subscriptionsActiveRes.count ?? 0,
+    outboundEventsQueued: outboundEventsQueuedRes.count ?? 0,
+    outboundEventsDelivered: outboundEventsDeliveredRes.count ?? 0,
+    aiOutputsCached: aiOutputsCachedRes.count ?? 0,
   }
 }

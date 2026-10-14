@@ -16,6 +16,7 @@ export interface ProjectedAnchor {
 export interface BlueprintEngine {
   setSheet(sheetIndex: number): void
   setExploded(exploded: boolean): void
+  setReducedMotion(reduced: boolean): void
   selectAssembly(id: AssemblyId | null): void
   dispose(): void
 }
@@ -32,11 +33,15 @@ export function canCreateWebGLContext(): boolean {
   if (typeof document === "undefined") return false
   try {
     const probe = document.createElement("canvas")
-    const gl =
-      probe.getContext("webgl2") ||
+    const gl = (probe.getContext("webgl2") ||
       probe.getContext("webgl") ||
-      probe.getContext("experimental-webgl")
-    return Boolean(gl)
+      probe.getContext("experimental-webgl")) as
+      | WebGLRenderingContext
+      | WebGL2RenderingContext
+      | null
+    if (!gl) return false
+    gl.getExtension("WEBGL_lose_context")?.loseContext()
+    return true
   } catch {
     return false
   }
@@ -278,7 +283,8 @@ export function createBlueprintEngine(
   machineRoot.add(tokenGroup)
 
   let selectedId: AssemblyId | null = null
-  let currentExplode = opts.reducedMotion ? 1 : 1
+  let isReducedMotion = opts.reducedMotion
+  let currentExplode = isReducedMotion ? 1 : 1
   let targetExplode = 1
 
   const currentCamPos = new THREE.Vector3(...model.sheets[0]!.cameraPosition)
@@ -409,7 +415,7 @@ export function createBlueprintEngine(
   let anchorEmitTimer = 0
 
   function shouldAnimate() {
-    return !opts.reducedMotion && isVisible && isPageVisible
+    return !isReducedMotion && isVisible && isPageVisible
   }
 
   function tick(now = performance.now()) {
@@ -494,7 +500,7 @@ export function createBlueprintEngine(
       targetCamPos.set(...sheet.cameraPosition)
       targetCamTarget.set(...sheet.cameraTarget)
       targetZoom = sheet.cameraZoom
-      if (opts.reducedMotion) {
+      if (isReducedMotion) {
         currentExplode = targetExplode
         currentCamPos.copy(targetCamPos)
         currentCamTarget.copy(targetCamTarget)
@@ -507,12 +513,24 @@ export function createBlueprintEngine(
     },
     setExploded(exploded: boolean) {
       targetExplode = exploded ? 1 : 0
-      if (opts.reducedMotion) {
+      if (isReducedMotion) {
         currentExplode = targetExplode
         const c = applyPositions(currentExplode)
         renderOnce(c, 0)
       } else {
         ensureLoopState()
+      }
+    },
+    setReducedMotion(reduced: boolean) {
+      isReducedMotion = reduced
+      ensureLoopState()
+      if (isReducedMotion) {
+        currentExplode = targetExplode
+        currentCamPos.copy(targetCamPos)
+        currentCamTarget.copy(targetCamTarget)
+        currentZoom = targetZoom
+        const c = applyPositions(currentExplode)
+        renderOnce(c, 0)
       }
     },
     selectAssembly(id: AssemblyId | null) {
@@ -556,6 +574,7 @@ export function createBlueprintEngine(
       geometries.forEach((g) => g.dispose())
       materials.forEach((m) => m.dispose())
       gradientMap.dispose()
+      renderer.forceContextLoss()
       renderer.dispose()
       renderer.domElement.remove()
     },

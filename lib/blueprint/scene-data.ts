@@ -47,7 +47,6 @@ export interface BlueprintOrgSummary {
   outboundEventsQueued: number
   outboundEventsDelivered: number
   aiOutputsCached: number
-  membershipsTotal: number
 }
 
 export interface BlueprintAssemblySpec {
@@ -123,7 +122,6 @@ export const BLUEPRINT_FIXTURE_DATA: BlueprintOrgSummary = {
   outboundEventsQueued: 1,
   outboundEventsDelivered: 15,
   aiOutputsCached: 9,
-  membershipsTotal: 4,
 }
 
 function nonNegInt(n: number): number {
@@ -157,7 +155,6 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
     outboundEventsQueued: nonNegInt(raw.outboundEventsQueued),
     outboundEventsDelivered: nonNegInt(raw.outboundEventsDelivered),
     aiOutputsCached: nonNegInt(raw.aiOutputsCached),
-    membershipsTotal: nonNegInt(raw.membershipsTotal),
   }
 
   const assemblies: BlueprintAssemblySpec[] = [
@@ -304,7 +301,7 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
       size: [7.6, 0.6, 4.8],
       metrics: [
         { label: "Active role", value: d.orgRole },
-        { label: "Workspace members", value: String(d.membershipsTotal) },
+        { label: "Roles", value: "owner / admin / member" },
         { label: "Row isolation", value: "org_id + FORCE RLS" },
       ],
       codeRuleEn:
