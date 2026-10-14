@@ -5,6 +5,8 @@ import path from "node:path"
 import { createInterface } from "node:readline"
 import { PassThrough } from "node:stream"
 import { describe, expect, it, vi } from "vitest"
+import { todayISO } from "@/lib/dates"
+import { deriveInvoiceStatus } from "@/lib/metrics/invoice-status"
 import {
   costsForMonth,
   subscriptionMrr,
@@ -22,7 +24,7 @@ import {
   DEFAULT_ERP_DIR,
   startStdioServer,
 } from "./erp-server.mjs"
-import { runTool, TOOLS } from "./tools.mjs"
+import { resolveOrg, runTool, TOOLS } from "./tools.mjs"
 
 const ORG_A = "11111111-1111-4111-8111-111111111111"
 const ORG_B = "22222222-2222-4222-8222-222222222222"
@@ -489,8 +491,9 @@ describe("ERP MCP server", () => {
     await supaLayer.listInvoices(ORG_A, { limit: 10, offset: 0 })
     await supaLayer.listPaymentClaims(ORG_A, { limit: 10, offset: 0 })
     await supaLayer.getFinanceInputs(ORG_A)
+    await supaLayer.getInvoiceInputs(ORG_A)
 
-    expect(eqCalls.length).toBe(14)
+    expect(eqCalls.length).toBe(16)
     for (const call of eqCalls) {
       expect(call.col).toBe("org_id")
       expect(call.val).toBe(ORG_A)
@@ -1001,6 +1004,283 @@ describe("ERP MCP server", () => {
       await expect(layer.getFinanceInputs(ORG_A)).rejects.toThrow(
         /Incomplete read of invoices/
       )
+    })
+  })
+  describe("list_invoices matches the finance page", () => {
+    const baht = (n: number) => n * 100
+    const row = (
+      id: string,
+      status: string,
+      amountBaht: number,
+      dueDate: string | null,
+      createdAt = "2026-09-01T00:00:00Z",
+      clientId = "client-a"
+    ) => ({
+      id,
+      org_id: ORG_A,
+      client_id: clientId,
+      number: `N-${id}`,
+      status,
+      issue_date: "2026-08-01",
+      due_date: dueDate,
+      amount_satang: baht(amountBaht),
+      discount_satang: 0,
+      created_at: createdAt,
+    })
+    const pay = (invoiceId: string, amountBaht: number, state: string) => ({
+      id: `pay-${invoiceId}-${state}`,
+      org_id: ORG_A,
+      invoice_id: invoiceId,
+      amount_satang: baht(amountBaht),
+      paid_at: "2026-09-05T03:00:00Z",
+      verification_state: state,
+    })
+    const data = () => ({
+      organizations: [{ id: ORG_A, name: "Alpha Co", slug: "alpha" }],
+      invoices: [
+        row("inv-overdue", "sent", 10_000, "2026-09-01", "2026-09-01T00:00:00Z"),
+        row("inv-legacy", "paid", 10_000, "2026-12-01", "2026-09-02T00:00:00Z"),
+        row("inv-part", "sent", 10_000, "2026-12-01", "2026-09-03T00:00:00Z"),
+        row("inv-paid", "sent", 10_000, "2026-09-01", "2026-09-04T00:00:00Z"),
+        row("inv-draft", "draft", 10_000, "2026-09-01", "2026-09-05T00:00:00Z"),
+        row("inv-void", "cancelled", 10_000, "2026-09-01", "2026-09-06T00:00:00Z"),
+        row("inv-today", "sent", 10_000, "2026-10-15", "2026-09-07T00:00:00Z"),
+        row("inv-undated", "sent", 10_000, null, "2026-09-08T00:00:00Z", "client-b"),
+      ],
+      payments: [
+        pay("inv-legacy", 10_000, "legacy_unverified"),
+        pay("inv-part", 4_000, "verified"),
+        pay("inv-paid", 10_000, "verified"),
+      ],
+    })
+    async function list(args: Record<string, unknown>, now = "2026-10-15T05:00:00Z") {
+      const server = createErpMcpServer({
+        dataLayer: createFakeDataLayer(data()),
+        erpOrgId: ORG_A,
+        now: new Date(now),
+      })
+      const res = (await server.handleMessage({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "list_invoices", arguments: args },
+      })) as unknown as ToolCallResponse
+      expect(res.result.isError).toBeUndefined()
+      return JSON.parse(res.result.content[0].text) as {
+        items: Array<Record<string, unknown>>
+        total: number
+        has_more: boolean
+      }
+    }
+
+    it("returns the effective status that deriveInvoiceStatus gives", async () => {
+      const now = "2026-10-15T05:00:00Z"
+      const { invoices, payments } = data()
+      const paid = new Map<string, number>()
+      for (const p of payments.filter((x) => x.verification_state === "verified")) {
+        paid.set(p.invoice_id, (paid.get(p.invoice_id) ?? 0) + p.amount_satang)
+      }
+      const out = await list({})
+      expect(out.total).toBe(invoices.length)
+      for (const inv of invoices) {
+        const item = out.items.find((i) => i.id === inv.id)
+        const expected = deriveInvoiceStatus(
+          {
+            status: inv.status as Parameters<typeof deriveInvoiceStatus>[0]["status"],
+            amount_satang: inv.amount_satang,
+            due_date: inv.due_date,
+          },
+          paid.get(inv.id) ?? 0,
+          todayISO(new Date(now))
+        )
+        expect(item?.status, inv.id).toBe(expected)
+        expect(item?.stored_status, inv.id).toBe(inv.status)
+      }
+    })
+
+    it("an overdue invoice appears under status=overdue", async () => {
+      const out = await list({ status: "overdue" })
+      expect(out.items.map((i) => i.id)).toEqual(["inv-overdue"])
+      expect(out.items[0]).toMatchObject({
+        status: "overdue",
+        stored_status: "sent",
+        paid_satang: 0,
+        outstanding_satang: baht(10_000),
+        outstanding_thb: "฿10,000.00",
+      })
+    })
+
+    it("a paid invoice with only a legacy receipt is not paid", async () => {
+      const paid = await list({ status: "paid" })
+      expect(paid.items.map((i) => i.id)).toEqual(["inv-paid"])
+      const legacy = (await list({})).items.find((i) => i.id === "inv-legacy")
+      expect(legacy).toMatchObject({
+        status: "sent",
+        stored_status: "paid",
+        paid_satang: 0,
+        outstanding_satang: baht(10_000),
+      })
+    })
+
+    it("reports verified paid and outstanding for a partial payment", async () => {
+      const out = await list({ status: "partially_paid" })
+      expect(out.items).toHaveLength(1)
+      expect(out.items[0]).toMatchObject({
+        id: "inv-part",
+        paid_satang: baht(4_000),
+        paid_thb: "฿4,000.00",
+        outstanding_satang: baht(6_000),
+        outstanding_thb: "฿6,000.00",
+      })
+    })
+
+    it("due today is not overdue, and today is the Asia/Bangkok day", async () => {
+      expect((await list({})).items.find((i) => i.id === "inv-today")?.status).toBe("sent")
+      // 18:00Z on 14 Oct is 01:00 on 15 Oct in Bangkok, still 14 Oct in UTC.
+      const lateNight = await list({}, "2026-10-14T18:00:00Z")
+      expect(lateNight.items.find((i) => i.id === "inv-today")?.status).toBe("sent")
+      const nextDay = await list({}, "2026-10-15T18:00:00Z")
+      expect(nextDay.items.find((i) => i.id === "inv-today")?.status).toBe("overdue")
+    })
+
+    it("filters by client and pages newest first", async () => {
+      expect((await list({ client_id: "client-b" })).items.map((i) => i.id)).toEqual([
+        "inv-undated",
+      ])
+      const first = await list({ limit: 3 })
+      expect(first.items.map((i) => i.id)).toEqual(["inv-undated", "inv-today", "inv-void"])
+      expect(first.has_more).toBe(true)
+      const last = await list({ limit: 3, offset: 6 })
+      expect(last.items.map((i) => i.id)).toEqual(["inv-legacy", "inv-overdue"])
+      expect(last.has_more).toBe(false)
+    })
+  })
+
+  describe("stable list ordering", () => {
+    // A database may return rows that tie on the sort key in any order, differently per query.
+    function tieScramblingSupabase(rows: Array<Record<string, unknown>>) {
+      let queries = 0
+      const orders: Array<Array<[string, boolean]>> = []
+      return {
+        orders,
+        client: {
+          from() {
+            const mine: Array<[string, boolean]> = []
+            orders.push(mine)
+            let range: [number, number] = [0, rows.length - 1]
+            const builder = {
+              select: () => builder,
+              eq: () => builder,
+              order(col: string, opts: { ascending: boolean }) {
+                mine.push([col, opts.ascending])
+                return builder
+              },
+              range(from: number, to: number) {
+                range = [from, to]
+                return builder
+              },
+              then(resolve: (v: unknown) => void) {
+                queries += 1
+                const compare = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+                  for (const [col, asc] of mine) {
+                    const x = String(a[col])
+                    const y = String(b[col])
+                    if (x !== y) return (x < y ? -1 : 1) * (asc ? 1 : -1)
+                  }
+                  return 0
+                }
+                const sorted = [...rows].sort(compare)
+                // Reverse every run of tied rows on alternate queries.
+                const out: Array<Record<string, unknown>> = []
+                for (let i = 0; i < sorted.length; ) {
+                  let j = i
+                  while (j < sorted.length && compare(sorted[i], sorted[j]) === 0) j += 1
+                  const run = sorted.slice(i, j)
+                  out.push(...(queries % 2 === 1 ? run.reverse() : run))
+                  i = j
+                }
+                resolve({ data: out.slice(range[0], range[1] + 1), error: null, count: rows.length })
+              },
+            }
+            return builder
+          },
+        },
+      }
+    }
+
+    it("pages over rows with the same created_at without repeats or gaps", async () => {
+      const rows = Array.from({ length: 7 }, (_, i) => ({
+        id: `client-${i}`,
+        org_id: ORG_A,
+        name: `Client ${i}`,
+        created_at: "2026-01-01T00:00:00Z",
+      }))
+      const { client, orders } = tieScramblingSupabase(rows)
+      const layer = createSupabaseDataLayer(client)
+      const ids: string[] = []
+      for (const offset of [0, 3, 6]) {
+        const page = await layer.listClients(ORG_A, { limit: 3, offset })
+        ids.push(...page.rows.map((r: Record<string, unknown>) => String(r.id)))
+      }
+      expect(ids).toEqual(rows.map((r) => r.id))
+      expect(orders[0]).toEqual([
+        ["created_at", false],
+        ["id", true],
+      ])
+    })
+
+    it("orders organizations by created_at then id", async () => {
+      const rows = Array.from({ length: 4 }, (_, i) => ({
+        id: `org-${i}`,
+        name: `Org ${i}`,
+        slug: `org-${i}`,
+        created_at: "2026-01-01T00:00:00Z",
+      }))
+      const { client } = tieScramblingSupabase(rows)
+      const layer = createSupabaseDataLayer(client)
+      const ids: string[] = []
+      for (const offset of [0, 2]) {
+        const page = await layer.listOrganizations({ limit: 2, offset })
+        ids.push(...page.rows.map((r: Record<string, unknown>) => String(r.id)))
+      }
+      expect(ids).toEqual(["org-0", "org-1", "org-2", "org-3"])
+    })
+  })
+
+  describe("organization lookup", () => {
+    const org = { id: ORG_A, name: "Alpha Co", slug: "alpha" }
+
+    it("looks an explicit org_id up directly instead of reading a list page", async () => {
+      const calls: unknown[] = []
+      const dataLayer = {
+        async listOrganizations(opts: unknown) {
+          calls.push(opts)
+          return { rows: [org], total: 2 }
+        },
+      }
+      await expect(resolveOrg({ org_id: ORG_A }, dataLayer)).resolves.toEqual(org)
+      expect(calls).toEqual([{ id: ORG_A, limit: 1, offset: 0 }])
+    })
+
+    it("uses the total, not the page, to detect a single organization", async () => {
+      const only = { async listOrganizations() { return { rows: [org], total: 1 } } }
+      await expect(resolveOrg({}, only)).resolves.toEqual(org)
+      const many = { async listOrganizations() { return { rows: [org], total: 1500 } } }
+      await expect(resolveOrg({}, many)).rejects.toThrow(/org_id is required/)
+    })
+
+    it("rejects an org_id that is not a uuid without querying", async () => {
+      let called = false
+      const dataLayer = {
+        async listOrganizations() {
+          called = true
+          return { rows: [], total: 0 }
+        },
+      }
+      await expect(resolveOrg({ org_id: "not-a-uuid" }, dataLayer)).rejects.toThrow(
+        "Unknown organization: not-a-uuid"
+      )
+      expect(called).toBe(false)
     })
   })
 })
