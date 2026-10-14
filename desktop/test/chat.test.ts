@@ -218,3 +218,158 @@ test('switching agents scopes the session list, new chats and the chat model upd
   root.querySelectorAll('button').find(b => b.textContent === 'Send')!.fire('click'); await flush();
   assert.equal(calls.find(c => c.path === '/api/sessions' && c.body.agentId)!.body.agentId, 'a2');
 });
+
+function historySetup(read: (id: string) => Promise<Response>, commands = async () => json({ commands: [] })) {
+  const agents = [agent, { ...agent, id: 'a2', name: 'Two' }];
+  const sessions = [
+    { id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: 1 },
+    { id: 's2', agentId: 'a1', title: 'Saved s2', updatedAt: 1 },
+    { id: 's3', agentId: 'a2', title: 'Saved s3', updatedAt: 1 },
+  ];
+  const api = createApi({ port: 1, token: 'test-token', fetch: (async url => {
+    const u = new URL(String(url));
+    if (u.pathname === '/api/agents') return json({ agents });
+    if (u.pathname === '/api/settings') return json({ config, secrets: {} });
+    if (u.pathname === '/api/commands') return commands();
+    if (u.pathname === '/api/sessions') return json({ sessions: sessions.filter(s => s.agentId === u.searchParams.get('agent')) });
+    const id = /^\/api\/sessions\/(s[123])$/.exec(u.pathname)?.[1];
+    if (id) return read(id);
+    assert.fail(`Unexpected request: ${u.pathname}`);
+  }) as typeof fetch });
+  const chat = createChat(api), root = chat.root as unknown as TestNode;
+  const open = (id: string) => root.querySelectorAll('.session').find(b => b.textContent.startsWith(`Saved ${id}`))!.fire('click');
+  return { chat, root, open, messages: root.querySelector('.messages')! };
+}
+
+const savedHistory = (id: string, text: string) => json({
+  id, agentId: id === 's3' ? 'a2' : 'a1', title: `Saved ${id}`,
+  messages: [{ role: 'assistant', content: [{ type: 'text', text }] }],
+});
+
+test('T16 returning resumes history invalidated by leaving and keeps settled history', { timeout: 2000 }, async t => {
+  t.after(installDom());
+  const pending = Promise.withResolvers<Response>();
+  let reads = 0;
+  const { chat, open, messages } = historySetup(async id => ++reads === 1 ? pending.promise : savedHistory(id, 'Recovered'));
+  await flush(); open('s1'); await flush();
+  assert.match(messages.textContent, /Loading…/);
+  chat.leave();
+  pending.resolve(savedHistory('s1', 'Cancelled answer')); await flush();
+  assert.doesNotMatch(messages.textContent, /Cancelled answer/);
+  await chat.refreshAgents(); await flush();
+  assert.match(messages.textContent, /Recovered/);
+  assert.doesNotMatch(messages.textContent, /Loading…/);
+  chat.leave(); await chat.refreshAgents(); await flush();
+  assert.equal(reads, 2, 'settled history must not reload on return');
+  assert.match(messages.textContent, /Recovered/);
+});
+
+test('T16 failed return shows an error and Retry reloads the selected history', { timeout: 2000 }, async t => {
+  t.after(installDom());
+  const pending = Promise.withResolvers<Response>();
+  let reads = 0;
+  const { chat, open, messages } = historySetup(async id => {
+    if (++reads === 1) return pending.promise;
+    return reads === 2 ? json({ error: 'History unavailable' }, 503) : savedHistory(id, 'Retry recovered');
+  });
+  await flush(); open('s1'); await flush(); chat.leave();
+  await chat.refreshAgents(); await flush();
+  const error = messages.querySelector('.notice');
+  assert.ok(error, 'failed history load must show an error');
+  assert.equal(error.attrs.role, 'alert');
+  assert.match(error.textContent, /History unavailable/);
+  assert.doesNotMatch(messages.textContent, /Loading…/);
+  assert.equal(error.querySelector('button')!.textContent, 'Retry');
+  error.querySelector('button')!.fire('click'); await flush();
+  assert.match(messages.textContent, /Retry recovered/);
+  pending.resolve(json({ error: 'Stale failure' }, 500)); await flush();
+  assert.doesNotMatch(messages.textContent, /Stale failure|Loading…/);
+  assert.equal(messages.querySelector('.notice'), null);
+});
+
+test('T16 switching sessions before leave resumes only the current session', { timeout: 2000 }, async t => {
+  t.after(installDom());
+  const old = Promise.withResolvers<Response>(), current = Promise.withResolvers<Response>();
+  let reads = 0;
+  const { chat, root, open, messages } = historySetup(async id => {
+    if (id === 's1') return old.promise;
+    return ++reads === 1 ? current.promise : savedHistory(id, 'Current session');
+  });
+  await flush(); open('s1'); await flush(); open('s2'); await flush(); chat.leave();
+  await chat.refreshAgents(); await flush();
+  assert.match(messages.textContent, /Current session/);
+  assert.match(root.querySelector('.active')!.textContent, /Saved s2/);
+  old.resolve(savedHistory('s1', 'Old session')); current.resolve(savedHistory('s2', 'Cancelled current'));
+  await flush();
+  assert.match(messages.textContent, /Current session/);
+  assert.doesNotMatch(messages.textContent, /Old session|Cancelled current|Loading…/);
+});
+
+test('T16 switching agents before leave fences the previous agent history', { timeout: 2000 }, async t => {
+  t.after(installDom());
+  const old = Promise.withResolvers<Response>(), current = Promise.withResolvers<Response>();
+  let reads = 0;
+  const { chat, open, messages } = historySetup(async id => {
+    if (id === 's1') return old.promise;
+    return ++reads === 1 ? current.promise : savedHistory(id, 'Agent Two history');
+  });
+  await flush(); open('s1'); await flush();
+  await chat.selectAgent('a2'); open('s3'); await flush(); chat.leave();
+  await chat.refreshAgents(); await flush();
+  assert.equal(chat.agentId(), 'a2');
+  assert.match(messages.textContent, /Agent Two history/);
+  old.resolve(savedHistory('s1', 'Agent One history')); current.resolve(savedHistory('s3', 'Cancelled agent history'));
+  await flush();
+  assert.match(messages.textContent, /Agent Two history/);
+  assert.doesNotMatch(messages.textContent, /Agent One history|Cancelled agent history|Loading…/);
+});
+
+test('T16 leaving again during recovery keeps the history eligible for the next return', { timeout: 2000 }, async t => {
+  t.after(installDom());
+  const first = Promise.withResolvers<Response>(), second = Promise.withResolvers<Response>();
+  let reads = 0;
+  const { chat, open, messages } = historySetup(async id => {
+    ++reads;
+    return reads === 1 ? first.promise : reads === 2 ? second.promise : savedHistory(id, 'Recovered again');
+  });
+  await flush(); open('s1'); await flush(); chat.leave();
+  const returning = chat.refreshAgents(); await flush();
+  assert.equal(reads, 2);
+  chat.leave(); second.resolve(savedHistory('s1', 'Cancelled recovery'));
+  await returning; first.resolve(savedHistory('s1', 'Cancelled initial load')); await flush();
+  assert.doesNotMatch(messages.textContent, /Cancelled recovery|Cancelled initial load/);
+  await chat.refreshAgents(); await flush();
+  assert.match(messages.textContent, /Recovered again/);
+  assert.doesNotMatch(messages.textContent, /Loading…/);
+});
+
+test('T16 refreshing agents without leaving preserves the pending history request', { timeout: 2000 }, async t => {
+  t.after(installDom());
+  const pending = Promise.withResolvers<Response>();
+  let reads = 0;
+  const { chat, open, messages } = historySetup(async () => { ++reads; return pending.promise; });
+  await flush(); open('s1'); await flush(); await chat.refreshAgents();
+  assert.equal(reads, 1, 'agent refresh must not restart an uninterrupted load');
+  pending.resolve(savedHistory('s1', 'Original history')); await flush();
+  assert.match(messages.textContent, /Original history/);
+  assert.doesNotMatch(messages.textContent, /Loading…/);
+});
+
+test('T16 leaving while the return refresh is pending defers recovery until the next return', { timeout: 2000 }, async t => {
+  t.after(installDom());
+  const pending = Promise.withResolvers<Response>(), commands = Promise.withResolvers<Response>();
+  let reads = 0, delayCommands = false;
+  const { chat, open, messages } = historySetup(
+    async id => ++reads === 1 ? pending.promise : savedHistory(id, 'Next return history'),
+    async () => delayCommands ? commands.promise : json({ commands: [] }),
+  );
+  await flush(); open('s1'); await flush(); chat.leave(); delayCommands = true;
+  const returning = chat.refreshAgents(); await flush(); chat.leave();
+  commands.resolve(json({ commands: [] })); await returning;
+  assert.equal(reads, 1, 'a superseded return must not start a history load');
+  pending.resolve(savedHistory('s1', 'Hidden old history')); await flush();
+  assert.doesNotMatch(messages.textContent, /Hidden old history/);
+  delayCommands = false; await chat.refreshAgents(); await flush();
+  assert.match(messages.textContent, /Next return history/);
+  assert.doesNotMatch(messages.textContent, /Loading…/);
+});
