@@ -31,6 +31,7 @@ function harness() {
     }
     if (path === '/api/mcp') return json({ servers: [{ name: 'rea', enabled: false, transport: 'stdio', connected: false }] });
     if (path === '/api/skills') return json({ skills: [{ name: 'demo', description: 'Demo' }] });
+    if (path === '/api/providers/local/models') return json({ ok: true, models: [] });
     if (path === '/api/memory') return json({ notes: [] });
     if (path === '/api/schedules') return json({ jobs: [] });
     assert.fail(path);
