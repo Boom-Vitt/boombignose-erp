@@ -7,6 +7,7 @@ export class TestNode {
   disabled = false;
   checked = false;
   value = '';
+  validity = { badInput: false };
   style = { height: '' };
   scrollHeight = 0;
   scrollTop = 0;

@@ -172,7 +172,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
           if (b.text.startsWith(SUMMARY_PREFIX)) note('Earlier messages were summarised to save space.');
           else bubble(m.role, b.text);
         } else if (b.type === 'tool_use') addToolRow(b.id, b.name, b.input);
-        else tools.get(b.toolUseId)?.finish(!!b.isError, b.content);
+        else if (b.type === 'tool_result') tools.get(b.toolUseId)?.finish(!!b.isError, b.content);
       }
     }
     for (const text of notifications.get(currentId ?? '') ?? []) note(text);
