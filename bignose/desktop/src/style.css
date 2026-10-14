@@ -36,7 +36,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ---- shell */
 #app, .shell { height: 100%; }
-.shell { display: grid; grid-template-columns: 224px 1fr; }
+.shell { display: grid; grid-template-columns: 224px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; }
 .nav { background: var(--panel); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; padding: 4px 8px 14px; }
 .logo { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-weight: 800; color: #0a0e17; background: linear-gradient(135deg, #67e8f9, #818cf8); }
@@ -47,7 +47,7 @@ a { color: inherit; text-decoration: none; }
 .nav-foot { margin-top: auto; padding: 10px; font-size: 12px; color: var(--muted); display: grid; gap: 2px; }
 .nav-conn::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
 .nav-conn.down::before { background: var(--warn); }
-.main { position: relative; min-width: 0; height: 100%; display: flex; flex-direction: column; }
+.main { position: relative; min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; }
 .banner { background: #3a1d1d; color: #fecaca; padding: 8px 14px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 .splash { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
 .splash .logo { width: 56px; height: 56px; font-size: 28px; border-radius: 16px; }

@@ -61,6 +61,11 @@ impl Sidecar {
         ))
     }
 
+    /// True while a daemon this app spawned is running.
+    pub fn spawned(&self) -> bool {
+        self.child_alive()
+    }
+
     /// Stop the daemon only if this app spawned it.
     pub fn stop(&self) {
         let child = self.0.child.lock().ok().and_then(|mut c| c.take());
