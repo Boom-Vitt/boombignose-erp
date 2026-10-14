@@ -1,0 +1,65 @@
+import { createElement } from "react"
+import { connection } from "next/server"
+
+export const PUBLIC_ENV_SCRIPT_ID = "erp-public-env"
+
+export interface PublicSupabaseEnv {
+  url: string
+  anonKey: string
+}
+
+export function serializePublicEnv(
+  env: NodeJS.ProcessEnv = process.env
+): string {
+  const payload: PublicSupabaseEnv = {
+    url: env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+    anonKey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+  }
+  return JSON.stringify(payload).replace(/</g, "\\u003c")
+}
+
+// Callers pass literal `process.env.NEXT_PUBLIC_*` reads: Next.js only inlines build-time values for literal references, never for an aliased `process.env`.
+export interface PublicEnvFallback {
+  NEXT_PUBLIC_SUPABASE_URL?: string
+  NEXT_PUBLIC_SUPABASE_ANON_KEY?: string
+}
+
+export function readPublicEnv(
+  doc?: { getElementById(id: string): { textContent: string | null } | null } | null,
+  env: PublicEnvFallback = {}
+): PublicSupabaseEnv {
+  const targetDoc =
+    doc !== undefined
+      ? doc
+      : typeof document !== "undefined"
+        ? document
+        : null
+  const raw = targetDoc?.getElementById(PUBLIC_ENV_SCRIPT_ID)?.textContent
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<PublicSupabaseEnv>
+      const url = typeof parsed?.url === "string" && parsed.url ? parsed.url : (env.NEXT_PUBLIC_SUPABASE_URL ?? "")
+      const anonKey =
+        typeof parsed?.anonKey === "string" && parsed.anonKey
+          ? parsed.anonKey
+          : (env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "")
+      return { url, anonKey }
+    } catch {
+      // Fall back to process.env below
+    }
+  }
+  return {
+    url: env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+    anonKey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+  }
+}
+
+export async function PublicEnvScript() {
+  await connection()
+  const json = serializePublicEnv(process.env)
+  return createElement("script", {
+    id: PUBLIC_ENV_SCRIPT_ID,
+    type: "application/json",
+    dangerouslySetInnerHTML: { __html: json },
+  })
+}

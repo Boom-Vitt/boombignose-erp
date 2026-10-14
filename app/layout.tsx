@@ -4,6 +4,7 @@ import "./globals.css"
 
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { PublicEnvScript } from "@/lib/supabase/public-env"
 
 const fontSans = Geist({
   variable: "--font-sans",
@@ -31,6 +32,7 @@ export default function RootLayout({
       className={`${fontSans.variable} ${fontMono.variable} h-full antialiased`}
     >
       <body className="bg-background text-foreground min-h-full">
+        <PublicEnvScript />
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster richColors position="top-right" />
       </body>
