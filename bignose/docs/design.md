@@ -24,7 +24,7 @@ core/                     @bignose/core — daemon + CLI, Node >= 24, ESM, zero 
   src/app/                runtime wiring, daemon, doctor                             (stream core-app)
   src/cli.ts              `bignose` entry                                            (stream core-app)
   test/<area>/*.test.ts   node:test suites, one folder per area
-desktop/                  package "desktop" — Tauri 2 app "BigNose"                  (stream desktop)
+desktop/                  package "desktop" — Tauri 2 app "BigNose OS"               (stream desktop)
   src/                    web UI: vanilla TypeScript, no framework, no bundler
   src-tauri/              Rust shell
 docs/                     requirements, this design, ADRs in docs/decisions/
@@ -146,8 +146,9 @@ export interface Config {
 
 - Home = `$BIGNOSE_HOME` or `~/.bignose` (created 0700). Files: `config.json`, `.env` (0600), `api-token` (0600),
   `bignose.db`, `skills/`, `daemon.json` (`{pid, port, version, startedAt}`), `logs/`.
-- Exports: `homeDir()`, `paths(home?)`, `defaultConfig()`, `loadConfig(home?)` (defaults deep-merged with the file;
-  missing file = defaults; invalid JSON = throw with the path), `saveConfig(cfg, home?)` (atomic write),
+- Exports: `homeDir()`, `paths(home?)`, `defaultConfig()`, `loadConfig(home?)` (defaults deep-merged with the file, then a saved
+  provider without `maxTokens` gets that provider's default cap (a malformed providers value is left for
+  `validateConfig` to report); missing file = defaults; invalid JSON = throw with the path), `saveConfig(cfg, home?)` (atomic write),
   `readEnv(home?)`, `setSecret(name, value | null, home?)` (rewrites `.env`, keeps mode 0600 even if it existed
   with other bits), `getApiKey(cfg, providerId, home?)`, `maskSecret(v)` (`''` stays `''`; else `'••••' + last 4`,
   and only `'••••'` when shorter than 12), `redact(text, secrets)`, `ensureApiToken(home?)` (32 random bytes hex,
@@ -444,7 +445,7 @@ export interface Config {
 
 ## 8. Desktop
 
-- Tauri 2, `productName` `BigNose`, identifier `com.boombignose.bignose`, own icon regenerated with
+- Tauri 2, `productName` `BigNose OS`, identifier `com.boombignose.bignose`, own icon regenerated with
   `pnpm --filter desktop tauri icon src-tauri/icons/source/boombignose-1024.png` from the committed source
   `desktop/src-tauri/icons/source/boombignose-1024.png`; macOS `app` bundle only. UI = vanilla TypeScript compiled by `tsc` to
   `desktop/dist` (+ copied `index.html`, `style.css`), `withGlobalTauri` for `invoke`; no framework, no bundler.
@@ -486,7 +487,7 @@ export interface Config {
 | zero runtime deps / no SDKs | core-app acceptance: dependency + import guard |
 | `bignose chat -q` tool round trip vs a mock OpenAI-compatible server | `core/test/e2e/chat.test.ts` |
 | `bignose mcp test rea` lists ≥ 100 tools (skipped with `BIGNOSE_SKIP_NETWORK=1`) | `core/test/e2e/rea.test.ts` + acceptance |
-| `pnpm --filter desktop tauri build --bundles app` → `BigNose.app`, CFBundleName `BigNose` | desktop acceptance |
+| `pnpm --filter desktop tauri build --bundles app` → `BigNose OS.app`, CFBundleName `BigNose OS` | desktop acceptance |
 
 Note: the BBN harness runs checks with `CI=1`, which the Tauri CLI rejects (`--ci` wants true/false), so the build
 check sets `CI=true` itself.
@@ -872,7 +873,7 @@ it with the project's own Tauri CLI (`pnpm --filter desktop tauri icon src-tauri
 from the repo root; the path is relative to `desktop/`). Extra files the CLI writes (Windows, iOS, Android, Store logos)
 are not committed; the icon list in `tauri.conf.json` stays as v1. The v1 SVG drawing (`app-icon.svg` in `desktop/`) is
 deleted (not referenced anywhere). No other UI change. A release build (`tauri build --bundles app`) puts the regenerated `icon.icns`
-into `BigNose.app/Contents/Resources/` under the name in `CFBundleIconFile`.
+into `BigNose OS.app/Contents/Resources/` under the name in `CFBundleIconFile`.
 
 ### 13.12 Owner-run checks (manual, never in tests)
 A real chat with an agent on a local Ollama model (and the context warning when Ollama runs with a small context), and a

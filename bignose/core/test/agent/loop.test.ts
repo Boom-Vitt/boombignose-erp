@@ -341,6 +341,22 @@ test('pruned tool output and the summary request are redacted before they are cu
   for (const piece of pieces(secret)) assert.ok(!sent.includes(piece), `summary request leaks ${piece}`);
 });
 
+test('a key in a long tool name is masked before the cut', async () => {
+  const secret = 'sk-' + 'q7'.repeat(15);
+  // safeName cuts at 64 and the Unknown tool error at 100: each cut would leave the start of the key, which no mask could find.
+  const stored = 'n'.repeat(50) + secret, unknown = 'm'.repeat(90) + secret;
+  const events: AgentEvent[] = [];
+  const r = await runAgent(options(strict([[call('a', stored), call('b', unknown), { ...done, stopReason: 'tool_use' }], [text('fine'), done]]), { redact: mask(secret), onEvent: e => events.push(e) }));
+  assert.equal(r.status, 'done');
+  // A session saved by an older build holds the cut name; it is masked when the session is loaded again.
+  const legacy: Message[] = [{ role: 'user', content: [{ type: 'text', text: 'old' }] }, { role: 'assistant', content: [{ type: 'tool_use', id: 'x', name: stored, input: {} }] }, { role: 'user', content: [{ type: 'tool_result', toolUseId: 'x', content: 'no', isError: true }] }];
+  const requests: ProviderRequest[] = [];
+  await runAgent(options(scripted([[text('ok'), done]], requests), { context: legacy, redact: mask(secret) }));
+  for (const [where, seen] of [['context', JSON.stringify(r.context)], ['events', JSON.stringify(events)], ['loaded session', JSON.stringify(requests[0]!.messages)]] as const)
+    for (const piece of pieces(secret)) assert.ok(!seen.includes(piece), `${where} leaks ${piece}`);
+  assert.match(JSON.stringify(r.context), /MASKED/);
+});
+
 test('approval, hooks and the tool all see the coerced arguments', async t => {
   const dir = mkdtempSync(tmpdir() + '/bn-');
   t.after(() => rmSync(dir, { recursive: true, force: true }));

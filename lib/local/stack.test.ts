@@ -312,6 +312,52 @@ describe("local stack manager", () => {
     ).rejects.toThrow(/forbidden/i)
   })
 
+  it("a partial stack is not running", async () => {
+    const erpDir = makeTempErpDir(true)
+    const calls: string[][] = []
+    const runner = {
+      async exec(cmd: string, args: string[]) {
+        if (cmd === "docker" && args[0] === "info") {
+          return { code: 0, stdout: "ok", stderr: "" }
+        }
+        if (cmd === "docker" && args[0] === "ps") {
+          return {
+            code: 0,
+            stdout: [
+              "supabase_db_boombignose-erp\t\tUp 5 minutes",
+              "supabase_kong_boombignose-erp\t\tUp 5 minutes",
+              // another project's containers never count
+              "supabase_auth_boombignose-erp-2\t\tUp 5 minutes",
+              "supabase_rest_boombignose-erp-2\t\tUp 5 minutes",
+            ].join("\n"),
+            stderr: "",
+          }
+        }
+        calls.push(args)
+        if (args.includes("status")) {
+          // the CLI answers as soon as db is up, so status alone proves nothing
+          return {
+            code: 0,
+            stdout: 'API_URL="http://127.0.0.1:54421"\nANON_KEY="anon-short"\n',
+            stderr: "",
+          }
+        }
+        return { code: 0, stdout: "", stderr: "" }
+      },
+      spawn() {
+        throw new Error("unexpected spawn")
+      },
+    }
+
+    expect((await runDoctor({ erpDir, runner })).stack).toBe("stopped")
+    calls.length = 0
+    expect(await runUp({ erpDir, runner })).toBe(0)
+    expect(calls.some((a) => a[0] === "start")).toBe(true)
+    expect(
+      calls.some((a) => a.includes("reset") || a[0] === "stop")
+    ).toBe(false)
+  })
+
   it("doctor reports exposed when a stack port is bound to 0.0.0.0", async () => {
     const erpDir = makeTempErpDir(true)
     const runner = {
@@ -325,6 +371,8 @@ describe("local stack manager", () => {
             stdout: [
               "supabase_db_boombignose-erp\t0.0.0.0:54422->5432/tcp\tUp 5 minutes",
               "supabase_kong_boombignose-erp\t0.0.0.0:54421->8000/tcp\tUp 5 minutes",
+              "supabase_auth_boombignose-erp\t\tUp 5 minutes",
+              "supabase_rest_boombignose-erp\t\tUp 5 minutes",
             ].join("\n"),
             stderr: "",
           }
