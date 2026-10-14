@@ -44,6 +44,7 @@ async function setup(t: { after(fn: () => void): void }, o: Opts = {}) {
   const calls: ApiCall[] = [];
   const messages: { to: string; userId: string; text: string }[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
+    if (new URL(url).pathname === '/v2/bot/chat/loading/start') return new Response('{}');
     const call: ApiCall = {
       path: new URL(url).pathname, body: JSON.parse(init.body as string),
       headers: Object.fromEntries(Object.entries(init.headers as Record<string, string>)),
@@ -716,6 +717,7 @@ test('listening twice is an error', async (t) => {
 test('real HTTP LINE API: apiBase works with the default fetch', async (t) => {
   const seen: { url: string; auth: string | undefined; body: any }[] = [];
   const api = http.createServer((req, res) => {
+    if (req.url === '/v2/bot/chat/loading/start') { req.resume(); res.end('{}'); return; }
     let raw = '';
     req.on('data', (c) => { raw += c; });
     req.on('end', () => { seen.push({ url: req.url!, auth: req.headers.authorization, body: JSON.parse(raw) }); res.end('{}'); });

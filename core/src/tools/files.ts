@@ -20,11 +20,11 @@ async function realPath(path: string, depth = 0): Promise<string> {
 export async function fileGuard(home: string): Promise<(path: string) => Promise<string>> {
   const configPaths = [resolve(home, 'config.json'), await realPath(resolve(home, 'config.json'))];
   const homes = [resolve(home), homedir(), ...(basename(home) === '.bignose' ? [dirname(resolve(home))] : [])];
-  const stores = ['.ssh', '.aws', '.gnupg', '.config/gh', '.env', 'api-token', '.netrc', '.docker/config.json', '.claude.json', '.hermes/.env', '.codex/auth.json'];
+  const stores = ['.ssh', '.aws', '.gnupg', '.config/gh', '.kube', '.config/gcloud', '.env', 'api-token', '.netrc', '.git-credentials', '.npmrc', '.pypirc', '.docker/config.json', '.claude.json', '.hermes/.env', '.codex/auth.json'];
   const forbidden = (path: string, root: string) => {
     const r = relative(root, path);
-    return ['.ssh', '.aws', '.gnupg', '.config/gh'].some(p => r === p || r.startsWith(p + '/'))
-      || ['.env', 'api-token', '.netrc', '.docker/config.json', '.claude.json', '.hermes/.env', '.codex/auth.json'].includes(r)
+    return ['.ssh', '.aws', '.gnupg', '.config/gh', '.kube', '.config/gcloud'].some(p => r === p || r.startsWith(p + '/'))
+      || ['.env', 'api-token', '.netrc', '.git-credentials', '.npmrc', '.pypirc', '.docker/config.json', '.claude.json', '.hermes/.env', '.codex/auth.json'].includes(r)
       || /^\.env\.[^/]*$/.test(r) || /^\.claude\/\.credentials[^/]*(\/|$)/.test(r);
   };
   const roots = [...new Set([...homes, ...await Promise.all(homes.map(root => realPath(root)))])];
