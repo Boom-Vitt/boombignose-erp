@@ -14,7 +14,6 @@ import { isOllama, OLLAMA_DEFAULT_MODEL } from '../providers/ollama.ts';
 import { validateConfig } from './settings.ts';
 
 export interface DaemonOptions {
-  apiPort?: number; linePort?: number;
   fetchImpl?: typeof fetch;
   home?: string; providerFactory?: RuntimeOptions['providerFactory'];
   signal?: AbortSignal;
@@ -33,7 +32,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
         const models = await listModels(provider, getApiKey(config, provider.id, home), (url, init) => fetchImpl(url, {
           ...init, signal: AbortSignal.any([init!.signal!, AbortSignal.timeout(2000), ...(options.signal ? [options.signal] : [])]),
         }));
-        if (!models.some(m => m.id === OLLAMA_DEFAULT_MODEL || m.id === `${OLLAMA_DEFAULT_MODEL}:latest`)) {
+        if (!models.some(m => m.id === OLLAMA_DEFAULT_MODEL)) {
           config.active.model = models.find(m => m.id.startsWith('qwen3:'))?.id ?? models[0]!.id;
           saveConfig(config, home);
         }
@@ -46,8 +45,8 @@ export async function startDaemon(options: DaemonOptions = {}) {
   const scheduler = new Scheduler({ store, onFire: job => runtime.fireJob(job), ...options.schedulerOptions });
   const runtime = new Runtime({ home, token, store, mcp, scheduler, config: () => config, line: () => line, providerFactory: options.providerFactory });
   const testPorts = process.env.BIGNOSE_TEST_PORTS === '0';
-  const apiPort = options.apiPort ?? (testPorts ? 0 : config.api.port);
-  const linePort = () => options.linePort ?? (testPorts && config.line.port === 47822 ? 0 : config.line.port);
+  const apiPort = testPorts ? 0 : config.api.port;
+  const linePort = () => testPorts && config.line.port === 47822 ? 0 : config.line.port;
   let operation: Promise<void> = Promise.resolve(), closed = false, closing: Promise<void> | undefined;
   const serial = (fn: () => Promise<void>) => {
     const next = operation.then(fn); operation = next.catch(() => {}); return next;

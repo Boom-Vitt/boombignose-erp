@@ -38,7 +38,6 @@ for (const kind of ['anthropic', 'openai-compatible'] as const) test(`${kind} ma
 
 for (const [label, data, expected] of [
   ['first run keeps qwen3:4b when it is installed', [{ id: 'a:1' }, { id: 'qwen3:4b' }], 'qwen3:4b'],
-  ['first run keeps qwen3:4b when it is installed as :latest', [{ id: 'a:1' }, { id: 'qwen3:4b:latest' }], 'qwen3:4b'],
   ['first run picks another qwen3 tag when qwen3:4b is missing', [{ id: 'a:1' }, { id: 'qwen3:14b' }], 'qwen3:14b'],
   ['first run falls back to the first listed model', [{ id: 'a:1' }, { id: 'b:2' }], 'a:1'],
   ['first run keeps qwen3:4b from null', null, 'qwen3:4b'],

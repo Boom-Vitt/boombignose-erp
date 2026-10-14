@@ -40,7 +40,9 @@ docs/                     requirements, this design, ADRs in docs/decisions/
   `@types/node`, `@tauri-apps/cli`. No other packages: no vite, no test framework, no SDKs.
 - **Tests:** `node:test` + `node:assert/strict`, files `core/test/<area>/*.test.ts`, run with
   `node --test <files>`. No network (single exception: the REA check, section 9). Every test that touches disk sets
-  `BIGNOSE_HOME` to a fresh `mkdtemp` dir; servers listen on port 0; never read `~/.bignose`, never use real keys.
+  `BIGNOSE_HOME` to a fresh `mkdtemp` dir; servers listen on port 0 (the test helper `testHome` sets
+  `BIGNOSE_TEST_PORTS=0`; the daemon then binds the API on port 0, and LINE on port 0 when it is the default 47822, so
+  first-run tests without a config file never bind 47821/47822); never read `~/.bignose`, never use real keys.
 - **Lazy, boring code.** Smallest thing that meets the contract; no speculative options or abstractions.
 - **Secrets** come only from `<home>/.env`. Never log, print, return or persist them anywhere else. Errors that may
   echo a request (e.g. provider HTTP errors) go through `redact()`.
@@ -294,7 +296,7 @@ export interface Config {
   `allow.users` member.
 - `app/daemon.ts`: `bignose daemon` — ensure home + token, open store, start MCP manager, scheduler, LINE gateway
   (when enabled and both secrets set), the API server; write `daemon.json` with the **bound** port (`api.port: 0` and `line.port: 0` mean ephemeral
-  ports, used by tests; tests never use the default ports 47821/47822); apply settings changes live (LINE
+  ports, used by tests; the test helper `testHome` sets `BIGNOSE_TEST_PORTS=0`, so the daemon binds the API on port 0, and LINE on port 0 when it is the default 47822, so first-run tests without a config file never bind 47821/47822); apply settings changes live (LINE
   restart, MCP update); clean shutdown on SIGINT/SIGTERM.
   The API listens and `daemon.json` is written before connectors finish initializing. Initial connector startup
   runs asynchronously in the same serialized queue as settings writes; pending connectors show `connected:false`.
@@ -712,7 +714,7 @@ export function ollamaWarnings(cfg: ProviderConfig, apiKey: string | undefined, 
   A non-2xx answer, a body that is not the expected JSON, or no loaded model -> `[]`. It never throws. (Ollama only
   reports the context size of a loaded model; the note covers the rest.)
 - First run (daemon start, 13.6): with no config file and no agents yet and an Ollama active provider, the daemon lists Ollama's
-  models (2 s timeout). When the list has models and none is `qwen3:4b` or `qwen3:4b:latest`, it sets
+  models (2 s timeout). When the list has models and none is `qwen3:4b`, it sets
   `active.model` to the first listed id that starts with `qwen3:` (for example `qwen3:14b`), else to the first
   listed id, and saves the config before the default agent is created. Any failure keeps
   `qwen3:4b`; a chat then shows Ollama's own error (`model "qwen3:4b" not found, try pulling it first`).
