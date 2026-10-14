@@ -539,7 +539,7 @@ else if (cmd === 'serve') {
   console.log('key:' + (process.env.OPENROUTER_API_KEY ? 'set' : 'unset') + ' port:' + process.argv[4]);
   console.log('ready http://127.0.0.1:' + process.argv[4]);
   process.on('SIGTERM', () => process.exit(0));
-  setInterval(() => {}, 1000);
+  setInterval(() => { if (process.ppid === 1) process.exit(0); }, 200); // like stack.mjs: leave when the parent is gone
 }
 "#;
 
@@ -567,7 +567,7 @@ else if (cmd === 'serve') {
     #[test]
     fn ready_stays_ready_when_serve_keeps_logging() {
         // Next prints warnings and request logs after `ready`; none of them may push the status back to Starting
-        let script = FAKE.replace("setInterval(() => {}, 1000);", "for (let i = 1; i <= 3; i++) console.log('late ' + i); setInterval(() => {}, 1000);");
+        let script = FAKE.replace("setInterval(() => { if (process.ppid === 1) process.exit(0); }, 200); // like stack.mjs: leave when the parent is gone", "for (let i = 1; i <= 3; i++) console.log('late ' + i); setInterval(() => { if (process.ppid === 1) process.exit(0); }, 200);");
         let plan = fake_plan(&script, 3192);
         let log_path = plan.home.join("logs/erp.log");
         let launcher = Launcher::default();
