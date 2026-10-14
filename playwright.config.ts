@@ -30,7 +30,7 @@ export default defineConfig({
     command: `pnpm start --hostname 127.0.0.1 --port ${isolation.app}`,
     url: `${baseURL}/login`,
     reuseExistingServer: false,
-    env: { ANTHROPIC_API_KEY: "", RESEND_API_KEY: "" },
+    env: { OPENROUTER_API_KEY: "", RESEND_API_KEY: "" },
     timeout: 120_000,
   },
 })

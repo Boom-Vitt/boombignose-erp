@@ -21,7 +21,6 @@
     "local:serve": "node scripts/local/stack.mjs serve"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.109.0",
     "@base-ui/react": "^1.6.0",
     "@hookform/resolvers": "^5.4.0",
     "@supabase/ssr": "^0.12.0",
