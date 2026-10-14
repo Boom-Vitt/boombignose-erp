@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "erp",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "-p", "6677"],
+      "port": 6677
+    }
+  ]
+}
