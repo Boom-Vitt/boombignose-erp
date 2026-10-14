@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { openStore } from '../../src/store/index.ts';
 import type { Message } from '../../src/types.ts';
 
@@ -208,4 +209,66 @@ test('jobs: save, upsert in place, list in order, delete, survive reopen', (t) =
   assert.equal(again.deleteJob('j1'), true);
   assert.equal(again.deleteJob('j1'), false);
   assert.deepEqual(again.listJobs().map((j) => j.id), ['j2']);
+});
+
+test('notices keep their place between messages, per session, and go with the session', (t) => {
+  const { store } = tmpStore(t);
+  const agentId = store.listAgents()[0]!.id;
+  const s = store.createSession({ agentId, origin: { kind: 'desktop' } }), other = store.createSession({ agentId, origin: { kind: 'desktop' } });
+  store.addNotice(s.id, 'info', 'before anything');
+  store.appendMessages(s.id, [user('q1'), assistant('a1')]);
+  store.addNotice(s.id, 'error', 'Error: boom');
+  store.addNotice(s.id, 'warn', 'second note');
+  store.appendMessages(s.id, [user('q2')]);
+  store.addNotice(other.id, 'warn', 'elsewhere');
+  assert.deepEqual(store.getNotices(s.id).map(n => [n.after, n.level, n.text]), [[0, 'info', 'before anything'], [2, 'error', 'Error: boom'], [2, 'warn', 'second note']]);
+  assert.equal(store.getNotices(other.id).length, 1);
+  store.deleteSession(s.id);
+  assert.deepEqual(store.getNotices(s.id), []);
+});
+
+test('appendMessages returns the row ids and updateMessages rewrites only changed rows, search index included', (t) => {
+  const { store } = tmpStore(t);
+  const s = store.createSession({ agentId: store.listAgents()[0]!.id, origin: { kind: 'desktop' } });
+  const ids = store.appendMessages(s.id, [user('hello needle-one'), assistant('reply')]);
+  assert.equal(ids.length, 2); assert.ok(ids[1]! > ids[0]!);
+  assert.equal(store.searchMessages('needle-one').length, 1);
+  store.updateMessages(ids, [user('hello ••••'), assistant('reply')]);
+  assert.deepEqual(store.getMessages(s.id), [user('hello ••••'), assistant('reply')]);
+  assert.equal(store.searchMessages('needle-one').length, 0); assert.equal(store.searchMessages('hello').length, 1);
+  store.updateMessages(ids, [user('hello ••••')]); // fewer messages than ids: the rest stays
+  assert.equal(store.getMessages(s.id).length, 2);
+});
+
+test('opening a database from before notices keeps its sessions and messages and adds the table', (t) => {
+  const { dir } = tmpStore(t);
+  const file = path.join(dir, 'before-notices.db'), db = new DatabaseSync(file);
+  // The schema as shipped before notices: no notices table, no messages_au trigger.
+  db.exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', origin TEXT NOT NULL, context TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, agentId TEXT);
+    CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL, content TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL);
+    CREATE VIRTUAL TABLE messages_fts USING fts5(text, content='messages', content_rowid='id', tokenize='trigram');
+    CREATE TRIGGER messages_ai AFTER INSERT ON messages BEGIN INSERT INTO messages_fts(rowid, text) VALUES (new.id, new.text); END;
+    CREATE TRIGGER messages_ad AFTER DELETE ON messages BEGIN INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, old.text); END;`);
+  db.prepare('INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)').run('old', 'old chat', '{"kind":"desktop"}', '[]', 1, 2, null);
+  db.prepare('INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?)').run(1, 'old', 'user', JSON.stringify(user('old needle').content), 'old needle', 3);
+  db.close();
+  for (let i = 0; i < 2; i++) { // reopening is idempotent
+    const store = openStore(file);
+    try {
+      store.ensureDefaultAgent({ provider: 'mock', model: 'test' });
+      assert.equal(store.getSession('old')!.title, 'old chat');
+      assert.deepEqual(store.getMessages('old'), [user('old needle')]);
+      assert.equal(store.searchMessages('needle')[0]?.sessionId, 'old');
+      assert.equal(store.getNotices('old').length, i);
+      store.addNotice('old', 'warn', 'new note');
+    } finally { store.close(); }
+  }
+  const store = openStore(file); // the update trigger the old schema lacked keeps the search index in step
+  try {
+    store.updateMessages([1], [user('old changed')]);
+    assert.equal(store.searchMessages('needle').length, 0); assert.equal(store.searchMessages('changed')[0]?.sessionId, 'old');
+    assert.deepEqual(store.getNotices('old').map(n => [n.after, n.text]), [[1, 'new note'], [1, 'new note']]);
+  } finally { store.close(); }
 });

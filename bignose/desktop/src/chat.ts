@@ -1,7 +1,7 @@
 // Chat screen: session list with search, streaming answer, live tool activity, approval cards, stop.
 import { ApiError } from './api.ts';
 import type { Api } from './api.ts';
-import type { Agent, ApiEvent, Command, Message, SessionSummary } from './types.ts';
+import type { Agent, ApiEvent, Command, LiveTurn, Message, Notice, SessionSummary } from './types.ts';
 import { btn, confirmBtn, el, errMsg, formatTime, guarded, renderText, select, field, toast } from './dom.ts';
 
 export interface Chat {
@@ -40,6 +40,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   let sending = false;
   let listTimer = 0;
   let live: { body: HTMLElement; text: string } | null = null;
+  let dirty = false; // an event for the open chat came in while its history was being read
   const running = new Set<string>();
   const approvals = new Map<string, Approval>();
   const tools = new Map<string, ToolRow>();
@@ -161,13 +162,18 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     }
   }
 
-  function renderHistory(msgs: Message[]): void {
+  function renderHistory(msgs: Message[], notices: Notice[] = [], turn?: LiveTurn | null): void {
     historyLoadSeq = 0;
     messages.replaceChildren();
     tools.clear();
     live = null;
     if (!msgs.length) messages.appendChild(el('div', { class: 'empty' }, el('h2', {}, 'How can I help?'), el('p', { class: 'muted' }, 'Ask anything. BigNose can use tools, and asks before it changes anything.')));
-    for (const m of msgs) {
+    let next = 0;
+    const notesBefore = (index: number) => {
+      for (; next < notices.length && notices[next]!.after <= index; next++) note(notices[next]!.text, notices[next]!.level === 'info' ? '' : notices[next]!.level);
+    };
+    msgs.forEach((m, i) => {
+      notesBefore(i);
       for (const b of m.content) {
         if (b.type === 'text') {
           if (!b.text.trim()) continue;
@@ -176,8 +182,16 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
         } else if (b.type === 'tool_use') addToolRow(b.id, b.name, b.input);
         else if (b.type === 'tool_result') tools.get(b.toolUseId)?.finish(!!b.isError, b.content);
       }
-    }
+    });
+    notesBefore(Infinity);
     for (const text of notifications.get(currentId ?? '') ?? []) note(text);
+    if (turn) { // a run in progress: later deltas and tool_end events carry on in this bubble and these rows
+      if (turn.text) live = bubble('assistant', turn.text);
+      for (const t of turn.tools) {
+        if (!tools.has(t.callId)) addToolRow(t.callId, t.name, t.input);
+        if (t.done) tools.get(t.callId)!.finish(!!t.isError, t.output ?? '');
+      }
+    }
     messages.scrollTop = messages.scrollHeight;
   }
 
@@ -227,10 +241,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     historyLoadSeq = seq;
     messages.replaceChildren(el('p', { class: 'muted pad' }, 'Loading…'));
     try {
-      const s = await api.getSession(id);
-      if (seq !== loadSeq) return;
-      renderHistory(s.messages);
-      showApprovals();
+      await readHistory(id, seq);
     } catch (e) {
       if (seq !== loadSeq) return;
       historyLoadSeq = 0;
@@ -243,12 +254,22 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     if (!id) return;
     const seq = ++loadSeq;
     try {
-      const s = await api.getSession(id);
-      if (seq !== loadSeq || id !== currentId) return;
-      renderHistory(s.messages);
-      showApprovals();
+      await readHistory(id, seq);
     } catch (e) {
       toast(errMsg(e), 'error');
+    }
+  }
+
+  async function readHistory(id: string, seq: number): Promise<void> {
+    for (let pass = 0; ; pass++) {
+      dirty = false;
+      const s = await api.getSession(id);
+      if (seq !== loadSeq || id !== currentId) return;
+      // An event that arrived during the read may or may not be in this answer, and would otherwise be lost: read again (twice at most).
+      if (dirty && pass < 2) continue;
+      renderHistory(s.messages, s.notices, s.live);
+      showApprovals();
+      return;
     }
   }
 
@@ -414,6 +435,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       renderList();
     }
     if (id !== currentId) return;
+    if (e.type === 'text_delta' || e.type === 'tool_start' || e.type === 'tool_end') dirty = true;
 
     switch (e.type) {
       case 'run_start': live = null; break;
@@ -426,16 +448,10 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       case 'tool_start': live = null; addToolRow(e.callId, e.name, e.input); break;
       case 'tool_end': tools.get(e.callId)?.finish(e.isError, e.output); break;
       case 'compaction': note(`Earlier messages were summarised (${e.removedMessages} removed).`); break;
-      case 'run_end': {
+      case 'run_end': // the outcome note is stored with the session, so the reload brings it back in place
         live = null;
-        void reloadCurrent().then(() => {
-          if (currentId !== id) return;
-          if (e.status === 'interrupted') note('Stopped.');
-          else if (e.status === 'max_turns') note('Stopped at the turn limit. Send another message to continue.', 'warn');
-          else if (e.status === 'error') note(e.error ? `Error: ${e.error}` : 'The run failed.', 'error');
-        });
+        void reloadCurrent();
         break;
-      }
     }
     updateComposer();
   }

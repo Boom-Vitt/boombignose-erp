@@ -113,7 +113,7 @@ export type AgentEvent =
   | { type: 'approval_request'; approvalId: string; tool: string; input: Record<string, unknown> }
   | { type: 'approval_result'; approvalId: string; allowed: boolean }
   | { type: 'compaction'; removedMessages: number }
-  | { type: 'run_end'; status: RunStatus; text: string; error?: string };
+  | { type: 'run_end'; status: RunStatus; text: string; error?: string; warning?: string };   // warning: section 16.2
 
 // ---- config (~/.bignose/config.json); secrets are never stored here
 export interface ProviderConfig {
@@ -188,9 +188,9 @@ export interface Config {
 - `agent/loop.ts`: `runAgent(opts: RunOptions): Promise<RunResult>` with
   `RunOptions = { provider, model, system, context: Message[], input: string, tools: Tool[], maxTurns, maxTokens,
   contextWindow, compactAt, permissions: Record<string, Policy>, hooks: HooksConfig, approve?: Approver,
-  sessionId, origin: Origin, cwd, signal: AbortSignal, onEvent?: (e: AgentEvent) => void, depth?: number }` and
+  sessionId, origin: Origin, cwd, signal: AbortSignal, onEvent?: (e: AgentEvent) => void, onMessage?: (m: Message) => void /* section 16.1 */, depth?: number }` and
   `RunResult = { context: Message[] /* new model context, compacted if needed */, added: Message[] /* transcript
-  messages of this run, input included */, status: RunStatus, text: string, usage: Usage, error?: string }`.
+  messages of this run, input included */, status: RunStatus, text: string, usage: Usage, error?: string, warning?: string }`.
   - One turn = one provider call. Tool calls of a turn run in order; every `tool_use` gets a `tool_result`
     (errors, denials and interrupts included) so the context stays valid. A call with an unknown or illegal name or with
     malformed arguments gets an error result the model can fix; the run goes on (section 15).
@@ -252,7 +252,8 @@ export interface Config {
   sessions `createSession({title?, origin, agentId})`, `listSessions({limit?, agentId?})`, `getSession(id)` (with `context` and `origin`),
   `findSessionByOrigin(origin, agentId)` (latest session with that exact origin and agent, or undefined; one session per
   LINE chat per agent),
-  `deleteSession(id)`, `setTitle(id, title)`, `appendMessages(id, msgs: Message[])` (transcript; indexes the text),
+  `deleteSession(id)`, `setTitle(id, title)`, `appendMessages(id, msgs: Message[])` → new row ids (transcript; indexes the text),
+  `updateMessages(ids, msgs)` (rewrites rows whose content changed, index included), `addNotice(id, level, text)`, `getNotices(id)` (section 16),
   `getMessages(id)`, `setContext(id, msgs)`, `searchMessages(query, limit?, agentId?)` → `{sessionId, title, snippet, at}[]`;
   memory `listMemory(kind?, agentId?)`, `addMemory(kind: 'user'|'agent', text, agentId?)`, `updateMemory(id, text)`,
   `deleteMemory(id)`, `searchMemory(query, limit?, kind?, agentId?)`; jobs `listJobs(agentId?)`, `saveJob(job)`, `deleteJob(id)`; `close()`.
@@ -370,7 +371,7 @@ export interface Config {
     a copy named "<name> copy" in the client. See section 10 for field validation and ownership.
   - `GET /api/sessions?agent=<id>&q=&limit=` → `{ sessions: [{id, agentId, title, updatedAt, snippet?}] }`
     (no agent filter = all agents; with `q`: scoped FTS search); `POST /api/sessions` `{title?, agentId?}` → `{id}`
-    (default first agent; 400 unknown agent); `GET /api/sessions/:id` → `{id, agentId, title, messages: Message[]}`;
+    (default first agent; 400 unknown agent); `GET /api/sessions/:id` → `{id, agentId, title, messages: Message[], notices: Notice[], live: LiveTurn | null}` (section 16);
     `DELETE /api/sessions/:id`; `POST /api/sessions/:id/messages` `{text}` → `202 {runId}` (`409` while a run is
     active; also `409 {error: 'connector <name> is off for this agent', connector: '<name>'}` for a slash command's required connector; invalid slash arguments return 400); `POST /api/sessions/:id/interrupt` → `{ok}`.
   - `POST /api/approvals/:id` `{allow: boolean}` → `{ok}` (`404` unknown or already decided).
@@ -983,3 +984,49 @@ The agent loop and the providers recover instead of breaking. Zero runtime depen
   `Network error talking to <origin>: <cause> (fetch failed)`. The text reaches the desktop chat, the CLI and LINE as the run error.
 - OpenAI-compatible `delta.tool_calls` are keyed by `index`; servers that omit it are keyed by call `id`, and a fragment with
   neither continues the latest call.
+
+## 16. Turn persistence (stream `bignose-turn-persistence`)
+
+A turn is saved while it runs, and what a run leaves behind (its outcome note, the part still streaming) is part of the session, so a
+crash, a reload, a chat switch or an event-stream reconnect does not lose it.
+
+### 16.1 Saved as it happens (`app/runtime.ts`, `agent/loop.ts`, `store/index.ts`)
+- `Runtime.start()` saves the user's message (the text as typed, so a slash command stays `/rea ...`) and, when the chat has no title,
+  the title, before the run begins. `runAgent` gets `onMessage(message)`, called with each finished step as it is added (the assistant
+  message after its provider call, the batch of tool results after its tools): not the input, and not a `delegate` sub-run's messages.
+  The runtime appends each to the transcript. A crash or kill mid-run keeps the prompt and every finished step. The end of the run
+  appends nothing: `appendMessages` returns the row ids and the run keeps them.
+- The model context (`sessions.context`) is still written once, at the end: a half-finished turn must never leave a `tool_use`
+  without its result there. After a crash the transcript shows the turn; the model's context does not include it.
+- Redaction keeps its order. Each step is cleaned when it is saved, with the run-start cleaner plus a fresh one. At the end the
+  transcript is cleaned once more with the end-of-run cleaner and `updateMessages(ids, transcript)` rewrites only the rows that
+  changed (a secret saved during the run reaches the prompt and earlier steps; the search index follows through the `messages_au`
+  trigger) and the title is set again from the same cleaning.
+- Store schema, additive only (`CREATE ... IF NOT EXISTS`; nothing dropped or renamed, no `ALTER`): table `notices(id, session_id
+  REFERENCES sessions ON DELETE CASCADE, after_messages, level, text, at)` with index `notices_session`, and trigger `messages_au`
+  (`AFTER UPDATE OF text`, same pattern as `memory_au`). An older database opens with its sessions, messages, context and search
+  intact (store test with the pre-notices schema).
+
+### 16.2 Run outcome notes
+- When a run ends, the runtime stores a notice for each of: `interrupted` → `info` "Stopped."; `max_turns` → `warn` "Stopped at the
+  turn limit. Send another message to continue."; `error` → `error` "Error: <message>" (or "The run failed."); and the loop's
+  `warning`. A notice is `{after, level: 'info'|'warn'|'error', text, at}`; `after` is the number of messages saved before it, so
+  clients render it between messages in order. Text is cleaned like the transcript.
+- `runAgent` sets `warning` (on the result and on its `run_end` event) only for a run that finished with status `done`:
+  the last provider call stopped with `max_tokens` ("The reply was cut off at the output limit (max_tokens) ...") or the final
+  text is blank ("The model returned an empty reply."). A cut that the next call recovers from is not reported. The API's `run_end`
+  event carries the same `warning`.
+
+### 16.3 Live turn (`GET /api/sessions/:id`)
+- Response: `{id, agentId, title, messages, notices, live}`. `live` is `null` unless a run is active; then
+  `{runId, text, tools: [{callId, name, input, done, isError?, output?}]}`: `text` is the streamed text of the current provider call
+  (what the event stream has released: the same last-(longest secret - 1)-characters hold-back applies) and `tools` are the calls of
+  the current step that started (a result moves into `messages` when its batch is saved). A tool call in `messages` without a result
+  is still running. Messages, notices and `live` come from one synchronous read, so they agree.
+- Desktop (`desktop/src/chat.ts`): `renderHistory(messages, notices, live)` renders notices between messages by `after`, then the
+  live text as the open assistant bubble and live tools on their rows, so later `text_delta` and `tool_end` events continue the same
+  bubble and row. This runs for opening a chat, switching back to one, and `refresh()` after an event-stream reconnect. `run_end` no
+  longer builds its own note: it reloads the session, and the stored note comes back with it, so `session_updated` cannot wipe it.
+  If a `text_delta`, `tool_start` or `tool_end` for the open chat arrives while its history is being read, the read is repeated
+  (twice at most) so the answer and the stream line up. `running` still comes only from the event stream (replayed `run_start`).
+

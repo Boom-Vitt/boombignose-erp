@@ -61,7 +61,7 @@ export type AgentEvent =
   | { type: 'approval_request'; approvalId: string; tool: string; input: Record<string, unknown> }
   | { type: 'approval_result'; approvalId: string; allowed: boolean }
   | { type: 'compaction'; removedMessages: number }
-  | { type: 'run_end'; status: RunStatus; text: string; error?: string };
+  | { type: 'run_end'; status: RunStatus; text: string; error?: string; warning?: string };   // warning: finished, but cut at max_tokens or empty
 
 // ---- config (~/.bignose/config.json); secrets are never stored here
 export interface ProviderConfig {

@@ -204,3 +204,58 @@ test('non-owner LINE slash text remains plain, including REA with its connector 
     assert.ok(!JSON.stringify(requests.at(-1)!.messages).includes('PRIVATE SKILL BODY'));
   }
 });
+
+test('the user message and title are saved when the run starts', async t => {
+  const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream() {
+    started.resolve(); await release.promise;
+    yield { type: 'text_delta', text: 'late answer' }; yield done;
+  } }));
+  const session = h.store.createSession({ origin: { kind: 'desktop' }, agentId: h.store.listAgents()[0]!.id });
+  const run = h.runtime.start(session.id, 'MY QUESTION  with   spaces');
+  try {
+    await started.promise; // the provider is mid-request: the run is neither finished nor failed
+    assert.deepEqual(h.store.getMessages(session.id), [{ role: 'user', content: [{ type: 'text', text: 'MY QUESTION  with   spaces' }] }]);
+    assert.equal(h.store.getSession(session.id)!.title, 'MY QUESTION with spaces');
+  } finally { release.resolve(); }
+  assert.equal((await run.result).status, 'done');
+  assert.deepEqual(h.store.getMessages(session.id).map(m => m.role), ['user', 'assistant']); // the end of the run adds no duplicates
+  assert.equal(h.store.searchMessages('MY QUESTION')[0]?.sessionId, session.id);
+});
+
+test('a running turn is visible in stored history', async t => {
+  const second = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream(req) {
+    if (req.messages.length === 1) { yield { type: 'text_delta', text: 'looking' }; yield { type: 'tool_call', id: 'c1', name: 'memory_read', input: {} }; yield done; return; }
+    yield { type: 'text_delta', text: 'partial ' }; second.resolve(); await release.promise;
+    yield { type: 'text_delta', text: 'answer' }; yield done;
+  } }));
+  const session = h.store.createSession({ origin: { kind: 'desktop' }, agentId: h.store.listAgents()[0]!.id });
+  const run = h.runtime.start(session.id, 'work');
+  try {
+    await second.promise;
+    // What a restart after a kill would read: a fresh connection sees the prompt and the finished tool step.
+    const reopened = openStore(join(h.home, 'store.db'));
+    try {
+      assert.deepEqual(reopened.getMessages(session.id).map(m => `${m.role}:${m.content.map(b => b.type).join('+')}`), ['user:text', 'assistant:text+tool_use', 'user:tool_result']);
+    } finally { reopened.close(); }
+    assert.deepEqual(h.runtime.liveTurn(session.id), { runId: run.runId, text: 'partial ', tools: [] });
+  } finally { release.resolve(); }
+  await run.result;
+  assert.deepEqual(h.store.getMessages(session.id).map(m => m.role), ['user', 'assistant', 'user', 'assistant']);
+  assert.equal(h.runtime.liveTurn(session.id), undefined);
+});
+
+test('steps are redacted like the run end, including a secret that appears during the run', async t => {
+  let home = '';
+  const secret = 'late-secret-' + 'q'.repeat(20);
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream(req) {
+    if (req.messages.length === 1) { setSecret('LATE', secret, home); yield { type: 'tool_call', id: 'c1', name: 'memory_read', input: { query: secret } }; yield done; return; }
+    yield { type: 'text_delta', text: `ok ${secret}` }; yield done;
+  } })); home = h.home;
+  const session = h.store.createSession({ origin: { kind: 'desktop' }, agentId: h.store.listAgents()[0]!.id });
+  await h.runtime.start(session.id, `my key is ${secret}`).result;
+  assert.ok(!JSON.stringify(h.store.getMessages(session.id)).includes('q'.repeat(12)));
+  assert.ok(!h.store.getSession(session.id)!.title.includes('q'.repeat(12)));
+  assert.equal(h.store.searchMessages('q'.repeat(12)).length, 0); // the search index follows the rewritten rows
+});

@@ -384,3 +384,33 @@ test('a summary request that overflows too is shrunk and retried instead of kill
   const failed = await runAgent(options(hopeless, { context, contextWindow: windowTokens, maxTurns: 20 }));
   assert.equal(failed.status, 'error'); assert.match(failed.error!, /maximum context length/);
 });
+
+test('run_end warns when the reply is cut at max_tokens', async () => {
+  const events: AgentEvent[] = [];
+  const r = await runAgent(options(scripted([[{ type: 'text_delta', text: 'half a sentence and' }, { ...done, stopReason: 'max_tokens' }]]), { onEvent: e => events.push(e) }));
+  assert.equal(r.status, 'done'); assert.match(r.warning!, /max_tokens/);
+  assert.deepEqual(events.at(-1), { type: 'run_end', status: 'done', text: 'half a sentence and', warning: r.warning });
+  // A cut that the model recovers from on the next turn is not worth a note.
+  const recovered = await runAgent(options(scripted([[{ type: 'text_delta', text: 'cut' }, call('a'), { ...done, stopReason: 'max_tokens' }], [{ type: 'text_delta', text: 'whole answer' }, done]])));
+  assert.equal(recovered.status, 'done'); assert.equal(recovered.warning, undefined);
+});
+
+test('run_end warns on an empty reply', async () => {
+  const events: AgentEvent[] = [];
+  const r = await runAgent(options(scripted([[done]]), { onEvent: e => events.push(e) }));
+  assert.equal(r.status, 'done'); assert.equal(r.text, ''); assert.match(r.warning!, /empty reply/);
+  assert.equal((events.at(-1) as { warning?: string }).warning, r.warning);
+  const afterTools = await runAgent(options(scripted([[call('a'), { ...done, stopReason: 'tool_use' }], [{ type: 'text_delta', text: '  ' }, done]])));
+  assert.match(afterTools.warning!, /empty reply/); // blank text counts as empty
+  assert.equal((await runAgent(options(scripted([[{ type: 'text_delta', text: 'hi' }, done]])))).warning, undefined);
+});
+
+test('onMessage reports each finished step as it happens, not the input and not a delegate', async () => {
+  const seen: string[] = [];
+  const delegating: Tool = { ...echo, name: 'delegate', async run(_, ctx) { return { content: await ctx.delegate!('sub task') }; } };
+  const p = scripted([[call('d', 'delegate'), { ...done, stopReason: 'tool_use' }], [{ type: 'text_delta', text: 'sub answer' }, done], [{ type: 'text_delta', text: 'final' }, done]]);
+  const r = await runAgent(options(p, { tools: [delegating, echo], onMessage: m => seen.push(`${m.role}:${m.content.map(b => b.type).join('+')}`) }));
+  assert.equal(r.status, 'done');
+  assert.deepEqual(seen, ['assistant:tool_use', 'user:tool_result', 'assistant:text']);
+  assert.deepEqual(r.added.slice(1).map(m => `${m.role}:${m.content.map(b => b.type).join('+')}`), seen); // exactly the messages `added` holds after the input
+});
