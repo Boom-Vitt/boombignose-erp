@@ -14,7 +14,7 @@ import type { McpServerConfig } from './types.ts';
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
   const home = homeDir();
-  if (args[0] === 'doctor') { const result = doctor(home); for (const line of result.lines) console.log(line); return result.code; }
+  if (args[0] === 'doctor') { const result = await doctor(home); for (const line of result.lines) console.log(line); return result.code; }
   const config = loadConfig(home); validateConfig(config);
   const clean = (s: string) => safeText(s, home, config);
   if (args[0] === 'daemon') {

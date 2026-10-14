@@ -101,13 +101,15 @@ export class Runtime {
     const providerId = agent?.provider ?? c.active.provider;
     const provider = c.providers.find(p => p.id === providerId);
     if (!provider) throw new Error(`provider is not configured: ${providerId}`);
+    const maxTokens = agent?.maxTokens ?? provider.maxTokens;
+    if (maxTokens !== undefined) provider.maxTokens = maxTokens;
     return {
       provider, model: agent?.model ?? c.active.model,
       system: [(agent ? agent.instructions : c.agent.systemPrompt) || 'You are BigNose, a helpful personal assistant. Use tools carefully and ask when permission is needed.',
         skillsIndex(paths(this.opts.home).skills, agent?.skills), `Today: ${new Date().toLocaleDateString('sv-SE')}`].filter(Boolean).join('\n\n'),
       memory: includeMemory ? memoryPrompt(this.store, agent?.id ?? this.store.listAgents()[0]!.id) : '',
       permissions: { ...c.permissions, ...agent?.permissions }, hooks: c.hooks, cwd: c.agent.workspace, maxTurns: c.agent.maxTurns,
-      maxTokens: provider.maxTokens ?? 8192, contextWindow: provider.contextWindow ?? 128000, compactAt: c.agent.compactAt,
+      maxTokens: maxTokens ?? 8192, contextWindow: provider.contextWindow ?? 128000, compactAt: c.agent.compactAt,
     };
   }
   private async approve(req: ApprovalRequest, runId: string, signal: AbortSignal, redaction: (text: string) => string, cliApprove?: Approver): Promise<boolean> {
@@ -223,7 +225,7 @@ export class Runtime {
       this.store.appendMessages(sessionId, transcript);
       this.store.setContext(sessionId, nonOwner ? [...safeValue(session.context, clean),
         { role: 'user', content: [{ type: 'text', text: clean(input) }] },
-        ...(completed.text ? [{ role: 'assistant' as const, content: [{ type: 'text' as const, text: completed.text }] }] : [])] : completed.context);
+        ...(completed.status !== 'error' && completed.text ? [{ role: 'assistant' as const, content: [{ type: 'text' as const, text: completed.text }] }] : [])] : completed.context);
       if (!session.title) this.store.setTitle(sessionId, clean(input).replace(/\s+/g, ' ').slice(0, 80));
       if (slash?.command === 'rea' && slash.target && completed.status === 'done' && completed.text.trim()) {
         try {

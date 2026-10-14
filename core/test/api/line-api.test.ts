@@ -115,3 +115,21 @@ test('test webhook checks prerequisites and returns LINE success or failure deta
   const status = (await s.call('line/status', 'GET')).body;
   assert.equal(status.healthUrl, 'https://tunnel.example/line/webhook/health'); assert.deepEqual(status.warnings, []);
 });
+
+test('public URL spaces are trimmed on save and on connect/test for legacy config', async t => {
+  const s = await setup(t, c => { c.line.publicUrl = '  https://tunnel.example/base/  '; });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', s.home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', s.home);
+  assert.equal((await s.call('line/connect')).body.webhookUrl, 'https://tunnel.example/base/line/webhook');
+  const config = s.a.config(); config.line.publicUrl = '  https://new.example/base///  '; config.line.enabled = true;
+  assert.equal((await s.call('settings', 'PUT', { config })).status, 200);
+  assert.equal(s.a.config().line.publicUrl, 'https://new.example/base///');
+  assert.equal((await s.call('line/test')).body.ok, true);
+  assert.deepEqual(s.calls.at(-1)?.body, { endpoint: 'https://new.example/base/line/webhook' });
+});
+
+test('trimming an unchanged legacy HTTP URL still permits unrelated whole-config saves', async t => {
+  const s = await setup(t, c => { c.line.publicUrl = '  http://old.example  '; });
+  const config = s.a.config(); config.providers[0]!.label = 'Changed';
+  assert.equal((await s.call('settings', 'PUT', { config })).status, 200);
+  assert.equal(s.a.config().line.publicUrl, 'http://old.example');
+});

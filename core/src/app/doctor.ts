@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { getApiKey, homeDir, loadConfig, readEnv } from '../config.ts';
+import { listModels } from '../providers/models.ts';
+import { isOllama, OLLAMA_CONTEXT_NOTE, ollamaWarnings } from '../providers/ollama.ts';
 import { createCleaner, validateConfig } from './settings.ts';
 
-export function doctor(home = homeDir()): { code: number; lines: string[] } {
+export async function doctor(home = homeDir(), fetchImpl: typeof fetch = fetch): Promise<{ code: number; lines: string[] }> {
   const lines: string[] = [];
   let code = 0;
   const hard = (label: string, fn: () => void) => {
@@ -26,7 +28,13 @@ export function doctor(home = homeDir()): { code: number; lines: string[] } {
   try {
     const config = loadConfig(home); validateConfig(config); lines.push('ok config');
     const provider = config.providers.find(p => p.id === config.active.provider)!;
-    lines.push(provider.apiKeyEnv && !getApiKey(config, provider.id, home) ? `warn active provider key is unset (${provider.apiKeyEnv})` : 'ok active provider');
+    const key = getApiKey(config, provider.id, home);
+    if (isOllama(provider)) {
+      try { lines.push(`ok Ollama has ${(await listModels(provider, key, fetchImpl)).length} models`); }
+      catch (e) { lines.push(`warn ${e instanceof Error ? e.message : String(e)}`); }
+      for (const warning of await ollamaWarnings(provider, key, fetchImpl)) lines.push(`warn ${warning}`);
+      lines.push(`note ${OLLAMA_CONTEXT_NOTE}`);
+    } else lines.push(provider.apiKeyEnv && !getApiKey(config, provider.id, home) ? `warn active provider key is unset (${provider.apiKeyEnv})` : 'ok active provider');
     if (config.line.enabled) {
       const env = readEnv(home);
       lines.push(env.LINE_CHANNEL_ACCESS_TOKEN && env.LINE_CHANNEL_SECRET ? 'ok LINE credentials' : 'warn LINE token or secret is unset');

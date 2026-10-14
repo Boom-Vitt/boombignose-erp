@@ -28,7 +28,6 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
 
   function render({ config, secrets }: Settings, st: LineStatus): void {
     const line = config.line;
-    const webhook = st.webhookUrl || (line.publicUrl ? `${line.publicUrl.replace(/\/+$/, '')}/line/webhook` : '');
     const connectResult = el('div', { class: 'line-connect-result', role: 'status' });
     const testResult = el('div', { class: 'line-test-result', role: 'status' });
     const connect = btn('Connect', b => void guarded(async () => {
@@ -36,8 +35,9 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
       try {
         const result = await api.lineConnect();
         connectResult.replaceChildren(
-          ...result.steps.map(s => el('p', { class: s.ok ? 'muted' : 'notice error' }, `${s.name}: ${s.ok ? 'ok' : 'failed'} — ${s.detail}`)),
+          ...result.steps.map(s => el('p', { class: s.ok ? 'muted' : 'notice error' }, `${s.name === 'token' ? 'Token' : 'Webhook'}: ${s.ok ? 'ok' : 'failed'} — ${s.detail}`)),
           ...(result.bot ? [el('p', {}, `${result.bot.displayName} (${result.bot.basicId})`)] : []));
+        renderStatus(await api.lineStatus());
       } catch (e) { connectResult.replaceChildren(el('p', { class: 'notice error' }, errMsg(e))); }
     }, b));
     const test = btn('Test webhook', b => void guarded(async () => {
@@ -50,15 +50,21 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
       } catch (e) { testResult.replaceChildren(el('p', { class: 'notice error' }, errMsg(e))); }
     }, b));
 
-    const status = el('section', { class: 'card' },
-      el('h3', {}, 'Status', badge(st.enabled ? 'Enabled' : 'Disabled', st.enabled ? 'ok' : ''), badge(st.running ? 'Local listener running' : 'Local listener stopped', st.running ? 'ok' : 'warn')),
-      el('div', { class: 'badges' }, badge(st.tokenSet ? 'Access token set' : 'Access token missing', st.tokenSet ? 'ok' : 'bad'), badge(st.secretSet ? 'Channel secret set' : 'Channel secret missing', st.secretSet ? 'ok' : 'bad')),
-      el('div', { class: 'field' }, el('label', {}, el('span', { class: 'field-label' }, 'Webhook URL'), el('input', { type: 'text', readonly: true, value: webhook, placeholder: 'Set a public URL below' })),
-        webhook && btn('Copy', (b) => void guarded(async () => { await navigator.clipboard.writeText(webhook); toast('Copied'); }, b), 'small')),
-      st.healthUrl && el('p', { class: 'hint' }, `Open ${st.healthUrl} in a browser to check your tunnel.`),
-      ...(st.warnings ?? []).map(w => el('p', { class: 'notice warn' }, w)),
-      st.lastEventAt && el('p', { class: 'muted' }, `Last event: ${formatTime(st.lastEventAt)}`),
-      st.lastError && el('p', { class: 'notice error' }, st.lastError),
+    const details = el('div');
+    function renderStatus(st: LineStatus): void {
+      const webhook = st.webhookUrl || '';
+      details.replaceChildren(el('div', {},
+        el('h3', {}, 'Status', badge(st.enabled ? 'Enabled' : 'Disabled', st.enabled ? 'ok' : ''), badge(st.running ? 'Local listener running' : 'Local listener stopped', st.running ? 'ok' : 'warn')),
+        el('div', { class: 'badges' }, badge(st.tokenSet ? 'Access token set' : 'Access token missing', st.tokenSet ? 'ok' : 'bad'), badge(st.secretSet ? 'Channel secret set' : 'Channel secret missing', st.secretSet ? 'ok' : 'bad')),
+        el('div', { class: 'field' }, el('label', {}, el('span', { class: 'field-label' }, 'Webhook URL'), el('input', { type: 'text', readonly: true, value: webhook, placeholder: 'Set a public URL below' })),
+          webhook && btn('Copy', (b) => void guarded(async () => { await navigator.clipboard.writeText(webhook); toast('Copied'); }, b), 'small')),
+        st.healthUrl && el('p', { class: 'hint' }, `Open ${st.healthUrl} in a browser to check your tunnel.`),
+        ...(st.warnings ?? []).map(w => el('p', { class: 'notice warn' }, w)),
+        st.lastEventAt && el('p', { class: 'muted' }, `Last event: ${formatTime(st.lastEventAt)}`),
+        st.lastError && el('p', { class: 'notice error' }, st.lastError)));
+    }
+    renderStatus(st);
+    const status = el('section', { class: 'card' }, details,
       el('div', { class: 'actions' }, connect, test, btn('Refresh', reload)), connectResult, testResult);
 
     const enabled = check('Enable the LINE gateway', line.enabled);
@@ -84,14 +90,14 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
     }
     publicUrl.addEventListener('input', validateUrl);
     publicUrl.addEventListener('invalid', validateUrl);
-    const slow = el('input', { type: 'number', min: 1, max: 55, step: 1, value: String(line.slowResponseMs / 1000), 'aria-describedby': 'line-slow-error' });
+    const slow = el('input', { type: 'number', min: 1, max: 50, step: 1, value: String(line.slowResponseMs / 1000), 'aria-describedby': 'line-slow-error' });
     const slowError = el('div', { id: 'line-slow-error', class: 'notice error', role: 'alert', hidden: true });
-    const slowField = field('Slow response (seconds)', slow, "Under 55 seconds, so LINE's reply token is still valid.");
+    const slowField = field('Slow response (seconds)', slow, "Up to 50 seconds, so LINE's reply token is still valid.");
     slowField.append(slowError);
     function validateSlow(): boolean {
       const n = Number(slow.value);
-      const valid = Number.isInteger(n) && n >= 1 && n <= 55;
-      slowError.textContent = valid ? '' : 'Slow response must be a whole number between 1 and 55 seconds';
+      const valid = Number.isInteger(n) && n >= 1 && n <= 50;
+      slowError.textContent = valid ? '' : 'Slow response must be a whole number between 1 and 50 seconds';
       slowError.hidden = valid;
       slow.setAttribute('aria-invalid', String(!valid));
       return valid;

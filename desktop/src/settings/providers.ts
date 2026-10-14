@@ -1,7 +1,8 @@
 // Settings: Providers & models.
 import type { Api } from '../api.ts';
-import type { Agent, ProviderConfig, Settings } from '../types.ts';
-import { badge, btn, confirmBtn, el, field, guarded, load, select, toast } from '../dom.ts';
+import type { Agent, ProviderConfig, Settings, ProviderStatus } from '../types.ts';
+import { modelField } from '../models.ts';
+import { badge, btn, confirmBtn, el, field, errMsg, guarded, load, select, toast } from '../dom.ts';
 
 const HINT: Record<string, string> = {
   anthropic: 'API root, for example https://api.anthropic.com',
@@ -11,20 +12,22 @@ const HINT: Record<string, string> = {
 export function mountProviders(pane: HTMLElement, api: Api, currentAgent?: string, changed: () => void = () => {}): void {
   const reload = () => void load(pane, async () => {
     const [settings, agents] = await Promise.all([api.getSettings(), api.listAgents()]);
-    return { ...settings, ...agents };
+    const statuses = await Promise.all(settings.config.providers.map(p => api.providerStatus(p.id).catch(e => ({ warnings: [errMsg(e)] }))));
+    return { ...settings, ...agents, statuses };
   }, render);
 
-  function render({ config, secrets, agents }: Settings & { agents: Agent[] }): void {
+  function render({ config, secrets, agents, statuses }: Settings & { agents: Agent[]; statuses: ProviderStatus[] }): void {
     const label = (p: ProviderConfig) => p.label || p.id;
 
     const agent = select(agents.map(a => [a.id, `${a.icon} ${a.name}`]), agents.some(a => a.id === currentAgent) ? currentAgent! : agents[0]?.id ?? '');
     const selected = () => agents.find(a => a.id === agent.value)!;
     const provider = select(config.providers.map((p) => [p.id, label(p)]), selected().provider);
     const model = el('input', { type: 'text', value: selected().model, autocomplete: 'off', spellcheck: 'false' });
-    agent.addEventListener('change', () => { provider.value = selected().provider; model.value = selected().model; });
+    agent.addEventListener('change', () => { provider.value = selected().provider; model.value = selected().model; provider.dispatchEvent(new Event('change')); });
+    const models = modelField(api, provider, model, 'provider-models');
     const active = el('section', { class: 'card' },
       el('h3', {}, 'Agent model'),
-      field('Agent', agent), el('div', { class: 'grid2' }, field('Provider', provider), field('Model', model)),
+      field('Agent', agent), el('div', { class: 'grid2' }, field('Provider', provider), models),
       el('div', { class: 'actions' }, btn('Save', (b) => void guarded(async () => {
         const m = model.value.trim();
         if (!m) throw new Error('Enter a model name');
@@ -34,7 +37,8 @@ export function mountProviders(pane: HTMLElement, api: Api, currentAgent?: strin
         reload();
       }, b), 'primary')));
 
-    const cards = config.providers.map((p) => {
+    const cards = config.providers.map((p, index) => {
+      const status = statuses[index]!;
       const url = el('input', { type: 'url', value: p.baseUrl, autocomplete: 'off', spellcheck: 'false' });
       const ctx = el('input', { type: 'number', min: 1000, step: 1000, value: p.contextWindow ?? '' });
       const key = el('input', { type: 'password', autocomplete: 'new-password', placeholder: 'Paste a new key to replace it' });
@@ -57,7 +61,7 @@ export function mountProviders(pane: HTMLElement, api: Api, currentAgent?: strin
 
       const keyRow = p.apiKeyEnv
         ? el('div', { class: 'key-row' },
-            el('div', { class: 'key-state' }, 'API key: ', masked ? el('code', {}, masked) : el('span', { class: 'muted' }, 'not set')),
+            el('div', { class: 'key-state' }, status.note ? 'API key (optional): ' : 'API key: ', masked ? el('code', {}, masked) : el('span', { class: 'muted' }, 'not set')),
             field('Replace key', key),
             el('div', { class: 'actions' },
               btn('Save key', (b) => void guarded(async () => {
@@ -74,7 +78,9 @@ export function mountProviders(pane: HTMLElement, api: Api, currentAgent?: strin
         el('h3', {}, label(p), badge(p.kind), p.id === selected().provider && badge('Selected', 'ok')),
         el('div', { class: 'grid2' }, field('Base URL', url, HINT[p.kind]), field('Context window (tokens)', ctx)),
         el('div', { class: 'actions' }, save),
-        keyRow);
+        keyRow,
+        status.note && el('p', { class: 'hint' }, status.note),
+        ...status.warnings.map(w => el('p', { class: 'notice warn' }, w)));
     });
 
     pane.append(el('h2', {}, 'Providers & models'),

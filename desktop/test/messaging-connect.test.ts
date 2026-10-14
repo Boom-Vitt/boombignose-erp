@@ -64,13 +64,14 @@ test('Connect displays both successful steps and bot identity using the authenti
     steps: [{ name: 'token', ok: true, detail: 'Connected' }, { name: 'webhook', ok: true, detail: 'Webhook set' }] }));
   await mount(h); button(h.pane, 'Connect').fire('click'); await flush();
   const result = h.pane.querySelector('.line-connect-result')!;
-  assert.match(result.textContent, /token: ok.*Connected/);
-  assert.match(result.textContent, /webhook: ok.*Webhook set/);
+  assert.match(result.textContent, /Token: ok.*Connected/);
+  assert.match(result.textContent, /Webhook: ok.*Webhook set/);
   assert.ok(result.textContent.includes('My bot <script> (@my-bot)'));
   assert.equal(result.querySelector('script'), null);
   const call = h.calls.find(c => c.path === '/api/line/connect')!;
   assert.equal(call.method, 'POST'); assert.deepEqual(call.body, {});
   assert.equal(call.headers.Authorization, 'Bearer test-token');
+  assert.equal(h.calls.filter(c => c.path === '/api/line/status').length, 2);
 });
 
 for (const tokenOk of [true, false]) test(`Connect shows failed webhook and ${tokenOk ? 'successful' : 'failed'} token steps`, async t => {
@@ -81,8 +82,8 @@ for (const tokenOk of [true, false]) test(`Connect shows failed webhook and ${to
   ] }));
   await mount(h); button(h.pane, 'Connect').fire('click'); await flush();
   const text = h.pane.querySelector('.line-connect-result')!.textContent;
-  assert.ok(text.includes(`token: ${tokenOk ? 'ok' : 'failed'}`));
-  assert.ok(text.includes('webhook: failed'));
+  assert.ok(text.includes(`Token: ${tokenOk ? 'ok' : 'failed'}`));
+  assert.ok(text.includes('Webhook: failed'));
   assert.ok(text.includes(tokenOk ? 'Set a public HTTPS URL first.' : 'Fix the token first.'));
   if (tokenOk) assert.ok(text.includes('Bot (@bot)'));
   else assert.ok(text.includes('Save the channel access token first.'));
@@ -143,21 +144,21 @@ test('public URL rejects HTTP and malformed input inline before saving settings 
   assert.equal(publicUrl.attrs['aria-invalid'], 'false');
 });
 
-test('slow response is edited in seconds and saved in milliseconds with 1-55 bounds', async t => {
+test('slow response is edited in seconds and saved in milliseconds with 1-50 bounds', async t => {
   t.after(installDom());
-  for (const [ms, seconds] of [[1000, '1'], [45000, '45'], [55000, '55']] as const) {
+  for (const [ms, seconds] of [[1000, '1'], [45000, '45'], [50000, '50']] as const) {
     const h = harness(undefined, undefined, status, ms); const form = await mount(h);
     assert.equal(control(form, 'Slow response (seconds)').value, seconds);
-    assert.ok(form.textContent.includes("Under 55 seconds, so LINE's reply token is still valid."));
+    assert.ok(form.textContent.includes("Up to 50 seconds, so LINE's reply token is still valid."));
     form.fire('submit'); await flush(); assert.equal(h.config().line.slowResponseMs, ms);
   }
   const h = harness(); const form = await mount(h);
   const slow = control(form, 'Slow response (seconds)');
-  for (const value of ['0', '56', '1.5', '', 'invalid']) {
+  for (const value of ['0', '51', '1.5', '', 'invalid']) {
     slow.value = value; slow.fire('input'); form.fire('submit'); await flush();
     assert.ok(!h.calls.some(c => c.method === 'PUT'));
     assert.equal(slow.attrs['aria-invalid'], 'true');
-    assert.ok(form.querySelectorAll('.error').some(n => !n.hidden && /1.*55/.test(n.textContent)));
+    assert.ok(form.querySelectorAll('.error').some(n => !n.hidden && /1.*50/.test(n.textContent)));
   }
   slow.value = '12'; slow.fire('input'); form.fire('submit'); await flush();
   assert.equal(h.config().line.slowResponseMs, 12000);

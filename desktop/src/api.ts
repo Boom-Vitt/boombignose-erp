@@ -1,6 +1,6 @@
 // The only module that knows the local API's routes (docs/design.md section 6). No DOM.
 import type {
-  Agent, AgentInput, Command, Config, Health, Job, Delivery, LineStatus, LineConnectResult, LineTestResult, ModelListResult, McpServerConfig, McpServerInfo, McpToolInfo, MemoryKind,
+  Agent, AgentInput, Command, Config, Health, Job, Delivery, LineStatus, LineConnectResult, LineTestResult, ModelListResult, ProviderStatus, McpServerConfig, McpServerInfo, McpToolInfo, MemoryKind,
   MemoryNote, SessionDetail, SessionSummary, Settings, Skill, SkillSummary, Status, TestResult,
 } from './types.ts';
 
@@ -85,6 +85,7 @@ export function createApi(opts: ApiOptions) {
     patchAgent: (id: string, agent: Partial<AgentInput>) => patch<Agent>(`/api/agents/${enc(id)}`, agent),
     deleteAgent: (id: string) => del(`/api/agents/${enc(id)}`),
     listModels: (providerId: string) => get<ModelListResult>(`/api/providers/${enc(providerId)}/models`),
+    providerStatus: (id: string) => get<ProviderStatus>(`/api/providers/${enc(id)}/status`),
     listCommands: (agent?: string) => get<{ commands: Command[] }>('/api/commands', { agent }),
     listSessions: (q?: string, limit?: number, agent?: string) => get<{ sessions: SessionSummary[] }>('/api/sessions', { q, limit, agent }),
     createSession: (title?: string, agentId?: string) => post<{ id: string }>('/api/sessions', { title, agentId }),

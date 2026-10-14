@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { ensureApiToken, homeDir, loadConfig, paths, readEnv, saveConfig, VERSION } from '../config.ts';
+import { ensureApiToken, getApiKey, homeDir, loadConfig, paths, readEnv, saveConfig, VERSION } from '../config.ts';
 import { openStore } from '../store/index.ts';
 import { McpManager } from '../mcp/manager.ts';
 import { Scheduler } from '../cron/index.ts';
@@ -10,9 +10,12 @@ import { createApiServer } from '../api/index.ts';
 import type { Config } from '../types.ts';
 import { Runtime } from './runtime.ts';
 import type { RuntimeOptions } from './runtime.ts';
+import { listModels } from '../providers/models.ts';
+import { isOllama } from '../providers/ollama.ts';
 import { validateConfig } from './settings.ts';
 
 export interface DaemonOptions {
+  fetchImpl?: typeof fetch;
   home?: string; providerFactory?: RuntimeOptions['providerFactory'];
   signal?: AbortSignal;
   lineOptions?: Pick<LineGatewayOptions, 'fetchImpl' | 'apiBase' | 'timers'>;
@@ -21,6 +24,22 @@ export interface DaemonOptions {
 export async function startDaemon(options: DaemonOptions = {}) {
   const home = options.home ?? homeDir();
   let config = loadConfig(home); validateConfig(config);
+  if (!existsSync(paths(home).config)) {
+    const provider = config.providers.find(p => p.id === config.active.provider)!;
+    if (isOllama(provider)) {
+      const fetchImpl = options.fetchImpl ?? fetch;
+      try {
+        const models = await listModels(provider, getApiKey(config, provider.id, home), (url, init) => fetchImpl(url, {
+          ...init, signal: AbortSignal.any([init!.signal!, AbortSignal.timeout(2000), ...(options.signal ? [options.signal] : [])]),
+        }));
+        const active = config.active.model;
+        if (!models.some(m => m.id === active || m.id === `${active}:latest`)) {
+          config.active.model = models.find(m => m.id.startsWith(`${active}:`))?.id ?? models[0]!.id;
+          saveConfig(config, home);
+        }
+      } catch { /* Keep the default model when Ollama is unavailable or empty. */ }
+    }
+  }
   const token = ensureApiToken(home), store = openStore(paths(home).db);
   const seen = new Set<string>();
   const mcp = new McpManager(config.mcp.servers, readEnv(home));
@@ -63,7 +82,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
       tokenSet: !!env.LINE_CHANNEL_ACCESS_TOKEN, secretSet: !!env.LINE_CHANNEL_SECRET,
       lastEventAt: status?.lastEventAt, lastError: status?.lastError ?? lineError };
   }
-  const api = createApiServer({ home, token, runtime, mcp, scheduler, config: () => config, lineStatus,
+  const api = createApiServer({ home, token, fetchImpl: options.fetchImpl, runtime, mcp, scheduler, config: () => config, lineStatus,
     lineApiOptions: () => {
       const env = readEnv(home);
       return { ...options.lineOptions, accessToken: env.LINE_CHANNEL_ACCESS_TOKEN ?? '', channelSecret: env.LINE_CHANNEL_SECRET };

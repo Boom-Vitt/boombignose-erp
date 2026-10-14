@@ -4,22 +4,19 @@
 export type TextBlock = { type: 'text'; text: string };
 export type ToolUseBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> };
 export type ToolResultBlock = { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean };
-export type ThinkingBlock = { type: 'thinking'; thinking: string; signature: string };
-export type RedactedThinkingBlock = { type: 'redacted_thinking'; data: string };
-export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock | RedactedThinkingBlock;
+export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock;
 export type Message = { role: 'user' | 'assistant'; content: ContentBlock[] };
 
 export type ProviderKind = 'anthropic' | 'openai-compatible';
 export type Policy = 'allow' | 'ask' | 'deny';
-export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface Agent {
   id: string; name: string; icon: string; instructions: string; provider: string; model: string;
-  effort?: Effort; maxTokens?: number;
+  maxTokens?: number;
   permissions: Record<string, Policy>; connectors: string[] | null; skills: string[] | null;
   createdAt: number; updatedAt: number;
 }
-export type AgentInput = Omit<Agent, 'id' | 'createdAt' | 'updatedAt' | 'effort' | 'maxTokens'> & {
-  effort?: Effort | null; maxTokens?: number | null;
+export type AgentInput = Omit<Agent, 'id' | 'createdAt' | 'updatedAt' | 'maxTokens'> & {
+  maxTokens?: number | null;
 };
 export interface Command { name: string; description: string; usage: string; kind: string }
 export interface ProviderConfig {
@@ -51,7 +48,7 @@ export interface Config {
 
 // ---- events from GET /api/events
 type Tag = { sessionId: string; runId: string };
-export type RunStatus = 'done' | 'interrupted' | 'max_turns' | 'error' | 'refused';
+export type RunStatus = 'done' | 'interrupted' | 'max_turns' | 'error';
 export type ApiEvent =
   | ({ type: 'run_start' } & Tag)
   | ({ type: 'text_delta'; text: string } & Tag)
@@ -83,7 +80,8 @@ export interface McpServerInfo {
 }
 export interface McpToolInfo { name: string; description?: string; selected: boolean }
 export interface TestResult { ok: boolean; tools: number; error?: string }
-export interface ModelInfo { id: string; label?: string; maxTokens?: number; contextWindow?: number }
+export interface ModelInfo { id: string; label?: string }
+export interface ProviderStatus { note?: string; warnings: string[] }
 export interface ModelListResult { ok: boolean; models: ModelInfo[]; error?: string }
 export interface SkillSummary { name: string; description: string }
 export interface Skill extends SkillSummary { body: string }
