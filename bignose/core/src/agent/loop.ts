@@ -146,7 +146,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
         const output = await budgetResult(result.content, cap, opts.spillDir, opts.redact);
         replies.push({ type: 'tool_result', toolUseId: call.id, content: output, isError: result.isError ?? false });
         emit({ type: 'tool_end', callId: call.id, name: clean(call.name), isError: result.isError ?? false, output: output.slice(0, 2000) });
-        await runHooks(opts.hooks.postTool, { event: 'postTool', sessionId: opts.sessionId, tool: call.name, input, output, isError: result.isError ?? false });
+        await runHooks(opts.hooks.postTool, { event: 'postTool', sessionId: opts.sessionId, tool: clean(call.name), input, output, isError: result.isError ?? false });
       }
       if (replies.length) append({ role: 'user', content: replies });
       opts.signal.throwIfAborted();

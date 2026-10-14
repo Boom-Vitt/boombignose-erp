@@ -348,7 +348,8 @@ test('a key in a long tool name is masked before the cut', async () => {
   const events: AgentEvent[] = [];
   const r = await runAgent(options(strict([[call('a', stored), call('b', unknown), { ...done, stopReason: 'tool_use' }], [text('fine'), done]]), { redact: mask(secret), onEvent: e => events.push(e) }));
   assert.equal(r.status, 'done');
-  // A session saved by an older build holds the cut name; it is masked when the session is loaded again.
+  // A session saved before tool names were checked holds the full name; it is masked when the session is loaded again.
+  // shortcut: a name an older build already cut at 64 holds a key prefix no mask can find and is forwarded as is, backlog: rewrite or drop such stored names.
   const legacy: Message[] = [{ role: 'user', content: [{ type: 'text', text: 'old' }] }, { role: 'assistant', content: [{ type: 'tool_use', id: 'x', name: stored, input: {} }] }, { role: 'user', content: [{ type: 'tool_result', toolUseId: 'x', content: 'no', isError: true }] }];
   const requests: ProviderRequest[] = [];
   await runAgent(options(scripted([[text('ok'), done]], requests), { context: legacy, redact: mask(secret) }));
