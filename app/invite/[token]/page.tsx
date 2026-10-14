@@ -14,6 +14,7 @@ import {
   CardFooter,
 } from "@/components/ui/card"
 
+import { signOutTo } from "@/app/onboarding/actions"
 import { AcceptInvitationButton } from "./accept-button"
 
 export const dynamic = "force-dynamic"
@@ -30,19 +31,27 @@ export default async function InvitePage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) redirect(`/login?redirect=/invite/${token}`)
+  if (!user) redirect(`/login?redirect=${encodeURIComponent(`/invite/${encodeURIComponent(token)}`)}`)
 
   // The invitee is not yet a member, so read the invitation with the
   // service-role client (RLS would hide it). Read-only lookup for display.
   const admin = createAdminClient()
   const { data: invite } = await admin
     .from("invitations")
-    .select("email, role, status, expires_at, org_id")
+    .select("email, role, status, expires_at, org_id, accepted_by")
     .eq("token", token)
     .maybeSingle()
 
+  // Do not disclose a workspace through a bearer link to the wrong account.
+  const intendedRecipient = !!user.email && invite?.email.toLowerCase() === user.email.toLowerCase()
+  const canRetryAccepted = invite?.status === "accepted" && invite.accepted_by === user.id
+  const isValid = intendedRecipient && invite && (
+    canRetryAccepted || (invite.status === "pending" &&
+      (!invite.expires_at || invite.expires_at > new Date().toISOString()))
+  )
+
   let orgName = "a workspace"
-  if (invite) {
+  if (isValid) {
     const { data: org } = await admin
       .from("organizations")
       .select("name")
@@ -51,10 +60,6 @@ export default async function InvitePage({
     if (org?.name) orgName = org.name
   }
 
-  const isValid =
-    invite &&
-    invite.status === "pending" &&
-    (!invite.expires_at || invite.expires_at >= new Date().toISOString())
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
@@ -73,7 +78,7 @@ export default async function InvitePage({
           <CardDescription>
             {isValid
               ? `You've been invited to join ${orgName} as ${invite!.role} on BoomBigNose Company OS.`
-              : "This invitation link is invalid, already used, revoked, or expired."}
+              : "This invitation is unavailable for this account, revoked, or expired. Use the email account that received the link."}
           </CardDescription>
         </CardHeader>
 
@@ -89,9 +94,12 @@ export default async function InvitePage({
             </CardFooter>
           </>
         ) : (
-          <CardFooter>
-            <Button variant="outline" className="w-full" render={<Link href="/dashboard" />}>
-              Go to dashboard
+          <CardFooter className="flex-col gap-3">
+            <form action={signOutTo.bind(null, `/invite/${encodeURIComponent(token)}`)} className="w-full">
+              <Button type="submit" className="w-full">Use another account</Button>
+            </form>
+            <Button variant="outline" className="w-full" render={<Link href="/onboarding" />}>
+              Continue to your workspace
             </Button>
           </CardFooter>
         )}

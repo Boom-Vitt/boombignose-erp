@@ -6,7 +6,7 @@ import { cookies } from "next/headers"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { workspaceCookieIsSecure } from "@/lib/supabase/workspace-cookie"
 import { requireOrgContext, requireCapability, ACTIVE_ORG_COOKIE } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
 
@@ -16,17 +16,14 @@ import { writeAudit } from "@/lib/audit"
  * - Switching the active org sets a cookie that getOrgContext reads.
  * - Inviting/revoking are owner/admin actions scoped to the caller's org (RLS +
  *   requireRole).
- * - ACCEPTING an invitation runs with the service-role admin client: the invitee
- *   is not yet a member, so RLS would hide the invitation row and block the
- *   membership insert (memberships has no authenticated INSERT policy). The token
- *   is validated server-side before any write, and the acting user is taken from
- *   the session — never from client input.
+ * - Accepting/provisioning use authenticated transaction RPCs. The database
+ *   validates the actor and commits membership and command state atomically.
  */
 
 const ONE_YEAR = 60 * 60 * 24 * 365
 
 // ── Switch active org ───────────────────────────────────────────────────────
-const SetActiveOrg = z.object({ orgId: z.string().min(1) })
+const SetActiveOrg = z.object({ orgId: z.string().uuid() })
 
 export async function setActiveOrg(
   input: z.input<typeof SetActiveOrg>
@@ -41,21 +38,16 @@ export async function setActiveOrg(
   if (!user) redirect("/login")
 
   // Only switch to an org the user actually belongs to.
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("memberships")
     .select("org_id")
     .eq("user_id", user.id)
     .eq("org_id", parsed.data.orgId)
     .maybeSingle()
+  if (membershipError) return { error: "Unable to check workspace membership. Please try again." }
   if (!membership) return { error: "You are not a member of that workspace" }
 
-  const cookieStore = await cookies()
-  cookieStore.set(ACTIVE_ORG_COOKIE, parsed.data.orgId, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: ONE_YEAR,
-  })
+  await activateWorkspace(parsed.data.orgId)
 
   revalidatePath("/", "layout")
   redirect("/dashboard")
@@ -146,7 +138,7 @@ export async function revokeInvitation(
 }
 
 // ── Accept an invitation (invitee side) ─────────────────────────────────────
-const AcceptInvitation = z.object({ token: z.string().min(1) })
+const AcceptInvitation = z.object({ token: z.string().trim().min(1).max(256) })
 
 export async function acceptInvitation(
   input: z.input<typeof AcceptInvitation>
@@ -155,67 +147,54 @@ export async function acceptInvitation(
   if (!parsed.success) return { error: "Invalid invitation" }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) redirect(`/login?redirect=/invite/${parsed.data.token}`)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect(`/login?redirect=${encodeURIComponent(`/invite/${encodeURIComponent(parsed.data.token)}`)}`)
 
-  // Service-role: the invitee is not yet a member of the org.
-  const admin = createAdminClient()
-  const { data: invite } = await admin
-    .from("invitations")
-    .select("id, org_id, email, role, status, expires_at")
-    .eq("token", parsed.data.token)
-    .maybeSingle()
+  const { data: orgId, error } = await supabase.rpc("accept_workspace_invitation", {
+    p_token: parsed.data.token,
+  })
+  if (error) return { error: error.message }
+  if (!orgId) return { error: "Unable to accept this invitation. Please try again." }
 
-  if (!invite) return { error: "This invitation link is not valid." }
-  if (invite.status !== "pending") {
-    return { error: "This invitation is no longer active." }
-  }
-  if (invite.expires_at && invite.expires_at < new Date().toISOString()) {
-    await admin.from("invitations").update({ status: "expired" }).eq("id", invite.id)
-    return { error: "This invitation has expired." }
-  }
-  if (
-    user.email &&
-    invite.email.toLowerCase() !== user.email.toLowerCase()
-  ) {
-    return {
-      error: `This invitation was sent to ${invite.email}. Sign in with that email to accept.`,
-    }
-  }
+  await activateWorkspace(orgId)
+  revalidatePath("/", "layout")
+  redirect("/dashboard")
+}
 
-  // Idempotent: create the membership if it doesn't exist yet.
-  const { data: existing } = await admin
-    .from("memberships")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("org_id", invite.org_id)
-    .maybeSingle()
+const ProvisionWorkspace = z.object({
+  name: z.string().trim().min(1, "Enter a workspace name.").max(100, "Use 100 characters or fewer."),
+  key: z.string().uuid("Invalid workspace request. Reload this page."),
+})
 
-  if (!existing) {
-    const { error: memErr } = await admin.from("memberships").insert({
-      org_id: invite.org_id,
-      user_id: user.id,
-      role: invite.role,
-    })
-    if (memErr) return { error: memErr.message }
-  }
+/** Retried requests use the same key; only the database creates org + owner. */
+export async function provisionWorkspace(
+  input: z.input<typeof ProvisionWorkspace>
+): Promise<{ error?: string }> {
+  const parsed = ProvisionWorkspace.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid workspace" }
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect("/login?redirect=%2Fonboarding")
 
-  await admin
-    .from("invitations")
-    .update({ status: "accepted", accepted_by: user.id })
-    .eq("id", invite.id)
+  const { data: orgId, error } = await supabase.rpc("provision_workspace", {
+    p_name: parsed.data.name,
+    p_key: parsed.data.key,
+  })
+  if (error) return { error: error.message }
+  if (!orgId) return { error: "Unable to create your workspace. Please try again." }
 
-  // Make the newly-joined org active.
+  await activateWorkspace(orgId)
+  revalidatePath("/", "layout")
+  redirect("/dashboard")
+}
+
+async function activateWorkspace(orgId: string) {
   const cookieStore = await cookies()
-  cookieStore.set(ACTIVE_ORG_COOKIE, invite.org_id, {
+  cookieStore.set(ACTIVE_ORG_COOKIE, orgId, {
     httpOnly: true,
+    secure: workspaceCookieIsSecure(process.env.NEXT_PUBLIC_APP_URL, process.env.NODE_ENV),
     sameSite: "lax",
     path: "/",
     maxAge: ONE_YEAR,
   })
-
-  revalidatePath("/", "layout")
-  redirect("/dashboard")
 }

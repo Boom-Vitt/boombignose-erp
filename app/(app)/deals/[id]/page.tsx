@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { Pencil, FolderPlus, ArrowLeft } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import { formatTHB } from "@/lib/money"
 import { PageHeader } from "@/components/page-header"
@@ -22,6 +23,7 @@ export default async function DealDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const today = todayISO()
 
@@ -29,17 +31,18 @@ export default async function DealDetailPage({
     .from("deals")
     .select(
       "id,client_id,title,stage,value_satang,expected_close_date,next_follow_up_date,source,notes,created_at"
-    )
+    ).eq("org_id", ctx.orgId)
     .eq("id", id)
     .maybeSingle()
 
   if (!deal) notFound()
 
   const [{ data: client }, { data: activities }] = await Promise.all([
-    supabase.from("clients").select("id,name").eq("id", deal.client_id).maybeSingle(),
+    supabase.from("clients").select("id,name").eq("org_id", ctx.orgId).eq("id", deal.client_id).maybeSingle(),
     supabase
       .from("activities")
       .select("id,type,body,due_date,done,created_at")
+      .eq("org_id", ctx.orgId)
       .eq("deal_id", id)
       .order("done", { ascending: true })
       .order("created_at", { ascending: false }),

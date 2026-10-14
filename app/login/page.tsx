@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { createClient } from "@/lib/supabase/client"
+import { safeReturnPath } from "@/lib/supabase/redirect"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,7 +22,7 @@ import {
 function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
-  const redirectTo = params.get("redirect") || "/dashboard"
+  const redirectTo = safeReturnPath(params.get("redirect"))
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -46,6 +47,7 @@ function LoginForm() {
         <CardHeader>
           <CardTitle className="text-xl">BoomBigNose Company OS</CardTitle>
           <CardDescription>Sign in to your workspace.</CardDescription>
+          {params.get("error") ? <p role="alert" className="text-destructive text-sm">{params.get("error")}</p> : null}
         </CardHeader>
         <form
           onSubmit={(e) => {
