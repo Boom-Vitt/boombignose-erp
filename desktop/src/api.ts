@@ -1,6 +1,6 @@
 // The only module that knows the local API's routes (docs/design.md section 6). No DOM.
 import type {
-  Agent, AgentInput, Command, Config, Health, Job, Delivery, LineStatus, LineConnectResult, LineTestResult, ModelListResult, ProviderStatus, McpServerConfig, McpServerInfo, McpToolInfo, MemoryKind,
+  Agent, AgentInput, Command, Config, Health, Job, Delivery, DoctorResult, LineStatus, LineConnectResult, LineTestResult, ModelListResult, ProviderStatus, McpServerConfig, McpServerInfo, McpToolInfo, MemoryKind,
   MemoryNote, SessionDetail, SessionSummary, Settings, Skill, SkillSummary, Status, TestResult,
 } from './types.ts';
 
@@ -76,6 +76,7 @@ export function createApi(opts: ApiOptions) {
   const api = {
     health: () => get<Health>('/api/health'),
     status: () => get<Status>('/api/status'),
+    doctor: () => post<DoctorResult>('/api/doctor'),
     /** Raw stream for GET /api/events (EventSource cannot send the Authorization header). */
     events: (signal: AbortSignal) => send('GET', '/api/events', { signal }, 'text/event-stream'),
 

@@ -1,6 +1,6 @@
 import type { Api } from '../api.ts';
 import type { Settings } from '../types.ts';
-import { el, field, guarded, load, toast } from '../dom.ts';
+import { btn, el, errMsg, field, guarded, load, toast } from '../dom.ts';
 import { generalFromConfig, generalToConfig } from './forms.ts';
 
 export function mountGeneral(pane: HTMLElement, api: Api): void {
@@ -27,7 +27,25 @@ export function mountGeneral(pane: HTMLElement, api: Api): void {
         reload();
       }, save);
     });
-    pane.append(el('h2', {}, 'General'), el('p', { class: 'muted' }, 'Workspace and limits for agent runs.'), form);
+    const result = el('div', { 'aria-live': 'polite' });
+    const run = btn('Run diagnostics', runDiagnostics);
+    function runDiagnostics(): void {
+      if (run.disabled) return;
+      void guarded(async () => {
+        result.replaceChildren(el('p', { class: 'muted' }, 'Running diagnostics…'));
+        try {
+          const { code, lines } = await api.doctor();
+          result.replaceChildren(
+            el('p', { class: `result ${code === 0 ? 'ok' : 'bad'}` }, code === 0 ? 'All checks passed' : 'Some checks failed'),
+            el('pre', { class: 'code' }, lines.join('\n')));
+        } catch (e) {
+          result.replaceChildren(el('div', { class: 'notice error', role: 'alert' },
+            el('p', {}, errMsg(e)), btn('Retry', runDiagnostics)));
+        }
+      }, run);
+    }
+    pane.append(el('h2', {}, 'General'), el('p', { class: 'muted' }, 'Workspace and limits for agent runs.'), form,
+      el('section', { class: 'card' }, el('h3', {}, 'Diagnostics'), el('div', { class: 'actions' }, run), result));
   }
 
   reload();

@@ -64,6 +64,7 @@ export type ApiEvent =
 // ---- responses
 export type Time = number | string; // API timestamps are epoch milliseconds; strings are accepted for display compatibility.
 export interface Health { ok: true; version: string; pid: number }
+export interface DoctorResult { code: number; lines: string[] }
 export interface Status {
   version: string;
   provider: { id: string; kind: string; model: string };

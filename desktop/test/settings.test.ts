@@ -1,8 +1,10 @@
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { createApi } from '../src/api.ts';
+import { createApi, type Api } from '../src/api.ts';
+import { mountGeneral } from '../src/settings/general.ts';
 import { generalFromConfig, generalToConfig, hooksFromConfig, hooksToConfig } from '../src/settings/forms.ts';
 import type { Config } from '../src/types.ts';
+import { installDom, TestNode, flush, json } from './dom-fixture.ts';
 
 function config(): Config {
   return {
@@ -116,4 +118,133 @@ test('General and Hooks save through fresh GET/PUT settings while preserving oth
   assert.equal(stored.line.enabled, true);
   assert.deepEqual(stored.hooks.postTool, []);
   assert.deepEqual(stored.hooks.preTool, [{ command: 'check-input', tools: ['shell', 'write_file'], timeoutMs: 5000 }]);
+});
+
+async function diagnostics(t: TestContext, doctor: () => Promise<{ code: number; lines: string[] }>) {
+  t.after(installDom());
+  const pane = new TestNode('section');
+  mountGeneral(pane as unknown as HTMLElement, {
+    getSettings: async () => ({ config: config(), secrets: {} }), doctor,
+  } as unknown as Api);
+  await flush();
+  const button = pane.querySelectorAll('button').find(b => /diagnostic|doctor/i.test(b.textContent));
+  assert.ok(button, 'General needs a diagnostics action');
+  return { pane, button };
+}
+
+test('T17 General offers diagnostics without running them on mount', { timeout: 2000 }, async t => {
+  let calls = 0;
+  const { pane, button } = await diagnostics(t, async () => { calls++; return { code: 0, lines: [] }; });
+  assert.match(pane.textContent, /Diagnostics/);
+  assert.equal(button.textContent, 'Run diagnostics');
+  assert.equal(button.disabled, false);
+  assert.equal(calls, 0);
+});
+
+test('T17 successful diagnostics show every line as text and a passing summary', { timeout: 2000 }, async t => {
+  let calls = 0;
+  const lines = ['ok sqlite', 'ok home writable', '<script>unsafe()</script>'];
+  const { pane, button } = await diagnostics(t, async () => { calls++; return { code: 0, lines }; });
+  button.fire('click');
+  await flush();
+  assert.equal(calls, 1);
+  assert.match(pane.textContent, /all checks passed/i);
+  for (const line of lines) assert.ok(pane.textContent.includes(line));
+  assert.equal(pane.querySelectorAll('script').length, 0);
+  assert.equal(button.disabled, false);
+});
+
+test('T17 failed diagnostics show every line and a failing summary', { timeout: 2000 }, async t => {
+  let calls = 0;
+  const { pane, button } = await diagnostics(t, async () => {
+    calls++; return { code: 1, lines: ['ok sqlite', 'fail home not writable'] };
+  });
+  button.fire('click');
+  await flush();
+  assert.equal(calls, 1);
+  assert.match(pane.textContent, /some checks failed/i);
+  assert.match(pane.textContent, /ok sqlite/);
+  assert.match(pane.textContent, /fail home not writable/);
+  assert.equal(button.disabled, false);
+});
+
+test('T17 pending diagnostics disable the action and ignore duplicate clicks', { timeout: 2000 }, async t => {
+  let calls = 0;
+  let finish!: (value: { code: number; lines: string[] }) => void;
+  const pending = new Promise<{ code: number; lines: string[] }>(resolve => { finish = resolve; });
+  const { pane, button } = await diagnostics(t, () => { calls++; return pending; });
+  button.fire('click');
+  assert.equal(button.disabled, true);
+  button.fire('click');
+  assert.equal(calls, 1);
+  finish({ code: 0, lines: ['ok sqlite'] });
+  await flush();
+  assert.match(pane.textContent, /ok sqlite/);
+  assert.equal(button.disabled, false);
+});
+
+test('T17 diagnostics errors offer Retry and recover with a fresh result', { timeout: 2000 }, async t => {
+  let calls = 0;
+  let finish!: (value: { code: number; lines: string[] }) => void;
+  const pending = new Promise<{ code: number; lines: string[] }>(resolve => { finish = resolve; });
+  const { pane, button } = await diagnostics(t, async () => {
+    if (++calls === 1) throw new Error('Daemon unavailable <b>offline</b>');
+    return pending;
+  });
+  button.fire('click');
+  await flush();
+  assert.match(pane.textContent, /Daemon unavailable <b>offline<\/b>/);
+  assert.equal(pane.querySelectorAll('b').length, 0);
+  assert.ok(pane.querySelectorAll('div').some(n => n.attrs.role === 'alert'));
+  const retry = pane.querySelectorAll('button').find(b => b.textContent === 'Retry');
+  assert.ok(retry, 'a failed request needs Retry');
+  assert.equal(button.disabled, false);
+  retry.fire('click');
+  assert.equal(button.disabled, true);
+  button.fire('click');
+  retry.fire('click');
+  assert.equal(calls, 2);
+  assert.doesNotMatch(pane.textContent, /Daemon unavailable/);
+  finish({ code: 0, lines: ['ok recovered'] });
+  await flush();
+  assert.match(pane.textContent, /ok recovered/);
+  assert.match(pane.textContent, /all checks passed/i);
+  assert.equal(pane.querySelectorAll('button').some(b => b.textContent === 'Retry'), false);
+  assert.equal(button.disabled, false);
+});
+
+test('T17 re-running diagnostics replaces old lines and summary', { timeout: 2000 }, async t => {
+  let calls = 0;
+  let finish!: (value: { code: number; lines: string[] }) => void;
+  const pending = new Promise<{ code: number; lines: string[] }>(resolve => { finish = resolve; });
+  const { pane, button } = await diagnostics(t, async () => {
+    if (++calls === 1) return { code: 1, lines: ['fail old home'] };
+    return pending;
+  });
+  button.fire('click');
+  await flush();
+  assert.match(pane.textContent, /fail old home/);
+  button.fire('click');
+  assert.doesNotMatch(pane.textContent, /fail old home|some checks failed/i);
+  finish({ code: 0, lines: ['ok new home'] });
+  await flush();
+  assert.equal(calls, 2);
+  assert.doesNotMatch(pane.textContent, /fail old home|some checks failed/i);
+  assert.match(pane.textContent, /ok new home/);
+  assert.match(pane.textContent, /all checks passed/i);
+});
+
+test('T17 diagnostics client uses authenticated POST and preserves request errors', { timeout: 2000 }, async () => {
+  let calls = 0;
+  const api = createApi({ port: 1, token: 'test-token', fetch: (async (url, init) => {
+    assert.equal(String(url), 'http://127.0.0.1:1/api/doctor');
+    assert.equal(init?.method, 'POST');
+    assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer test-token');
+    assert.deepEqual(JSON.parse(String(init?.body)), {});
+    return ++calls === 1 ? json({ code: 1, lines: ['fail sqlite'] }) : json({ error: 'Doctor unavailable' }, 503);
+  }) as typeof fetch });
+  assert.ok('doctor' in api, 'API needs doctor()');
+  const doctor = (api as unknown as { doctor: () => Promise<unknown> }).doctor;
+  assert.deepEqual(await doctor(), { code: 1, lines: ['fail sqlite'] });
+  await assert.rejects(doctor(), /Doctor unavailable/);
 });
