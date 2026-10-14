@@ -11,6 +11,8 @@ export function isOllama(cfg: ProviderConfig): boolean {
   catch { return false; }
 }
 
+export const ollamaDownMessage = (origin: string) => `Ollama is not running at ${origin} (start it with "ollama serve" or open the Ollama app)`;
+
 export async function ollamaWarnings(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<string[]> {
   try {
     const origin = new URL(cfg.baseUrl).origin;
@@ -20,7 +22,7 @@ export async function ollamaWarnings(cfg: ProviderConfig, apiKey: string | undef
     try {
       response = await fetchImpl(`${origin}/api/ps`, { method: 'GET', headers, signal: AbortSignal.timeout(2000), redirect: 'error' });
     } catch {
-      return [safeError(`Ollama is not running at ${origin} (start it with "ollama serve" or open the Ollama app)`, apiKey).message];
+      return [safeError(ollamaDownMessage(origin), apiKey).message];
     }
     if (!response.ok) return [];
     const value = await response.json();

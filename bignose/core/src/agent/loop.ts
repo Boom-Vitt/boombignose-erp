@@ -3,22 +3,32 @@ import { randomUUID } from 'node:crypto';
 import { effectivePolicy, checkPermission } from './permissions.ts';
 import { runHooks } from './hooks.ts';
 import { withAbort } from './abort.ts';
-export interface RunOptions { provider: Provider; model: string; system: string; context: Message[]; input: string; tools: Tool[]; maxTurns: number; maxTokens: number; contextWindow: number; compactAt: number; permissions: Record<string, Policy>; hooks: HooksConfig; approve?: Approver; sessionId: string; origin: Origin; cwd: string; signal: AbortSignal; onEvent?: (event: AgentEvent) => void; depth?: number }
+import { budgetResult, isContextOverflow, pruneResults, resultCap, safeName } from './budget.ts';
+import { coerceArgs } from '../tools/coerce.ts';
+export interface RunOptions { provider: Provider; model: string; system: string; context: Message[]; input: string; tools: Tool[]; maxTurns: number; maxTokens: number; contextWindow: number; compactAt: number; permissions: Record<string, Policy>; hooks: HooksConfig; approve?: Approver; sessionId: string; origin: Origin; cwd: string; signal: AbortSignal; onEvent?: (event: AgentEvent) => void; depth?: number;
+  spillDir?: string; redact?: (text: string) => string /* tool output over the per-result budget is saved to a file in spillDir (redacted) */ }
 export interface RunResult { context: Message[]; added: Message[]; status: RunStatus; text: string; usage: Usage; error?: string }
 export async function runAgent(opts: RunOptions): Promise<RunResult> {
   let context = structuredClone(opts.context);
+  // Sessions stored before names were checked may hold a name the provider rejects; fix it so the session works again.
+  for (const m of context) for (const b of m.content) if (b.type === 'tool_use') b.name = safeName(b.name);
   const added: Message[] = [], usage: Usage = { inputTokens: 0, outputTokens: 0 };
   let status: RunStatus = 'max_turns', text = '', error: string | undefined, turns = 0, lastInput = 0;
   const depth = opts.depth ?? 0;
   const emit = (event: AgentEvent) => opts.onEvent?.(event);
   const append = (message: Message) => { context.push(message); added.push(message); };
   append({ role: 'user', content: [{ type: 'text', text: opts.input }] });
+  // Everything the provider counts: system prompt, tool schemas and messages, with room kept for the reply (at most half the window).
+  const fixed = (opts.system.length + JSON.stringify(opts.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))).length) / 4;
+  const size = () => Math.max(lastInput, JSON.stringify(context).length / 4 + fixed);
+  const limit = Math.max(opts.contextWindow - opts.maxTokens, opts.contextWindow / 2) * opts.compactAt;
+  const cap = resultCap(opts.contextWindow);
+  let force = false, overflows = 0;
   const baseRequest = () => ({ model: opts.model, system: opts.system, messages: context, tools: opts.tools, maxTokens: opts.maxTokens, signal: opts.signal });
   try {
     while (turns < opts.maxTurns) {
       opts.signal.throwIfAborted();
-      const estimate = Math.max(lastInput, JSON.stringify(context).length / 4);
-      if (estimate > opts.compactAt * opts.contextWindow) {
+      if (force || size() > limit) {
         let cut = Math.max(0, context.length - 4);
         const tailResults = new Set(context.slice(cut).flatMap(m => m.content.flatMap(b => b.type === 'tool_result' ? [b.toolUseId] : [])));
         for (let i = 0; i < cut; i++) if (context[i]!.content.some(b => b.type === 'tool_use' && tailResults.has(b.id))) cut = i;
@@ -27,8 +37,8 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
           let summary = '';
           const history = context.slice(0, cut).flatMap(m => m.content.map(b => {
             if (b.type === 'text') return `${m.role}: ${b.text}`;
-            if (b.type === 'tool_use') return `assistant called ${b.name}(${JSON.stringify(b.input)}) [${b.id}]`;
-            return `tool result [${b.toolUseId}]${b.isError ? ' (error)' : ''}: ${b.content}`;
+            if (b.type === 'tool_use') return `assistant called ${b.name}(${JSON.stringify(b.input).slice(0, 1000)}) [${b.id}]`;
+            return `tool result [${b.toolUseId}]${b.isError ? ' (error)' : ''}: ${b.content.slice(0, 2000)}`;
           })).join('\n');
           const iterator = opts.provider.stream({ ...baseRequest(), system: 'Summarise the conversation for continuation. Preserve decisions, facts, tool findings and unfinished work.', messages: [{ role: 'user', content: [{ type: 'text', text: history }] }], tools: [] })[Symbol.asyncIterator]();
           turns++;
@@ -46,8 +56,12 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
           emit({ type: 'compaction', removedMessages: cut });
           if (turns >= opts.maxTurns) break;
         }
+        // Recent tool output the summary cannot touch: shrink the oldest large results until the request fits.
+        const excess = (force ? size() / 2 : size() - limit) * 4;
+        if (excess > 0) { context = pruneResults(context, excess); lastInput = 0; }
+        force = false;
       }
-      const content: ContentBlock[] = [], calls = new Map<string, ToolUseBlock>(), complete = new Set<string>();
+      const content: ContentBlock[] = [], calls = new Map<string, ToolUseBlock>(), complete = new Set<string>(), invalid = new Map<string, string>();
       let streamError: unknown;
       text = '';
       const iterator = opts.provider.stream(baseRequest())[Symbol.asyncIterator]();
@@ -65,7 +79,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
           } else if (e.type === 'tool_call_start' || e.type === 'tool_call') {
             let call = calls.get(e.id);
             if (!call) { call = { type: 'tool_use', id: e.id, name: e.name, input: {} }; calls.set(e.id, call); content.push(call); }
-            if (e.type === 'tool_call') { call.name = e.name; call.input = e.input; complete.add(e.id); }
+            if (e.type === 'tool_call') { call.name = e.name; call.input = e.input; complete.add(e.id); if (e.error) invalid.set(e.id, e.error); }
           } else if (e.type === 'done') {
             lastInput = e.usage.inputTokens;
             usage.inputTokens += e.usage.inputTokens; usage.outputTokens += e.usage.outputTokens;
@@ -73,9 +87,15 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
         }
       } catch (e) { streamError = e; }
       finally { void iterator.return?.().catch(() => {}); }
+      // The provider refused the request as too large before answering anything: compact (and prune) harder and ask again, twice at most.
+      if (streamError && !content.length && isContextOverflow(streamError) && overflows++ < 2) { force = true; turns--; continue; }
       const orderedCalls = [...complete].map(id => calls.get(id)!).concat([...calls.values()].filter(call => !complete.has(call.id)));
       let callIndex = 0;
-      if (content.length) append({ role: 'assistant', content: content.map(b => b.type === 'tool_use' ? orderedCalls[callIndex++]! : b) });
+      if (content.length) append({ role: 'assistant', content: content.map(b => {
+        if (b.type !== 'tool_use') return b;
+        const call = orderedCalls[callIndex++]!;
+        return { ...call, name: safeName(call.name) };
+      }) });
       const replies: ContentBlock[] = [];
       for (const call of orderedCalls) {
         emit({ type: 'tool_start', callId: call.id, name: call.name, input: call.input });
@@ -84,8 +104,9 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
           opts.signal.throwIfAborted();
           if (streamError) throw streamError;
           if (!complete.has(call.id)) throw new Error('Incomplete tool arguments');
+          if (invalid.has(call.id)) throw new Error(invalid.get(call.id));
           const tool = opts.tools.find(t => t.name === call.name);
-          if (!tool) throw new Error(`Unknown tool: ${call.name}`);
+          if (!tool) throw new Error(`Unknown tool: ${call.name.slice(0, 100)}`);
           const policy = effectivePolicy(tool, opts.permissions);
           const req = { id: randomUUID(), sessionId: opts.sessionId, origin: opts.origin, tool: call.name, input: call.input };
           let denied: ToolResult | undefined;
@@ -97,7 +118,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
           } else denied = await checkPermission(policy, req, opts.approve);
           const blocked = denied ?? await runHooks(opts.hooks.preTool, { event: 'preTool', sessionId: opts.sessionId, tool: call.name, input: call.input }, opts.signal);
           opts.signal.throwIfAborted();
-          result = blocked ?? await withAbort(tool.run(call.input, {
+          result = blocked ?? await withAbort(tool.run(coerceArgs(call.input, tool.inputSchema), {
             sessionId: opts.sessionId, origin: opts.origin, cwd: opts.cwd, signal: opts.signal, depth,
             ...(depth < 1 ? { delegate: async (task: string) => {
               const nested = await runAgent({ ...opts, context: [], input: task, tools: opts.tools.filter(t => t.name !== 'delegate'), depth: depth + 1, onEvent: undefined });
@@ -106,9 +127,10 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
             } } : {}),
           }), opts.signal);
         } catch (e) { result = { content: opts.signal.aborted ? 'interrupted' : e instanceof Error ? e.message : String(e), isError: true }; }
-        replies.push({ type: 'tool_result', toolUseId: call.id, content: result.content, isError: result.isError ?? false });
-        emit({ type: 'tool_end', callId: call.id, name: call.name, isError: result.isError ?? false, output: result.content.slice(0, 2000) });
-        await runHooks(opts.hooks.postTool, { event: 'postTool', sessionId: opts.sessionId, tool: call.name, input: call.input, output: result.content, isError: result.isError ?? false });
+        const output = await budgetResult(result.content, cap, opts.spillDir, opts.redact);
+        replies.push({ type: 'tool_result', toolUseId: call.id, content: output, isError: result.isError ?? false });
+        emit({ type: 'tool_end', callId: call.id, name: call.name, isError: result.isError ?? false, output: output.slice(0, 2000) });
+        await runHooks(opts.hooks.postTool, { event: 'postTool', sessionId: opts.sessionId, tool: call.name, input: call.input, output, isError: result.isError ?? false });
       }
       if (replies.length) append({ role: 'user', content: replies });
       opts.signal.throwIfAborted();

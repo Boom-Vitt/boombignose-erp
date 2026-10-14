@@ -1,6 +1,7 @@
 import type { Provider, ProviderConfig, StopReason, Usage } from '../types.ts';
 import { readSse } from './sse.ts';
-import { checkResponse, parseInput, safeError, validateTools } from './common.ts';
+import { safeError, toolCall, validateTools } from './common.ts';
+import { checkResponse, providerFailure } from './errors.ts';
 
 export function anthropic(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl: typeof fetch): Provider {
   return { kind: 'anthropic', async *stream(req) {
@@ -45,7 +46,7 @@ export function anthropic(cfg: ProviderConfig, apiKey: string | undefined, fetch
           case 'content_block_stop': {
             const block = blocks.get(value.index);
             if (block) {
-              yield { type: 'tool_call', id: block.id, name: block.name, input: block.json ? parseInput(block.json) : block.input };
+              yield toolCall(block.id, block.name, block.json, block.input);
               blocks.delete(value.index);
             }
             break;
@@ -63,7 +64,7 @@ export function anthropic(cfg: ProviderConfig, apiKey: string | undefined, fetch
       throw new Error('Provider stream ended before message_stop');
     } catch (error) {
       if (req.signal?.aborted) throw error;
-      throw safeError(error instanceof Error ? error.message : String(error), apiKey);
+      throw providerFailure(error, cfg, apiKey);
     }
   } };
 }

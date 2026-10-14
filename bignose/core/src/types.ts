@@ -21,7 +21,8 @@ export interface Usage { inputTokens: number; outputTokens: number }
 export type ProviderEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'tool_call_start'; id: string; name: string }                                  // as soon as the name is known
-  | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown> }       // arguments complete
+  | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown>;        // arguments complete
+      error?: string }                                                                      // set when they were malformed: input is {} and the loop answers the call with this error
   | { type: 'done'; stopReason: StopReason; usage: Usage };
 export interface Provider { readonly kind: ProviderKind; stream(req: ProviderRequest): AsyncIterable<ProviderEvent> }
 
