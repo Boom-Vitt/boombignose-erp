@@ -135,7 +135,11 @@ describe("local stack manager", () => {
       DATABASE_URL: "postgresql://localhost/drop",
     }
 
-    const env = mapStatusEnvToServerEnv(stdout, 3989, parentEnv)
+    const env: Record<string, string | undefined> = mapStatusEnvToServerEnv(
+      stdout,
+      3989,
+      parentEnv
+    )
     expect(Object.keys(env).sort()).toEqual(
       [
         "HOME",
