@@ -53,6 +53,8 @@ export async function generateText({
     body: JSON.stringify({
       model: DEFAULT_MODEL,
       max_tokens: maxTokens,
+      // max_tokens also covers reasoning; keep it from eating the visible reply.
+      reasoning: { effort: "low" },
       messages: [
         { role: "system", content: system },
         { role: "user", content: prompt },
@@ -63,18 +65,30 @@ export async function generateText({
 
   // Parse defensively: the body may be non-JSON (gateway error page).
   const data = (await res.json().catch(() => null)) as {
-    choices?: { message?: { content?: unknown } }[]
+    choices?: {
+      finish_reason?: string
+      error?: { message?: unknown }
+      message?: { content?: unknown }
+    }[]
     error?: { message?: unknown }
   } | null
 
-  if (!res.ok) {
-    const msg = typeof data?.error?.message === "string" ? data.error.message : ""
-    // Redact the key in case an upstream error echoes it back.
-    const safe = msg.split(key).join("[redacted]").slice(0, 200)
-    throw new Error(`OpenRouter HTTP ${res.status}${safe ? `: ${safe}` : ""}`)
+  // Short error: status/label + upstream message cut to 200 chars, key redacted.
+  const fail = (head: string, msg: unknown) => {
+    const text = typeof msg === "string" ? msg : ""
+    const safe = text.split(key).join("[redacted]").slice(0, 200)
+    return new Error(safe ? `${head}: ${safe}` : head)
   }
 
-  const content = data?.choices?.[0]?.message?.content
-  if (typeof content !== "string") throw new Error("OpenRouter returned no text")
+  if (!res.ok) throw fail(`OpenRouter HTTP ${res.status}`, data?.error?.message)
+  // OpenRouter can answer 200 with a top-level error, or finish_reason "error".
+  if (data?.error) throw fail("OpenRouter error", data.error.message)
+  const choice = data?.choices?.[0]
+  if (choice?.finish_reason === "error") throw fail("OpenRouter error", choice.error?.message)
+
+  const content = choice?.message?.content
+  if (typeof content !== "string" || !content.trim()) {
+    throw new Error("OpenRouter returned no text")
+  }
   return content.trim()
 }

@@ -39,6 +39,7 @@ describe("lib/ai/client", () => {
     expect(JSON.parse(init.body)).toEqual({
       model: "google/gemini-4-argon",
       max_tokens: 50,
+      reasoning: { effort: "low" },
       messages: [
         { role: "system", content: "sys" },
         { role: "user", content: "usr" },
@@ -61,9 +62,9 @@ describe("lib/ai/client", () => {
     const { generateText, isAIConfigured, AINotConfiguredError } = await load()
 
     expect(isAIConfigured()).toBe(false)
-    await expect(generateText({ system: "s", prompt: "p" })).rejects.toBeInstanceOf(
-      AINotConfiguredError,
-    )
+    const run = generateText({ system: "s", prompt: "p" })
+    await expect(run).rejects.toBeInstanceOf(AINotConfiguredError)
+    await expect(run).rejects.toThrow("OPENROUTER_API_KEY")
     expect(fake).not.toHaveBeenCalled()
   })
 
@@ -88,5 +89,27 @@ describe("lib/ai/client", () => {
     fake.mockResolvedValue(ok("  hello world \n"))
     const { generateText } = await load()
     expect(await generateText({ system: "s", prompt: "p" })).toBe("hello world")
+  })
+
+  it("rejects a blank reply instead of returning it", async () => {
+    fake.mockResolvedValue(ok("  \n"))
+    const { generateText } = await load()
+    await expect(generateText({ system: "s", prompt: "p" })).rejects.toThrow(
+      "OpenRouter returned no text",
+    )
+  })
+
+  it("rejects a 200 carrying an error or finish_reason error", async () => {
+    const { generateText } = await load()
+
+    fake.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: `boom ${KEY}` } }), { status: 200 }),
+    )
+    const top = await generateText({ system: "s", prompt: "p" }).catch((e: Error) => e)
+    expect((top as Error).message).toBe("OpenRouter error: boom [redacted]")
+
+    const partial = { choices: [{ finish_reason: "error", message: { content: "half" } }] }
+    fake.mockResolvedValue(new Response(JSON.stringify(partial), { status: 200 }))
+    await expect(generateText({ system: "s", prompt: "p" })).rejects.toThrow("OpenRouter error")
   })
 })
