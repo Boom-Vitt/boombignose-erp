@@ -85,31 +85,39 @@ export function toolLine(name: string, input: Record<string, unknown>, workspace
 }
 
 /** The title, one sentence and the command line an approval card shows for a tool. */
-function approvalText(tool: string, input: Record<string, unknown>, workspace: string): { title: Part[]; desc: Part[]; cmd: string; command: boolean } {
+function approvalText(tool: string, input: Record<string, unknown>, workspace: string): { title: Part[]; desc: Part[]; cmd: string; command: boolean; changes: [label: string, text: string][] } {
   const s = (k: string) => (typeof input[k] === 'string' ? input[k] : '');
   const folder = last(workspace);
   switch (tool) {
     case 'shell': return {
       title: ['Run this command?'], cmd: s('command'), command: true,
-      desc: ['BigNose wants to run it', ...(folder ? [' in ', strong(folder)] : []), `. It can change files${folder ? ' in that folder' : ''}.`],
+      desc: ['BigNose wants to run it', ...(folder ? [' in ', strong(folder)] : []), `. It can change files${folder ? ' in that folder' : ''}.`], changes: [],
     };
-    case 'write_file': return { title: ['Change this file?'], desc: ['BigNose wants to write this file. It replaces what is there.'], cmd: s('path'), command: false };
-    case 'edit_file': return { title: ['Change this file?'], desc: ['BigNose wants to edit this file.'], cmd: s('path'), command: false };
-    case 'web_fetch': return { title: ['Open this web page?'], desc: ['BigNose wants to read this page from the internet.'], cmd: s('url'), command: false };
-    default: return { title: ['Use ', code(tool), '?'], desc: ['BigNose wants to use this tool.'], cmd: pretty(input), command: false };
+    // the content is behind a fold in the card, because the running row that also holds it is hidden while the card is up
+    case 'write_file': return { title: ['Change this file?'], desc: ['BigNose wants to write this file. It replaces what is there.'], cmd: s('path'), command: false, changes: [['New contents', s('content')]] };
+    case 'edit_file': return {
+      title: ['Change this file?'], desc: ['BigNose wants to edit this file.'], cmd: s('path'), command: false,
+      changes: [['Replace', s('oldText')], ['With', s('newText')], ...(input.replaceAll === true ? [['Scope', 'Every match in the file'] as [string, string]] : [])],
+    };
+    case 'web_fetch': return { title: ['Open this web page?'], desc: ['BigNose wants to read this page from the internet.'], cmd: s('url'), command: false, changes: [] };
+    default: return { title: ['Use ', code(tool), '?'], desc: ['BigNose wants to use this tool.'], cmd: pretty(input), command: false, changes: [] };
   }
 }
 
-/** Plain cause and one fix for a failed run (the raw error stays behind "Show details"). */
-function explain(raw: string, model: string, local: boolean): { title: string; desc: Part[] } {
-  if (/\b40[13]\b|unauthori[sz]ed|invalid api key/i.test(raw)) return { title: 'The cloud service refused the key', desc: ['Check the API key in Settings › Model.'] };
-  if (/ECONNREFUSED|connection refused|fetch failed|ENOTFOUND/i.test(raw))
-    return local ? { title: "Ollama isn't running", desc: ['Open Ollama, then try again.'] } : { title: "Couldn't reach the model service", desc: ['Check your internet connection, then try again.'] };
-  if (/\b404\b/.test(raw))
-    return local ? { title: `${model} isn't on this Mac`, desc: ['Run ', code(`ollama pull ${model}`), ', or pick another model.'] }
-      : { title: "That model isn't available", desc: ['Pick another model in Settings › Model.'] };
-  if (/\b5\d\d\b/.test(raw))
-    return { title: "The model didn't answer", desc: [local ? 'Ollama returned an error. Make sure it is still running, then try again.' : 'The service returned an error. Try again in a moment.'] };
+/** Plain cause and one fix for a failed run (the raw error stays behind "Show details"). `kind` says who answered: Ollama, another local server, or a cloud service. */
+function explain(raw: string, model: string, kind: 'ollama' | 'local' | 'cloud'): { title: string; desc: Part[] } {
+  const status = Number(/\bHTTP (\d{3})\b/.exec(raw)?.[1]);
+  const who = kind === 'cloud' ? 'The cloud service' : 'The model server';
+  if (status === 401 || status === 403 || /invalid api key/i.test(raw)) return { title: `${who} refused the key`, desc: ['Check the API key in Settings › Model.'] };
+  if (!status && /ECONNREFUSED|connection refused|fetch failed|ENOTFOUND/i.test(raw)) {
+    if (kind === 'ollama') return { title: "Ollama isn't running", desc: ['Open Ollama, then try again.'] };
+    return kind === 'local' ? { title: "Couldn't reach the model server", desc: ['Make sure it is running, then try again.'] }
+      : { title: "Couldn't reach the model service", desc: ['Check your internet connection, then try again.'] };
+  }
+  if (status === 404) return kind === 'ollama' ? { title: `${model} isn't on this Mac`, desc: ['Run ', code(`ollama pull ${model}`), ', or pick another model.'] }
+    : { title: "That model isn't available", desc: ['Pick another model in Settings › Model.'] };
+  if (status >= 500) return { title: "The model didn't answer", desc: [kind === 'ollama' ? 'Ollama returned an error. Make sure it is still running, then try again.'
+    : kind === 'local' ? 'The model server returned an error. Make sure it is still running, then try again.' : 'The service returned an error. Try again in a moment.'] };
   return { title: 'Something went wrong', desc: [raw.split('\n')[0]!.slice(0, 200)] };
 }
 
@@ -227,7 +235,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     const agent = agentOf();
     const provider = config?.providers.find((p) => p.id === agent?.provider);
     const raw = text.replace(/^Error:\s*/, '');
-    const cause = explain(raw, agent?.model ?? 'The model', LOOPBACK.test(provider?.baseUrl ?? ''));
+    const cause = explain(raw, agent?.model ?? 'The model', /ollama/i.test(provider?.id ?? '') ? 'ollama' : LOOPBACK.test(provider?.baseUrl ?? '') ? 'local' : 'cloud');
     const diagnostics = `${raw}\n${[agent?.model, provider?.baseUrl, new Date(at).toLocaleTimeString('en-GB')].filter(Boolean).join(' · ')}`;
     const moreId = `err-more-${++alertSeq}`;
     const copy = el('button', { type: 'button', class: 'btn small' }, icon('copy'), 'Copy diagnostics');
@@ -270,7 +278,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
         out.textContent = output || '(no output)';
         setLang(out, output);
         if (this.startedAt !== undefined) meta.textContent = `${((Date.now() - this.startedAt) / 1000).toFixed(1)} s`;
-        if (isError) row.open = true; // a failure opens itself
+        if (isError && !/^denied by (user|policy)$/.test(output.trim())) row.open = true; // a failure opens itself; a denial is the user's own decision, the receipt says it
       },
     };
   }
@@ -315,6 +323,8 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     return el('div', { class: 'approval', role: 'group', 'aria-labelledby': titleId, 'aria-describedby': descId },
       el('div', {}, el('p', { class: 'approval-title', id: titleId }, ...t.title), el('p', { class: 'approval-desc', id: descId }, ...t.desc)),
       el('pre', { class: `approval-cmd${t.command ? ' command' : ''}`, lang: th(t.cmd) }, code(t.cmd)),
+      t.changes.length ? el('details', { class: 'approval-changes' }, el('summary', {}, icon('chev-r', 'chev'), 'Show changes'),
+        el('div', {}, ...t.changes.flatMap(([label, text]) => [el('div', { class: 'tool-label' }, label), el('pre', { class: 'approval-change', lang: th(text) }, text)]))) : null,
       el('div', { class: 'approval-actions' }, deny, allow, status));
   }
 
@@ -411,7 +421,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       }));
     });
     return el('li', { class: 'session-item' },
-      el('button', { type: 'button', class: 'session', 'aria-current': active ? 'true' : undefined, onclick: () => void open(s.id) },
+      el('button', { type: 'button', class: 'session', 'aria-current': active ? 'true' : undefined, onclick: () => { if (root.hidden) window.location.hash = '#/chat'; void open(s.id); } }, // from Agents or Settings the chat page comes forward
         el('span', { class: 'session-title', lang: th(name) }, name),
         ...(waiting ? [badge('Waiting', 'warn')] : running.has(s.id) ? [el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'sr-only' }, 'Running')] : [])),
       more);

@@ -33,10 +33,12 @@ media block indented two spaces, `:root[data-theme="dark"] {`).
 | Header: `h1.chat-title` and `a.model-link` (the agent's model, links to `#/settings/model`; the chat no longer edits the agent) | `chat.ts` |
 | Messages: `.msg.user` bubble, flat `.msg.assistant`, markdown subset (headings, lists, bold, code, code blocks with Copy) | `chat.ts`, `dom.ts` `renderText`, `format.ts` |
 | Tool row: one sentence (`toolLine`, the only map), icon, time, status; a failed row opens itself; unknown tools keep their raw id | `chat.ts` |
-| Approval card: title, one sentence, the command, **Deny** (`Esc`) then **Allow once**. No "Always allow" (the daemon has no per-chat allow yet) | `chat.ts` |
-| Error card: plain cause, one fix, **Try again** (latest card only), **Show details** (raw error, model, base URL, time, Copy diagnostics) | `chat.ts` |
+| Approval card: title, one sentence, the command or path, **Deny** (`Esc`) then **Allow once**. A `write_file`/`edit_file` card also has a collapsed **Show changes** fold with the new contents, or the old and new text (the running row that holds the input is hidden while the card is up). No "Always allow" (the daemon has no per-chat allow yet) | `chat.ts` |
+| Error card: plain cause, one fix, **Try again** (latest card only), **Show details** (raw error, model, base URL, time, Copy diagnostics). "Ollama" is only named for a provider whose id says Ollama; a status comes only from the `HTTP <code>` text the provider errors use | `chat.ts` |
 | Composer: one `.send` button that swaps to Stop; Send is disabled when blank or while the stream is down; no hint line | `chat.ts` |
 | Empty chat: app icon, "How can I help?", agent and model, three starters that fill the composer without sending | `chat.ts` |
+
+Picking a chat in the sidebar while Agents or Settings is showing goes to `#/chat` (only that click navigates, not the programmatic opens). A denied tool call keeps its failed row closed; the receipt line already says it.
 
 Keyboard: **Esc** denies the newest pending approval of the open chat (not while the slash picker or a dialog is open; Enter
 never approves); a new card focuses **Deny** unless the user is typing; **⌘N** new chat, **⌘,** Settings, **⌘F** chat search.

@@ -400,7 +400,7 @@ test('run outcome note survives the session_updated reload', async t => {
   // the failure is one error card (plain cause first, the raw error behind Show details), and it is still there after every reload
   assert.equal(messages.querySelectorAll('.alert').length, 1);
   assert.equal(messages.querySelectorAll('.note').length, 0);
-  assert.match(messages.querySelector('.alert-title')!.textContent, /cloud service refused the key/);
+  assert.match(messages.querySelector('.alert-title')!.textContent, /^The model server refused the key$/);
   assert.match(messages.querySelector('.alert')!.querySelector('pre')!.textContent, /Provider HTTP 401: bad key/);
   assert.equal(messages.querySelector('.alert')!.attrs.role, 'alert');
 });
@@ -553,15 +553,15 @@ test('events held during a read that fails are still shown', async t => {
 
 // ---- the simple shell: one send button, plain tool rows, approval and error cards, sidebar
 type Call = { path: string; method?: string; body: any };
-function harness(sessions: unknown[] = [], extra: (path: string) => Response | Promise<Response> | undefined = () => undefined) {
+function harness(sessions: unknown[] = [], extra: (path: string) => Response | Promise<Response> | undefined = () => undefined, world: { agent: typeof agent; config: typeof config } = { agent, config }) {
   const calls: Call[] = [];
   const api = createApi({ port: 1, token: 'test-token', fetch: (async (url, init) => {
     const path = new URL(String(url)).pathname;
     calls.push({ path, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     const custom = extra(path);
     if (custom) return custom;
-    if (path === '/api/agents') return json({ agents: [agent] });
-    if (path === '/api/settings') return json({ config, secrets: {} });
+    if (path === '/api/agents') return json({ agents: [world.agent] });
+    if (path === '/api/settings') return json({ config: world.config, secrets: {} });
     if (path === '/api/commands') return json({ commands: [] });
     if (path === '/api/sessions' && init?.method === 'POST') return json({ id: 's1' });
     if (path === '/api/sessions') return json({ sessions });
@@ -751,9 +751,10 @@ test('an error card names the cause first, keeps the raw error behind Show detai
     path => path === '/api/sessions/s1' ? detail('s1', { messages: [said('user', 'q1'), said('user', 'q2'), said('user', 'q3'), said('user', 'q4')], notices }) : undefined);
   await flush(); h.sidebar.querySelector('.session')!.fire('click'); await flush();
   const alerts = h.messages.querySelectorAll('.alert');
-  assert.deepEqual(alerts.map(a => a.querySelector('.alert-title')!.textContent), ["The model didn't answer", "Ollama isn't running", "one-model isn't on this Mac", 'Something went wrong']);
-  assert.match(alerts[0]!.querySelector('.alert-desc')!.textContent, /Ollama returned an error\. Make sure it is still running/);
-  assert.match(alerts[2]!.querySelector('.alert-desc')!.textContent, /ollama pull one-model/);
+  // the provider here is a local server that is not Ollama, so nothing says "Ollama"
+  assert.deepEqual(alerts.map(a => a.querySelector('.alert-title')!.textContent), ["The model didn't answer", "Couldn't reach the model server", "That model isn't available", 'Something went wrong']);
+  assert.match(alerts[0]!.querySelector('.alert-desc')!.textContent, /^The model server returned an error\. Make sure it is still running/);
+  assert.doesNotMatch(alerts.map(a => a.textContent).join(' '), /Ollama/);
   assert.equal(alerts[3]!.querySelector('.alert-desc')!.textContent, 'the disk is on fire');
   assert.deepEqual(alerts.map(a => a.querySelectorAll('button').some(b => b.textContent === 'Try again')), [false, false, false, true]);
   const details = alerts[0]!.querySelector('.alert-more')!, toggle = alerts[0]!.querySelectorAll('button').find(b => b.textContent === 'Show details')!;
@@ -801,4 +802,95 @@ test('with more than eight chats the search row shows by itself', async t => {
   const h = harness(list);
   await flush();
   assert.equal(h.sidebar.querySelector('input')!.hidden, false);
+});
+
+async function causes(world: Parameters<typeof harness>[2], errors: string[]) {
+  const notices = errors.map((text, i) => ({ after: i + 1, level: 'error', text: `Error: ${text}`, at: i + 1 }));
+  const h = harness([{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }],
+    path => path === '/api/sessions/s1' ? detail('s1', { messages: errors.map((_, i) => said('user', `q${i}`)), notices }) : undefined, world);
+  await flush(); h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  return h.messages.querySelectorAll('.alert').map(a => [a.querySelector('.alert-title')!.textContent, a.querySelector('.alert-desc')!.textContent]);
+}
+
+test('only an Ollama provider is called Ollama, and a status comes only from the HTTP form', async t => {
+  t.after(installDom());
+  const ollama = { agent: { ...agent, provider: 'ollama' }, config: { ...config, providers: [{ id: 'ollama', kind: 'openai-compatible' as const, baseUrl: 'http://127.0.0.1:11434/v1' }] } };
+  assert.deepEqual(await causes(ollama, ['Provider HTTP 500: runner stopped', 'connect ECONNREFUSED 127.0.0.1:11434', 'Provider HTTP 404: model not found']), [
+    ["The model didn't answer", 'Ollama returned an error. Make sure it is still running, then try again.'],
+    ["Ollama isn't running", 'Open Ollama, then try again.'],
+    ["one-model isn't on this Mac", 'Run ollama pull one-model, or pick another model.'],
+  ]);
+  const cloud = { agent: { ...agent, provider: 'router' }, config: { ...config, providers: [{ id: 'router', kind: 'openai-compatible' as const, baseUrl: 'https://router.example/v1' }] } };
+  assert.deepEqual(await causes(cloud, ['Provider HTTP 401: bad key', 'fetch failed', 'Provider HTTP 503: busy']), [
+    ['The cloud service refused the key', 'Check the API key in Settings › Model.'],
+    ["Couldn't reach the model service", 'Check your internet connection, then try again.'],
+    ["The model didn't answer", 'The service returned an error. Try again in a moment.'],
+  ]);
+  // numbers that look like a status are not one: a port, a count
+  assert.deepEqual((await causes(undefined, ['connect ECONNREFUSED 127.0.0.1:5432', 'could not open port 5432 after 404 tries'])).map(c => c[0]),
+    ["Couldn't reach the model server", 'Something went wrong']);
+});
+
+test('a write_file or edit_file card shows what would change behind Show changes, and Deny is still first', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  const write = { path: '/Users/me/work/notes.md', content: 'สวัสดี\nsecond line' };
+  h.chat.onEvent({ type: 'tool_start', ...run, callId: 'c1', name: 'write_file', input: write });
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a1', tool: 'write_file', input: write });
+  const card = h.messages.querySelector('.approval')!;
+  assert.equal(card.querySelector('.approval-title')!.textContent, 'Change this file?');
+  assert.equal(card.querySelector('.approval-cmd')!.textContent, '/Users/me/work/notes.md');
+  const fold = card.querySelector('.approval-changes')! as TestNode & { open?: boolean };
+  assert.equal(fold.querySelector('summary')!.textContent, 'Show changes'); assert.notEqual(fold.open, true, 'collapsed');
+  assert.deepEqual(fold.querySelectorAll('.tool-label').map(l => l.textContent), ['New contents']);
+  assert.equal(fold.querySelector('.approval-change')!.textContent, 'สวัสดี\nsecond line');
+  assert.equal(fold.querySelector('.approval-change')!.attrs.lang, 'th');
+  assert.deepEqual(card.querySelector('.approval-actions')!.querySelectorAll('button').map(b => b.textContent), ['Deny', 'Allow once']);
+
+  const edit = { path: 'src/a.ts', oldText: 'const a = 1;', newText: 'const a = 2;', replaceAll: true };
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a2', tool: 'edit_file', input: edit });
+  const second = h.messages.querySelectorAll('.approval')[1]!;
+  assert.deepEqual(second.querySelectorAll('.tool-label').map(l => l.textContent), ['Replace', 'With', 'Scope']);
+  assert.deepEqual(second.querySelectorAll('.approval-change').map(p => p.textContent), ['const a = 1;', 'const a = 2;', 'Every match in the file']);
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a3', tool: 'edit_file', input: { ...edit, replaceAll: false } });
+  assert.deepEqual(h.messages.querySelectorAll('.approval')[2]!.querySelectorAll('.tool-label').map(l => l.textContent), ['Replace', 'With']);
+  // a command has nothing to unfold, and a settled card is one line again
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a4', tool: 'shell', input: { command: 'ls' } });
+  assert.equal(h.messages.querySelectorAll('.approval')[3]!.querySelector('.approval-changes'), null);
+  h.chat.onEvent({ type: 'approval_result', ...run, approvalId: 'a1', allowed: true });
+  assert.equal(card.querySelector('.approval-changes'), null);
+  assert.equal(card.textContent, 'You allowed once: /Users/me/work/notes.md');
+});
+
+test('a chat picked while Agents or Settings is showing brings the chat page forward', async t => {
+  t.after(installDom());
+  const h = harness([{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }]);
+  await flush();
+  const location = (globalThis.window as unknown as { location: { hash: string } }).location;
+  location.hash = '#/agents'; h.root.hidden = true; // main.ts hides the chat on that page
+  h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  assert.equal(location.hash, '#/chat');
+  assert.equal(h.chat.isEmpty(), false);
+  location.hash = '#/chat'; h.root.hidden = false;
+  h.chat.newChat(); h.chat.refresh(); await flush();
+  await h.chat.refreshAgents(); await flush();
+  assert.equal(location.hash, '#/chat', 'programmatic opens do not navigate');
+  location.hash = '#/settings/general'; h.root.hidden = true;
+  await h.chat.selectAgent('a1'); await h.chat.refreshAgents(); await flush();
+  assert.equal(location.hash, '#/settings/general', 'selecting or refreshing agents leaves the page alone');
+});
+
+test('a denied call does not open its row, a failed one does', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  const rows = () => h.messages.querySelectorAll('.tool') as unknown as (TestNode & { open?: boolean })[];
+  const call = (callId: string, output: string) => {
+    h.chat.onEvent({ type: 'tool_start', ...run, callId, name: 'shell', input: { command: 'ls' } });
+    h.chat.onEvent({ type: 'tool_end', ...run, callId, name: 'shell', isError: true, output });
+  };
+  call('c1', 'denied by user'); call('c2', 'denied by policy'); call('c3', 'exit 1: no such file');
+  assert.deepEqual(rows().map(r => r.open === true), [false, false, true]);
+  assert.deepEqual(h.messages.querySelectorAll('.tool-status').map(s => s.className), ['tool-status error', 'tool-status error', 'tool-status error']);
 });

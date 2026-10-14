@@ -57,12 +57,14 @@ async function chatDaemon(t: test.TestContext, answer: (req: any, call: number) 
 }
 
 test('the simple chat UI', { timeout: 300_000 }, async (t) => {
-  // The scripted model: look at the folder, ask to run two commands, answer in Thai with a very long path; the second message fails.
+  // The scripted model: look at the folder, ask to run a command (denied), write a file, run a second command, answer in Thai
+  // with a very long path; the second message fails.
   const { app, work } = await chatDaemon(t, async (_req, call) => {
     if (call === 1) { await delay(800); return toolCall('list_files', { path: work }, 'c-list'); }
     if (call === 2) return toolCall('shell', { command: 'echo one' }, 'c-one');
-    if (call === 3) return toolCall('shell', { command: 'echo two' }, 'c-two');
-    if (call === 4) return { content: `## เสร็จแล้ว\nไฟล์ทั้งหมดอยู่ใน **${LONG}**\n\`\`\`bash\n${LONG}\n\`\`\`` };
+    if (call === 3) return toolCall('write_file', { path: join(work, 'notes.md'), content: 'บันทึกจาก e2e\nsecond line' }, 'c-write');
+    if (call === 4) return toolCall('shell', { command: 'echo two' }, 'c-two');
+    if (call === 5) return { content: `## เสร็จแล้ว\nไฟล์ทั้งหมดอยู่ใน **${LONG}**\n\`\`\`bash\n${LONG}\n\`\`\`` };
     throw new Error('the model fell over');
   });
   const ui = await openUi(t, app, { viewport: SIZES[1]! });
@@ -123,18 +125,34 @@ test('the simple chat UI', { timeout: 300_000 }, async (t) => {
     await ui.wait(`document.querySelector('.approval.denied')?.textContent.startsWith('You denied:')`);
     assert.equal(await text('.approval.denied'), 'You denied: echo one');
 
-    await ui.wait(`document.querySelector('.approval:not(.denied):not(.allowed)')`);
-    assert.equal(await text('.approval:not(.denied) .approval-cmd'), 'echo two');
+    // a file write shows what it would write behind Show changes (the running row that holds the input is hidden meanwhile)
+    await ui.wait(`document.querySelector('.approval:not(.denied):not(.allowed) .approval-changes')`);
+    assert.equal(await text('.approval:not(.denied) .approval-title'), 'Change this file?');
+    assert.equal(await text('.approval:not(.denied) .approval-cmd'), join(work, 'notes.md'));
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.approval-changes').open`), false);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.approval-change').checkVisibility()`), false, 'collapsed');
+    await ui.cdp.evaluate(`document.querySelector('.approval-changes summary').click()`);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.approval-change').checkVisibility()`), true);
+    assert.equal(await text('.approval-change'), 'บันทึกจาก e2e\nsecond line');
+    await shot(ui, 'chat-write-approval.png');
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.approval-change').lang`), 'th');
     await ui.click('Allow once', `document.querySelector('.approval:not(.denied):not(.allowed)')`);
-    await ui.wait(`document.querySelector('.approval.allowed')?.textContent.startsWith('You allowed once:')`);
-    assert.equal(await text('.approval.allowed'), 'You allowed once: echo two');
+    await ui.wait(`document.querySelector('.approval.allowed')`);
+    assert.equal(await text('.approval.allowed'), `You allowed once: ${join(work, 'notes.md')}`);
+    await ui.wait(`[...document.querySelectorAll('.tool-name')].some(n => n.textContent === 'Wrote notes.md')`);
+    assert.equal(readFileSync(join(work, 'notes.md'), 'utf8'), 'บันทึกจาก e2e\nsecond line');
+
+    await ui.wait(`document.querySelector('.approval:not(.denied):not(.allowed)')`);
+    assert.equal(await text('.approval:not(.denied):not(.allowed) .approval-cmd'), 'echo two');
+    await ui.click('Allow once', `document.querySelector('.approval:not(.denied):not(.allowed)')`);
+    await ui.wait(`[...document.querySelectorAll('.approval.allowed')].some(a => a.textContent === 'You allowed once: echo two')`);
 
     await ui.wait(`document.querySelector('.msg.assistant')?.textContent.includes('เสร็จแล้ว')`);
     await ui.wait(`[...document.querySelectorAll('.send')].filter(b => b.getClientRects().length).map(b => b.textContent)[0] === 'Send'`);
     await delay(700); // the reload after run_end must not take the receipts or the rows with it
-    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.approval')].map(a => a.className)`), ['approval denied', 'approval allowed']);
-    assert.match(await ui.cdp.evaluate(`[...document.querySelectorAll('.tool-name')].map(n => n.textContent).join('|')`), /^Looked at 3 items in work\|Couldn't run echo one\|Ran echo two$/);
-    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.tool[open]').length`), 1, 'only the failed row opens itself');
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.approval')].map(a => a.className)`), ['approval denied', 'approval allowed', 'approval allowed']);
+    assert.match(await ui.cdp.evaluate(`[...document.querySelectorAll('.tool-name')].map(n => n.textContent).join('|')`), /^Looked at 3 items in work\|Couldn't run echo one\|Wrote notes\.md\|Ran echo two$/);
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.tool[open]').length`), 0, 'a denial is the receipt line, it does not open the failed row');
     assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.msg.assistant h2').length`), 1, 'the markdown heading is a real heading');
     await shot(ui, 'chat-after-run.png');
   });
@@ -186,6 +204,16 @@ test('the simple chat UI', { timeout: 300_000 }, async (t) => {
     assert.ok(await ui.cdp.evaluate(`document.querySelectorAll('[lang="th"]').length`) > 2);
     assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.session-title, .agent-mission, .chat-title, .tool-name, .save-bar-text')]
       .filter(e => e.getClientRects().length).filter(e => parseFloat(getComputedStyle(e).lineHeight) / parseFloat(getComputedStyle(e).fontSize) < 1.74).map(e => e.className)`), []);
+  });
+
+  await t.test('a chat picked from Agents brings the chat page forward', async () => {
+    const title = await text('.session-title');
+    await ui.cdp.evaluate(`location.hash = '#/agents'`);
+    await ui.wait(`document.querySelector('.chat').hidden && !document.querySelector('[aria-label="Agents"]').hidden`);
+    await ui.cdp.evaluate(`document.querySelector('.session').click()`);
+    await ui.wait(`!document.querySelector('.chat').hidden && document.querySelector('[aria-label="Agents"]').hidden`, 'the chat page is shown');
+    await ui.wait(`document.querySelector('.chat-title').textContent === ${JSON.stringify(title)} && document.querySelector('.msg.user')`, 'the picked chat is open');
+    assert.equal(await ui.cdp.evaluate(`location.hash`), '#/chat');
   });
 
   await t.test('deleting a chat asks first: Cancel has focus, Esc keeps the chat, Delete removes it', async () => {

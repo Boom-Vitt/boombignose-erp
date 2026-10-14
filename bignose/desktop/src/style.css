@@ -354,7 +354,12 @@ pre.code code { display: block; padding: var(--sp-3); overflow-x: auto; white-sp
 .approval-title { font-size: var(--fs-md); font-weight: var(--fw-semibold); line-height: 1.4; }
 .approval-desc { color: var(--muted); margin-top: 2px; }
 .approval-desc code { font-size: 12px; }
-.approval-cmd { margin: 0; padding: 10px var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--code-bg); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
+.approval-cmd, .approval-change { margin: 0; padding: 10px var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--code-bg); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
+.approval-changes summary { display: flex; align-items: center; gap: var(--sp-1); width: fit-content; min-height: 28px; color: var(--muted); cursor: pointer; list-style: none; }
+.approval-changes summary::-webkit-details-marker { display: none; }
+.approval-changes .chev { width: 12px; height: 12px; color: var(--faint); transition: transform var(--dur) var(--ease); }
+.approval-changes[open] .chev { transform: rotate(90deg); }
+.approval-changes > div { display: grid; gap: var(--sp-1); margin-top: var(--sp-1); }
 .approval-cmd.command::before { content: "$ "; color: var(--faint); }
 .approval-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .approval-status { font-size: var(--fs-xs); color: var(--muted); }
