@@ -19,7 +19,7 @@ Independent checkpoint execution uses the already installed Node.js 26.8.1 and f
 
 Use a clean worktree pinned to the reviewed full commit SHA. Keep each lane's `.env.local`, `.local-stack`, `.next`, generated reports and synthetic database separate. Generate isolation with `node scripts/worktree-env.mjs <lane>` only before the lane's ports are in use. Verify that test API and app URLs match the generated metadata. Never reuse another lane's server or reset another database.
 
-The checked-in `.env.example` uses the Supabase template's API port 54421. An isolated lane uses its generated API/app ports instead. Replace required keys from that local project's status output privately; never print or commit service-role credentials. Optional cron, webhook, outbound email and AI configuration remains blank unless separately authorized.
+The checked-in `.env.example` uses the Supabase template's API port 54421. An isolated lane uses its generated API/app ports instead. Set `NEXT_PUBLIC_APP_URL` to the exact generated app origin before the production build; lane 6 uses `http://127.0.0.1:3106`. Browser configuration rejects a missing or mismatched trusted app origin. Replace required keys from that local project's status output privately; never print or commit service-role credentials. Optional cron, webhook, outbound email and AI configuration remains blank unless separately authorized.
 
 Database reset executes `supabase/seed.sql`. The existing seed creates a known synthetic owner and sample records: opt in only for isolated local tests. It is not a production bootstrap or safe default owner. Removing that assumption from portable installation is a remaining handover prerequisite, not a gate this checkpoint claims to have passed.
 
