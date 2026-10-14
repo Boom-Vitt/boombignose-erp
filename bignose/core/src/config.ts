@@ -89,7 +89,9 @@ export function loadConfig(home: string = homeDir()): Config {
   if (!isObj(parsed)) throw new Error(`invalid config ${file}: expected a JSON object`);
   const cfg = merge(base, parsed) as Config;
   // a saved providers array replaces the defaults: give a saved provider the default cap it lacks (OpenRouter 402s without one)
-  for (const p of cfg.providers) {
+  // a malformed providers value (not an array, a null or non-object entry) is left alone: validateConfig reports it
+  if (Array.isArray(cfg.providers)) for (const p of cfg.providers) {
+    if (!isObj(p)) continue;
     const def = base.providers.find((d) => d.id === p.id);
     if (p.maxTokens === undefined && def?.maxTokens !== undefined) p.maxTokens = def.maxTokens;
   }

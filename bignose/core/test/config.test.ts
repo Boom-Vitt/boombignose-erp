@@ -9,6 +9,7 @@ import {
   setSecret, VERSION,
 } from '../src/config.ts';
 import { log } from '../src/log.ts';
+import { validateConfig } from '../src/app/settings.ts';
 
 // Fresh BIGNOSE_HOME per test; never touches ~/.bignose.
 function tmpHome(t: { after(fn: () => void): void }): string {
@@ -109,6 +110,18 @@ test('a saved openrouter provider without maxTokens gets the default', (t) => {
   assert.deepEqual(cfg.providers[0], stored.providers[0]);
   assert.deepEqual(cfg.providers[2], stored.providers[2]);
   assert.equal(Object.hasOwn(cfg.providers[2]!, 'maxTokens'), false);
+});
+
+test('a malformed providers list fails validation', (t) => {
+  const home = tmpHome(t);
+  const good = { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1' };
+  // loadConfig must not throw a TypeError on these; validateConfig is what reports them
+  for (const providers of ['nope', { id: 'openrouter' }, [null], [good, 7], [good, ['x']]]) {
+    fs.writeFileSync(paths(home).config, JSON.stringify({ providers }));
+    let cfg!: ReturnType<typeof loadConfig>;
+    assert.doesNotThrow(() => { cfg = loadConfig(); }, JSON.stringify(providers));
+    assert.throws(() => validateConfig(cfg), /provider/, JSON.stringify(providers));
+  }
 });
 
 test('a user-set provider maxTokens is kept', (t) => {
