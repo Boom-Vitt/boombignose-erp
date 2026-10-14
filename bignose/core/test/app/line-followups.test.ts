@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { writeFileSync } from 'node:fs';
+import { setSecret } from '../../src/config.ts';
 import { startDaemon } from '../../src/app/daemon.ts';
 import type { Message, Provider, ProviderRequest } from '../../src/types.ts';
 import { configured, testHome } from '../e2e/helpers.ts';
@@ -144,4 +146,42 @@ test('a LINE message during a desktop run of the same session is answered after 
   assert.equal((await desktop.result).text, 'answer 2');
   assert.equal(await line, 'answer 3');
   assert.ok(seen[2]!.includes('desktop follow-up') && seen[2]!.at(-1) === 'second from LINE', 'the LINE message sees the desktop turn');
+});
+
+test('a LINE message waiting on a desktop run is not run once LINE was turned off', async t => {
+  const home = testHome(t); process.env.BIGNOSE_HOME = home; configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = ['Uowner']; });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  const gate = Promise.withResolvers<void>(); t.after(() => gate.resolve());
+  let calls = 0;
+  const provider: Provider = { kind: 'openai-compatible', async *stream() {
+    if (++calls === 2) await gate.promise; // the desktop follow-up
+    yield { type: 'text_delta', text: `answer ${calls}` };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await startDaemon({ home, providerFactory: () => provider, lineOptions: { apiBase: 'https://line.example', fetchImpl: async () => Response.json({}) } });
+  t.after(() => a.close());
+  const until = async (cond: () => boolean) => { for (let i = 0; !cond() && i < 400; i++) await new Promise(resolve => setTimeout(resolve, 5)); assert.ok(cond()); };
+  await until(() => a.lineStatus().running);
+  let seq = 0;
+  const dm = async (text: string) => {
+    const raw = JSON.stringify({ events: [{ type: 'message', webhookEventId: `e${++seq}`, replyToken: `rt-${seq}`, source: { type: 'user', userId: 'Uowner' }, message: { type: 'text', text } }] });
+    assert.equal((await fetch(`http://127.0.0.1:${a.lineStatus().port}/line/webhook`, { method: 'POST', body: raw,
+      headers: { 'X-Line-Signature': createHmac('sha256', 'test-secret').update(raw).digest('base64') } })).status, 200);
+  };
+  await dm('hello from LINE');
+  await until(() => calls === 1 && a.runtime.store.listSessions().length === 1 && !a.runtime.isRunning(a.runtime.store.listSessions()[0]!.id));
+  const session = a.runtime.store.listSessions()[0]!;
+  const desktop = a.runtime.start(session.id, 'desktop follow-up');
+  await until(() => calls === 2);
+  await dm('second from LINE'); // waits for the desktop run
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const config = a.config(); config.line.enabled = false;
+  const saved = await fetch(`http://127.0.0.1:${a.port}/api/settings`, { method: 'PUT', body: JSON.stringify({ config }),
+    headers: { Authorization: `Bearer ${a.token}`, 'Content-Type': 'application/json' } });
+  assert.equal(saved.status, 200); assert.equal(a.lineStatus().running, false);
+  gate.resolve();
+  assert.equal((await desktop.result).text, 'answer 2');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(calls, 2); // no third provider call for a gateway that is gone
+  assert.equal(a.runtime.store.getMessages(session.id).some(m => JSON.stringify(m).includes('second from LINE')), false);
 });

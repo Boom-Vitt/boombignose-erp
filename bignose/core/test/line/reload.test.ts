@@ -19,7 +19,8 @@ async function until(cond: () => boolean, what: string) {
   assert.fail(`timed out waiting for ${what}`);
 }
 
-async function setup(t: TestContext, change?: (c: Config) => void, toolFirst = false) {
+type ApiHook = (path: string, init: RequestInit) => Promise<Response | undefined> | undefined;
+async function setup(t: TestContext, change?: (c: Config) => void, toolFirst = false, api?: ApiHook) {
   const home = testHome(t); process.env.BIGNOSE_HOME = home;
   configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = [OWNER]; c.permissions.memory_read = 'ask'; change?.(c); });
   setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', SECRET, home);
@@ -44,7 +45,7 @@ async function setup(t: TestContext, change?: (c: Config) => void, toolFirst = f
     if (path.endsWith('/reply') || path.endsWith('/push')) {
       sent.push({ path, auth: (init.headers as Record<string, string>).Authorization!, body: JSON.parse(String(init.body)) });
     }
-    return Response.json({});
+    return await api?.(path, init) ?? Response.json({});
   } } });
   t.after(() => a.close());
   await until(() => a.lineStatus().running, 'the LINE listener');
@@ -53,8 +54,8 @@ async function setup(t: TestContext, change?: (c: Config) => void, toolFirst = f
     assert.equal(r.status, 200);
   };
   let seq = 0;
-  const post = async (event: object) => {
-    const raw = JSON.stringify({ events: [{ webhookEventId: `e${++seq}`, replyToken: `rt-${seq}`, source: { type: 'user', userId: OWNER }, ...event }] });
+  const post = async (event: object, userId = OWNER) => {
+    const raw = JSON.stringify({ events: [{ webhookEventId: `e${++seq}`, replyToken: `rt-${seq}`, source: { type: 'user', userId }, ...event }] });
     const res = await fetch(`http://127.0.0.1:${a.lineStatus().port}/line/webhook`, { method: 'POST', body: raw,
       headers: { 'X-Line-Signature': createHmac('sha256', SECRET).update(raw).digest('base64') } });
     assert.equal(res.status, 200);
@@ -63,7 +64,7 @@ async function setup(t: TestContext, change?: (c: Config) => void, toolFirst = f
     a, sent, call, calls: () => calls,
     hold: (k: number) => { gates.set(k, Promise.withResolvers<void>()); },
     release: (k: number) => gates.get(k)!.resolve(),
-    dm: (text: string) => post({ type: 'message', message: { type: 'text', id: `m${seq}`, text } }),
+    dm: (text: string, userId?: string) => post({ type: 'message', message: { type: 'text', id: `m${seq}`, text } }, userId),
     tap: (data: string) => post({ type: 'postback', postback: { data } }),
     // A LINE settings save through the API, as the desktop does it.
     save: (change: (c: Config) => void) => { const config = a.config(); change(config); return call('settings', 'PUT', { config }); },
@@ -121,7 +122,10 @@ test('queued LINE messages and pending approvals survive a reload', async t => {
 });
 
 test('a LINE port change moves the listener, and a busy port keeps the old one', async t => {
-  const s = await setup(t);
+  const s = await setup(t, undefined, false, path => path.endsWith('/reply') || path.endsWith('/push') ? Promise.resolve(new Response('nope', { status: 500 })) : undefined);
+  await s.dm('hi'); // LINE refuses the answer, so the gateway already holds a send error
+  await until(() => !!s.a.lineStatus().lastError, 'a send error');
+  assert.match(s.a.lineStatus().lastError!, /500/);
   const free = () => new Promise<number>(resolve => { const x = createServer(); x.listen(0, '127.0.0.1', () => { const p = (x.address() as AddressInfo).port; x.close(() => resolve(p)); }); });
   const first = s.a.lineStatus().port, moved = await free();
   await s.save(c => { c.line.port = moved; });
@@ -134,4 +138,43 @@ test('a LINE port change moves the listener, and a busy port keeps the old one',
   await s.save(c => { c.line.port = (blocker.address() as AddressInfo).port; });
   assert.match(s.a.lineStatus().lastError!, /EADDRINUSE/);
   assert.equal(s.a.lineStatus().running, true); assert.equal(s.a.lineStatus().port, moved);
+});
+
+test('queued work of a chat removed from the allow list neither runs nor answers', async t => {
+  const FRIEND = 'Ufriend';
+  const s = await setup(t, c => { c.line.allow.users.push(FRIEND); });
+  s.hold(0);
+  await s.dm('first', FRIEND);
+  await until(() => s.calls() === 1, 'the first run');
+  await s.dm('second', FRIEND); // queued behind the first
+  await s.save(c => { c.line.allow.users = c.line.allow.users.filter(u => u !== FRIEND); });
+  s.release(0);
+  await s.runEnded();
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(s.calls(), 1); // the second message never reached the model
+  assert.equal(s.sent.length, 0); // and the removed chat got no answer, not even to the run that was in flight
+  await s.dm('still allowed'); // the owner is unaffected
+  await until(() => s.texts().includes('answer 1'), 'the owner answer');
+  assert.deepEqual(s.sent.map(x => x.body.replyToken), ['rt-3']);
+});
+
+test('a token rotated while a request is in flight is masked in errors, old and new', async t => {
+  const release = Promise.withResolvers<void>(), arrived = Promise.withResolvers<void>();
+  let first = true;
+  const s = await setup(t, undefined, false, async (path, init) => {
+    if (!path.endsWith('/reply') || !first) return undefined;
+    first = false; arrived.resolve(); await release.promise;
+    // A broken proxy that echoes the credentials it was given.
+    return new Response(`bad credentials: ${(init.headers as Record<string, string>).Authorization}`, { status: 400 });
+  });
+  await s.dm('hello');
+  await arrived.promise; // the reply goes out with the old token
+  await s.call('secrets', 'PUT', { name: 'LINE_CHANNEL_ACCESS_TOKEN', value: 'other-key-2' });
+  release.resolve();
+  await until(() => !!s.a.lineStatus().lastError, 'the error');
+  const { lastError } = s.a.lineStatus();
+  assert.match(lastError!, /400 bad credentials: Bearer \*\*\*/);
+  assert.ok(!lastError!.includes('test-token') && !lastError!.includes('other-key-2'));
+  await until(() => s.texts().includes('answer 0'), 'the push with the new token'); // the answer still arrives
+  assert.equal(s.sent.at(-1)!.auth, 'Bearer other-key-2');
 });

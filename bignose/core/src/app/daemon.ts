@@ -66,7 +66,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
         catch (e) { lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); } // the old listener stays up; retry on the next reload
       } else {
         const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret, accessToken,
-          onMessage: m => runtime.lineMessage(m), seen, ...options.lineOptions });
+          onMessage: (m, signal) => runtime.lineMessage(m, signal), seen, ...options.lineOptions });
         try { await gateway.listen(linePort()); line = gateway; }
         catch (e) { await gateway.close(); lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); }
       }
@@ -87,7 +87,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
       agentId: runtime.lineAgent().id,
       publicUrl, webhookUrl, healthUrl: webhookUrl ? webhookUrl + '/health' : undefined, warnings,
       tokenSet: !!env.LINE_CHANNEL_ACCESS_TOKEN, secretSet: !!env.LINE_CHANNEL_SECRET,
-      lastEventAt: status?.lastEventAt, lastError: status?.lastError ?? lineError };
+      lastEventAt: status?.lastEventAt, lastError: lineError ?? status?.lastError }; // a bind failure is newer than an older send error
   }
   const api = createApiServer({ home, token, fetchImpl: options.fetchImpl, runtime, mcp, scheduler, config: () => config, lineStatus,
     lineApiOptions: () => {

@@ -302,10 +302,10 @@ export function createApiServer(opts: ApiOptions) {
             }
             let webhookOk = false, webhookDetail = !bot ? 'Fix the token first.' : problem ?? '';
             if (bot && webhookUrl) {
-              // Read before the PUT; a failed read is not fatal, the PUT reports a bad token or network.
-              const active = await lineWebhookActive(o).catch(() => undefined);
               try {
                 await setLineWebhook(o, webhookUrl);
+                // After the PUT: LINE answers 404 to this GET until an endpoint is set. A failed read is not fatal.
+                const active = await lineWebhookActive(o).catch(() => undefined);
                 const notes = [...(opts.lineStatus().running ? [] : ['The LINE listener is not running. Turn LINE on, save, then connect again.']),
                   ...(active === false ? ['Turn on Use webhook in the LINE Developers console.'] : [])];
                 webhookOk = !notes.length; webhookDetail = `Webhook set to ${webhookUrl}${notes.length ? '. ' + notes.join(' ') : ''}`;

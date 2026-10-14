@@ -21,7 +21,7 @@ const WORKING = 'Still working on it. Tap the button to get the answer when it i
 
 export interface LineGatewayOptions {
   config: LineConfig; channelSecret: string; accessToken: string;
-  onMessage: (m: { to: string; userId: string; text: string }) => Promise<string>;
+  onMessage: (m: { to: string; userId: string; text: string }, signal: AbortSignal) => Promise<string>; // signal: the gateway closed
   fetchImpl?: typeof fetch;
   apiBase?: string;
   seen?: Set<string>;
@@ -72,6 +72,7 @@ export function createLineGateway(options: LineGatewayOptions) {
   const approvals = new Map<string, { to: string; resolve: (ok: boolean) => void; timer: unknown }>();
   const slowTimers = new Set<unknown>();
   let closed = false;
+  const closing = new AbortController();
   let server: Server | undefined, listenPort: number | undefined; // listenPort: the port that was asked for (0 = ephemeral)
   let lastEventAt: number | undefined;
   let lastError: string | undefined;
@@ -92,16 +93,17 @@ export function createLineGateway(options: LineGatewayOptions) {
 
   async function call(path: string, body: unknown): Promise<void> {
     if (closed) return;
+    const { accessToken, channelSecret } = opts; // reconfigure() may rotate these while the request is in flight
     const res = await fetchImpl(`${apiBase}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opts.accessToken}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
       redirect: 'error',
     });
     let text = await res.text().catch(() => '');
     if (!res.ok) {
-      for (const secret of [opts.accessToken, opts.channelSecret]) if (secret) text = text.replaceAll(secret, '***');
+      for (const secret of [accessToken, channelSecret, opts.accessToken, opts.channelSecret]) if (secret) text = text.replaceAll(secret, '***');
       throw new Error(`LINE ${path} failed: ${res.status} ${text.slice(0, 200)}`);
     }
   }
@@ -161,10 +163,10 @@ export function createLineGateway(options: LineGatewayOptions) {
   }
 
   async function runMessage(to: string, userId: string, text: string): Promise<void> {
-    if (closed) return;
+    if (closed || !stillAllowed(to)) return;
     if (to.startsWith('U')) void call('/v2/bot/chat/loading/start', { chatId: to, loadingSeconds: 60 }).catch(fail);
     const answer = Promise.resolve()
-      .then(() => closed ? '' : opts.onMessage({ to, userId, text }))
+      .then(() => closed ? '' : opts.onMessage({ to, userId, text }, closing.signal))
       .catch((e) => { fail(e); return 'Sorry, something went wrong.'; });
     let timer: unknown;
     const slow = new Promise<null>((resolve) => {
@@ -174,9 +176,9 @@ export function createLineGateway(options: LineGatewayOptions) {
     });
     const early = await Promise.race([answer, slow]);
     slowTimers.delete(timer);
-    if (closed) return;
+    if (early !== null) timers.clearTimeout(timer);
+    if (closed || !stillAllowed(to)) return;
     if (early !== null) {
-      timers.clearTimeout(timer);
       await send(to, early);
       return;
     }
@@ -255,6 +257,12 @@ export function createLineGateway(options: LineGatewayOptions) {
     if (src.type === 'room' && typeof src.roomId === 'string') return { to: src.roomId, userId, allowed: rooms.includes(src.roomId) };
     return undefined;
   }
+
+  // The live allow list, for work that was queued before a settings save: a chat removed since then gets no run and no answer.
+  const stillAllowed = (to: string): boolean => {
+    const { users, groups, rooms } = opts.config.allow;
+    return users.includes(to) || groups.includes(to) || rooms.includes(to);
+  };
 
   function handleEvent(ev: LineEvent): void {
     if (closed) return;
@@ -373,7 +381,7 @@ export function createLineGateway(options: LineGatewayOptions) {
 
     /** Stops new work and sends, drops queued runs, stops timers and denies open approvals. */
     async close(): Promise<void> {
-      closed = true;
+      closed = true; closing.abort();
       for (const chat of chats.values()) { chat.queue.length = 0; chat.token = undefined; }
       for (const id of [...approvals.keys()]) settleApproval(id, false);
       for (const t of slowTimers) timers.clearTimeout(t);
