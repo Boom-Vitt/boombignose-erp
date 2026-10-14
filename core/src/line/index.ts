@@ -5,6 +5,8 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { LineConfig } from '../types.ts';
+export { lineBotInfo, setLineWebhook, testLineWebhook, publicUrlProblem, webhookUrlFor } from './connect.ts';
+export type { LineApiOptions } from './connect.ts';
 
 const MAX_BODY = 1024 * 1024;        // 1 MiB
 const CHUNK = 4500;                  // characters per text message
@@ -22,6 +24,7 @@ export interface LineGatewayOptions {
   onMessage: (m: { to: string; userId: string; text: string }) => Promise<string>;
   fetchImpl?: typeof fetch;
   apiBase?: string;
+  seen?: Set<string>;
   now?: () => number;
   timers?: { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(handle: unknown): void };
 }
@@ -38,7 +41,7 @@ interface LineEvent {
   message?: { type?: string; text?: unknown }; postback?: { data?: unknown };
 }
 interface Chat { token?: { value: string; at: number }; queue: (() => Promise<void>)[]; busy: boolean }
-interface Pending { id: string; to: string; state: PendingState; text?: string }
+interface Pending { id: string; to: string; state: PendingState; text?: string; delivered: number; sending?: boolean }
 
 function chunkText(text: string): string[] {
   const out: string[] = [];
@@ -62,7 +65,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
   const now = opts.now ?? Date.now;
   const timers = opts.timers ?? { setTimeout, clearTimeout };
 
-  const seen = new Set<string>();
+  const seen = opts.seen ?? new Set<string>();
   const chats = new Map<string, Chat>();
   const pendings = new Map<string, Pending>();
   const approvals = new Map<string, { to: string; resolve: (ok: boolean) => void; timer: unknown }>();
@@ -93,6 +96,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opts.accessToken}` },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
+      redirect: 'error',
     });
     let text = await res.text().catch(() => '');
     if (!res.ok) {
@@ -110,15 +114,21 @@ export function createLineGateway(opts: LineGatewayOptions) {
 
   // At most 5 messages per call. The first call tries the free reply token; if there is none, or LINE refuses it
   // (expired, already used), it goes out as a metered push. Further calls are always pushes.
-  async function sendMessages(to: string, messages: LineMessage[]): Promise<void> {
-    for (let i = 0; i < messages.length; i += MAX_PER_CALL) {
+  async function sendMessages(to: string, messages: LineMessage[], pending?: Pending): Promise<void> {
+    const start = pending?.delivered ?? 0;
+    for (let i = start; i < messages.length; i += MAX_PER_CALL) {
       if (closed) return;
       const batch = messages.slice(i, i + MAX_PER_CALL);
-      const token = i === 0 ? takeToken(to) : undefined;
+      const token = i === start ? takeToken(to) : undefined;
       if (token) {
-        try { await call('/v2/bot/message/reply', { replyToken: token, messages: batch }); continue; } catch (e) { fail(e); }
+        try {
+          await call('/v2/bot/message/reply', { replyToken: token, messages: batch });
+          if (pending && !closed) pending.delivered = i + batch.length;
+          continue;
+        } catch (e) { fail(e); }
       }
       await call('/v2/bot/message/push', { to, messages: batch });
+      if (pending && !closed) pending.delivered = i + batch.length;
     }
   }
   const send = (to: string, text: string) => sendMessages(to, textMessages(text));
@@ -151,6 +161,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
 
   async function runMessage(to: string, userId: string, text: string): Promise<void> {
     if (closed) return;
+    if (to.startsWith('U')) void call('/v2/bot/chat/loading/start', { chatId: to, loadingSeconds: 60 }).catch(fail);
     const answer = Promise.resolve()
       .then(() => closed ? '' : opts.onMessage({ to, userId, text }))
       .catch((e) => { fail(e); return 'Sorry, something went wrong.'; });
@@ -169,7 +180,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
       return;
     }
     // Too slow for the reply token: park the answer behind a "Get answer" button.
-    const pending: Pending = { id: randomBytes(6).toString('hex'), to, state: 'PENDING' };
+    const pending: Pending = { id: randomBytes(6).toString('hex'), to, state: 'PENDING', delivered: 0 };
     remember(pending);
     try { await sendMessages(to, [workingMessage(pending)]); } catch (e) {
       fail(e);
@@ -224,11 +235,12 @@ export function createLineGateway(opts: LineGatewayOptions) {
     if (!p || p.to !== to) { send(to, 'That answer is no longer available.').catch(fail); return; }
     if (p.state === 'PENDING') { sendMessages(to, [workingMessage(p)]).catch(fail); return; }
     if (p.state === 'DELIVERED') { send(to, 'That answer was already sent above.').catch(fail); return; }
-    p.state = 'DELIVERED';
-    send(to, p.text ?? '').then(
-      () => { p.text = undefined; },
-      (e) => { p.state = 'READY'; fail(e); }, // not delivered: let the next tap retry
-    );
+    if (p.sending) return;
+    p.sending = true;
+    void sendMessages(to, textMessages(p.text ?? ''), p).then(
+      () => { if (!closed) { p.state = 'DELIVERED'; p.text = undefined; } },
+      fail, // Keep the successfully delivered batches; the next tap resumes at the remainder.
+    ).finally(() => { p.sending = false; });
   }
 
   // ---- events
@@ -298,6 +310,10 @@ export function createLineGateway(opts: LineGatewayOptions) {
 
   async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
+      if ((req.url ?? '').split('?')[0] === '/line/webhook/health') {
+        if (req.method !== 'GET') return respond(res, 405, { Allow: 'GET' });
+        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); return;
+      }
       if ((req.url ?? '').split('?')[0] !== '/line/webhook') return respond(res, 404);
       if (req.method !== 'POST') return respond(res, 405, { Allow: 'POST' });
       const raw = await readBody(req);

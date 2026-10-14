@@ -91,7 +91,8 @@ test('every section 6 CRUD/status route has the documented JSON shape, auth, Hos
   assert.deepEqual((await call(a, '/api/status')).body, { version: '0.1.0', provider: { id: 'mock', kind: 'openai-compatible', model: 'test-model' }, line: { enabled: false, running: false },
     mcp: [{ name: 'rea', enabled: false, connected: false, tools: 0 }], schedules: 0 });
   const line = (await call(a, '/api/line/status')).body;
-  assert.deepEqual(line, { enabled: false, running: false, port: 0, agentId: a.runtime.store.listAgents()[0]!.id, tokenSet: false, secretSet: false });
+  assert.deepEqual(line, { enabled: false, running: false, port: 0, agentId: a.runtime.store.listAgents()[0]!.id, tokenSet: false, secretSet: false,
+    warnings: ['Nobody is allowed yet: add your LINE user ID (U…) under Allowed users.'] });
   assert.equal('pending' in line, false);
 
   const sid = (await call(a, '/api/sessions', 'POST', { title: 'test title' })).body.id;
@@ -539,7 +540,7 @@ test('non-owner LINE context keeps visible chat text and drops owner tool turns 
   a.runtime.store.setContext(session.id, [{ role: 'user', content: [{ type: 'text', text: `[Summary of earlier conversation]\n${marker}` }] }, ...prior]);
   visitor = true;
   assert.equal(await a.runtime.lineMessage({ to: 'group', userId: 'visitor', text: 'what else was in the file?' }), 'Owner approval is required to read that file again.');
-  assert.ok(!JSON.stringify(a.runtime.store.getSession(session.id)!.context).includes(marker));
+  assert.ok(JSON.stringify(a.runtime.store.getSession(session.id)!.context).includes(marker), 'the stored owner context is preserved');
   assert.ok(JSON.stringify(a.runtime.store.getMessages(session.id)).includes(marker));
   assert.equal(a.runtime.store.listSessions().length, 1);
 });

@@ -11,11 +11,14 @@ import type { Runtime } from '../app/runtime.ts';
 import type { Config, Delivery } from '../types.ts';
 import type { Scheduler } from '../cron/index.ts';
 import type { McpManager } from '../mcp/manager.ts';
+import { lineBotInfo, setLineWebhook, testLineWebhook, publicUrlProblem, webhookUrlFor } from '../line/index.ts';
+import type { LineApiOptions } from '../line/index.ts';
 
 export interface ApiOptions {
   home: string; token: string; runtime: Runtime; mcp: McpManager; scheduler: Scheduler;
   config: () => Config; updateSettings: (config: Config | ((current: Config) => Config)) => Promise<void>; reloadSecrets: () => Promise<void>;
-  lineStatus: () => { enabled: boolean; running: boolean; port: number; agentId: string; publicUrl?: string; webhookUrl?: string; tokenSet: boolean; secretSet: boolean; lastEventAt?: number; lastError?: string };
+  lineStatus: () => { enabled: boolean; running: boolean; port: number; agentId: string; publicUrl?: string; webhookUrl?: string; healthUrl?: string; warnings: string[]; tokenSet: boolean; secretSet: boolean; lastEventAt?: number; lastError?: string };
+  lineApiOptions: () => LineApiOptions;
 }
 class HttpError extends Error {
   status: number;
@@ -167,6 +170,7 @@ export function createApiServer(opts: ApiOptions) {
           await opts.updateSettings(c => validate(() => {
             const next = restoreMaskedConfig(b.config as Config, c, runtime.cleaner());
             validateConfig(next);
+            if (next.line.publicUrl && next.line.publicUrl !== c.line.publicUrl) check(!publicUrlProblem(next.line.publicUrl), publicUrlProblem(next.line.publicUrl) ?? '');
             if (next.line.agentId !== undefined) agentId(next.line.agentId);
             return next;
           }));
@@ -260,7 +264,40 @@ export function createApiServer(opts: ApiOptions) {
         }
         if (id && method === 'DELETE') { if (!scheduler.remove(id)) return missing(); return send(res, { ok: true }); }
       }
-      if (area === 'line' && id === 'status' && !action && method === 'GET') return send(res, opts.lineStatus());
+      if (area === 'line' && !action) {
+        if (id === 'status' && method === 'GET') return send(res, opts.lineStatus());
+        if ((id === 'connect' || id === 'test') && method === 'POST') {
+          const o = opts.lineApiOptions(), publicUrl = opts.config().line.publicUrl;
+          const problem = !publicUrl ? 'Set a public HTTPS URL first.' : publicUrlProblem(publicUrl);
+          const webhookUrl = publicUrl && !problem ? webhookUrlFor(publicUrl) : undefined;
+          const clean = runtime.cleaner();
+          if (id === 'connect') {
+            let bot: { displayName: string; basicId: string } | undefined;
+            let tokenDetail = 'Save the channel access token first.';
+            if (o.accessToken) {
+              try {
+                const info = await lineBotInfo(o); bot = { displayName: info.displayName, basicId: info.basicId };
+                tokenDetail = `Connected to ${bot.displayName} (${bot.basicId})`;
+              } catch (e) { tokenDetail = clean(e instanceof Error ? e.message : String(e)); }
+            }
+            let webhookOk = false, webhookDetail = !bot ? 'Fix the token first.' : problem ?? '';
+            if (bot && webhookUrl) {
+              try { await setLineWebhook(o, webhookUrl); webhookOk = true; webhookDetail = `Webhook set to ${webhookUrl}`; }
+              catch (e) { webhookDetail = clean(e instanceof Error ? e.message : String(e)); }
+            }
+            return send(res, safeValue({ ok: !!bot && webhookOk, ...(bot ? { bot } : {}), ...(webhookUrl ? { webhookUrl } : {}),
+              steps: [{ name: 'token', ok: !!bot, detail: tokenDetail }, { name: 'webhook', ok: webhookOk, detail: webhookDetail }] }, clean));
+          }
+          const running = opts.lineStatus().running;
+          const detail = !o.accessToken ? 'Save the channel access token first.' : problem ?? (!running
+            ? 'The LINE listener is not running. Turn LINE on, save, then test again.' : undefined);
+          if (detail) return send(res, { ok: false, running, detail });
+          try {
+            const result = await testLineWebhook(o, webhookUrl!);
+            return send(res, safeValue({ ok: result.success, running, statusCode: result.statusCode, reason: result.reason, detail: result.detail || result.reason || '' }, clean));
+          } catch (e) { return send(res, { ok: false, running, detail: clean(e instanceof Error ? e.message : String(e)) }); }
+        }
+      }
       return missing();
     } catch (e) {
       if (res.headersSent) { res.end(); return; }

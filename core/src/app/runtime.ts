@@ -198,7 +198,8 @@ export class Runtime {
         const permissions = { ...profile.permissions };
         if (nonOwner) for (const tool of tools) if (effectivePolicy(tool, permissions) === 'allow') permissions[tool.name] = 'ask';
         const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
-        raw = await runAgent({ ...profile, system: [profile.system, nonOwner ? '' : profile.memory].filter(Boolean).join('\n\n'), provider, tools, permissions, sessionId, origin, signal: controller.signal,
+        raw = await runAgent({ ...profile, system: [profile.system, nonOwner ? '' : profile.memory,
+          origin.kind === 'line' ? 'You are replying in a LINE chat. Write plain text: short paragraphs, no Markdown headings, tables or bold markers, and put each URL on its own line. Keep answers brief unless the user asks for detail.' : ''].filter(Boolean).join('\n\n'), provider, tools, permissions, sessionId, origin, signal: controller.signal,
           context, input: modelInput, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
           onEvent: e => {
             if (e.type === 'text_delta') { streamText(e.text); return; }
@@ -220,7 +221,9 @@ export class Runtime {
       const current = this.cleaner(), clean = (text: string) => current(redaction(text)), completed = safeValue(raw, clean);
       const transcript = slash ? [{ role: 'user' as const, content: [{ type: 'text' as const, text: clean(input) }] }, ...completed.added.slice(1)] : completed.added;
       this.store.appendMessages(sessionId, transcript);
-      this.store.setContext(sessionId, completed.context);
+      this.store.setContext(sessionId, nonOwner ? [...safeValue(session.context, clean),
+        { role: 'user', content: [{ type: 'text', text: clean(input) }] },
+        ...(completed.text ? [{ role: 'assistant' as const, content: [{ type: 'text' as const, text: completed.text }] }] : [])] : completed.context);
       if (!session.title) this.store.setTitle(sessionId, clean(input).replace(/\s+/g, ' ').slice(0, 80));
       if (slash?.command === 'rea' && slash.target && completed.status === 'done' && completed.text.trim()) {
         try {
@@ -247,6 +250,7 @@ export class Runtime {
     try { result = await this.start(session.id, message.text, { origin, userId: message.userId }).result; }
     catch (e) {
       if (e instanceof CommandError && e.connector) return `Turn on the ${e.connector} connector for this agent in the app, then send again.`;
+      if (e instanceof CommandError) return this.clean(e.message);
       throw e;
     }
     return result.status === 'error' ? `Error: ${result.error}` : result.text || `Run ${result.status}.`;
