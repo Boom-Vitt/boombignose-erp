@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { startDaemon } from '../../src/app/daemon.ts';
 import { doctor } from '../../src/app/doctor.ts';
+import { defaultConfig, saveConfig, setSecret } from '../../src/config.ts';
 import { createProvider } from '../../src/providers/index.ts';
 import { OLLAMA_CONTEXT_NOTE } from '../../src/providers/ollama.ts';
 import { configured, testHome } from '../e2e/helpers.ts';
@@ -37,7 +38,7 @@ for (const kind of ['anthropic', 'openai-compatible'] as const) test(`${kind} ma
 });
 
 for (const [label, data, expected] of [
-  ['first run keeps qwen3:4b when it is installed', [{ id: 'a:1' }, { id: 'qwen3:4b' }], 'qwen3:4b'],
+  ['first run keeps qwen3:4b when it is installed', [{ id: 'a:1' }, { id: 'qwen3:14b' }, { id: 'qwen3:4b' }], 'qwen3:4b'],
   ['first run picks another qwen3 tag when qwen3:4b is missing', [{ id: 'a:1' }, { id: 'qwen3:14b' }], 'qwen3:14b'],
   ['first run falls back to the first listed model', [{ id: 'a:1' }, { id: 'b:2' }], 'a:1'],
   ['first run keeps qwen3:4b from null', null, 'qwen3:4b'],
@@ -52,7 +53,8 @@ for (const [label, data, expected] of [
   } }); t.after(() => app.close());
   assert.equal(calls, 1); assert.equal(app.config().active.model, expected);
   assert.equal(app.runtime.store.listAgents()[0]!.model, expected);
-  if (expected !== 'qwen3:4b') assert.equal(JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).active.model, expected);
+  if (expected === 'qwen3:4b') assert.equal(existsSync(join(home, 'config.json')), false);
+  else assert.equal(JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).active.model, expected);
 });
 
 test('existing config avoids first-run discovery and keeps the saved model', async t => {
@@ -97,4 +99,13 @@ test('doctor reports Ollama model count, context warning and note without requir
   const offline = await doctor(home, async () => { throw new Error('fake offline'); });
   assert.equal(offline.code, 0); assert.equal(offline.lines.filter(s => s.startsWith('warn Ollama is not running')).length, 1);
   assert.equal(existsSync(join(home, 'bignose.db')), false);
+});
+
+test('test ports move a default LINE listener off 47822', async t => {
+  const home = testHome(t);
+  const c = defaultConfig(); c.line.enabled = true; saveConfig(c, home);
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  const a = await startDaemon({ home }); t.after(() => a.close());
+  for (const end = Date.now() + 3000; !a.lineStatus().running && !a.lineStatus().lastError && Date.now() < end;) await new Promise(r => setTimeout(r, 10));
+  assert.equal(a.lineStatus().running, true); assert.notEqual(a.lineStatus().port, 47822);
 });

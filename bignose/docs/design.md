@@ -295,9 +295,11 @@ export interface Config {
   raised to `ask`, so their requests reach the owner's disk, notes, sessions, web or memory only after a tap from an
   `allow.users` member.
 - `app/daemon.ts`: `bignose daemon` — ensure home + token, open store, start MCP manager, scheduler, LINE gateway
-  (when enabled and both secrets set), the API server; write `daemon.json` with the **bound** port (`api.port: 0` and `line.port: 0` mean ephemeral
-  ports, used by tests; the test helper `testHome` sets `BIGNOSE_TEST_PORTS=0`, so the daemon binds the API on port 0, and LINE on port 0 when it is the default 47822, so first-run tests without a config file never bind 47821/47822); apply settings changes live (LINE
-  restart, MCP update); clean shutdown on SIGINT/SIGTERM.
+  (when enabled and both secrets set), the API server; write `daemon.json` with the **bound** port (`api.port: 0` and
+  `line.port: 0` mean ephemeral ports, used by tests; the test helper `testHome` sets `BIGNOSE_TEST_PORTS=0`, so the
+  daemon binds the API on port 0, and LINE on port 0 when it is the default 47822, so first-run tests without a config
+  file never bind 47821/47822); apply settings changes live (LINE restart, MCP update); clean shutdown on
+  SIGINT/SIGTERM.
   The API listens and `daemon.json` is written before connectors finish initializing. Initial connector startup
   runs asynchronously in the same serialized queue as settings writes; pending connectors show `connected:false`.
   Shutdown cancels their initialization and waits for the queue before closing the store.
