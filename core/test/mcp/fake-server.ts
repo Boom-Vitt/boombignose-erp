@@ -1,6 +1,9 @@
 import { createInterface } from 'node:readline';
+import { appendFileSync } from 'node:fs';
 
 const write = (value: unknown) => process.stdout.write(JSON.stringify(value) + '\n');
+const lifecycle = process.argv.indexOf('--lifecycle');
+if (lifecycle !== -1) appendFileSync(process.argv[lifecycle + 1]!, 'started\n');
 if (process.argv.includes('--banner')) process.stdout.write('Fake MCP starting\n');
 let pinged = false, initialized = false;
 for await (const line of createInterface({ input: process.stdin })) {
@@ -20,13 +23,22 @@ for await (const line of createInterface({ input: process.stdin })) {
     if (m.params?.cursor === 'second') {
       const tools = [{ name: 'fail', description: 'Fail', inputSchema: { type: 'object' } }, { name: 'bad.name', inputSchema: {} }, { name: 'bad/name', inputSchema: {} }, { name: 'x'.repeat(100), inputSchema: {} }];
       reply({ tools: process.argv.includes('--reverse-tools') ? tools.reverse() : tools });
-    } else reply({ tools: [{ name: 'echo', description: 'Echo', inputSchema: { type: 'object' } }], nextCursor: 'second' });
+    } else {
+      const tools = [{ name: 'echo', description: 'Echo', inputSchema: { type: 'object' } }];
+      if (lifecycle !== -1) tools.push(...['wait', 'exit'].map(name => ({ name, description: name, inputSchema: { type: 'object' } })));
+      reply({ tools, nextCursor: 'second' });
+    }
   } else if (m.method === 'tools/call' && m.params.name === 'echo') {
     reply({ content: [{ type: 'text', text: String(m.params.arguments.text) }, { type: 'text', text: `${process.env.BN_TEST}|${process.env.PATH ? 'path' : 'missing'}` }] });
   } else if (m.method === 'tools/call' && m.params.name === 'fail') {
     reply({ content: [{ type: 'text', text: 'tool failed' }], isError: true });
   } else if (m.method === 'tools/call' && m.params.name === 'wait') {
     // Leave the request pending until the test aborts it or closes the client.
+  } else if (m.method === 'tools/call' && m.params.name === 'exit') {
+    process.stderr.write(`server ending: ${process.env.BN_TEST}; ${JSON.stringify(process.env.BN_TEST)}\n`, () => {
+      if (process.argv.includes('--exit-signal')) process.kill(process.pid, 'SIGTERM');
+      else process.exit(3);
+    });
   } else if (m.method === 'tools/call' && ['bad.name', 'bad/name', 'x'.repeat(100)].includes(m.params.name)) {
     reply({ content: [{ type: 'text', text: m.params.name }] });
   } else {

@@ -10,6 +10,7 @@ export class McpClient {
   readonly config: McpServerConfig;
   readonly env: Record<string, string>;
   connected = false;
+  private failure?: Error;
   private child?: ChildProcessWithoutNullStreams;
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   private sequence = 0;
@@ -42,12 +43,18 @@ export class McpClient {
   }
   private fail(error: Error): void {
     this.connected = false;
-    for (const p of this.pending.values()) p.reject(error);
+    this.failure ??= error;
+    for (const p of this.pending.values()) p.reject(this.failure);
     this.pending.clear();
+  }
+  get disconnectReason(): string | undefined {
+    const message = this.failure?.message;
+    return message === undefined ? undefined : message.startsWith('MCP server exited (')
+      ? message.slice('MCP server '.length) : `closed: ${message}`;
   }
   async connect(): Promise<void> {
     if (this.connected) return;
-    this.closed = false; this.controller = new AbortController(); this.stderr = ''; this.session = undefined; this.version = '2025-11-25';
+    this.closed = false; this.failure = undefined; this.controller = new AbortController(); this.stderr = ''; this.session = undefined; this.version = '2025-11-25';
     try {
       if (this.config.transport === 'stdio') {
         const env = Object.fromEntries(Object.entries(this.config.env ?? {}).map(([k, v]) => [k, this.expand(v)]));
@@ -55,7 +62,7 @@ export class McpClient {
         this.child.stderr.on('data', (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString()).slice(-8000); });
         this.child.stdin.on('error', e => this.fail(this.safe(e.message)));
         this.child.on('error', e => this.fail(this.safe(e.message)));
-        this.child.on('exit', code => this.fail(this.safe(`MCP server exited (${code}): ${this.stderr}`)));
+        this.child.on('exit', (code, signal) => this.fail(this.safe(`MCP server exited (${code ?? signal}): ${this.stderr}`)));
         const lines = createInterface({ input: this.child.stdout });
         lines.on('line', line => {
           try { void this.receive(JSON.parse(line)).catch(e => this.fail(this.safe(String(e)))); }
@@ -112,12 +119,14 @@ export class McpClient {
     return this.unwrap(value);
   }
   private async send(message: Rpc): Promise<void> {
+    if (this.failure) throw this.failure;
     if (this.closed) throw new Error('MCP client is closed');
     if (this.config.transport === 'http') { await this.post(message); return; }
     if (!this.child?.stdin.writable) throw new Error('MCP server is not running');
     this.child.stdin.write(JSON.stringify(message) + '\n');
   }
   private request(method: string, params: unknown, signal?: AbortSignal, timeoutMs = 60_000): Promise<any> {
+    if (this.failure) return Promise.reject(this.failure);
     if (this.closed) return Promise.reject(new Error('MCP client is closed'));
     const id = ++this.sequence, message: Rpc = { jsonrpc: '2.0', id, method, params };
     if (this.config.transport === 'http') return this.post(message, signal, timeoutMs);
