@@ -25,7 +25,8 @@ import { todayISO } from "@/lib/dates"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
-import { ProjectStatusBadge, TaskStatusBadge } from "@/components/status-badge"
+import { ProjectStatusBadge, TaskStatusBadge, InvoiceStatusBadge } from "@/components/status-badge"
+import { QuoteStatusBadge } from "../../quotes/_components/quote-status-badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -67,7 +68,7 @@ export default async function ProjectDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const { id } = await params
   const supabase = await createClient()
 
@@ -75,7 +76,7 @@ export default async function ProjectDetailPage({
     .from("projects")
     .select(
       "id, name, status, deadline, budget_satang, owner, client_id, client:clients(name)"
-    )
+    ).eq("org_id", ctx.orgId)
     .eq("id", id)
     .maybeSingle()
 
@@ -92,31 +93,41 @@ export default async function ProjectDetailPage({
     { data: invoicesData },
     { data: costsData },
     { data: timeData },
+    { data: sourceQuotes },
   ] = await Promise.all([
     supabase
       .from("project_tasks")
       .select("id, title, status, assignee, due_date, done")
+      .eq("org_id", ctx.orgId)
       .eq("project_id", id)
       .order("done", { ascending: true })
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true }),
     supabase
       .from("milestones")
-      .select("id, title, due_date, done")
+      .select("id, title, due_date, done, source_quote_id")
+      .eq("org_id", ctx.orgId)
       .eq("project_id", id)
       .order("done", { ascending: true })
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true }),
     supabase
       .from("invoices")
-      .select("status, amount_satang")
-      .eq("project_id", id)
-      .in("status", ["sent", "partially_paid", "paid", "overdue"]),
-    supabase.from("costs").select("amount_satang").eq("project_id", id),
+      .select("id, number, status, amount_satang, source_quote_id, source_milestone_id")
+      .eq("org_id", ctx.orgId)
+      .eq("project_id", id),
+    supabase.from("costs").select("amount_satang").eq("org_id", ctx.orgId).eq("project_id", id),
     supabase
       .from("time_entries")
       .select("project_id, minutes, billable, rate_satang")
+      .eq("org_id", ctx.orgId)
       .eq("project_id", id),
+    supabase
+      .from("quotes")
+      .select("id, number, status, total_satang, converted_invoice_id")
+      .eq("org_id", ctx.orgId)
+      .eq("project_id", id)
+      .order("created_at", { ascending: true }),
   ])
 
   const tasks = (tasksData ?? []) as Array<{
@@ -132,10 +143,15 @@ export default async function ProjectDetailPage({
     title: string
     due_date: string | null
     done: boolean
+    source_quote_id: string | null
   }>
   const invoices = (invoicesData ?? []) as Array<{
+    id: string
+    number: string
     status: Enums<"invoice_status">
     amount_satang: number
+    source_quote_id: string | null
+    source_milestone_id: string | null
   }>
   const costs = (costsData ?? []) as Array<{ amount_satang: number }>
   const timeEntries = (timeData ?? []) as Array<{
@@ -152,8 +168,9 @@ export default async function ProjectDetailPage({
   const doneTasks = tasks.filter((t) => t.done).length
   const doneMilestones = milestones.filter((m) => m.done).length
 
-  const hasFinancials = invoices.length > 0 || costs.length > 0
-  const profit = hasFinancials ? projectProfit(invoices, costs) : null
+  const billedInvoices = invoices.filter((invoice) => ["sent", "partially_paid", "paid", "overdue"].includes(invoice.status))
+  const hasFinancials = billedInvoices.length > 0 || costs.length > 0
+  const profit = hasFinancials ? projectProfit(billedInvoices, costs) : null
 
   return (
     <div className="space-y-6">
@@ -209,6 +226,34 @@ export default async function ProjectDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      {sourceQuotes?.length || invoices.length ? (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Quotes and invoices</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <ul className="space-y-2">
+              {(sourceQuotes ?? []).map((quote) => (
+                <li key={quote.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <Link href={`/quotes/${quote.id}`} className="font-medium hover:underline">{quote.number}</Link>
+                  <QuoteStatusBadge status={quote.status} />
+                  <span>{formatTHB(quote.total_satang)}</span>
+                  {quote.converted_invoice_id ? <Link href={`/finance/invoices/${quote.converted_invoice_id}`} className="hover:underline">View draft or issued invoice</Link> : null}
+                </li>
+              ))}
+            </ul>
+            <ul className="space-y-2">
+              {invoices.map((invoice) => (
+                <li key={invoice.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <Link href={`/finance/invoices/${invoice.id}`} className="font-medium hover:underline">{invoice.number}</Link>
+                  <InvoiceStatusBadge status={invoice.status} />
+                  <span>{formatTHB(invoice.amount_satang)}</span>
+                  {invoice.source_quote_id ? <Link href={`/quotes/${invoice.source_quote_id}`} className="hover:underline">Source quote</Link> : null}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Profit (only when there are invoices or costs) */}
       {profit ? (
@@ -306,7 +351,7 @@ export default async function ProjectDetailPage({
           ) : (
             <ul className="divide-y rounded-md border">
               {milestones.map((m) => (
-                <li key={m.id} className="flex items-center gap-3 px-3 py-2.5">
+                <li id={`milestone-${m.id}`} key={m.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                   <MilestoneToggle
                     id={m.id}
                     projectId={p.id}
@@ -321,6 +366,12 @@ export default async function ProjectDetailPage({
                   >
                     {m.title}
                   </span>
+                  {m.source_quote_id ? (
+                    <Link href={`/quotes/${m.source_quote_id}`} className="text-xs hover:underline">Source quote</Link>
+                  ) : null}
+                  {invoices.filter((invoice) => invoice.source_milestone_id === m.id).map((invoice) => (
+                    <Link key={invoice.id} href={`/finance/invoices/${invoice.id}`} className="text-xs hover:underline">{invoice.number}</Link>
+                  ))}
                   {m.due_date ? (
                     <span className="text-muted-foreground shrink-0 text-xs">
                       {formatDate(m.due_date)}

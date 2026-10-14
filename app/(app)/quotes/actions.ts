@@ -6,15 +6,17 @@ import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
-import { bahtToSatang, formatTHBWhole } from "@/lib/money"
-import {
-  lineAmountSatang,
-  subtotalSatang,
-  documentTotalSatang,
-} from "@/lib/metrics/line-items"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
 import { nextDocumentNumber } from "@/lib/documents/numbering"
+import {
+  quoteTransitionError,
+  quoteIsEditable,
+  serviceMoneyInput,
+  serviceQuantityInput,
+  serviceAmountSatang,
+  serviceLineAmount,
+} from "@/lib/workflows/service"
 
 const QUOTE_STATUSES = [
   "draft",
@@ -22,7 +24,6 @@ const QUOTE_STATUSES = [
   "accepted",
   "declined",
   "expired",
-  "converted",
 ] as const
 
 /** Empty string from an optional <input> → undefined (so zod .optional() applies). */
@@ -44,45 +45,6 @@ const optionalDate = z
   .optional()
   .transform((v) => (v ? v : null))
 
-/**
- * Recompute and persist a quote's subtotal/total from its line items. The quote's
- * own discount drives the total. Runs after any item insert/delete. Returns the
- * error message on failure, or null on success.
- */
-async function recomputeQuoteTotals(
-  supabase: Awaited<ReturnType<typeof createSupabaseClient>>,
-  orgId: string,
-  quoteId: string
-): Promise<string | null> {
-  const { data: quote, error: quoteErr } = await supabase
-    .from("quotes")
-    .select("discount_satang")
-    .eq("id", quoteId)
-    .eq("org_id", orgId)
-    .single()
-
-  if (quoteErr || !quote) return quoteErr?.message ?? "Quote not found"
-
-  const { data: items, error: itemsErr } = await supabase
-    .from("quote_items")
-    .select("amount_satang")
-    .eq("quote_id", quoteId)
-    .eq("org_id", orgId)
-
-  if (itemsErr) return itemsErr.message
-
-  const subtotal = subtotalSatang(items ?? [])
-  const total = documentTotalSatang(subtotal, quote.discount_satang)
-
-  const { error: updErr } = await supabase
-    .from("quotes")
-    .update({ subtotal_satang: subtotal, total_satang: total })
-    .eq("id", quoteId)
-    .eq("org_id", orgId)
-
-  return updErr?.message ?? null
-}
-
 // ---------------------------------------------------------------------------
 // Quotes
 // ---------------------------------------------------------------------------
@@ -93,7 +55,7 @@ const CreateQuote = z.object({
   number: optionalString,
   issue_date: optionalDate,
   valid_until: optionalDate,
-  discountBaht: z.coerce.number().min(0, "Discount must be 0 or more").default(0),
+  discountBaht: serviceMoneyInput.default(0),
   notes: optionalString,
 })
 
@@ -135,7 +97,7 @@ export async function createQuote(
       status: "draft",
       issue_date: d.issue_date ?? undefined,
       valid_until: d.valid_until,
-      discount_satang: bahtToSatang(d.discountBaht),
+      discount_satang: serviceAmountSatang(d.discountBaht),
       subtotal_satang: 0,
       total_satang: 0,
       notes: d.notes,
@@ -165,7 +127,7 @@ const UpdateQuote = z.object({
   number: optionalString,
   issue_date: optionalDate,
   valid_until: optionalDate,
-  discountBaht: z.coerce.number().min(0, "Discount must be 0 or more"),
+  discountBaht: serviceMoneyInput,
   notes: optionalString,
 })
 
@@ -178,6 +140,16 @@ export async function updateQuote(
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
+  const { data: current, error: readError } = await supabase
+    .from("quotes")
+    .select("status")
+    .eq("id", d.id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+  if (readError) return { error: readError.message }
+  if (!current) return { error: "Quote not found" }
+  if (!quoteIsEditable(current.status)) return { error: "This quote is locked" }
+
   const { error } = await supabase
     .from("quotes")
     .update({
@@ -186,17 +158,13 @@ export async function updateQuote(
       ...(d.number ? { number: d.number } : {}),
       issue_date: d.issue_date ?? undefined,
       valid_until: d.valid_until,
-      discount_satang: bahtToSatang(d.discountBaht),
+      discount_satang: serviceAmountSatang(d.discountBaht),
       notes: d.notes,
     })
     .eq("id", d.id)
     .eq("org_id", ctx.orgId)
 
   if (error) return { error: error.message }
-
-  // Discount feeds the total, so recompute after a header edit.
-  const recomputeErr = await recomputeQuoteTotals(supabase, ctx.orgId, d.id)
-  if (recomputeErr) return { error: recomputeErr }
 
   revalidatePath("/quotes")
   revalidatePath(`/quotes/${d.id}`)
@@ -238,15 +206,17 @@ export async function deleteQuote(
 }
 
 // ---------------------------------------------------------------------------
-// Quote items (with totals recompute)
+// Quote items (database recomputes exact totals atomically)
 // ---------------------------------------------------------------------------
 
 const AddQuoteItem = z.object({
   quote_id: z.string().min(1),
   description: z.string().trim().min(1, "Description is required"),
-  quantity: z.coerce.number().positive("Quantity must be greater than 0"),
-  unitPriceBaht: z.coerce.number().min(0, "Unit price must be 0 or more"),
-})
+  quantity: serviceQuantityInput,
+  unitPriceBaht: serviceMoneyInput,
+}).refine((item) => {
+  try { serviceLineAmount(item.quantity, serviceAmountSatang(item.unitPriceBaht)); return true } catch { return false }
+}, "Line amount outside safe satang bounds")
 
 export async function addQuoteItem(
   input: z.input<typeof AddQuoteItem>
@@ -258,7 +228,7 @@ export async function addQuoteItem(
 
   const supabase = await createSupabaseClient()
 
-  // A converted quote is locked: its items are frozen (they've become an invoice).
+  // Accepted scope and terminal quotes are frozen by the database as well.
   const { data: parent, error: parentErr } = await supabase
     .from("quotes")
     .select("status")
@@ -268,8 +238,8 @@ export async function addQuoteItem(
 
   if (parentErr) return { error: parentErr.message }
   if (!parent) return { error: "Quote not found" }
-  if (parent.status === "converted") {
-    return { error: "This quote is converted and locked" }
+  if (!quoteIsEditable(parent.status)) {
+    return { error: "This quote is locked" }
   }
 
   // Next position = current item count (stable append order).
@@ -279,21 +249,18 @@ export async function addQuoteItem(
     .eq("quote_id", d.quote_id)
     .eq("org_id", ctx.orgId)
 
-  const unitPriceSatang = bahtToSatang(d.unitPriceBaht)
+  const unitPriceSatang = serviceAmountSatang(d.unitPriceBaht)
   const { error } = await supabase.from("quote_items").insert({
     org_id: ctx.orgId,
     quote_id: d.quote_id,
     description: d.description,
     quantity: d.quantity,
     unit_price_satang: unitPriceSatang,
-    amount_satang: lineAmountSatang(d.quantity, unitPriceSatang),
+    amount_satang: serviceLineAmount(d.quantity, unitPriceSatang),
     position: count ?? 0,
   })
 
   if (error) return { error: error.message }
-
-  const recomputeErr = await recomputeQuoteTotals(supabase, ctx.orgId, d.quote_id)
-  if (recomputeErr) return { error: recomputeErr }
 
   revalidatePath(`/quotes/${d.quote_id}`)
   return {}
@@ -310,7 +277,7 @@ export async function deleteQuoteItem(
 
   const supabase = await createSupabaseClient()
 
-  // Resolve the parent quote first so a converted (locked) quote can't be edited.
+  // Resolve the parent so agreed scope cannot be edited after acceptance.
   const { data: item, error: findErr } = await supabase
     .from("quote_items")
     .select("id, quote_id")
@@ -329,8 +296,9 @@ export async function deleteQuoteItem(
     .maybeSingle()
 
   if (parentErr) return { error: parentErr.message }
-  if (parent?.status === "converted") {
-    return { error: "This quote is converted and locked" }
+  if (!parent) return { error: "Quote not found" }
+  if (!quoteIsEditable(parent.status)) {
+    return { error: "This quote is locked" }
   }
 
   const { error } = await supabase
@@ -340,13 +308,6 @@ export async function deleteQuoteItem(
     .eq("org_id", ctx.orgId)
 
   if (error) return { error: error.message }
-
-  const recomputeErr = await recomputeQuoteTotals(
-    supabase,
-    ctx.orgId,
-    item.quote_id
-  )
-  if (recomputeErr) return { error: recomputeErr }
 
   revalidatePath(`/quotes/${item.quote_id}`)
   return {}
@@ -370,9 +331,22 @@ export async function setQuoteStatus(
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
+  const { data: current, error: readError } = await supabase
+    .from("quotes")
+    .select("status, valid_until")
+    .eq("id", d.id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+  if (readError) return { error: readError.message }
+  if (!current) return { error: "Quote not found" }
+  const transitionError = quoteTransitionError(current.status, d.status, current.valid_until, todayISO())
+  if (transitionError) return { error: transitionError }
+  if (current.status === d.status) return {}
+
   const { data: quote, error } = await supabase
     .from("quotes")
     .update({ status: d.status })
+    .eq("status", current.status)
     .eq("id", d.id)
     .eq("org_id", ctx.orgId)
     .select("number")
@@ -397,7 +371,7 @@ export async function setQuoteStatus(
 // Convert to invoice (owner/admin only)
 // ---------------------------------------------------------------------------
 
-const ConvertQuote = z.object({ id: z.string().min(1) })
+const ConvertQuote = z.object({ id: z.uuid(), key: z.uuid() })
 
 export async function convertQuoteToInvoice(
   input: z.input<typeof ConvertQuote>
@@ -412,85 +386,18 @@ export async function convertQuoteToInvoice(
   if (!parsed.success) return { error: "Invalid input" }
 
   const supabase = await createSupabaseClient()
-
-  const { data: quote, error: quoteErr } = await supabase
-    .from("quotes")
-    .select(
-      "id, number, status, client_id, project_id, total_satang, converted_invoice_id"
-    )
-    .eq("id", parsed.data.id)
-    .eq("org_id", ctx.orgId)
-    .single()
-
-  if (quoteErr || !quote) return { error: "Quote not found" }
-  if (quote.converted_invoice_id) {
-    return { error: "This quote has already been converted." }
-  }
-
-  const today = todayISO()
-  const invoiceNumber = `INV-${quote.number}`
-
-  const { data: invoice, error: invErr } = await supabase
-    .from("invoices")
-    .insert({
-      org_id: ctx.orgId,
-      client_id: quote.client_id,
-      project_id: quote.project_id,
-      number: invoiceNumber,
-      status: "draft",
-      amount_satang: quote.total_satang,
-      issue_date: today,
-    })
-    .select("id")
-    .single()
-
-  if (invErr) return { error: invErr.message }
-
-  // Copy line items across to the new invoice.
-  const { data: items, error: itemsErr } = await supabase
-    .from("quote_items")
-    .select("description, quantity, unit_price_satang, amount_satang, position")
-    .eq("quote_id", quote.id)
-    .eq("org_id", ctx.orgId)
-    .order("position", { ascending: true })
-
-  if (itemsErr) return { error: itemsErr.message }
-
-  if (items && items.length > 0) {
-    const { error: copyErr } = await supabase.from("invoice_items").insert(
-      items.map((it) => ({
-        org_id: ctx.orgId,
-        invoice_id: invoice.id,
-        description: it.description,
-        quantity: it.quantity,
-        unit_price_satang: it.unit_price_satang,
-        amount_satang: it.amount_satang,
-        position: it.position,
-      }))
-    )
-    if (copyErr) return { error: copyErr.message }
-  }
-
-  const { error: markErr } = await supabase
-    .from("quotes")
-    .update({ status: "converted", converted_invoice_id: invoice.id })
-    .eq("id", quote.id)
-    .eq("org_id", ctx.orgId)
-
-  if (markErr) return { error: markErr.message }
-
-  await writeAudit(ctx, {
-    entity: "quote",
-    entityId: quote.id,
-    action: "converted",
-    summary: `Converted quote ${quote.number} to invoice ${invoiceNumber} for ${formatTHBWhole(
-      quote.total_satang
-    )}`,
-    meta: { invoiceId: invoice.id },
+  const { data: invoiceId, error } = await supabase.rpc("convert_accepted_quote", {
+    p_org_id: ctx.orgId,
+    p_quote_id: parsed.data.id,
+    p_key: parsed.data.key,
   })
+  if (error) return { error: error.message }
+  if (!invoiceId) return { error: "Conversion did not return an invoice. Retry this request." }
 
+  // The transaction owns project, milestone, invoice, lines, source links and audit.
   revalidatePath("/quotes")
-  revalidatePath(`/quotes/${quote.id}`)
+  revalidatePath(`/quotes/${parsed.data.id}`)
+  revalidatePath("/projects")
   revalidatePath("/finance")
-  redirect(`/finance/invoices/${invoice.id}`)
+  redirect(`/finance/invoices/${invoiceId}`)
 }

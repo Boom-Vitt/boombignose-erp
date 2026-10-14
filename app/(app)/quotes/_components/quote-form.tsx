@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 
+import { serviceMoneyInput } from "@/lib/workflows/service"
+
 import { SelectField, type Option } from "./form-fields"
 
 const Schema = z.object({
@@ -27,7 +29,7 @@ const Schema = z.object({
   number: z.string().optional(),
   issue_date: z.string().optional(),
   valid_until: z.string().optional(),
-  discountBaht: z.coerce.number().min(0, "Discount must be 0 or more"),
+  discountBaht: serviceMoneyInput,
   notes: z.string().optional(),
 })
 
@@ -41,7 +43,7 @@ export type QuoteFormValues = {
   number: string
   issue_date: string
   valid_until: string
-  discountBaht: number
+  discountBaht: number | string
   notes: string
 }
 

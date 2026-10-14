@@ -23,14 +23,14 @@ import { QuoteStatusBadge } from "./_components/quote-status-badge"
 export const dynamic = "force-dynamic"
 
 export default async function QuotesPage() {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const { data } = await supabase
     .from("quotes")
     .select(
       "id, number, status, total_satang, valid_until, issue_date, clients(name)"
-    )
+    ).eq("org_id", ctx.orgId)
     .order("issue_date", { ascending: false })
 
   const quotes = data ?? []
