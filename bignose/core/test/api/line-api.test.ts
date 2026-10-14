@@ -11,7 +11,7 @@ async function setup(t: TestContext, change?: (c: Config) => void) {
   const home = testHome(t); process.env.BIGNOSE_HOME = home;
   configured(home, undefined, change);
   const calls: { path: string; method?: string; body?: unknown }[] = [];
-  let httpStatus = 200, success = true;
+  let httpStatus = 200, success = true, active = true;
   let runs = 0;
   const provider: Provider = { kind: 'openai-compatible', async *stream() {
     runs++; yield { type: 'text_delta', text: 'answer' };
@@ -21,6 +21,7 @@ async function setup(t: TestContext, change?: (c: Config) => void) {
     const path = new URL(String(url)).pathname;
     calls.push({ path, method: init.method, body: init.body ? JSON.parse(String(init.body)) : undefined });
     if (httpStatus !== 200) return new Response('test-token test-secret invalid', { status: httpStatus });
+    if (path.endsWith('/webhook/endpoint') && init.method === 'GET') return Response.json({ endpoint: 'https://tunnel.example/line/webhook', active });
     return Response.json(path.endsWith('/info') ? { displayName: 'BigNose', basicId: '@bn', userId: 'Ubot' }
       : path.endsWith('/test') ? { success, statusCode: success ? 200 : 503, reason: success ? 'OK' : 'ERROR', detail: success ? 'Verified' : 'Unavailable' } : {});
   } } });
@@ -30,7 +31,7 @@ async function setup(t: TestContext, change?: (c: Config) => void) {
       body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: r.status, body: await r.json() as any };
   };
-  return { a, home, calls, call, runs: () => runs, status: (v: number) => { httpStatus = v; }, success: (v: boolean) => { success = v; } };
+  return { a, home, calls, call, runs: () => runs, status: (v: number) => { httpStatus = v; }, success: (v: boolean) => { success = v; }, active: (v: boolean) => { active = v; } };
 }
 
 test('connect reports each setup step and only sets a validated HTTPS webhook', async t => {
@@ -51,13 +52,45 @@ test('connect reports each setup step and only sets a validated HTTPS webhook', 
   assert.deepEqual(result.body.bot, { displayName: 'BigNose', basicId: '@bn' });
   assert.equal(result.body.steps[0].detail, 'Connected to BigNose (@bn)');
   assert.equal(result.body.steps[1].detail, 'Set a public HTTPS URL first.');
-  const config = s.a.config(); config.line.publicUrl = 'https://tunnel.example/base///';
+  const config = s.a.config(); config.line.publicUrl = 'https://tunnel.example/base///'; config.line.enabled = true;
   assert.equal((await s.call('settings', 'PUT', { config })).status, 200);
   result = await s.call('line/connect');
   assert.equal(result.body.ok, true);
   assert.equal(result.body.webhookUrl, 'https://tunnel.example/base/line/webhook');
   assert.deepEqual(result.body.steps[1], { name: 'webhook', ok: true, detail: 'Webhook set to https://tunnel.example/base/line/webhook' });
   assert.deepEqual(s.calls.at(-1), { path: '/v2/bot/channel/webhook/endpoint', method: 'PUT', body: { endpoint: 'https://tunnel.example/base/line/webhook' } });
+});
+
+test('connect reports an inactive webhook', async t => {
+  const s = await setup(t, c => { c.line.publicUrl = 'https://tunnel.example'; c.line.allow.users = ['Uowner']; });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', s.home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', s.home);
+  const config = s.a.config(); config.line.enabled = true;
+  assert.equal((await s.call('settings', 'PUT', { config })).status, 200);
+  s.active(false);
+  const off = (await s.call('line/connect')).body;
+  assert.equal(off.ok, false); assert.equal(off.steps[0].ok, true); assert.equal(off.webhookUrl, 'https://tunnel.example/line/webhook');
+  assert.deepEqual(off.steps[1], { name: 'webhook', ok: false,
+    detail: 'Webhook set to https://tunnel.example/line/webhook. Turn on Use webhook in the LINE Developers console.' });
+  assert.deepEqual(s.calls.slice(-2).map(c => `${c.method} ${c.path}`), ['GET /v2/bot/channel/webhook/endpoint', 'PUT /v2/bot/channel/webhook/endpoint']);
+  s.active(true);
+  const on = (await s.call('line/connect')).body;
+  assert.equal(on.ok, true); assert.equal(on.steps[1].detail, 'Webhook set to https://tunnel.example/line/webhook');
+});
+
+test('connect reports a stopped listener', async t => {
+  const s = await setup(t, c => { c.line.publicUrl = 'https://tunnel.example'; c.line.allow.users = ['Uowner']; });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', s.home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', s.home);
+  assert.equal(s.a.lineStatus().running, false);
+  const stopped = (await s.call('line/connect')).body;
+  assert.equal(stopped.ok, false); assert.equal(stopped.steps[0].ok, true);
+  assert.deepEqual(stopped.steps[1], { name: 'webhook', ok: false,
+    detail: 'Webhook set to https://tunnel.example/line/webhook. The LINE listener is not running. Turn LINE on, save, then connect again.' });
+  s.active(false); // both problems are reported together
+  assert.match((await s.call('line/connect')).body.steps[1].detail, /not running\. .*Turn on Use webhook/);
+  const config = s.a.config(); config.line.enabled = true;
+  assert.equal((await s.call('settings', 'PUT', { config })).status, 200);
+  s.active(true);
+  assert.equal((await s.call('line/connect')).body.ok, true);
 });
 
 test('the daemon dedupes a redelivered event after settings rebuild the LINE listener', async t => {

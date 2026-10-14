@@ -118,3 +118,30 @@ test('a non-owner error after a tool round stores no partial assistant answer in
   assert.equal(calls, 2);
   assert.deepEqual(app.runtime.store.getSession(session.id)!.context, [{ role: 'user', content: [{ type: 'text', text: 'guest question' }] }]);
 });
+
+test('a LINE message during a desktop run of the same session is answered after it', async t => {
+  const home = testHome(t); process.env.BIGNOSE_HOME = home; configured(home, undefined, c => { c.line.allow.users = ['Uowner']; });
+  const gate = Promise.withResolvers<void>(); t.after(() => gate.resolve());
+  const seen: string[][] = [];
+  const provider: Provider = { kind: 'openai-compatible', async *stream(req) {
+    seen.push(req.messages.flatMap(m => m.content.flatMap(b => b.type === 'text' ? [b.text] : [])));
+    if (seen.length === 2) await gate.promise; // the desktop follow-up
+    yield { type: 'text_delta', text: `answer ${seen.length}` };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await startDaemon({ home, providerFactory: () => provider }); t.after(() => a.close());
+  const ask = (text: string) => a.runtime.lineMessage({ to: 'Uowner', userId: 'Uowner', text });
+  assert.equal(await ask('hello from LINE'), 'answer 1');
+  const session = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'Uowner' }, a.runtime.lineAgent().id)!;
+  const desktop = a.runtime.start(session.id, 'desktop follow-up');
+  assert.throws(() => a.runtime.start(session.id, 'x'), /already running/);
+  let answered = false;
+  const line = ask('second from LINE').then(r => { answered = true; return r; });
+  for (let i = 0; seen.length < 2 && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(answered, false); assert.equal(seen.length, 2); // waiting, not failed and not started
+  gate.resolve();
+  assert.equal((await desktop.result).text, 'answer 2');
+  assert.equal(await line, 'answer 3');
+  assert.ok(seen[2]!.includes('desktop follow-up') && seen[2]!.at(-1) === 'second from LINE', 'the LINE message sees the desktop turn');
+});

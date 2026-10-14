@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { LineConfig } from '../types.ts';
-export { lineBotInfo, setLineWebhook, testLineWebhook, publicUrlProblem, webhookUrlFor } from './connect.ts';
+export { lineBotInfo, setLineWebhook, lineWebhookActive, testLineWebhook, publicUrlProblem, webhookUrlFor } from './connect.ts';
 export type { LineApiOptions } from './connect.ts';
 
 const MAX_BODY = 1024 * 1024;        // 1 MiB
@@ -59,7 +59,8 @@ const textMessages = (text: string): LineMessage[] => chunkText(text || '(empty 
 
 const postback = (label: string, data: string) => ({ type: 'postback', label, data });
 
-export function createLineGateway(opts: LineGatewayOptions) {
+export function createLineGateway(options: LineGatewayOptions) {
+  const opts = { ...options }; // reconfigure() swaps config and credentials in place, so a settings save never rebuilds the gateway
   const fetchImpl = opts.fetchImpl ?? fetch;
   const apiBase = (opts.apiBase ?? 'https://api.line.me').replace(/\/+$/, '');
   const now = opts.now ?? Date.now;
@@ -71,7 +72,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
   const approvals = new Map<string, { to: string; resolve: (ok: boolean) => void; timer: unknown }>();
   const slowTimers = new Set<unknown>();
   let closed = false;
-  let server: Server | undefined;
+  let server: Server | undefined, listenPort: number | undefined; // listenPort: the port that was asked for (0 = ephemeral)
   let lastEventAt: number | undefined;
   let lastError: string | undefined;
 
@@ -332,6 +333,18 @@ export function createLineGateway(opts: LineGatewayOptions) {
     }
   }
 
+  async function bind(port: number): Promise<Server> {
+    const s = createServer((req, res) => { void handler(req, res); });
+    s.requestTimeout = 30_000;
+    await new Promise<void>((resolve, reject) => {
+      s.once('error', reject);
+      s.listen(port, '127.0.0.1', () => { s.off('error', reject); resolve(); });
+    });
+    s.on('error', fail);
+    return s;
+  }
+  const shut = (s: Server) => new Promise<void>((resolve) => { s.close(() => resolve()); s.closeAllConnections(); });
+
   return {
     handler,
 
@@ -339,15 +352,23 @@ export function createLineGateway(opts: LineGatewayOptions) {
     async listen(port: number): Promise<number> {
       if (closed) throw new Error('LINE gateway is closed');
       if (server) throw new Error('LINE gateway is already listening');
-      const s = createServer((req, res) => { void handler(req, res); });
-      s.requestTimeout = 30_000;
-      await new Promise<void>((resolve, reject) => {
-        s.once('error', reject);
-        s.listen(port, '127.0.0.1', () => { s.off('error', reject); resolve(); });
-      });
-      s.on('error', fail);
-      server = s;
+      const s = await bind(port);
+      server = s; listenPort = port;
       return (s.address() as AddressInfo).port;
+    },
+
+    /**
+     * Applies new settings and credentials to the running gateway and moves the listener when the port changed.
+     * Queued messages, runs in flight, open approvals and parked "Get answer" answers stay, and finish through the new
+     * credentials. A failed bind throws and leaves the old listener up.
+     */
+    async reconfigure(next: Pick<LineGatewayOptions, 'config' | 'channelSecret' | 'accessToken'>, port: number): Promise<void> {
+      if (closed) throw new Error('LINE gateway is closed');
+      Object.assign(opts, next);
+      if (!server || port === listenPort) return;
+      const s = await bind(port), old = server;
+      server = s; listenPort = port;
+      await shut(old);
     },
 
     /** Stops new work and sends, drops queued runs, stops timers and denies open approvals. */
@@ -359,8 +380,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
       slowTimers.clear();
       const s = server;
       server = undefined;
-      if (!s) return;
-      await new Promise<void>((resolve) => { s.close(() => resolve()); s.closeAllConnections(); });
+      if (s) await shut(s);
     },
 
     /** Sends text to a chat: free reply token when it is young, otherwise (or when LINE refuses it) a push. */

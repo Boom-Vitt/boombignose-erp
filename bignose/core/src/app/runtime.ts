@@ -289,6 +289,9 @@ export class Runtime {
     const origin: Origin = { kind: 'line', to: message.to };
     const agentId = this.lineAgent().id;
     const session = this.store.findSessionByOrigin(origin, agentId) ?? this.store.createSession({ origin, agentId });
+    // The desktop may be running this very session: wait for that run instead of failing, then answer from the context it left.
+    // Nothing awaits between this loop and start(), so a run cannot slip in.
+    while (this.runs.has(session.id)) await this.runs.get(session.id)!.result.catch(() => {});
     let result: RunResult;
     try { result = await this.start(session.id, message.text, { origin, userId: message.userId }).result; }
     catch (e) {

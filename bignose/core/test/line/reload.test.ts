@@ -1,0 +1,137 @@
+// A LINE settings or secret save must not lose in-flight answers, queued messages, open approvals or parked "Get answer" answers.
+// A real daemon, a fake LINE API (fetch), a gated fake provider and signed webhook posts; no network.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { TestContext } from 'node:test';
+import { setSecret } from '../../src/config.ts';
+import { startDaemon } from '../../src/app/daemon.ts';
+import type { Config, Provider } from '../../src/types.ts';
+import { configured, testHome } from '../e2e/helpers.ts';
+
+const OWNER = 'Uowner', SECRET = 'test-secret';
+interface Sent { path: string; auth: string; body: any }
+
+async function until(cond: () => boolean, what: string) {
+  for (let i = 0; i < 400; i++) { if (cond()) return; await new Promise(resolve => setTimeout(resolve, 5)); }
+  assert.fail(`timed out waiting for ${what}`);
+}
+
+async function setup(t: TestContext, change?: (c: Config) => void, toolFirst = false) {
+  const home = testHome(t); process.env.BIGNOSE_HOME = home;
+  configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = [OWNER]; c.permissions.memory_read = 'ask'; change?.(c); });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', SECRET, home);
+  const sent: Sent[] = [];
+  const gates = new Map<number, PromiseWithResolvers<void>>();
+  let calls = 0;
+  // Provider call k waits for hold(k) to be released. With toolFirst, call 0 asks for a tool (which needs a LINE approval) and
+  // the next call answers.
+  const provider: Provider = { kind: 'openai-compatible', async *stream() {
+    const k = calls++;
+    await gates.get(k)?.promise;
+    if (toolFirst && k === 0) {
+      yield { type: 'tool_call', id: 'c1', name: 'memory_read', input: {} };
+      yield { type: 'done', stopReason: 'tool_use', usage: { inputTokens: 0, outputTokens: 0 } };
+      return;
+    }
+    yield { type: 'text_delta', text: `answer ${k}` };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await startDaemon({ home, providerFactory: () => provider, lineOptions: { apiBase: 'https://line.example', fetchImpl: async (url, init = {}) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith('/reply') || path.endsWith('/push')) {
+      sent.push({ path, auth: (init.headers as Record<string, string>).Authorization!, body: JSON.parse(String(init.body)) });
+    }
+    return Response.json({});
+  } } });
+  t.after(() => a.close());
+  await until(() => a.lineStatus().running, 'the LINE listener');
+  const call = async (path: string, method: string, body: unknown) => {
+    const r = await fetch(`http://127.0.0.1:${a.port}/api/${path}`, { method, headers: { Authorization: `Bearer ${a.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal(r.status, 200);
+  };
+  let seq = 0;
+  const post = async (event: object) => {
+    const raw = JSON.stringify({ events: [{ webhookEventId: `e${++seq}`, replyToken: `rt-${seq}`, source: { type: 'user', userId: OWNER }, ...event }] });
+    const res = await fetch(`http://127.0.0.1:${a.lineStatus().port}/line/webhook`, { method: 'POST', body: raw,
+      headers: { 'X-Line-Signature': createHmac('sha256', SECRET).update(raw).digest('base64') } });
+    assert.equal(res.status, 200);
+  };
+  return {
+    a, sent, call, calls: () => calls,
+    hold: (k: number) => { gates.set(k, Promise.withResolvers<void>()); },
+    release: (k: number) => gates.get(k)!.resolve(),
+    dm: (text: string) => post({ type: 'message', message: { type: 'text', id: `m${seq}`, text } }),
+    tap: (data: string) => post({ type: 'postback', postback: { data } }),
+    // A LINE settings save through the API, as the desktop does it.
+    save: (change: (c: Config) => void) => { const config = a.config(); change(config); return call('settings', 'PUT', { config }); },
+    texts: () => sent.flatMap(s => s.body.messages.map((m: any) => m.text ?? m.template?.text as string)),
+    buttons: () => sent.flatMap(s => s.body.messages.flatMap((m: any) => (m.template?.actions ?? []).map((x: any) => x.data as string))),
+    runEnded: () => until(() => a.runtime.store.listSessions().every(s => !a.runtime.isRunning(s.id)), 'the run to end'),
+  };
+}
+
+test('a LINE settings save keeps an in-flight answer', async t => {
+  const s = await setup(t);
+  s.hold(0);
+  await s.dm('hello');
+  await until(() => s.calls() === 1, 'the provider call');
+  // Allow list, slow time and the access token all change while the model is still thinking.
+  await s.save(c => { c.line.allow.users.push('Ufriend'); c.line.slowResponseMs = 30_000; });
+  await s.call('secrets', 'PUT', { name: 'LINE_CHANNEL_ACCESS_TOKEN', value: 'test-token-2' });
+  assert.equal(s.a.lineStatus().running, true);
+  s.release(0);
+  await until(() => s.sent.length === 1, 'the answer');
+  assert.deepEqual(s.sent[0], { path: '/v2/bot/message/reply', auth: 'Bearer test-token-2',
+    body: { replyToken: 'rt-1', messages: [{ type: 'text', text: 'answer 0' }] } });
+  assert.equal(s.a.lineStatus().lastError, undefined);
+});
+
+test('a parked Get answer survives a LINE settings save', async t => {
+  const s = await setup(t, c => { c.line.slowResponseMs = 30; });
+  s.hold(0);
+  await s.dm('slow question');
+  await until(() => s.buttons().some(d => d.startsWith('get:')), 'the Get answer button');
+  const get = s.buttons().find(d => d.startsWith('get:'))!;
+  await s.save(c => { c.line.allow.rooms.push('Rroom'); });
+  s.release(0);
+  await s.runEnded();
+  await new Promise(resolve => setTimeout(resolve, 20)); // the gateway parks the finished answer a few microtasks after the run
+  await s.tap(get);
+  await until(() => s.texts().includes('answer 0'), 'the parked answer');
+  assert.ok(!s.texts().includes('That answer is no longer available.'));
+});
+
+test('queued LINE messages and pending approvals survive a reload', async t => {
+  const s = await setup(t, undefined, true);
+  await s.dm('first');
+  await until(() => s.buttons().some(d => d.startsWith('approve:')), 'the approval buttons');
+  await s.dm('second'); // queued behind the first run, which waits for the approval
+  const allow = s.buttons().find(d => d.startsWith('approve:'))!;
+  await s.save(c => { c.line.slowResponseMs = 40_000; });
+  await s.call('secrets', 'PUT', { name: 'LINE_CHANNEL_SECRET', value: SECRET }); // identical values still reload
+  assert.equal(s.calls(), 1);
+  await s.tap(allow);
+  await until(() => s.texts().includes('answer 1') && s.texts().includes('answer 2'), 'both answers');
+  assert.ok(s.texts().indexOf('answer 1') < s.texts().indexOf('answer 2'));
+  const [session] = s.a.runtime.store.listSessions();
+  assert.ok(!JSON.stringify(s.a.runtime.store.getMessages(session!.id)).includes('denied by user'));
+});
+
+test('a LINE port change moves the listener, and a busy port keeps the old one', async t => {
+  const s = await setup(t);
+  const free = () => new Promise<number>(resolve => { const x = createServer(); x.listen(0, '127.0.0.1', () => { const p = (x.address() as AddressInfo).port; x.close(() => resolve(p)); }); });
+  const first = s.a.lineStatus().port, moved = await free();
+  await s.save(c => { c.line.port = moved; });
+  assert.equal(s.a.lineStatus().port, moved);
+  await assert.rejects(fetch(`http://127.0.0.1:${first}/line/webhook/health`));
+  assert.equal((await fetch(`http://127.0.0.1:${moved}/line/webhook/health`)).status, 200);
+  const blocker = createServer((_req, res) => res.end());
+  await new Promise<void>(resolve => blocker.listen(0, '127.0.0.1', resolve));
+  t.after(() => { blocker.close(); blocker.closeAllConnections(); });
+  await s.save(c => { c.line.port = (blocker.address() as AddressInfo).port; });
+  assert.match(s.a.lineStatus().lastError!, /EADDRINUSE/);
+  assert.equal(s.a.lineStatus().running, true); assert.equal(s.a.lineStatus().port, moved);
+});

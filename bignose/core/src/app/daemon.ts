@@ -57,10 +57,15 @@ export async function startDaemon(options: DaemonOptions = {}) {
     const { agentId: _agentId, ...listenerConfig } = config.line;
     const fingerprint = JSON.stringify([listenerConfig, env.LINE_CHANNEL_ACCESS_TOKEN, env.LINE_CHANNEL_SECRET]);
     if (fingerprint !== lineFingerprint) {
-      await line?.close(); line = undefined; lineError = undefined; lineFingerprint = fingerprint;
-      if (closed) return;
-      if (config.line.enabled && env.LINE_CHANNEL_ACCESS_TOKEN && env.LINE_CHANNEL_SECRET) {
-        const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret: env.LINE_CHANNEL_SECRET, accessToken: env.LINE_CHANNEL_ACCESS_TOKEN,
+      lineError = undefined; lineFingerprint = fingerprint;
+      const accessToken = env.LINE_CHANNEL_ACCESS_TOKEN, channelSecret = env.LINE_CHANNEL_SECRET;
+      if (!config.line.enabled || !accessToken || !channelSecret) { await line?.close(); line = undefined; } // off or unusable: nothing to deliver with
+      else if (line) {
+        // Hot-apply: a rebuild would drop in-flight answers, queued messages, open approvals and parked "Get answer" answers.
+        try { await line.reconfigure({ config: structuredClone(config.line), channelSecret, accessToken }, linePort()); }
+        catch (e) { lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); } // the old listener stays up; retry on the next reload
+      } else {
+        const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret, accessToken,
           onMessage: m => runtime.lineMessage(m), seen, ...options.lineOptions });
         try { await gateway.listen(linePort()); line = gateway; }
         catch (e) { await gateway.close(); lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); }
