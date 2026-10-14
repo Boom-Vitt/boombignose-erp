@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { VERSION, paths, maskSecret, setSecret, getApiKey } from '../config.ts';
 import { deleteSkill, listSkills, loadSkill, saveSkill } from '../skills/index.ts';
 import { CommandError, listCommands } from '../commands/index.ts';
+import { doctor } from '../app/doctor.ts';
 import { isObject, restoreMaskedConfig, safeValue, settingsResponse, validateAgent, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
 import type { AgentInput } from '../store/index.ts';
 import type { Runtime } from '../app/runtime.ts';
@@ -104,6 +105,10 @@ export function createApiServer(opts: ApiOptions) {
         return;
       }
       if (area === 'health' && !id && method === 'GET') return send(res, { ok: true, version: VERSION, pid: process.pid });
+      if (area === 'doctor' && !id && method === 'POST') {
+        await body(req);
+        return send(res, await doctor(opts.home, opts.fetchImpl));
+      }
       if (area === 'status' && !id && method === 'GET') {
         const c = opts.config(), p = c.providers.find(p => p.id === c.active.provider)!, l = opts.lineStatus();
         return send(res, { version: VERSION, provider: { id: p.id, kind: p.kind, model: c.active.model },

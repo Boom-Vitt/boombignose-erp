@@ -17,11 +17,12 @@ export class McpManager {
     for (const [name, config] of Object.entries(this.servers)) {
       if (generation !== this.generation) return;
       if (!config.enabled || this.entries.get(name)?.client.connected) continue;
-      await this.entries.get(name)?.client.close();
+      const previous = this.entries.get(name); this.entries.delete(name);
+      await previous?.client.close();
       if (generation !== this.generation) return;
       const entry: Entry = { client: new McpClient(config, this.env) }; this.entries.set(name, entry);
       try { await entry.client.connect(); entry.specs = await entry.client.listTools(); }
-      catch (e) { entry.error = e instanceof Error ? e.message : String(e); await entry.client.close(); }
+      catch (e) { entry.error = `connector ${name}: ${e instanceof Error ? e.message : String(e)}`; await entry.client.close(); }
     }
   }
   async waitFor(names: string[], signal: AbortSignal): Promise<void> {
@@ -32,7 +33,7 @@ export class McpManager {
       for (const name of names) {
         const server = statuses.find(s => s.name === name);
         if (!server?.enabled) throw new Error(`connector ${name} is off`);
-        if (server.error) throw new Error(`connector ${name}: ${server.error}`);
+        if (server.error) throw new Error(server.error);
       }
       if (names.every(name => statuses.some(s => s.name === name && s.connected))) return;
       if (Date.now() >= deadline) throw new Error(`connector startup timeout: ${names.join(', ')}`);
@@ -55,7 +56,13 @@ export class McpManager {
         }
         if (names.has(name)) continue; // duplicate server tool descriptors represent the same callable tool
         names.add(name);
-        output.push({ ...spec, name, defaultPolicy: 'ask', run: (input, ctx) => entry.client.callTool(spec.name, input, ctx.signal) });
+        output.push({ ...spec, name, defaultPolicy: 'ask', run: async (input, ctx) => {
+          const error = this.connectionError(server, entry);
+          if (error) return { content: error, isError: true };
+          const result = await entry.client.callTool(spec.name, input, ctx.signal);
+          const disconnected = this.connectionError(server, entry);
+          return disconnected ? { content: disconnected, isError: true } : result;
+        } });
       }
     }
     return output;
@@ -72,18 +79,23 @@ export class McpManager {
   status(): { name: string; transport: 'stdio' | 'http'; enabled: boolean; connected: boolean; tools: { name: string; selected: boolean }[]; error?: string }[] {
     return Object.entries(this.servers).map(([name, config]) => {
       const entry = this.entries.get(name);
+      if (entry) this.connectionError(name, entry);
       return { name, transport: config.transport, enabled: config.enabled, connected: !!entry?.client.connected && entry.specs !== undefined,
         tools: (entry?.specs ?? []).map(t => ({ name: t.name, selected: !config.tools || config.tools.includes(t.name) })),
         ...(entry?.error ? { error: entry.error } : {}),
       };
     });
   }
+  private connectionError(name: string, entry: Entry): string | undefined {
+    if (entry.specs !== undefined && !entry.client.connected) entry.error ??= `connector ${name} ${entry.client.disconnectReason ?? 'closed'}`;
+    return entry.error;
+  }
   listTools(name: string): ToolSpec[] { return structuredClone(this.entries.get(name)?.specs ?? []); }
   async update(servers: Record<string, McpServerConfig>, env = this.env): Promise<void> {
     const generation = this.generation;
     const envChanged = JSON.stringify(env) !== JSON.stringify(this.env);
     for (const [name, entry] of this.entries) {
-      if (envChanged || JSON.stringify(this.servers[name]) !== JSON.stringify(servers[name])) { await entry.client.close(); this.entries.delete(name); }
+      if (envChanged || JSON.stringify(this.servers[name]) !== JSON.stringify(servers[name])) { this.entries.delete(name); await entry.client.close(); }
     }
     this.env = { ...env };
     this.servers = structuredClone(servers);
@@ -91,9 +103,9 @@ export class McpManager {
   }
   async stop(): Promise<void> {
     this.generation++;
+    const entries = [...this.entries.values()]; this.entries.clear();
     for (const client of this.testing) await client.close();
     this.testing.clear();
-    for (const entry of this.entries.values()) await entry.client.close();
-    this.entries.clear();
+    for (const entry of entries) await entry.client.close();
   }
 }

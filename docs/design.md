@@ -350,6 +350,7 @@ export interface Config {
 - Routes:
   - `GET /api/health` → `{ ok: true, version, pid }`; `GET /api/status` → `{ version, provider: {id, kind, model},
     line: {enabled, running, webhookUrl}, mcp: [{name, enabled, connected, tools}], schedules: n }`.
+  - `POST /api/doctor` → `{code, lines}`; runs cleaned diagnostics for the daemon's home (section 14.2).
   - `GET /api/agents` → `{agents: Agent[]}` (oldest first, ties by id); `GET /api/agents/:id` → `Agent`.
     `POST /api/agents` `{name, icon?, instructions?, provider?, model?, permissions?, connectors?, skills?}`
     → `201 Agent` (provider/model default to `config.active`); `PATCH /api/agents/:id` (subset of those fields)
@@ -866,3 +867,42 @@ into `BigNose.app/Contents/Resources/` under the name in `CFBundleIconFile`.
 A real chat with an agent on a local Ollama model (and the context warning when Ollama runs with a small context), and a
 real LINE channel through a public HTTPS tunnel: Connect, Test webhook, a DM, a slow local answer with `Get answer`; the
 new icon in the Dock and Finder. Steps are in the run's final report.
+
+## 14. Connector exit, doctor API, chat resume and diagnostics (build spec T09, T15, T16, T17)
+
+Four gaps from `~/orca/projects/bignose-research/hermes-desktop-complete/bignose-build-spec.md` (Hermes Desktop REA,
+reference only: no Hermes code, names or IPC). Everything else in that spec is out of scope. Tests use fakes and an
+isolated `BIGNOSE_HOME`; none may reach the owner's Ollama (127.0.0.1:11434), LINE or a real provider.
+
+### 14.1 MCP connector exit (T09, `core/src/mcp/`)
+- A connector is *established* once `connect()` and the tool listing succeeded. When its server goes away afterwards
+  (stdio: the process exits; any transport: the client loses the connection), the manager keeps an error for it:
+  `connector <name> exited (<code or signal>)` for a stdio exit, `connector <name> closed` otherwise, plus the redacted
+  stderr tail when there is one. Secrets stay masked by the client's existing redaction.
+- `waitFor` rejects at once with that error (no 180 s poll, no AbortError). A `tools/call` that is pending when the server
+  goes away, and any later call through a tool handed out before, fails at once (no 60 s request timeout) with a message
+  that names the connector and says it exited or closed. `status()` reports `connected: false` with the error, so
+  Settings → Connectors shows it.
+- No silent restart: an exited connector stays down until the user acts (settings change, enable/disable, `mcp test`).
+  `stop()` stays idempotent: twice in a row, and after an exit, it neither throws nor spawns anything.
+
+### 14.2 Doctor API (T15, `core/src/api/index.ts`)
+- `POST /api/doctor` (token and Host checks like every route) runs the existing `doctor(home, fetchImpl)` for the
+  daemon's own BigNose home and answers `200 {code, lines}`; `code` 0 means every hard check passed. The request body is
+  ignored apart from the usual size/JSON checks: the route never takes a path, command or URL from the caller, never
+  installs or uploads anything, and contacts nothing beyond what `bignose doctor` already checks (the active Ollama
+  server, through the daemon's `fetchImpl`). Lines pass through the same cleaner as every response, so no token, key or
+  `.env` value appears. Other methods on the path behave like any unknown route.
+
+### 14.3 Chat history resume (T16, `desktop/src/chat.ts`, `desktop/src/main.ts`)
+- Leaving Chat while a session's history is loading never leaves "Loading…" behind: when Chat is shown again
+  (`refreshAgents()` on navigation back), the selected session's history is loaded again and rendered, with the usual
+  error + Retry on failure. A late answer for an agent or session that is no longer selected never renders (the existing
+  sequence fencing stays).
+
+### 14.4 Diagnostics in General settings (T17, `desktop/src/settings/general.ts`, `desktop/src/api.ts`, `desktop/src/types.ts`)
+- `api.doctor()` → `POST /api/doctor` → `DoctorResult {code: number; lines: string[]}`.
+- Settings → General has a Diagnostics card with a "Run diagnostics" button. While it runs the button is disabled (no
+  duplicate request). The result shows a summary (code 0: all checks passed; otherwise: some checks failed) and every
+  line as text; an error shows its message and a Retry button; a new run replaces the old result. Text nodes only (no
+  `innerHTML`). No upload, telemetry, new route or new screen.
