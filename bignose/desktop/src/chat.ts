@@ -413,8 +413,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     return el('li', { class: 'session-item' },
       el('button', { type: 'button', class: 'session', 'aria-current': active ? 'true' : undefined, onclick: () => void open(s.id) },
         el('span', { class: 'session-title', lang: th(name) }, name),
-        running.has(s.id) && el('span', { class: 'dot', 'aria-hidden': 'true' }), running.has(s.id) && el('span', { class: 'sr-only' }, 'Running'),
-        waiting && badge('Waiting', 'warn')),
+        ...(waiting ? [badge('Waiting', 'warn')] : running.has(s.id) ? [el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'sr-only' }, 'Running')] : [])),
       more);
   }
 

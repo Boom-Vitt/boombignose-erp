@@ -548,7 +548,7 @@ dialog.confirm p { margin-top: var(--sp-2); color: var(--muted); }
 .os-panel .sessions input[type=search] { flex: none; width: 140px; margin: 0; }
 .os-panel .session-list { display: flex; gap: var(--sp-1); }
 .os-panel .session-item { flex: none; width: 150px; }
-.os-panel .session-empty { padding: 0 var(--sp-1); white-space: nowrap; }
+.os-panel .session-empty { display: none; }
 .os-panel .chat-head { padding-inline: var(--sp-3); }
 .os-panel .messages { padding: var(--sp-3) var(--sp-3) var(--sp-2); }
 .os-panel .composer { padding: var(--sp-2) var(--sp-3) var(--sp-3); }

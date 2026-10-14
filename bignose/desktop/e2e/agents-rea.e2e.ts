@@ -95,9 +95,9 @@ test('create/edit/duplicate/delete an agent and run /rea with approvals and SSE 
   await cdp.evaluate(`document.querySelector('.session-list .session').click()`);
   await wait(`document.querySelector('.approval')?.textContent.includes('mcp__rea__open_binary')`);
   assert.equal(await cdp.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Stop').hidden`), false);
-  await click('Allow', `document.querySelector('.approval')`);
+  await click('Allow once', `document.querySelector('.approval')`);
   await wait(`Array.from(document.querySelectorAll('.approval')).some(a=>a.textContent.includes('mcp__rea__analyze_javascript_application'))`);
-  await click('Allow', `Array.from(document.querySelectorAll('.approval')).find(a=>a.textContent.includes('mcp__rea__analyze_javascript_application'))`);
+  await click('Allow once', `Array.from(document.querySelectorAll('.approval')).find(a=>a.textContent.includes('mcp__rea__analyze_javascript_application'))`);
   await wait(`document.querySelector('.messages').textContent.includes('Reverse complete: local fixture evidence verified.')`);
   await wait(`document.querySelector('.messages').textContent.includes('Report saved:')`);
   for (const name of names) assert.ok(await cdp.evaluate(`Array.from(document.querySelectorAll('.tool-name')).some(e=>e.textContent===${JSON.stringify(name)})`));

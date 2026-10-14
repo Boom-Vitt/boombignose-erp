@@ -41,14 +41,14 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
   assert.ok(await ui.cdp.evaluate(`document.body.classList.contains('os-panel')`));
   // panel mode opens on the ERP assistant, set up through the local API
   await ui.wait(`document.querySelector('[aria-label="Chat agent"]')?.selectedOptions[0]?.textContent.includes('ERP assistant')`);
-  assert.equal(await ui.cdp.evaluate(`document.querySelector('[aria-label="Agent model"]').value`), 'google/gemini-4-argon');
+  assert.equal(await ui.cdp.evaluate(`document.querySelector('.model-link').textContent`), 'google/gemini-4-argon');
   const fits = (label: string) => ui.cdp.evaluate(`(() => {
     const page = document.scrollingElement, nodes = ['.shell', '.main', '.chat', '.settings:not([hidden])'].map(s => document.querySelector(s)).filter(Boolean);
     return { label: ${JSON.stringify(label)}, overflowX: Math.max(page.scrollWidth - page.clientWidth, ...nodes.map(n => n.scrollWidth - n.clientWidth).map(d => d === -Infinity ? 0 : d)),
       pageScroll: page.scrollHeight - page.clientHeight };
   })()`);
-  // the section links scroll sideways inside their own strip by design
-  assert.equal(await ui.cdp.evaluate(`getComputedStyle(document.querySelector('.nav')).overflowX`), 'auto');
+  // the chat list is a strip under the top bar and scrolls sideways inside itself by design
+  assert.equal(await ui.cdp.evaluate(`getComputedStyle(document.querySelector('.sessions')).overflowX`), 'auto');
   const routes = ['#/chat', '#/agents', ...['general', 'providers', 'connectors', 'messaging', 'hooks', 'skills', 'memory', 'schedules'].map(s => `#/settings/${s}`)];
   for (const route of routes) {
     await ui.cdp.evaluate(`location.hash = ${JSON.stringify(route)}`);

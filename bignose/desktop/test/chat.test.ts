@@ -785,6 +785,8 @@ test('the sidebar groups chats by day, shows Waiting and Running, and keeps sear
   const rows = h.sidebar.querySelectorAll('.session-item');
   assert.match(rows[2]!.textContent, /Last monthRunning/); assert.ok(rows[2]!.querySelector('.dot'));
   assert.match(rows[1]!.textContent, /Waiting/); assert.ok(rows[1]!.querySelector('.badge'));
+  h.chat.onEvent({ type: 'run_start', sessionId: 's2', runId: 'r2' });
+  assert.equal(h.sidebar.querySelectorAll('.session-item')[1]!.querySelector('.dot'), null, 'Waiting replaces the running dot');
   assert.equal(rows[0]!.querySelector('.badge'), null);
   assert.equal(h.sidebar.querySelectorAll('.session').find(b => b.textContent.includes('Today chat'))!.attrs['aria-current'], undefined);
   h.sidebar.querySelector('.session')!.fire('click'); await flush();
