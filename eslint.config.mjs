@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // BigNose is its own pnpm workspace with its own checks (bignose/package.json).
+    "bignose/**",
   ]),
 ]);
 
