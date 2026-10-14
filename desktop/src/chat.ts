@@ -34,6 +34,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   const notifications = new Map<string, string[]>();
   let currentId: string | null = null;
   let loadSeq = 0;
+  let historyLoadSeq = 0;
   let listSeq = 0;
   let query = '';
   let sending = false;
@@ -161,6 +162,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   }
 
   function renderHistory(msgs: Message[]): void {
+    historyLoadSeq = 0;
     messages.replaceChildren();
     tools.clear();
     live = null;
@@ -222,6 +224,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     renderList();
     updateComposer();
     if (!id) { renderHistory([]); return; }
+    historyLoadSeq = seq;
     messages.replaceChildren(el('p', { class: 'muted pad' }, 'Loading…'));
     try {
       const s = await api.getSession(id);
@@ -230,6 +233,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       showApprovals();
     } catch (e) {
       if (seq !== loadSeq) return;
+      historyLoadSeq = 0;
       messages.replaceChildren(el('div', { class: 'notice error', role: 'alert' }, el('p', {}, errMsg(e)), btn('Retry', () => void open(id))));
     }
   }
@@ -251,6 +255,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   // ---- agents and commands
   async function refreshAgents(): Promise<void> {
     const seq = ++agentSeq;
+    const loadAtStart = loadSeq;
     try {
       const [found, settings] = await Promise.all([api.listAgents(), api.getSettings()]);
       if (seq !== agentSeq) return;
@@ -261,6 +266,8 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       if (id !== selectedAgent) { await selectAgent(id ?? ''); return; }
       showAgent();
       await loadCommands();
+      // Resume only an invalidated load, and only if this return is still current.
+      if (seq === agentSeq && loadAtStart === loadSeq && historyLoadSeq && historyLoadSeq !== loadSeq) await open(currentId);
     } catch (e) { toast(errMsg(e), 'error'); }
   }
 
