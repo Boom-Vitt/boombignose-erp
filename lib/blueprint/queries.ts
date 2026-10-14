@@ -30,6 +30,7 @@ export async function getBlueprintOrgSummary(): Promise<BlueprintOrgSummary> {
   const ctx = await requireOrgContext()
   const supabase = await createClient()
   const orgId = ctx.orgId
+  const isStaff = ctx.role === "owner" || ctx.role === "admin"
 
   const [
     clientsTotalRes,
@@ -76,8 +77,12 @@ export async function getBlueprintOrgSummary(): Promise<BlueprintOrgSummary> {
     supabase.from("payments").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("verification_state", "verified"),
     supabase.from("payment_allocations").select("id", { count: "exact", head: true }).eq("org_id", orgId),
     supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "active"),
-    supabase.from("outbound_events").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "queued"),
-    supabase.from("outbound_events").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "delivered"),
+    isStaff
+      ? supabase.from("outbound_events").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "queued")
+      : Promise.resolve({ count: null, error: null }),
+    isStaff
+      ? supabase.from("outbound_events").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "delivered")
+      : Promise.resolve({ count: null, error: null }),
     supabase.from("ai_outputs").select("id", { count: "exact", head: true }).eq("org_id", orgId),
   ])
 
@@ -133,8 +138,8 @@ export async function getBlueprintOrgSummary(): Promise<BlueprintOrgSummary> {
     paymentsVerified: paymentsVerifiedRes.count ?? 0,
     paymentAllocationsTotal: paymentAllocationsTotalRes.count ?? 0,
     subscriptionsActive: subscriptionsActiveRes.count ?? 0,
-    outboundEventsQueued: outboundEventsQueuedRes.count ?? 0,
-    outboundEventsDelivered: outboundEventsDeliveredRes.count ?? 0,
+    outboundEventsQueued: isStaff ? (outboundEventsQueuedRes.count ?? 0) : null,
+    outboundEventsDelivered: isStaff ? (outboundEventsDeliveredRes.count ?? 0) : null,
     aiOutputsCached: aiOutputsCachedRes.count ?? 0,
   }
 }

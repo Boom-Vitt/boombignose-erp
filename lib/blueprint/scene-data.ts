@@ -44,8 +44,8 @@ export interface BlueprintOrgSummary {
   paymentsVerified: number
   paymentAllocationsTotal: number
   subscriptionsActive: number
-  outboundEventsQueued: number
-  outboundEventsDelivered: number
+  outboundEventsQueued: number | null
+  outboundEventsDelivered: number | null
   aiOutputsCached: number
 }
 
@@ -129,6 +129,32 @@ function nonNegInt(n: number): number {
   return Math.floor(n)
 }
 
+function nullableNonNegInt(n: number | null): number | null {
+  if (n === null) return null
+  return nonNegInt(n)
+}
+
+/**
+ * Maps arc-length progress `u` in [0, 1] along a CatmullRom curve with
+ * `waypointCount` control points to the active waypoint step index in
+ * `0..waypointCount-1`. CatmullRom passes through waypoint `i` at curve
+ * parameter `t = i / (waypointCount - 1)`, so converting `u -> t` via
+ * `getUtoTmapping(u)` ensures the step index never runs ahead of the token.
+ */
+export function tokenStepFromCurve(
+  curve: { getUtoTmapping(u: number, distance?: number): number },
+  u: number,
+  waypointCount: number
+): number {
+  if (waypointCount <= 1) return 0
+  const clampedU = Math.min(Math.max(u, 0), 1)
+  const t = curve.getUtoTmapping(clampedU)
+  return Math.min(
+    waypointCount - 1,
+    Math.max(0, Math.floor((t + 1e-9) * (waypointCount - 1)))
+  )
+}
+
 export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneModel {
   const d: BlueprintOrgSummary = {
     orgRole: raw.orgRole,
@@ -152,8 +178,8 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
     paymentsVerified: nonNegInt(raw.paymentsVerified),
     paymentAllocationsTotal: nonNegInt(raw.paymentAllocationsTotal),
     subscriptionsActive: nonNegInt(raw.subscriptionsActive),
-    outboundEventsQueued: nonNegInt(raw.outboundEventsQueued),
-    outboundEventsDelivered: nonNegInt(raw.outboundEventsDelivered),
+    outboundEventsQueued: nullableNonNegInt(raw.outboundEventsQueued),
+    outboundEventsDelivered: nullableNonNegInt(raw.outboundEventsDelivered),
     aiOutputsCached: nonNegInt(raw.aiOutputsCached),
   }
 
@@ -263,8 +289,14 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
       size: [1.9, 1.0, 1.6],
       metrics: [
         { label: "Active subscriptions", value: String(d.subscriptionsActive) },
-        { label: "Outbox queued", value: String(d.outboundEventsQueued) },
-        { label: "Outbox delivered", value: String(d.outboundEventsDelivered) },
+        {
+          label: "Outbox queued",
+          value: d.outboundEventsQueued === null ? "Owner/admin only" : String(d.outboundEventsQueued),
+        },
+        {
+          label: "Outbox delivered",
+          value: d.outboundEventsDelivered === null ? "Owner/admin only" : String(d.outboundEventsDelivered),
+        },
       ],
       codeRuleEn:
         "generate_subscription_occurrence deduplicates recurring invoices by (org_id, subscription_id, occurrence_date). Outbound events use DB leases (claim_outbound_events / finish_outbound_event) with Idempotency-Key headers.",

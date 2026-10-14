@@ -1,7 +1,8 @@
 import * as THREE from "three"
-import type {
-  AssemblyId,
-  BlueprintSceneModel,
+import {
+  tokenStepFromCurve,
+  type AssemblyId,
+  type BlueprintSceneModel,
 } from "@/lib/blueprint/scene-data"
 
 export interface ProjectedAnchor {
@@ -378,9 +379,10 @@ export function createBlueprintEngine(
     const h = Math.max(host.clientHeight, 1)
     renderer.setSize(w, h, false)
     const curveNow = applyPositions(currentExplode)
-    const stepIdx = Math.min(
-      model.tokenPath.length - 1,
-      Math.floor(tokenProgress * model.tokenPath.length)
+    const stepIdx = tokenStepFromCurve(
+      curveNow,
+      tokenProgress,
+      model.tokenPath.length
     )
     renderOnce(curveNow, stepIdx)
   }
@@ -446,9 +448,10 @@ export function createBlueprintEngine(
     anchorEmitTimer += dt
     if (anchorEmitTimer >= 0.12) {
       anchorEmitTimer = 0
-      const stepIdx = Math.min(
-        model.tokenPath.length - 1,
-        Math.floor(tokenProgress * model.tokenPath.length)
+      const stepIdx = tokenStepFromCurve(
+        dynCurve,
+        tokenProgress,
+        model.tokenPath.length
       )
       computeAnchors(stepIdx)
     }
@@ -544,9 +547,10 @@ export function createBlueprintEngine(
               : baseBlockMat
       }
       const c = applyPositions(currentExplode)
-      const stepIdx = Math.min(
-        model.tokenPath.length - 1,
-        Math.floor(tokenProgress * model.tokenPath.length)
+      const stepIdx = tokenStepFromCurve(
+        c,
+        tokenProgress,
+        model.tokenPath.length
       )
       renderOnce(c, stepIdx)
     },

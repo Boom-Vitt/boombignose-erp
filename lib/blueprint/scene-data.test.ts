@@ -1,7 +1,9 @@
+import * as THREE from "three"
 import { describe, expect, it, vi } from "vitest"
 import {
   BLUEPRINT_FIXTURE_DATA,
   buildBlueprintScene,
+  tokenStepFromCurve,
 } from "./scene-data"
 
 const mockState = vi.hoisted(() => ({
@@ -9,6 +11,7 @@ const mockState = vi.hoisted(() => ({
   role: "owner" as "owner" | "admin" | "member",
   counts: {} as Record<string, number>,
   failTable: null as string | null,
+  queriedTables: [] as string[],
 }))
 
 vi.mock("@/lib/auth", () => ({
@@ -24,6 +27,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     from(table: string) {
+      mockState.queriedTables.push(table)
       const filters: string[] = [table]
       let headOption = false
       const builder = {
@@ -165,6 +169,7 @@ describe("buildBlueprintScene", () => {
   it("reads exact head counts beyond the 1000-row PostgREST cap", async () => {
     mockState.failTable = null
     mockState.role = "owner"
+    mockState.queriedTables = []
     mockState.counts = {
       time_entries: 1500,
       "outbound_events|org_id=org-1|status=delivered": 2450,
@@ -177,5 +182,75 @@ describe("buildBlueprintScene", () => {
     expect(summary.outboundEventsDelivered).toBe(2450)
     expect(summary.aiOutputsCached).toBe(1205)
     expect(summary.invoicesIssued).toBe(1100)
+  })
+
+  it("skips staff-only outbound_events for members and labels metrics Owner/admin only", async () => {
+    mockState.failTable = null
+    mockState.role = "member"
+    mockState.queriedTables = []
+    mockState.counts = {
+      "outbound_events|org_id=org-1|status=queued": 4,
+      "outbound_events|org_id=org-1|status=delivered": 19,
+    }
+
+    const memberSummary = await getBlueprintOrgSummary()
+    expect(mockState.queriedTables).not.toContain("outbound_events")
+    expect(memberSummary.outboundEventsQueued).toBeNull()
+    expect(memberSummary.outboundEventsDelivered).toBeNull()
+
+    const memberScene = buildBlueprintScene(memberSummary)
+    const memberSubs = memberScene.assemblies.find((a) => a.id === "06-subscriptions")!
+    expect(memberSubs.metrics).toContainEqual({
+      label: "Outbox queued",
+      value: "Owner/admin only",
+    })
+    expect(memberSubs.metrics).toContainEqual({
+      label: "Outbox delivered",
+      value: "Owner/admin only",
+    })
+
+    mockState.role = "owner"
+    mockState.queriedTables = []
+    const ownerSummary = await getBlueprintOrgSummary()
+    expect(mockState.queriedTables).toContain("outbound_events")
+    expect(ownerSummary.outboundEventsQueued).toBe(4)
+    expect(ownerSummary.outboundEventsDelivered).toBe(19)
+
+    const ownerScene = buildBlueprintScene(ownerSummary)
+    const ownerSubs = ownerScene.assemblies.find((a) => a.id === "06-subscriptions")!
+    expect(ownerSubs.metrics).toContainEqual({ label: "Outbox queued", value: "4" })
+    expect(ownerSubs.metrics).toContainEqual({ label: "Outbox delivered", value: "19" })
+  })
+
+  it("derives token step from curve parameter so step never runs ahead of the token", () => {
+    const scene = buildBlueprintScene(BLUEPRINT_FIXTURE_DATA)
+    const waypoints = scene.tokenPath.map((w) => new THREE.Vector3(...w.position))
+    const curve = new THREE.CatmullRomCurve3(waypoints, false, "centripetal")
+    const n = waypoints.length
+    const lengths = curve.getLengths()
+    const totalLength = lengths[lengths.length - 1]!
+
+    // Using the curve's own default arcLengthDivisions lookup table:
+    // waypoint i is at t = i / (n - 1), which corresponds to index Math.round(t * (lengths.length - 1))
+    const waypointU: number[] = []
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1)
+      const idx = Math.round(t * (lengths.length - 1))
+      const u = lengths[idx]! / totalLength
+      waypointU.push(u)
+      expect(tokenStepFromCurve(curve, u, n)).toBe(i)
+    }
+
+    // Across the entire curve, before reaching waypoint i's arc-length position u_i,
+    // the reported step must be strictly less than i (never runs ahead).
+    for (let sample = 0; sample < 200; sample++) {
+      const u = sample / 200
+      const step = tokenStepFromCurve(curve, u, n)
+      for (let i = 1; i < n; i++) {
+        if (u < waypointU[i]! - 1e-4) {
+          expect(step).toBeLessThan(i)
+        }
+      }
+    }
   })
 })
