@@ -1,7 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createProvider } from '../../src/providers/index.ts';
 import { fixture, streamed, request, collect } from './helpers.ts';
+
+test('the recorded Ollama stream ignores reasoning and returns both calls with trailing usage', async () => {
+  const text = readFileSync(new URL('fixtures/ollama-tools.sse', import.meta.url), 'utf8');
+  const provider = createProvider({ id: 'ollama', kind: 'openai-compatible', baseUrl: 'https://example.invalid/v1' }, undefined, async () => streamed(text));
+  assert.deepEqual(await collect(provider.stream({ ...request, model: 'qwen3:14b' })), [
+    { type: 'tool_call_start', id: 'call_1h9aicm7', name: 'get_weather' },
+    { type: 'tool_call_start', id: 'call_067750nw', name: 'get_weather' },
+    { type: 'tool_call', id: 'call_1h9aicm7', name: 'get_weather', input: { city: 'Tokyo' } },
+    { type: 'tool_call', id: 'call_067750nw', name: 'get_weather', input: { city: 'Paris' } },
+    { type: 'done', stopReason: 'tool_use', usage: { inputTokens: 141, outputTokens: 154 } },
+  ]);
+});
+
+test('keyless Ollama sends a finished tool round with null assistant content and tool_call_id', async () => {
+  for (const key of [undefined, '']) {
+    const provider = createProvider({ id: 'ollama', kind: 'openai-compatible', baseUrl: 'https://example.invalid/v1' }, key, async (url, init) => {
+      assert.equal(String(url), 'https://example.invalid/v1/chat/completions');
+      assert.equal(new Headers(init?.headers).has('Authorization'), false);
+      assert.equal(init?.redirect, 'error');
+      const body = JSON.parse(String(init?.body));
+      assert.deepEqual(body.stream_options, { include_usage: true });
+      assert.equal('max_tokens' in body, false);
+      assert.deepEqual(body.messages, [
+        { role: 'system', content: 'Be helpful' },
+        { role: 'assistant', content: null, tool_calls: [
+          { id: 'weather', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Tokyo"}' } },
+        ] },
+        { role: 'tool', tool_call_id: 'weather', content: 'Sunny' },
+      ]);
+      return streamed('data: {"choices":[{"delta":{"content":"Sunny"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    });
+    assert.deepEqual(await collect(provider.stream({ ...request, messages: [
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'weather', name: 'get_weather', input: { city: 'Tokyo' } }] },
+      { role: 'user', content: [{ type: 'tool_result', toolUseId: 'weather', content: 'Sunny' }] },
+    ] })), [
+      { type: 'text_delta', text: 'Sunny' },
+      { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } },
+    ]);
+  }
+});
 
 test('openai reconstructs parallel calls in index order and trailing usage', async () => {
   let body: any;

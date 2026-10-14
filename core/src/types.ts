@@ -29,6 +29,7 @@ export interface Provider { readonly kind: ProviderKind; stream(req: ProviderReq
 export type Policy = 'allow' | 'ask' | 'deny';
 export interface Agent {
   id: string; name: string; icon: string; instructions: string; provider: string; model: string;
+  maxTokens?: number;
   permissions: Record<string, Policy>; connectors: string[] | null; skills: string[] | null;
   createdAt: number; updatedAt: number;
 }

@@ -79,6 +79,7 @@ export interface Provider { readonly kind: ProviderKind; stream(req: ProviderReq
 export type Policy = 'allow' | 'ask' | 'deny';
 export interface Agent {
   id: string; name: string; icon: string; instructions: string; provider: string; model: string;
+  maxTokens?: number;
   permissions: Record<string, Policy>; connectors: string[] | null; skills: string[] | null;
   createdAt: number; updatedAt: number;
 }
@@ -155,8 +156,8 @@ export interface Config {
   - providers: `anthropic` (anthropic, `https://api.anthropic.com`, `ANTHROPIC_API_KEY`, contextWindow 200000,
     maxTokens 8192); `openai` (openai-compatible, `https://api.openai.com/v1`, `OPENAI_API_KEY`, 128000);
     `openrouter` (openai-compatible, `https://openrouter.ai/api/v1`, `OPENROUTER_API_KEY`, 128000);
-    `ollama` (openai-compatible, `http://127.0.0.1:11434/v1`, no key, 32000).
-  - active `{ provider: 'anthropic', model: 'claude-sonnet-5-5' }`; agent `{ maxTurns: 30, workspace: <os home>,
+    `ollama` (openai-compatible, label `Ollama (local)`, `http://127.0.0.1:11434/v1`, optional `OLLAMA_API_KEY`, 32768).
+  - active `{ provider: 'ollama', model: 'qwen3' }`; agent `{ maxTurns: 30, workspace: <os home>,
     compactAt: 0.8 }`; permissions `{}`; hooks `{}`; api `{ port: 47821 }`.
   - mcp.servers: `rea` = `{ transport: 'stdio', command: 'npx', args: ['-y', 'rea-agents@6.1.0', 'mcp'], enabled: false }`.
   - line: `{ enabled: false, port: 47822, slowResponseMs: 45000, allow: { users: [], groups: [], rooms: [] } }`.
@@ -431,8 +432,9 @@ export interface Config {
 
 ## 8. Desktop
 
-- Tauri 2, `productName` `BigNose`, identifier `com.boombignose.bignose`, own icon generated with `pnpm tauri icon`
-  from the committed source `desktop/app-icon.svg`; macOS `app` bundle only. UI = vanilla TypeScript compiled by `tsc` to
+- Tauri 2, `productName` `BigNose`, identifier `com.boombignose.bignose`, own icon regenerated with
+  `pnpm --filter desktop tauri icon src-tauri/icons/source/boombignose-1024.png` from the committed source
+  `desktop/src-tauri/icons/source/boombignose-1024.png`; macOS `app` bundle only. UI = vanilla TypeScript compiled by `tsc` to
   `desktop/dist` (+ copied `index.html`, `style.css`), `withGlobalTauri` for `invoke`; no framework, no bundler.
 - Sidecar: on start the Rust side takes the port from `<home>/daemon.json` when present, else config `api.port`
   (default 47821), and attaches only when `GET /api/health` with the token returns 200 (raw HTTP over `TcpStream` is
@@ -642,3 +644,224 @@ Desktop integration notes (2026-10-14): settings read-modify-write saves are ser
 Deleting a user connector clears only its own hex-named secrets unreferenced by other connectors or providers.
 The chat and Providers page edit the selected agent with PATCH; config.active only seeds new agents.
 The desktop e2e reloads with a pending tool approval and verifies the SSE replay restores Stop and Allow/Deny.
+
+## 13. Agents on any model, Ollama first, LINE connect and the BoomBigNose icon (owner update 2026-10-14)
+
+Owner requests (verbatim, in order): "create app bignose and can connect with line and can create agents using fable5.1
+xhigh"; "not building fable 5 agent let user can agent with any model inside"; "note that we will use line not use
+anthropic since user can use ollama first"; "change logo bignose app to boombignose logo, find it in my github profile
+logo".
+Meaning: the main path is LINE plus a local model through Ollama. A fresh install talks to Ollama on this Mac with no key
+and no setup beyond Ollama itself. The user creates agents on any configured provider and any model id (free text with
+suggestions from the provider's model list, and a clear message when Ollama is not running or has no models). BigNose
+explains Ollama's context size and warns when it is too small. The LINE connection can be set up and checked from the
+app. The app icon is the owner's BoomBigNose logo. This run also ships five LINE gap fixes and four v1 final-review
+follow-ups. The Anthropic adapter stays as v1.
+Non-goals: model-specific agents, defaults beyond the Ollama preset, or request logic; per-agent effort; Anthropic
+thinking replay, refusal or model-limit work; Ollama's native API (`/api/chat`, per-request `num_ctx`); pulling models or
+starting/managing the Ollama server; other messaging platforms, LINE media, voice, code signing.
+
+### 13.1 Shared types (`core/src/types.ts`), additions
+```ts
+// Agent gains: maxTokens?: number     // optional; absent = the provider's setting
+```
+Section 3 of this file is updated to match `types.ts` verbatim. `desktop/src/types.ts` mirrors the core shapes (no
+effort, no thinking blocks, no `refused` status).
+
+### 13.2 Model lists (`core/src/providers/models.ts`, new)
+```ts
+export interface ModelInfo { id: string; label?: string }
+export function listModels(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<ModelInfo[]>;
+```
+- openai-compatible: `GET {baseUrl without trailing slashes}/models`, `Authorization: Bearer <key>` only when the key is
+  non-empty; result = `data[].id` (string ids only, in the server's order).
+- anthropic: `GET {baseUrl}/v1/models?limit=1000` with `x-api-key` and `anthropic-version: 2023-06-01`; `id`, and
+  `display_name` as `label`; first page only.
+- 15 s timeout, `redirect: 'error'` (like every v1 keyed call, `core/test/api/redirect.test.ts`), so a redirect can never
+  carry a key to another origin.
+- Failures throw an Error whose message never contains the key (masked as in v1) and has no trailing period (the desktop
+  wraps it in a sentence):
+  - Ollama provider (13.3) with no HTTP answer (refused, DNS, timeout):
+    `Ollama is not running at <origin> (start it with "ollama serve" or open the Ollama app)`
+  - Ollama provider and an empty list: `Ollama has no models yet (install one with "ollama pull qwen3")`
+  - other providers: no HTTP answer -> `Could not list models: <reason>`; empty list -> `The provider returned no models`
+  - any provider: non-2xx -> `Could not list models: <status> <body, at most 200 chars>`; a body whose `data` is neither
+    an array nor `null` -> `Could not list models: unexpected response`. `data: null` is an empty list (Ollama answers
+    `{"object":"list","data":null}` when nothing is installed).
+
+### 13.3 Ollama (`core/src/providers/ollama.ts`, new, and `core/src/config.ts`)
+```ts
+export const OLLAMA_DEFAULT_MODEL = 'qwen3';
+export function isOllama(cfg: ProviderConfig): boolean;  // openai-compatible and (id 'ollama' or base URL port 11434)
+export const OLLAMA_CONTEXT_NOTE: string;                // text below
+export function ollamaWarnings(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<string[]>;
+```
+- Default config (`defaultConfig()`): the `ollama` entry becomes `{ id: 'ollama', kind: 'openai-compatible', label:
+  'Ollama (local)', baseUrl: 'http://127.0.0.1:11434/v1', apiKeyEnv: 'OLLAMA_API_KEY', contextWindow: 32768 }` (the list
+  order and the other entries stay as v1) and `active` becomes `{ provider: 'ollama', model: OLLAMA_DEFAULT_MODEL }`.
+  The key is optional: unset sends no `Authorization` header (v1 adapter rule), and neither the doctor nor the desktop
+  treats an unset Ollama key as a problem. A stored config keeps its own providers and active model (v1 merge: stored
+  arrays replace the defaults), so existing installs do not change.
+- `OLLAMA_CONTEXT_NOTE` (exact text):
+  `Ollama picks its own context size (OLLAMA_CONTEXT_LENGTH, only 4096 tokens on machines with less than 24 GB of GPU memory) and cuts longer prompts without an error. For agents, start Ollama with OLLAMA_CONTEXT_LENGTH=32768 ollama serve (for the Ollama app: launchctl setenv OLLAMA_CONTEXT_LENGTH 32768, then restart the app) and keep Context window here at or below that number. ollama ps shows the size in use.`
+- `ollamaWarnings`: `GET <origin>/api/ps` (origin of the base URL, 2 s timeout, `redirect: 'error'`, Bearer only with a
+  key). No HTTP answer -> `[<the "not running" text of 13.2>]`. For each loaded model in `models[]` whose
+  `context_length` is a number below the provider's context window (`contextWindow ?? 128000`):
+  `Ollama is running <name> with a <n>-token context, below this provider's Context window (<cw>). Restart Ollama with OLLAMA_CONTEXT_LENGTH=<cw>, or set Context window to <n>.`
+  A non-2xx answer, a body that is not the expected JSON, or no loaded model -> `[]`. It never throws. (Ollama only
+  reports the context size of a loaded model; the note covers the rest.)
+- First run (daemon start, 13.6): with no config file yet and an Ollama active provider, the daemon lists Ollama's
+  models (2 s timeout). When the list has models and none is the active id or `<active id>:latest`, it sets
+  `active.model` to the first listed id that starts with `<active id>:` (for example `qwen3:14b`), else to the first
+  listed id, and saves the config before the default agent is created. Any failure keeps
+  `qwen3`; a chat then shows Ollama's own error (`model "qwen3" not found, try pulling it first`).
+
+### 13.4 OpenAI-compatible adapter (`core/src/providers/openai.ts`)
+v1 already speaks Ollama's OpenAI-compatible API; this run pins that with tests. Fixture
+`core/test/providers/fixtures/ollama-tools.sse` = a copy of
+`/Users/boombignose/orca/projects/bignose/.git/bbn/briefs/ollama-tools.sse` (a real Ollama 0.40.4 stream for qwen3:14b,
+trimmed): `delta.reasoning` chunks (the model's thinking; never shown or stored), two complete tool calls with `index` 0
+and 1, each in one chunk with `content: ""`, a `finish_reason: "tool_calls"` chunk, a last chunk with `choices: []` and
+`usage`, then `[DONE]`. Expected events: `tool_call_start` and `tool_call` for both calls in index order with parsed
+inputs (`{"city":"Tokyo"}`, `{"city":"Paris"}`), then `done` with `tool_use` and usage 141/154; no `text_delta`.
+A second test pins the request for a keyless Ollama provider: no `Authorization` header, `stream_options.include_usage`,
+and a finished tool round sent as an assistant message with `content: null` + `tool_calls` followed by a `role: "tool"`
+message with `tool_call_id` (the hub checked that a local Ollama 0.40.4 accepts this shape and answers). An adapter
+change needed to pass is in scope; nothing else in the adapter changes.
+
+### 13.5 Agent loop
+Unchanged. The loop already sends `maxTokens` from its options; per-agent max tokens is set in the runtime (13.6).
+
+### 13.6 Agents on any model (store, API, runtime, doctor)
+- Store: the `agents` table gains a nullable `max_tokens` column, added idempotently on open (`ALTER TABLE agents ADD
+  COLUMN` when missing). Old agents load without `maxTokens`. `createAgent`/`updateAgent` persist it; a PATCH with `null`
+  clears it.
+- API: `POST`/`PATCH /api/agents` accept `maxTokens` (an integer 1-1000000 or `null`, else 400 `invalid maxTokens`);
+  `model` is any string of 1-200 characters without control characters (else 400 `invalid model`). There is no effort
+  field. Agent JSON includes `maxTokens` when set.
+- `GET /api/providers/:id/models` -> 200 `{ ok: true, models: ModelInfo[] }`, or 200 `{ ok: false, error, models: [] }`
+  with the 13.2 text (masked) when the list call fails or is empty; unknown provider -> 404. It uses the provider's saved
+  key from `.env`.
+- `GET /api/providers/:id/status` -> 200 `{ note?: string, warnings: string[] }`: an Ollama provider gets
+  `note: OLLAMA_CONTEXT_NOTE` and `warnings: await ollamaWarnings(...)`; other providers get `{ warnings: [] }`;
+  unknown provider -> 404.
+- Runtime profile: `maxTokens = agent.maxTokens ?? provider.maxTokens`; when that is set it also goes into the profile's
+  provider config copy, so the openai-compatible adapter sends `max_tokens` (v1 sends it only when the provider config
+  sets it); when unset v1 stays (`8192` for anthropic, no `max_tokens` for openai-compatible).
+- Daemon: the first-run Ollama model pick of 13.3, with the daemon's injectable fetch.
+- `bignose doctor` (may become async): for an Ollama active provider there is no key warning; it adds
+  `ok Ollama has <n> models` or `warn <13.2 text>`, one `warn <text>` per `ollamaWarnings` entry, and
+  `note <OLLAMA_CONTEXT_NOTE>`. Warnings and notes do not change the exit code. The calls use the timeouts above, so
+  doctor never hangs.
+- Tests never reach a real Ollama: the default base URL `127.0.0.1:11434` is replaced by a fake server or a closed port
+  in every test that runs the doctor or starts a daemon on a fresh home.
+
+### 13.7 LINE connect
+Helpers in `core/src/line/` (no gateway instance needed):
+```ts
+export interface LineApiOptions { accessToken: string; fetchImpl?: typeof fetch; apiBase?: string } // default https://api.line.me
+export function lineBotInfo(o: LineApiOptions): Promise<{ displayName: string; basicId: string; pictureUrl?: string }>; // GET  /v2/bot/info
+export function setLineWebhook(o: LineApiOptions, endpoint: string): Promise<void>;                                     // PUT  /v2/bot/channel/webhook/endpoint {endpoint}
+export function testLineWebhook(o: LineApiOptions, endpoint: string): Promise<{ success: boolean; statusCode?: number; reason?: string; detail?: string; timestamp?: string }>; // POST /v2/bot/channel/webhook/test {endpoint}
+export function publicUrlProblem(url: string): string | undefined; // undefined = usable: https only, no user/password, no query or fragment, at most 480 characters
+export function webhookUrlFor(publicUrl: string): string;          // publicUrl without trailing slashes + '/line/webhook'
+```
+Each call has a 15 s timeout; failures throw `LINE <path> failed: <status> <body, at most 200 chars>` with the access
+token and channel secret masked, as the gateway's own calls do.
+
+Health: the LINE listener answers `GET /line/webhook/health` with 200 and JSON `{"ok":true}` (no auth, no secrets, no
+state); other methods on that path get 405. `/line/webhook` stays POST-only.
+
+Local API (the daemon reads the token from `.env` and passes `lineOptions.fetchImpl`/`apiBase` through for tests):
+- `POST /api/line/connect` -> 200
+  `{ ok, bot?: { displayName, basicId }, webhookUrl?, steps: [{ name: 'token', ok, detail }, { name: 'webhook', ok, detail }] }`
+  - token: no saved token -> `Save the channel access token first.`; else `lineBotInfo` -> ok with
+    `Connected to <displayName> (<basicId>)`; failure -> the masked error.
+  - webhook: token step failed -> `Fix the token first.`; no public URL -> `Set a public HTTPS URL first.`;
+    `publicUrlProblem` -> its text; else `setLineWebhook(webhookUrlFor(publicUrl))` -> ok with `Webhook set to <url>`;
+    failure -> the masked error. `ok` is true only when both steps are ok.
+- `POST /api/line/test` -> 200 `{ ok, running, statusCode?, reason?, detail }`: token, public URL and local listener are
+  checked first (same texts as above; listener off -> `The LINE listener is not running. Turn LINE on, save, then test
+  again.`), then `testLineWebhook(webhookUrlFor(publicUrl))`; `ok` = LINE's `success`; `detail` = LINE's detail or
+  reason. Neither route ever returns the token or the secret.
+- `GET /api/line/status` (v1 fields) gains `healthUrl?` (`<publicUrl>/line/webhook/health`) and `warnings: string[]`:
+  `Nobody is allowed yet: add your LINE user ID (U…) under Allowed users.` when all three allowlists are empty, and the
+  `publicUrlProblem` text when the stored public URL has one.
+- `PUT /api/settings`: a non-empty `line.publicUrl` that differs from the stored value must pass `publicUrlProblem`
+  (400 with its text); an unchanged stored value always passes, so the other settings screens (which save the whole
+  config) keep working with an old http URL stored. Loading a stored config is not stricter than v1 (an old http URL
+  still loads; status warns and Connect refuses it).
+
+Desktop Messaging page (`desktop/src/settings/messaging.ts`, client calls in `desktop/src/api.ts`):
+- Status card: `Enabled`/`Disabled`, `Local listener running`/`Local listener stopped`, the webhook URL with Copy, the
+  health URL hint (`Open <healthUrl> in a browser to check your tunnel.`), and each warning.
+- Buttons `Connect` (POST /api/line/connect) and `Test webhook` (POST /api/line/test). Each shows its result as text:
+  one line per step (ok or failed + detail), the bot name and basic ID after a good token step, LINE's status code and
+  detail after a test. A button is disabled while its request runs. Text only, never innerHTML.
+- Form: the public URL must start with `https://` (inline error, Save blocked); the slow-response time is edited in
+  seconds (1-50, saved as `slowResponseMs = seconds * 1000`) with the help text
+  `Up to 50 seconds, so LINE's reply token is still valid.`; a note that Save does not prove the token or the tunnel
+  work: use Connect and Test webhook.
+
+### 13.8 LINE gateway fixes (Hermes LINE gap report, section 4)
+1. Cached answers resume: a `Pending` answer remembers how many messages were already delivered; a failed batch keeps
+   that progress; the next `Get answer` tap sends only the unsent remainder; the state becomes `DELIVERED` only after the
+   last batch succeeds. A timed-out batch counts as not delivered (the retry resends that batch; never assume delivery).
+2. Setup and status are actionable: health route, HTTPS validation, warnings and labels (13.7).
+3. Dedupe survives reloads: `createLineGateway` takes an optional `seen?: Set<string>`; the daemon creates one set and
+   passes it to every gateway it builds, so a redelivered `webhookEventId` is ignored after a settings reload (bounded at
+   2000 ids, oldest dropped).
+4. Loading indicator: a text message from a user DM (chat id starts with `U`) that starts a run sends one best-effort
+   `POST /v2/bot/chat/loading/start {chatId, loadingSeconds: 60}`. Groups and rooms are skipped. Its failure is recorded
+   (masked) and never delays or blocks the answer or the `Get answer` button.
+5. LINE plain-text hint: runs whose origin is `line` get one more system-prompt paragraph:
+   `You are replying in a LINE chat. Write plain text: short paragraphs, no Markdown headings, tables or bold markers, and put each URL on its own line. Keep answers brief unless the user asks for detail.`
+   Desktop, CLI and cron runs do not get it.
+
+### 13.9 v1 final-review follow-ups (`.bbn/final-rev-report.md`)
+1. Daemon `close()` aborts runs first: `runtime.close()` (abort every run, await them) runs before `api.close()`,
+   `mcp.stop()` and `line.close()`, so a slow MCP shutdown can no longer let the sidecar's SIGKILL land before an
+   approved `shell` process group is killed.
+2. A non-owner LINE turn never overwrites the stored context: the model gets the filtered copy as input; the stored
+   model context stays the full previous context plus only the new non-owner turn (the user text and the final
+   assistant text; no tool or thinking blocks).
+3. LINE slash errors: `lineMessage` replies with a `CommandError`'s own message (usage, path not found) instead of the
+   generic `Sorry, something went wrong.`
+4. The file guard also refuses `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.kube/` and `~/.config/gcloud/` for
+   read, write, edit, list and search, like `.ssh`.
+
+### 13.10 Desktop (`desktop/src/`)
+- Agents form (`agents.ts`): Provider select (v1). Model: free text with suggestions (datalist) from
+  `GET /api/providers/:id/models` for the selected provider, loaded when the form opens and again when the provider
+  changes; a stale answer for the previous provider never overwrites the new one; nothing is pre-selected or changed when
+  the list arrives. When the answer is `ok: false`, a muted line under the field reads
+  `Couldn't load the model list: <error>. You can still type a model id.` Typing any model id always works.
+- No Effort select: the select, the effort on the card, and `effort` in the types, the API client and saved bodies are
+  removed. The thinking-block and `refused` handling the core never sends is removed too, so `desktop/src/types.ts`
+  matches the core shapes.
+- Max tokens: optional number input (blank = the provider's setting, saved as `maxTokens: null`; else 1-1000000, other
+  values blocked with an inline error), help text
+  `Blank uses the provider's setting. Thinking models (for example qwen3 or deepseek-r1) spend tokens on thinking first, so leave it blank unless you need a limit.`
+- The agent card shows `provider · model`.
+- Providers page (`settings/providers.ts`): the Agent model card's Model field gets the same suggestions and error line.
+  A provider card whose `GET /api/providers/:id/status` answer has a `note` shows the note and each warning (warning
+  style), loaded with the page. The Ollama card's key row reads `API key (optional):` with the masked key or `not set`.
+- Messaging page (`settings/messaging.ts`): Connect step lines read `Token` / `Webhook` (capitalised) with ok or failed
+  and the detail; after a Connect the status card reloads; the slow-response field allows 1-50 seconds (13.7).
+
+### 13.11 App icon (`desktop/src-tauri/icons/`)
+The owner's BoomBigNose logo replaces the v1 icon. Master (the owner's own image, used as is):
+`/Users/boombignose/orca/projects/bignose-research/brand/boombignose-app-icon-1024.png`, 1024x1024 RGBA PNG, sha256
+`89843365951de91c2600f4cd5c941f1bac9037c3a460a5078c89f269327e7548` (made from the owner's GitHub avatar). It is copied
+byte for byte to `desktop/src-tauri/icons/source/boombignose-1024.png`, and the five icons `tauri.conf.json` lists
+(`icons/32x32.png`, `icons/128x128.png`, `icons/128x128@2x.png`, `icons/icon.png`, `icons/icon.icns`) are regenerated from
+it with the project's own Tauri CLI (`pnpm --filter desktop tauri icon src-tauri/icons/source/boombignose-1024.png`, run
+from the repo root; the path is relative to `desktop/`). Extra files the CLI writes (Windows, iOS, Android, Store logos)
+are not committed; the icon list in `tauri.conf.json` stays as v1. The v1 SVG drawing (`app-icon.svg` in `desktop/`) is
+deleted (not referenced anywhere). No other UI change. A release build (`tauri build --bundles app`) puts the regenerated `icon.icns`
+into `BigNose.app/Contents/Resources/` under the name in `CFBundleIconFile`.
+
+### 13.12 Owner-run checks (manual, never in tests)
+A real chat with an agent on a local Ollama model (and the context warning when Ollama runs with a small context), and a
+real LINE channel through a public HTTPS tunnel: Connect, Test webhook, a DM, a slow local answer with `Get answer`; the
+new icon in the Dock and Finder. Steps are in the run's final report.
