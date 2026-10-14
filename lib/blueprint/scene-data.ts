@@ -38,7 +38,6 @@ export interface BlueprintOrgSummary {
   timeEntriesTotal: number
   invoicesTotal: number
   invoicesIssued: number
-  invoicesPaid: number
   paymentClaimsPending: number
   paymentClaimsVerified: number
   paymentsVerified: number
@@ -113,7 +112,6 @@ export const BLUEPRINT_FIXTURE_DATA: BlueprintOrgSummary = {
   timeEntriesTotal: 42,
   invoicesTotal: 12,
   invoicesIssued: 9,
-  invoicesPaid: 6,
   paymentClaimsPending: 2,
   paymentClaimsVerified: 6,
   paymentsVerified: 6,
@@ -190,7 +188,6 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
     timeEntriesTotal: nonNegInt(raw.timeEntriesTotal),
     invoicesTotal: nonNegInt(raw.invoicesTotal),
     invoicesIssued: nonNegInt(raw.invoicesIssued),
-    invoicesPaid: nonNegInt(raw.invoicesPaid),
     paymentClaimsPending: nonNegInt(raw.paymentClaimsPending),
     paymentClaimsVerified: nonNegInt(raw.paymentClaimsVerified),
     paymentsVerified: nonNegInt(raw.paymentsVerified),
@@ -270,7 +267,6 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
       metrics: [
         { label: "Invoices", value: String(d.invoicesTotal) },
         { label: "Issued snapshots", value: String(d.invoicesIssued) },
-        { label: "Paid", value: String(d.invoicesPaid) },
       ],
       codeRuleEn:
         "Every monetary column is stored as integer satang (bigint, 100 satang = 1 THB, never float). Issuing an invoice calls issue_invoice to freeze an immutable invoice_snapshots record.",

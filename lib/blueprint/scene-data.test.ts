@@ -99,7 +99,6 @@ describe("buildBlueprintScene", () => {
       timeEntriesTotal: 31,
       invoicesTotal: 14,
       invoicesIssued: 11,
-      invoicesPaid: 7,
       paymentClaimsPending: 3,
       paymentsVerified: 7,
       paymentAllocationsTotal: 7,
@@ -132,6 +131,8 @@ describe("buildBlueprintScene", () => {
     const invoices = scene.assemblies.find((a) => a.id === "04-invoices")!
     expect(invoices.codeRuleEn).toContain("satang")
     expect(invoices.codeRuleEn).toContain("bigint")
+    expect(invoices.metrics.map((m) => m.label)).toEqual(["Invoices", "Issued snapshots"])
+    expect(invoices.metrics.map((m) => m.label)).not.toContain("Paid")
 
     const payments = scene.assemblies.find((a) => a.id === "05-payments")!
     expect(payments.metrics).toContainEqual({ label: "Pending claims", value: "3" })
