@@ -16,7 +16,7 @@ test('Ollama recognition requires a compatible provider and its id or port', () 
 });
 
 test('Ollama guidance uses the agreed model and exact context note', () => {
-  assert.equal(OLLAMA_DEFAULT_MODEL, 'qwen3');
+  assert.equal(OLLAMA_DEFAULT_MODEL, 'qwen3:4b');
   assert.equal(OLLAMA_CONTEXT_NOTE, 'Ollama picks its own context size (OLLAMA_CONTEXT_LENGTH, only 4096 tokens on machines with less than 24 GB of GPU memory) and cuts longer prompts without an error. For agents, start Ollama with OLLAMA_CONTEXT_LENGTH=32768 ollama serve (for the Ollama app: launchctl setenv OLLAMA_CONTEXT_LENGTH 32768, then restart the app) and keep Context window here at or below that number. ollama ps shows the size in use.');
 });
 

@@ -36,13 +36,14 @@ for (const kind of ['anthropic', 'openai-compatible'] as const) test(`${kind} ma
   if (kind === 'anthropic') assert.equal(body.max_tokens, 8192); else assert.ok(!Object.hasOwn(body, 'max_tokens'));
 });
 
-for (const [data, expected] of [
-  [[{ id: 'a:1' }, { id: 'b:2' }], 'a:1'],
-  [[{ id: 'a:1' }, { id: 'qwen3:14b' }], 'qwen3:14b'],
-  [[{ id: 'a:1' }, { id: 'qwen3:latest' }], 'qwen3'],
-  [[{ id: 'qwen3' }], 'qwen3'],
-  [null, 'qwen3'], ['unreachable', 'qwen3'],
-] as const) test(`first run picks ${expected} from ${JSON.stringify(data)}`, async t => {
+for (const [label, data, expected] of [
+  ['first run keeps qwen3:4b when it is installed', [{ id: 'a:1' }, { id: 'qwen3:4b' }], 'qwen3:4b'],
+  ['first run keeps qwen3:4b when it is installed as :latest', [{ id: 'a:1' }, { id: 'qwen3:4b:latest' }], 'qwen3:4b'],
+  ['first run picks another qwen3 tag when qwen3:4b is missing', [{ id: 'a:1' }, { id: 'qwen3:14b' }], 'qwen3:14b'],
+  ['first run falls back to the first listed model', [{ id: 'a:1' }, { id: 'b:2' }], 'a:1'],
+  ['first run keeps qwen3:4b from null', null, 'qwen3:4b'],
+  ['first run keeps qwen3:4b from unreachable', 'unreachable', 'qwen3:4b'],
+] as const) test(label, async t => {
   const home = testHome(t);
   let calls = 0;
   const app = await startDaemon({ home, fetchImpl: async (_, init) => {
@@ -52,7 +53,7 @@ for (const [data, expected] of [
   } }); t.after(() => app.close());
   assert.equal(calls, 1); assert.equal(app.config().active.model, expected);
   assert.equal(app.runtime.store.listAgents()[0]!.model, expected);
-  if (expected !== 'qwen3') assert.equal(JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).active.model, expected);
+  if (expected !== 'qwen3:4b') assert.equal(JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).active.model, expected);
 });
 
 test('existing config avoids first-run discovery and keeps the saved model', async t => {
@@ -65,7 +66,7 @@ test('an offline first launch never repicks the model after the default agent ex
   const home = testHome(t);
   const first = await startDaemon({ home, fetchImpl: async () => { throw new Error('fake offline'); } });
   t.after(() => first.close());
-  assert.equal(first.runtime.store.listAgents()[0]!.model, 'qwen3');
+  assert.equal(first.runtime.store.listAgents()[0]!.model, 'qwen3:4b');
   await first.close();
   assert.equal(existsSync(join(home, 'config.json')), false);
   let calls = 0;
@@ -73,7 +74,7 @@ test('an offline first launch never repicks the model after the default agent ex
     calls++; return Response.json({ data: [{ id: 'llama3.2:latest' }] });
   } }); t.after(() => restarted.close());
   assert.equal(restarted.config().active.model, restarted.runtime.store.listAgents()[0]!.model);
-  assert.equal(restarted.config().active.model, 'qwen3');
+  assert.equal(restarted.config().active.model, 'qwen3:4b');
   assert.equal(calls, 0);
 });
 
@@ -84,7 +85,7 @@ test('first-run discovery has a two-second timeout', async t => {
       init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
     });
   } }); t.after(() => app.close());
-  assert.equal(app.config().active.model, 'qwen3'); assert.ok(Date.now() - started < 3500);
+  assert.equal(app.config().active.model, 'qwen3:4b'); assert.ok(Date.now() - started < 3500);
 });
 
 test('doctor reports Ollama model count, context warning and note without requiring a key; warnings stay exit 0', async t => {

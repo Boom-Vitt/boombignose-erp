@@ -157,7 +157,7 @@ export interface Config {
     maxTokens 8192); `openai` (openai-compatible, `https://api.openai.com/v1`, `OPENAI_API_KEY`, 128000);
     `openrouter` (openai-compatible, `https://openrouter.ai/api/v1`, `OPENROUTER_API_KEY`, 128000);
     `ollama` (openai-compatible, label `Ollama (local)`, `http://127.0.0.1:11434/v1`, optional `OLLAMA_API_KEY`, 32768).
-  - active `{ provider: 'ollama', model: 'qwen3' }`; agent `{ maxTurns: 30, workspace: <os home>,
+  - active `{ provider: 'ollama', model: 'qwen3:4b' }`; agent `{ maxTurns: 30, workspace: <os home>,
     compactAt: 0.8 }`; permissions `{}`; hooks `{}`; api `{ port: 47821 }`.
   - mcp.servers: `rea` = `{ transport: 'stdio', command: 'npx', args: ['-y', 'rea-agents@6.1.0', 'mcp'], enabled: false }`.
   - line: `{ enabled: false, port: 47822, slowResponseMs: 45000, allow: { users: [], groups: [], rooms: [] } }`.
@@ -684,7 +684,7 @@ export function listModels(cfg: ProviderConfig, apiKey: string | undefined, fetc
   wraps it in a sentence):
   - Ollama provider (13.3) with no HTTP answer (refused, DNS, timeout):
     `Ollama is not running at <origin> (start it with "ollama serve" or open the Ollama app)`
-  - Ollama provider and an empty list: `Ollama has no models yet (install one with "ollama pull qwen3")`
+  - Ollama provider and an empty list: `Ollama has no models yet (install one with "ollama pull qwen3:4b")`
   - other providers: no HTTP answer -> `Could not list models: <reason>`; empty list -> `The provider returned no models`
   - any provider: non-2xx -> `Could not list models: <status> <body, at most 200 chars>`; a body whose `data` is neither
     an array nor `null` -> `Could not list models: unexpected response`. `data: null` is an empty list (Ollama answers
@@ -692,7 +692,7 @@ export function listModels(cfg: ProviderConfig, apiKey: string | undefined, fetc
 
 ### 13.3 Ollama (`core/src/providers/ollama.ts`, new, and `core/src/config.ts`)
 ```ts
-export const OLLAMA_DEFAULT_MODEL = 'qwen3';
+export const OLLAMA_DEFAULT_MODEL = 'qwen3:4b';
 export function isOllama(cfg: ProviderConfig): boolean;  // openai-compatible and (id 'ollama' or base URL port 11434)
 export const OLLAMA_CONTEXT_NOTE: string;                // text below
 export function ollamaWarnings(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<string[]>;
@@ -712,10 +712,10 @@ export function ollamaWarnings(cfg: ProviderConfig, apiKey: string | undefined, 
   A non-2xx answer, a body that is not the expected JSON, or no loaded model -> `[]`. It never throws. (Ollama only
   reports the context size of a loaded model; the note covers the rest.)
 - First run (daemon start, 13.6): with no config file and no agents yet and an Ollama active provider, the daemon lists Ollama's
-  models (2 s timeout). When the list has models and none is the active id or `<active id>:latest`, it sets
-  `active.model` to the first listed id that starts with `<active id>:` (for example `qwen3:14b`), else to the first
+  models (2 s timeout). When the list has models and none is `qwen3:4b` or `qwen3:4b:latest`, it sets
+  `active.model` to the first listed id that starts with `qwen3:` (for example `qwen3:14b`), else to the first
   listed id, and saves the config before the default agent is created. Any failure keeps
-  `qwen3`; a chat then shows Ollama's own error (`model "qwen3" not found, try pulling it first`).
+  `qwen3:4b`; a chat then shows Ollama's own error (`model "qwen3:4b" not found, try pulling it first`).
 
 ### 13.4 OpenAI-compatible adapter (`core/src/providers/openai.ts`)
 v1 already speaks Ollama's OpenAI-compatible API; this run pins that with tests. Fixture

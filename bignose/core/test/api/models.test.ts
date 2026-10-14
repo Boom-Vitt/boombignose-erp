@@ -43,7 +43,7 @@ test('model/status routes use local providers and saved optional keys, and repor
   const count = calls.length;
   assert.deepEqual((await get('remote', 'status')).body, { warnings: [] }); assert.equal(calls.length, count);
   for (data of [[], null]) {
-    assert.deepEqual((await get('ollama', 'models')).body, { ok: false, models: [], error: 'Ollama has no models yet (install one with "ollama pull qwen3")' });
+    assert.deepEqual((await get('ollama', 'models')).body, { ok: false, models: [], error: 'Ollama has no models yet (install one with "ollama pull qwen3:4b")' });
     assert.deepEqual((await get('remote', 'models')).body, { ok: false, models: [], error: 'The provider returned no models' });
   }
   status = 500;

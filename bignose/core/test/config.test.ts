@@ -30,7 +30,7 @@ test('defaults when there is no config file', (t) => {
   const cfg = loadConfig();
   assert.deepEqual(cfg, defaultConfig());
   assert.equal(cfg.version, 1);
-  assert.deepEqual(cfg.active, { provider: 'ollama', model: 'qwen3' });
+  assert.deepEqual(cfg.active, { provider: 'ollama', model: 'qwen3:4b' });
   assert.deepEqual(cfg.providers.map((p) => p.id), ['anthropic', 'openai', 'openrouter', 'ollama']);
   assert.deepEqual(cfg.providers, [
     { id: 'anthropic', kind: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKeyEnv: 'ANTHROPIC_API_KEY', contextWindow: 200000, maxTokens: 8192 },

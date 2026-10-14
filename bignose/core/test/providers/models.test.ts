@@ -63,7 +63,7 @@ test('other unreachable providers report a masked reason without a trailing peri
 test('empty and null data give actionable no-models errors', async () => {
   for (const data of [[], null, [{ id: 2 }]]) {
     await assert.rejects(listModels(ollama, undefined, async () => Response.json({ object: 'list', data })), {
-      message: 'Ollama has no models yet (install one with "ollama pull qwen3")',
+      message: 'Ollama has no models yet (install one with "ollama pull qwen3:4b")',
     });
     await assert.rejects(listModels(remote, undefined, async () => Response.json({ object: 'list', data })), {
       message: 'The provider returned no models',
