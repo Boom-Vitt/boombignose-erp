@@ -1,6 +1,7 @@
 import type { Provider, ProviderConfig, StopReason, Usage } from '../types.ts';
 import { readSse } from './sse.ts';
-import { checkResponse, parseInput, safeError, validateTools } from './common.ts';
+import { safeError, toolCall, validateTools } from './common.ts';
+import { checkResponse, providerFailure } from './errors.ts';
 
 export function openai(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl: typeof fetch): Provider {
   return { kind: 'openai-compatible', async *stream(req) {
@@ -24,15 +25,17 @@ export function openai(cfg: ProviderConfig, apiKey: string | undefined, fetchImp
           ...(req.tools.length ? { tools: req.tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.inputSchema } })) } : {}),
         }),
       });
-      const calls = new Map<number, { id: string; name: string; json: string; started: boolean }>();
+      // Keyed by `index`; servers that leave it out are keyed by call id, and a fragment with neither continues the latest call.
+      const calls = new Map<number | string, { id: string; name: string; json: string; started: boolean }>();
+      let latest: { id: string; name: string; json: string; started: boolean } | undefined;
       let usage: Usage = { inputTokens: 0, outputTokens: 0 }, stopReason: StopReason = 'end_turn';
       let finished = false;
       for await (const event of readSse(await checkResponse(response, apiKey))) {
         if (event.data === '[DONE]') {
           if (!finished) throw new Error('Provider stream missing finish reason');
-          for (const [, call] of [...calls].sort((a, b) => a[0] - b[0])) {
+          for (const [, call] of [...calls].sort((a, b) => typeof a[0] === 'number' && typeof b[0] === 'number' ? a[0] - b[0] : 0)) {
             if (!call.id || !call.name) throw new Error('Incomplete tool call');
-            yield { type: 'tool_call', id: call.id, name: call.name, input: parseInput(call.json) };
+            yield toolCall(call.id, call.name, call.json);
           }
           yield { type: 'done', stopReason, usage }; return;
         }
@@ -43,9 +46,11 @@ export function openai(cfg: ProviderConfig, apiKey: string | undefined, fetchImp
         if (!choice) continue;
         if (choice.delta?.content) yield { type: 'text_delta', text: choice.delta.content };
         for (const delta of choice.delta?.tool_calls ?? []) {
-          const call = calls.get(delta.index) ?? { id: '', name: '', json: '', started: false };
+          const key = delta.index ?? (delta.id ? `id:${delta.id}` : undefined);
+          let call = key === undefined ? latest : calls.get(key);
+          if (!call) { call = { id: '', name: '', json: '', started: false }; calls.set(key ?? calls.size, call); }
           call.id ||= delta.id ?? ''; call.name ||= delta.function?.name ?? ''; call.json += delta.function?.arguments ?? '';
-          calls.set(delta.index, call);
+          latest = call;
           if (call.id && call.name && !call.started) {
             call.started = true;
             yield { type: 'tool_call_start', id: call.id, name: call.name };
@@ -59,7 +64,7 @@ export function openai(cfg: ProviderConfig, apiKey: string | undefined, fetchImp
       throw new Error('Provider stream ended before [DONE]');
     } catch (error) {
       if (req.signal?.aborted) throw error;
-      throw safeError(error instanceof Error ? error.message : String(error), apiKey);
+      throw providerFailure(error, cfg, apiKey);
     }
   } };
 }

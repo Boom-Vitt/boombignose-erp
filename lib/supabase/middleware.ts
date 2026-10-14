@@ -9,7 +9,7 @@ import type { Database } from "@/lib/types/database"
 const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/api/webhooks", "/api/cron", "/portal"]
 
 function isPublic(pathname: string): boolean {
-  if (pathname === "/") return true
+  if (pathname === "/" || pathname === "/blueprint-preview") return true
   return PUBLIC_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   )

@@ -19,7 +19,7 @@ import type { LineGateway } from '../line/index.ts';
 import type { Agent, AgentEvent, ApprovalRequest, Approver, Config, HooksConfig, Message, Origin, Policy, ProviderConfig, Tool } from '../types.ts';
 import { createCleaner, safeValue } from './settings.ts';
 
-export type ApiEvent = (AgentEvent & { sessionId: string; runId: string })
+export type ApiEvent = (AgentEvent & { sessionId: string; runId: string; seq?: number /* text_delta, tool_start, tool_end: 1, 2, 3 ... per run */ })
   | { type: 'run_start'; sessionId: string; runId: string }
   | { type: 'session_updated'; sessionId: string }
   | { type: 'notification'; title: string; body: string; sessionId?: string };
@@ -34,7 +34,11 @@ export interface RuntimeOptions {
   config: () => Config; line: () => LineGateway | undefined;
   providerFactory?: typeof createProvider;
 }
-interface ActiveRun { runId: string; controller: AbortController; result: Promise<RunResult> }
+// The part of the running turn that is not in stored history yet: streamed text of the current provider call, and tool results
+// that wait for the rest of their batch. Tool calls without a result in stored history are the ones still running.
+interface LiveTool { callId: string; name: string; input: Record<string, unknown>; done: boolean; isError?: boolean; output?: string }
+interface Live { text: string; tools: Map<string, LiveTool>; seq: number /* of the last numbered event the text and tools above include */ }
+interface ActiveRun { runId: string; controller: AbortController; result: Promise<RunResult>; live: Live }
 interface PendingApproval { event: ApiEvent; decide: (ok: boolean) => void }
 
 function saveReport(home: string, target: string, text: string): string {
@@ -87,6 +91,11 @@ export class Runtime {
     return [...this.approvals.values()].map(a => safeValue(a.event, clean));
   }
   isRunning(sessionId: string): boolean { return this.runs.has(sessionId); }
+  /** What GET /api/sessions/:id adds while a run is going; undefined when none is. */
+  liveTurn(sessionId: string): { runId: string; seq: number; text: string; tools: LiveTool[] } | undefined {
+    const run = this.runs.get(sessionId);
+    return run && { runId: run.runId, seq: run.live.seq, text: run.live.text, tools: [...run.live.tools.values()] };
+  }
   interrupt(sessionId: string): boolean {
     const run = this.runs.get(sessionId);
     run?.controller.abort(); return !!run;
@@ -166,13 +175,24 @@ export class Runtime {
     const env = readEnv(this.opts.home);
     const controller = new AbortController(), runId = randomUUID();
     const redaction = this.cleaner();
+    // The turn is saved as it happens: the prompt and the title now, every finished step below, so a crash or kill keeps them.
+    // The same cleaning as the run end uses, applied when each step is saved; the end rewrites any row a later-learned secret reaches.
+    const saved: number[] = [];
+    let saveFailed = false;
+    const save = (...messages: Message[]) => {
+      const current = this.cleaner();
+      saved.push(...this.store.appendMessages(sessionId, safeValue(messages, text => current(redaction(text)))));
+    };
+    save({ role: 'user', content: [{ type: 'text', text: input }] });
+    if (!session.title) this.store.setTitle(sessionId, this.cleaner()(redaction(input)).replace(/\s+/g, ' ').slice(0, 80));
+    const live: Live = { text: '', tools: new Map(), seq: 0 };
     let textTail = '';
     const streamText = (text = '', flush = false) => {
       // Redact the joined buffer before cutting it, so a complete secret cannot straddle the release boundary.
       const current = this.cleaner();
       textTail = current(redaction(textTail + text));
       const cut = flush ? textTail.length : Math.max(0, textTail.length - Math.max(0, Math.max(redaction.maxSecretLength, current.maxSecretLength) - 1));
-      if (cut) this.emit({ type: 'text_delta', text: textTail.slice(0, cut), sessionId, runId });
+      if (cut) { live.text += textTail.slice(0, cut); this.emit({ type: 'text_delta', text: textTail.slice(0, cut), sessionId, runId, seq: ++live.seq }); }
       textTail = textTail.slice(cut);
     };
     // Start after the run is registered, so even an immediate provider completion cannot race the API.
@@ -202,7 +222,15 @@ export class Runtime {
         const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
         raw = await runAgent({ ...profile, system: [profile.system, nonOwner ? '' : profile.memory,
           origin.kind === 'line' ? 'You are replying in a LINE chat. Write plain text: short paragraphs, no Markdown headings, tables or bold markers, and put each URL on its own line. Keep answers brief unless the user asks for detail.' : ''].filter(Boolean).join('\n\n'), provider, tools, permissions, sessionId, origin, signal: controller.signal,
+          spillDir: join(this.opts.home, 'tool-results'), redact: text => this.cleaner()(redaction(text)),
           context, input: modelInput, approve: req => this.approve(req, runId, controller.signal, redaction, options.approve),
+          onMessage: m => {
+            if (m.role === 'assistant') streamText('', true); // the held-back tail is part of this message
+            // A failed save must not stop the run: that would leave the context with a tool_use nobody answered. Later saves are skipped
+            // so `saved` stays a prefix of the transcript, and the run end writes the rest.
+            if (!saveFailed) try { save(m); } catch { saveFailed = true; }
+            if (m.role === 'assistant') live.text = ''; else live.tools.clear(); // in stored history, or about to be
+          },
           onEvent: e => {
             if (e.type === 'text_delta') { streamText(e.text); return; }
             streamText('', true);
@@ -211,7 +239,9 @@ export class Runtime {
               // shortcut: cut previews lose a possible secret suffix; redact in the loop if all 2000 characters are needed.
               if (event.type === 'tool_end' && e.type === 'tool_end' && e.output.length === 2000)
                 event.output = event.output.slice(0, Math.max(0, event.output.length - Math.max(0, Math.max(redaction.maxSecretLength, this.cleaner().maxSecretLength) - 1)));
-              this.emit(event);
+              if (event.type === 'tool_start') live.tools.set(event.callId, { callId: event.callId, name: event.name, input: event.input, done: false });
+              else if (event.type === 'tool_end') Object.assign(live.tools.get(event.callId) ?? {}, { done: true, isError: event.isError, output: event.output });
+              this.emit(event.type === 'tool_start' || event.type === 'tool_end' ? { ...event, seq: ++live.seq } : event);
             }
           },
         });
@@ -222,7 +252,8 @@ export class Runtime {
       }
       const current = this.cleaner(), clean = (text: string) => current(redaction(text)), completed = safeValue(raw, clean);
       const transcript = slash ? [{ role: 'user' as const, content: [{ type: 'text' as const, text: clean(input) }] }, ...completed.added.slice(1)] : completed.added;
-      this.store.appendMessages(sessionId, transcript);
+      this.store.updateMessages(saved, transcript);
+      if (transcript.length > saved.length) this.store.appendMessages(sessionId, transcript.slice(saved.length)); // steps whose own save failed
       this.store.setContext(sessionId, nonOwner ? [...safeValue(session.context, clean),
         { role: 'user', content: [{ type: 'text', text: clean(input) }] },
         ...(completed.status !== 'error' && completed.text ? [{ role: 'assistant' as const, content: [{ type: 'text' as const, text: completed.text }] }] : [])] : completed.context);
@@ -235,14 +266,24 @@ export class Runtime {
           completed.status = 'error'; completed.error = clean(e instanceof Error ? e.message : String(e));
         }
       }
+      for (const [level, text] of this.outcome(completed)) this.store.addNotice(sessionId, level, text);
       this.runs.delete(sessionId);
-      this.emit({ type: 'run_end', status: completed.status, text: completed.text, ...(completed.error ? { error: completed.error } : {}), sessionId, runId });
+      this.emit({ type: 'run_end', status: completed.status, text: completed.text, ...(completed.error ? { error: completed.error } : {}), ...(completed.warning ? { warning: completed.warning } : {}), sessionId, runId });
       this.emit({ type: 'session_updated', sessionId });
       return completed;
     }).finally(() => { this.runs.delete(sessionId); });
-    this.runs.set(sessionId, { runId, controller, result });
+    this.runs.set(sessionId, { runId, controller, result, live });
     this.emit({ type: 'run_start', sessionId, runId });
     return { runId, result };
+  }
+  /** The notes a finished run leaves in its chat (stored with the session, so they survive a reload and a restart). */
+  private outcome(r: RunResult): ['info' | 'warn' | 'error', string][] {
+    const notes: ['info' | 'warn' | 'error', string][] = [];
+    if (r.status === 'interrupted') notes.push(['info', 'Stopped.']);
+    else if (r.status === 'max_turns') notes.push(['warn', 'Stopped at the turn limit. Send another message to continue.']);
+    else if (r.status === 'error') notes.push(['error', r.error ? `Error: ${r.error}` : 'The run failed.']);
+    if (r.warning) notes.push(['warn', r.warning]);
+    return notes;
   }
   async lineMessage(message: { to: string; userId: string; text: string }): Promise<string> {
     const origin: Origin = { kind: 'line', to: message.to };

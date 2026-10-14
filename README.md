@@ -78,7 +78,7 @@ BoomBigNose Company OS เป็น **Company OS / ERP แบบเบา ที
 
 - 📝 **Audit log + ประวัติกิจกรรม** — บันทึกการเปลี่ยนแปลงสำคัญทุกอย่าง เห็นได้ที่หน้า `/audit` (จำกัดเฉพาะ owner/admin)
 - 📤 **รายงาน & Export CSV** — ใบแจ้งหนี้ / ต้นทุน / ดีล (เป็นบาท, ป้องกัน CSV formula injection) + **saved views** + ตัวกรองผ่าน URL
-- 🤖 **ผู้ช่วย AI** — สรุปดีล, ร่างข้อความติดตาม, และ **สรุปโน้ตประชุม** ที่ `/intake` *(degrade อย่างสวยงาม: ถ้าไม่ตั้ง `ANTHROPIC_API_KEY` จะขึ้นข้อความ "ยังไม่ได้ตั้งค่า" โดยไม่ล่ม — ใส่คีย์เมื่อไรก็ทำงานจริงทันที)*
+- 🤖 **ผู้ช่วย AI** — สรุปดีล, ร่างข้อความติดตาม, และ **สรุปโน้ตประชุม** ที่ `/intake` *(degrade อย่างสวยงาม: ใช้ Gemini 4 ผ่าน OpenRouter — ถ้าไม่ตั้ง `OPENROUTER_API_KEY` จะขึ้นข้อความ "ยังไม่ได้ตั้งค่า" โดยไม่ล่ม — ใส่คีย์เมื่อไรก็ทำงานจริงทันที)*
 - ⏰ **ระบบติดตามอัตโนมัติ** — `/api/cron/followups` สแกนงานที่ถึงกำหนด → สร้าง `reminders` + คิว `outbound_events` (ให้ n8n/Hermes ไปส่ง LINE ต่อ)
 - 🧾 **โครงเชื่อมต่อระบบบัญชี** — เชื่อม FlowAccount/PEAK/Xero + ปุ่ม "Sync to accounting" บนใบแจ้งหนี้ *(การ push จริงเป็น stub ที่มี seam ชัดเจน — mapping และ record จริง; ไม่มี engine ออกใบกำกับภาษี ตามขอบเขตที่วางไว้)*
 - ✉️ **ทำ auth ให้พร้อมใช้จริง** — สมัครสมาชิก `/signup` + ยืนยันอีเมล + นโยบายรหัสผ่าน
@@ -96,7 +96,7 @@ BoomBigNose Company OS เป็น **Company OS / ERP แบบเบา ที
 | UI | **Tailwind CSS v4** · **shadcn/ui** (Base UI) · lucide-react · sonner |
 | Backend / DB | **Supabase** — Postgres + Auth + **Row Level Security** |
 | Validation / Forms | **Zod v4** · React Hook Form |
-| AI | **@anthropic-ai/sdk** (Claude — เปิดใช้เมื่อมีคีย์) |
+| AI | **Gemini 4 ผ่าน OpenRouter** (`fetch` ตรง ๆ — เปิดใช้เมื่อมีคีย์) |
 | ทดสอบ | **Vitest** (unit) · **Playwright** (e2e) |
 | Tooling | pnpm · ESLint · date-fns · TanStack Table |
 
@@ -165,8 +165,8 @@ pnpm dev                 # http://localhost:3000
 | `N8N_WEBHOOK_SECRET` | ✅ | secret สำหรับ webhook ขาเข้าจาก n8n (`X-Webhook-Secret`) |
 | `CRON_SECRET` | ✅ | secret สำหรับ endpoint สแกนงานติดตาม (`X-Cron-Secret`) |
 | `NEXT_PUBLIC_APP_URL` | ✅ | URL ของแอป (ใช้ทำลิงก์/redirect ตอนยืนยันอีเมล) |
-| `ANTHROPIC_API_KEY` | ⬜ | เปิดใช้ผู้ช่วย AI — ถ้าไม่ใส่ ฟีเจอร์ AI จะ degrade อย่างสวยงาม |
-| `ANTHROPIC_MODEL` | ⬜ | override โมเดล (ดีฟอลต์ `claude-opus-4-8`) |
+| `OPENROUTER_API_KEY` | ⬜ | เปิดใช้ผู้ช่วย AI (Gemini 4 ผ่าน OpenRouter) — ถ้าไม่ใส่ ฟีเจอร์ AI จะ degrade อย่างสวยงาม |
+| `OPENROUTER_MODEL` | ⬜ | override โมเดล (ดีฟอลต์ `google/gemini-4-argon`) |
 
 ---
 

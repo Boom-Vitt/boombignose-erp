@@ -96,7 +96,7 @@ test('every section 6 CRUD/status route has the documented JSON shape, auth, Hos
   assert.equal('pending' in line, false);
 
   const sid = (await call(a, '/api/sessions', 'POST', { title: 'test title' })).body.id;
-  assert.deepEqual((await call(a, `/api/sessions/${sid}`)).body, { id: sid, agentId: a.runtime.store.listAgents()[0]!.id, title: 'test title', messages: [] });
+  assert.deepEqual((await call(a, `/api/sessions/${sid}`)).body, { id: sid, agentId: a.runtime.store.listAgents()[0]!.id, title: 'test title', messages: [], notices: [], live: null });
   const sessions = (await call(a, '/api/sessions?limit=1')).body.sessions;
   assert.equal(sessions.length, 1); assert.deepEqual(Object.keys(sessions[0]).sort(), ['agentId', 'id', 'title', 'updatedAt']); assert.ok(sessions[0].updatedAt > 1e12);
   a.runtime.store.appendMessages(sid, [{ role: 'user', content: [{ type: 'text', text: 'ข้อความค้นหา' }] }]);
@@ -296,7 +296,9 @@ test('LINE requires both secrets, reloads live, and raises all allow tools to as
   while (!sent.some(b => b.messages.some((m: any) => m.template?.type === 'confirm'))) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   const confirm = sent.flatMap(b => b.messages).find(m => m.template?.type === 'confirm');
   assert.match(confirm.template.text, /read_file/);
-  assert.equal(a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' }, a.runtime.store.listAgents()[0]!.id)?.title, '');
+  // The prompt and title are saved when the run starts; the answer to the pending approval has not been given yet.
+  const pending = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' }, a.runtime.store.listAgents()[0]!.id)!;
+  assert.equal(pending.title, 'read evidence'); assert.equal(a.runtime.store.getMessages(pending.id).length, 2);
   await webhook({ type: 'postback', source: { type: 'group', groupId: 'group', userId: 'owner' }, postback: { data: confirm.template.actions[0].data } });
   while (a.runtime.replay().length) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   const session = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'group' }, a.runtime.store.listAgents()[0]!.id)!;
@@ -688,4 +690,57 @@ test('a failed LINE bind retries after the port is freed and identical secrets a
   await new Promise<void>(resolve => blocker.close(() => resolve()));
   assert.equal((await call(a, '/api/secrets', 'PUT', { name: 'LINE_CHANNEL_SECRET', value: 'test-secret' })).status, 200);
   assert.equal(a.lineStatus().running, true); assert.equal(a.lineStatus().port, port); assert.equal(a.lineStatus().lastError, undefined);
+});
+
+test('GET session during a run returns the user message and the live partial answer', async t => {
+  const streaming = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const provider: Provider = { kind: 'openai-compatible', async *stream(req) {
+    if (req.messages.length === 1) { yield { type: 'tool_call', id: 'c1', name: 'memory_read', input: {} }; yield { type: 'done', stopReason: 'tool_use', usage: { inputTokens: 0, outputTokens: 0 } }; return; }
+    yield { type: 'text_delta', text: 'half an ' }; yield { type: 'text_delta', text: 'answer ' + 'y'.repeat(150) };
+    streaming.resolve(); await release.promise;
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await app(t, { providerFactory: () => provider }), stream = await events(a, t);
+  const id = (await call(a, '/api/sessions', 'POST', {})).body.id;
+  const started = await call(a, `/api/sessions/${id}/messages`, 'POST', { text: 'MY QUESTION' });
+  try {
+    await streaming.promise;
+    const mid = (await call(a, `/api/sessions/${id}`)).body;
+    assert.equal(mid.title, 'MY QUESTION');
+    assert.deepEqual(mid.messages.map((m: any) => `${m.role}:${m.content.map((b: any) => b.type).join('+')}`), ['user:text', 'assistant:tool_use', 'user:tool_result']);
+    // Like the event stream, the snapshot keeps back the last (longest secret - 1) characters: the API token is the secret here.
+    const whole = 'half an answer ' + 'y'.repeat(150);
+    assert.deepEqual(stream.values.filter(e => e.seq !== undefined).map(e => e.seq), [1, 2, 3]); // tool_start, tool_end, one released text_delta
+    assert.deepEqual(mid.live, { runId: started.body.runId, seq: 3, text: whole.slice(0, whole.length - (a.token.length - 1)), tools: [] });
+    assert.deepEqual(mid.notices, []);
+  } finally { release.resolve(); }
+  await stream.wait(e => e.type === 'run_end');
+  const end = (await call(a, `/api/sessions/${id}`)).body;
+  assert.equal(end.live, null);
+  assert.equal(end.messages.length, 4); assert.equal(end.messages.at(-1).content[0].text, 'half an answer ' + 'y'.repeat(150));
+  assert.deepEqual(end.notices, []);
+});
+
+test('run errors are stored as notices and survive a restart', async t => {
+  const home = testHome(t);
+  configured(home);
+  const provider: Provider = { kind: 'openai-compatible', async *stream() { throw new Error('Provider HTTP 401: bad key'); } };
+  const settled = async (a: App, id: string) => { for (let i = 0; i < 200 && a.runtime.isRunning(id); i++) await new Promise(r => setTimeout(r, 10)); };
+  const first = await startDaemon({ home, providerFactory: () => provider });
+  t.after(() => first.close()); // close() is idempotent: this only matters when an assertion fails first
+  const id = (await call(first, '/api/sessions', 'POST', {})).body.id;
+  await call(first, `/api/sessions/${id}/messages`, 'POST', { text: 'hello?' });
+  await settled(first, id);
+  const before = (await call(first, `/api/sessions/${id}`)).body;
+  assert.deepEqual(before.notices.map((n: any) => [n.after, n.level, n.text]), [[1, 'error', 'Error: Provider HTTP 401: bad key']]);
+  await first.close();
+  const again = await app(t, { home, providerFactory: () => provider });
+  const after = (await call(again, `/api/sessions/${id}`)).body;
+  assert.deepEqual(after.notices, before.notices);
+  assert.equal(after.messages.length, 1); assert.equal(after.title, 'hello?');
+  // The next turn adds its own note after the old one, and the old one keeps its place.
+  await call(again, `/api/sessions/${id}/messages`, 'POST', { text: 'second' });
+  await settled(again, id);
+  const two = (await call(again, `/api/sessions/${id}`)).body;
+  assert.deepEqual(two.notices.map((n: any) => [n.after, n.level]), [[1, 'error'], [2, 'error']]);
 });

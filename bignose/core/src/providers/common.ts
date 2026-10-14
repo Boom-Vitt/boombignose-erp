@@ -1,5 +1,5 @@
 import { redact } from '../config.ts';
-import type { ProviderRequest } from '../types.ts';
+import type { ProviderEvent, ProviderRequest } from '../types.ts';
 
 export function safeError(text: string, apiKey?: string): Error {
   const values = apiKey ? [apiKey, JSON.stringify(apiKey).slice(1, -1)] : [];
@@ -17,8 +17,11 @@ export function parseInput(text: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export async function checkResponse(response: Response, apiKey?: string): Promise<ReadableStream<Uint8Array>> {
-  if (!response.ok) throw safeError(`Provider HTTP ${response.status}: ${await response.text()}`, apiKey);
-  if (!response.body) throw new Error('Provider returned an empty stream');
-  return response.body;
+/** A provider tool call, or the same call with the parse error when its arguments are unusable (the loop answers it with that error). */
+export function toolCall(id: string, name: string, json: string, fallback: Record<string, unknown> = {}): ProviderEvent {
+  try { return { type: 'tool_call', id, name, input: json ? parseInput(json) : fallback }; }
+  catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    return { type: 'tool_call', id, name, input: {}, error: `Invalid tool arguments: ${reason}. Send the call again with a complete JSON object.` };
+  }
 }

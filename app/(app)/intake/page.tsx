@@ -88,7 +88,7 @@ export default function IntakePage() {
 
             {state.status === "notConfigured" ? (
               <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
-                AI is not configured — add ANTHROPIC_API_KEY to enable.
+                AI is not configured — add OPENROUTER_API_KEY to enable.
               </p>
             ) : null}
           </CardContent>

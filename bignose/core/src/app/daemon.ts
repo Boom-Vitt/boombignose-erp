@@ -7,11 +7,10 @@ import type { SchedulerOptions } from '../cron/index.ts';
 import { createLineGateway, publicUrlProblem, webhookUrlFor } from '../line/index.ts';
 import type { LineGateway, LineGatewayOptions } from '../line/index.ts';
 import { createApiServer } from '../api/index.ts';
-import type { Config } from '../types.ts';
 import { Runtime } from './runtime.ts';
 import type { RuntimeOptions } from './runtime.ts';
 import { listModels } from '../providers/models.ts';
-import { isOllama } from '../providers/ollama.ts';
+import { isOllama, OLLAMA_DEFAULT_MODEL } from '../providers/ollama.ts';
 import { validateConfig } from './settings.ts';
 
 export interface DaemonOptions {
@@ -33,9 +32,8 @@ export async function startDaemon(options: DaemonOptions = {}) {
         const models = await listModels(provider, getApiKey(config, provider.id, home), (url, init) => fetchImpl(url, {
           ...init, signal: AbortSignal.any([init!.signal!, AbortSignal.timeout(2000), ...(options.signal ? [options.signal] : [])]),
         }));
-        const active = config.active.model;
-        if (!models.some(m => m.id === active || m.id === `${active}:latest`)) {
-          config.active.model = models.find(m => m.id.startsWith(`${active}:`))?.id ?? models[0]!.id;
+        if (!models.some(m => m.id === OLLAMA_DEFAULT_MODEL)) {
+          config.active.model = models.find(m => m.id.startsWith('qwen3:'))?.id ?? models[0]!.id;
           saveConfig(config, home);
         }
       } catch { /* Keep the default model when Ollama is unavailable or empty. */ }
@@ -46,6 +44,9 @@ export async function startDaemon(options: DaemonOptions = {}) {
   let line: LineGateway | undefined, lineFingerprint = '', lineError: string | undefined;
   const scheduler = new Scheduler({ store, onFire: job => runtime.fireJob(job), ...options.schedulerOptions });
   const runtime = new Runtime({ home, token, store, mcp, scheduler, config: () => config, line: () => line, providerFactory: options.providerFactory });
+  const testPorts = process.env.BIGNOSE_TEST_PORTS === '0';
+  const apiPort = testPorts ? 0 : config.api.port;
+  const linePort = () => testPorts && config.line.port === 47822 ? 0 : config.line.port;
   let operation: Promise<void> = Promise.resolve(), closed = false, closing: Promise<void> | undefined;
   const serial = (fn: () => Promise<void>) => {
     const next = operation.then(fn); operation = next.catch(() => {}); return next;
@@ -61,7 +62,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
       if (config.line.enabled && env.LINE_CHANNEL_ACCESS_TOKEN && env.LINE_CHANNEL_SECRET) {
         const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret: env.LINE_CHANNEL_SECRET, accessToken: env.LINE_CHANNEL_ACCESS_TOKEN,
           onMessage: m => runtime.lineMessage(m), seen, ...options.lineOptions });
-        try { await gateway.listen(config.line.port); line = gateway; }
+        try { await gateway.listen(linePort()); line = gateway; }
         catch (e) { await gateway.close(); lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); }
       }
     }
@@ -77,7 +78,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
     if (!Object.values(config.line.allow).some(ids => ids.length)) warnings.push('Nobody is allowed yet: add your LINE user ID (U…) under Allowed users.');
     const problem = publicUrl && publicUrlProblem(publicUrl);
     if (problem) warnings.push(problem);
-    return { enabled: config.line.enabled, running: status?.running ?? false, port: status?.port ?? config.line.port,
+    return { enabled: config.line.enabled, running: status?.running ?? false, port: status?.port ?? linePort(),
       agentId: runtime.lineAgent().id,
       publicUrl, webhookUrl, healthUrl: webhookUrl ? webhookUrl + '/health' : undefined, warnings,
       tokenSet: !!env.LINE_CHANNEL_ACCESS_TOKEN, secretSet: !!env.LINE_CHANNEL_SECRET,
@@ -114,7 +115,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
   options.signal?.addEventListener('abort', abort, { once: true });
   try {
     options.signal?.throwIfAborted();
-    const port = await api.listen(config.api.port);
+    const port = await api.listen(apiPort);
     options.signal?.throwIfAborted();
     const file = paths(home).daemon, tmp = `${file}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify({ pid: process.pid, port, version: VERSION, startedAt: Date.now() }) + '\n', { mode: 0o600 });

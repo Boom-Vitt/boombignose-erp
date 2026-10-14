@@ -10,6 +10,7 @@ import type { Config } from '../../src/types.ts';
 
 export function testHome(t: TestContext): string {
   const home = mkdtempSync(join(tmpdir(), 'bn-'));
+  process.env.BIGNOSE_TEST_PORTS = '0';
   t.after(() => rmSync(home, { recursive: true, force: true }));
   return home;
 }

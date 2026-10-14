@@ -21,7 +21,8 @@ export interface Usage { inputTokens: number; outputTokens: number }
 export type ProviderEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'tool_call_start'; id: string; name: string }                                  // as soon as the name is known
-  | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown> }       // arguments complete
+  | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown>;        // arguments complete
+      error?: string }                                                                      // set when they were malformed: input is {} and the loop answers the call with this error
   | { type: 'done'; stopReason: StopReason; usage: Usage };
 export interface Provider { readonly kind: ProviderKind; stream(req: ProviderRequest): AsyncIterable<ProviderEvent> }
 
@@ -60,7 +61,7 @@ export type AgentEvent =
   | { type: 'approval_request'; approvalId: string; tool: string; input: Record<string, unknown> }
   | { type: 'approval_result'; approvalId: string; allowed: boolean }
   | { type: 'compaction'; removedMessages: number }
-  | { type: 'run_end'; status: RunStatus; text: string; error?: string };
+  | { type: 'run_end'; status: RunStatus; text: string; error?: string; warning?: string };   // warning: finished, but cut at max_tokens or empty
 
 // ---- config (~/.bignose/config.json); secrets are never stored here
 export interface ProviderConfig {

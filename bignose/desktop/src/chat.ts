@@ -1,7 +1,7 @@
 // Chat screen: session list with search, streaming answer, live tool activity, approval cards, stop.
 import { ApiError } from './api.ts';
 import type { Api } from './api.ts';
-import type { Agent, ApiEvent, Command, Message, SessionSummary } from './types.ts';
+import type { Agent, ApiEvent, Command, LiveTurn, Message, Notice, SessionSummary } from './types.ts';
 import { btn, confirmBtn, el, errMsg, formatTime, guarded, renderText, select, field, toast } from './dom.ts';
 
 export interface Chat {
@@ -18,7 +18,7 @@ export interface Chat {
 }
 
 interface Approval { sessionId: string; tool: string; input: Record<string, unknown>; state: 'pending' | 'allowed' | 'denied'; card?: HTMLElement }
-interface ToolRow { root: HTMLElement; finish(isError: boolean, output: string): void }
+interface ToolRow { root: HTMLElement; done: boolean; finish(isError: boolean, output: string): void }
 
 const pretty = (v: unknown) => JSON.stringify(v, null, 2);
 const SUMMARY_PREFIX = '[Summary of earlier conversation]';
@@ -40,6 +40,9 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   let sending = false;
   let listTimer = 0;
   let live: { body: HTMLElement; text: string } | null = null;
+  let reading: ApiEvent[] | null = null; // text and tool events of the open chat that come in while its history is being read
+  let seen: { runId: string; seq: number } | null = null; // the newest numbered event already on screen
+  const runErrors = new Map<string, string>(); // run_end error per chat, shown when no stored note says it (see renderHistory)
   const running = new Set<string>();
   const approvals = new Map<string, Approval>();
   const tools = new Map<string, ToolRow>();
@@ -114,7 +117,9 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
         el('div', { class: 'tool-label' }, 'Result'), out));
     return {
       root: row,
+      done: false,
       finish(isError, output) {
+        this.done = true;
         status.className = `tool-status ${isError ? 'error' : 'done'}`;
         status.textContent = isError ? 'error' : 'done';
         out.textContent = output || '(no output)';
@@ -123,6 +128,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   }
 
   function addToolRow(callId: string, name: string, input: Record<string, unknown>): void {
+    if (tools.get(callId)?.done === false) return; // already on screen and running (restored from history or from the live turn); a finished call's id may come back in a later turn
     const row = toolRow(name, input);
     tools.set(callId, row);
     append(row.root);
@@ -161,23 +167,42 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     }
   }
 
-  function renderHistory(msgs: Message[]): void {
+  function renderHistory(msgs: Message[], notices: Notice[] = [], turn?: LiveTurn | null): void {
     historyLoadSeq = 0;
     messages.replaceChildren();
     tools.clear();
     live = null;
     if (!msgs.length) messages.appendChild(el('div', { class: 'empty' }, el('h2', {}, 'How can I help?'), el('p', { class: 'muted' }, 'Ask anything. BigNose can use tools, and asks before it changes anything.')));
-    for (const m of msgs) {
+    let next = 0;
+    const notesBefore = (index: number) => {
+      for (; next < notices.length && notices[next]!.after <= index; next++) note(notices[next]!.text, notices[next]!.level === 'info' ? '' : notices[next]!.level);
+    };
+    const answered = new Set<string>();
+    msgs.forEach((m, i) => {
+      notesBefore(i);
       for (const b of m.content) {
         if (b.type === 'text') {
           if (!b.text.trim()) continue;
           if (b.text.startsWith(SUMMARY_PREFIX)) note('Earlier messages were summarised to save space.');
           else bubble(m.role, b.text);
         } else if (b.type === 'tool_use') addToolRow(b.id, b.name, b.input);
-        else if (b.type === 'tool_result') tools.get(b.toolUseId)?.finish(!!b.isError, b.content);
+        else if (b.type === 'tool_result') { answered.add(b.toolUseId); tools.get(b.toolUseId)?.finish(!!b.isError, b.content); }
       }
-    }
+    });
+    notesBefore(Infinity);
     for (const text of notifications.get(currentId ?? '') ?? []) note(text);
+    const failed = currentId && runErrors.get(currentId);
+    if (failed && !notices.some(n => n.text === failed)) note(failed, 'error'); // the daemon could not store it
+    seen = turn && turn.seq !== undefined ? { runId: turn.runId, seq: turn.seq } : null;
+    if (turn) { // a run in progress: later deltas and tool_end events carry on in this bubble and these rows
+      if (turn.text) live = bubble('assistant', turn.text);
+      for (const t of turn.tools) {
+        addToolRow(t.callId, t.name, t.input);
+        if (t.done) tools.get(t.callId)!.finish(!!t.isError, t.output ?? '');
+      }
+    } else if (turn === null) { // no run is going: a call without a result was cut short (a crash or kill), it is not still running
+      for (const [callId, row] of tools) if (!answered.has(callId)) row.finish(true, 'Interrupted: the run did not finish.');
+    }
     messages.scrollTop = messages.scrollHeight;
   }
 
@@ -227,10 +252,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     historyLoadSeq = seq;
     messages.replaceChildren(el('p', { class: 'muted pad' }, 'Loading…'));
     try {
-      const s = await api.getSession(id);
-      if (seq !== loadSeq) return;
-      renderHistory(s.messages);
-      showApprovals();
+      await readHistory(id, seq);
     } catch (e) {
       if (seq !== loadSeq) return;
       historyLoadSeq = 0;
@@ -243,12 +265,25 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     if (!id) return;
     const seq = ++loadSeq;
     try {
-      const s = await api.getSession(id);
-      if (seq !== loadSeq || id !== currentId) return;
-      renderHistory(s.messages);
-      showApprovals();
+      await readHistory(id, seq);
     } catch (e) {
       toast(errMsg(e), 'error');
+    }
+  }
+
+  async function readHistory(id: string, seq: number): Promise<void> {
+    // Text and tool events that arrive during the read are held back and replayed after the render; the numbered ones the answer
+    // already includes are dropped by the `seen` check in onEvent, so nothing is lost and nothing is shown twice.
+    const held: ApiEvent[] = reading = [];
+    const current = () => seq === loadSeq && id === currentId;
+    try {
+      const s = await api.getSession(id);
+      if (!current()) return;
+      renderHistory(s.messages, s.notices, s.live);
+      showApprovals();
+    } finally {
+      if (reading === held) reading = null;
+      if (current()) for (const e of held) onEvent(e); // after the render, or after a failed read: show what came in meanwhile
     }
   }
 
@@ -397,7 +432,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       return;
     }
     const id = e.sessionId;
-    if (e.type === 'run_start') { running.add(id); scheduleList(); }
+    if (e.type === 'run_start') { running.add(id); runErrors.delete(id); scheduleList(); }
     else if (e.type !== 'run_end') running.add(id); // self-heals a missed run_start
     if (e.type === 'approval_request') {
       const a: Approval = { sessionId: id, tool: e.tool, input: e.input, state: 'pending' };
@@ -410,10 +445,18 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       if (a) { a.state = e.allowed ? 'allowed' : 'denied'; settleCard(a); renderList(); }
     } else if (e.type === 'run_end') {
       running.delete(id);
+      if (e.status === 'error' && e.error) runErrors.set(id, `Error: ${e.error}`);
       for (const [k, a] of approvals) if (a.sessionId === id) approvals.delete(k);
       renderList();
     }
     if (id !== currentId) return;
+    if (e.type === 'text_delta' || e.type === 'tool_start' || e.type === 'tool_end') {
+      if (reading) { reading.push(e); return; }
+      if (e.seq !== undefined) {
+        if (seen?.runId === e.runId && e.seq <= seen.seq) return; // the snapshot on screen already includes it
+        seen = { runId: e.runId, seq: e.seq };
+      }
+    }
 
     switch (e.type) {
       case 'run_start': live = null; break;
@@ -426,16 +469,10 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       case 'tool_start': live = null; addToolRow(e.callId, e.name, e.input); break;
       case 'tool_end': tools.get(e.callId)?.finish(e.isError, e.output); break;
       case 'compaction': note(`Earlier messages were summarised (${e.removedMessages} removed).`); break;
-      case 'run_end': {
+      case 'run_end': // the outcome note is stored with the session, so the reload brings it back in place
         live = null;
-        void reloadCurrent().then(() => {
-          if (currentId !== id) return;
-          if (e.status === 'interrupted') note('Stopped.');
-          else if (e.status === 'max_turns') note('Stopped at the turn limit. Send another message to continue.', 'warn');
-          else if (e.status === 'error') note(e.error ? `Error: ${e.error}` : 'The run failed.', 'error');
-        });
+        void reloadCurrent();
         break;
-      }
     }
     updateComposer();
   }

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "BigNose",
+  "productName": "BigNose OS",
   "mainBinaryName": "BigNose",
   "version": "0.1.0",
   "identifier": "com.boombignose.bignose",
@@ -13,7 +13,8 @@
     "windows": [
       {
         "label": "main",
-        "title": "BigNose",
+        "create": false,
+        "title": "BigNose OS",
         "width": 1180,
         "height": 780,
         "minWidth": 820,

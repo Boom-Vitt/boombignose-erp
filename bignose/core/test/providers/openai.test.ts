@@ -79,15 +79,25 @@ test('openai uses configured max tokens and auth, rejects illegal tool names bef
   assert.equal(fetched, 1);
 });
 
-test('openai rejects invalid JSON arguments and streams without DONE', async () => {
-  for (const text of [fixture('openai').replace('lo\\\"}', 'lo'), fixture('openai').split('data: [DONE]')[0]!]) {
-    const p = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, undefined, async () => streamed(text));
-    await assert.rejects(collect(p.stream(request)));
-  }
+test('openai turns invalid JSON arguments into a tool_call error and rejects streams without DONE', async () => {
+  const bad = fixture('openai').replace('lo\\\"}', 'lo');
+  const p = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, undefined, async () => streamed(bad));
+  const events = await collect(p.stream(request));
+  const failed = events.filter(e => e.type === 'tool_call' && e.error);
+  assert.equal(failed.length, 1);
+  assert.deepEqual((failed[0] as { input: unknown }).input, {});
+  assert.match((failed[0] as { error: string }).error, /^Invalid tool arguments: .*complete JSON object/s);
+  assert.equal(events.at(-1)?.type, 'done');
+  const cut = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, undefined, async () => streamed(fixture('openai').split('data: [DONE]')[0]!));
+  await assert.rejects(collect(cut.stream(request)));
+  const array = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, undefined, async () => streamed(
+    `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c', function: { name: 'read_file', arguments: '["a.txt"]' } }] }, finish_reason: 'tool_calls' }] })}\n\ndata: [DONE]\n\n`));
+  const call = (await collect(array.stream(request))).find(e => e.type === 'tool_call');
+  assert.deepEqual(call, { type: 'tool_call', id: 'c', name: 'read_file', input: {}, error: 'Invalid tool arguments: Tool arguments must be a JSON object. Send the call again with a complete JSON object.' });
 });
 
 test('openai non-2xx error is bounded and redacted', async () => {
-  const p = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, 'fake-value', async () => new Response('fake-value'.repeat(500), { status: 429 }));
+  const p = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, 'fake-value', async () => new Response('fake-value'.repeat(500), { status: 429 }), { sleep: async () => {} });
   await assert.rejects(collect(p.stream(request)), e => e instanceof Error && e.message.includes('429') && !e.message.includes('fake-value') && e.message.length < 1500);
 });
 
@@ -102,4 +112,22 @@ test('openai keeps first id and name when compatible servers repeat them in late
     { type: 'tool_call', id: 'call_b', name: 'search_files', input: { pattern: 'hello' } },
   ]);
   assert.equal(events.filter(e => e.type === 'tool_call_start').length, 2);
+});
+
+test('tool_call deltas without index are kept apart by id', async () => {
+  const chunk = (tool_calls: unknown[], finish?: string) => `data: ${JSON.stringify({ choices: [{ delta: { tool_calls }, ...(finish ? { finish_reason: finish } : {}) }] })}\n\n`;
+  const text = chunk([{ id: 'call_a', type: 'function', function: { name: 'read_file', arguments: '{"path":' } }])
+    + chunk([{ id: 'call_a', function: { arguments: '"a.txt"}' } }])
+    + chunk([{ id: 'call_b', type: 'function', function: { name: 'search_files', arguments: '{"pattern":"hello"}' } }], 'tool_calls')
+    + 'data: [DONE]\n\n';
+  const provider = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, undefined, async () => streamed(text));
+  const events = await collect(provider.stream(request));
+  assert.deepEqual(events.filter(e => e.type === 'tool_call'), [
+    { type: 'tool_call', id: 'call_a', name: 'read_file', input: { path: 'a.txt' } },
+    { type: 'tool_call', id: 'call_b', name: 'search_files', input: { pattern: 'hello' } },
+  ]);
+  // A fragment with neither index nor id continues the call that is being streamed.
+  const tail = chunk([{ id: 'call_c', function: { name: 'read_file', arguments: '{"path":' } }]) + chunk([{ function: { arguments: '"c.txt"}' } }], 'tool_calls') + 'data: [DONE]\n\n';
+  const next = createProvider({ id: 'o', kind: 'openai-compatible', baseUrl: 'https://example.invalid' }, undefined, async () => streamed(tail));
+  assert.deepEqual((await collect(next.stream(request))).filter(e => e.type === 'tool_call'), [{ type: 'tool_call', id: 'call_c', name: 'read_file', input: { path: 'c.txt' } }]);
 });

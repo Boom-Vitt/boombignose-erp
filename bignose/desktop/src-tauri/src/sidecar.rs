@@ -61,6 +61,11 @@ impl Sidecar {
         ))
     }
 
+    /// True while a daemon this app spawned is running.
+    pub fn spawned(&self) -> bool {
+        self.child_alive()
+    }
+
     /// Stop the daemon only if this app spawned it.
     pub fn stop(&self) {
         let child = self.0.child.lock().ok().and_then(|mut c| c.take());
@@ -89,7 +94,7 @@ impl Sidecar {
     }
 }
 
-fn home_dir() -> Result<PathBuf, String> {
+pub fn home_dir() -> Result<PathBuf, String> {
     if let Some(h) = std::env::var_os("BIGNOSE_HOME").filter(|h| !h.is_empty()) {
         return Ok(PathBuf::from(h));
     }
@@ -198,10 +203,20 @@ fn find_node(shell: &Shell) -> Result<String, String> {
     ))
 }
 
-fn spawn_daemon(home: &Path, core: &Path) -> Result<Child, String> {
-    let cli = core.join("src/cli.ts");
-    if !cli.is_file() {
-        return Err(format!("BigNose core not found at {}", cli.display()));
+/// The Node the daemon runs on and the login-shell PATH around it (a Finder launch has neither).
+#[derive(Clone)]
+pub struct NodeRuntime {
+    pub node: String,
+    pub path: String,
+}
+
+static RUNTIME: Mutex<Option<NodeRuntime>> = Mutex::new(None);
+
+/// Probes the login shell once; only a success is remembered, so installing Node later still works.
+pub fn node_runtime() -> Result<NodeRuntime, String> {
+    let mut cached = RUNTIME.lock().map_err(|_| "internal lock error".to_string())?;
+    if let Some(r) = cached.as_ref() {
+        return Ok(r.clone());
     }
     let shell = login_shell();
     let node = find_node(&shell)?;
@@ -210,7 +225,17 @@ fn spawn_daemon(home: &Path, core: &Path) -> Result<Child, String> {
         .path
         .or_else(|| std::env::var("PATH").ok())
         .unwrap_or_else(|| "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".into());
-    let path = format!("{node_dir}:{base}");
+    let runtime = NodeRuntime { node, path: format!("{node_dir}:{base}") };
+    *cached = Some(runtime.clone());
+    Ok(runtime)
+}
+
+fn spawn_daemon(home: &Path, core: &Path) -> Result<Child, String> {
+    let cli = core.join("src/cli.ts");
+    if !cli.is_file() {
+        return Err(format!("BigNose core not found at {}", cli.display()));
+    }
+    let NodeRuntime { node, path } = node_runtime()?;
 
     let logs = home.join("logs");
     DirBuilder::new().recursive(true).mode(0o700).create(&logs).map_err(|e| format!("Cannot create {}: {e}", logs.display()))?;
