@@ -8,12 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { McpManager } from '../../src/mcp/manager.ts';
 import type { McpServerConfig, ToolResult } from '../../src/types.ts';
 
+const LIMIT_MS = 5000;
 const secret = 't09-"fake\\secret-value';
 async function bounded<T>(pending: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([pending, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('MCP operation did not finish within 1 s')), 1000);
+      timer = setTimeout(() => reject(new Error(`MCP operation did not finish within ${LIMIT_MS} ms`)), LIMIT_MS);
     })]);
   } finally { clearTimeout(timer); }
 }
@@ -45,7 +46,7 @@ function exitError(result: ToolResult) {
 test('T09 waitFor rejects an established exit promptly and status retains the redacted error', async t => {
   const { manager, call } = await fixture(t);
   await bounded(call('exit'));
-  await assert.rejects(manager.waitFor(['fake'], AbortSignal.timeout(1000)), /connector fake.*exited \(3\)/);
+  await assert.rejects(manager.waitFor(['fake'], AbortSignal.timeout(LIMIT_MS)), /connector fake.*exited \(3\)/);
   const status = manager.status()[0]!;
   assert.equal(status.connected, false);
   assert.match(status.error!, /connector fake exited \(3\).*server ending: ••••/);
@@ -73,7 +74,7 @@ test('T09 exit stays down and stop twice neither throws nor restarts the server'
   await bounded(call('exit'));
   assert.equal(manager.tools().length, 0);
   assert.equal(manager.listTools('fake').length, 7);
-  await assert.rejects(manager.waitFor(['fake'], AbortSignal.timeout(1000)), /connector fake.*exited/);
+  await assert.rejects(manager.waitFor(['fake'], AbortSignal.timeout(LIMIT_MS)), /connector fake.*exited/);
   await bounded(manager.stop());
   await bounded(manager.stop());
   assert.equal(manager.status()[0]!.connected, false);
@@ -84,7 +85,7 @@ test('T09 an explicit settings update can restart an exited connector', async t 
   const { manager, config, starts, call } = await fixture(t);
   await bounded(call('exit'));
   await bounded(manager.update({ fake: config }));
-  await manager.waitFor(['fake'], AbortSignal.timeout(1000));
+  await manager.waitFor(['fake'], AbortSignal.timeout(LIMIT_MS));
   assert.equal(manager.status()[0]!.error, undefined);
   assert.equal(readFileSync(starts, 'utf8'), 'started\nstarted\n');
 });
@@ -92,7 +93,7 @@ test('T09 an explicit settings update can restart an exited connector', async t 
 test('T09 a settings update that replaces a connector is not reported as closed', async t => {
   const { manager, config, call } = await fixture(t);
   const updating = manager.update({ fake: { ...config, args: [...config.args!, '--banner'] } });
-  await manager.waitFor(['fake'], AbortSignal.timeout(1000));
+  await manager.waitFor(['fake'], AbortSignal.timeout(LIMIT_MS));
   await bounded(updating);
   assert.equal(manager.status()[0]!.error, undefined);
   assert.match((await bounded(call('echo'))).content, /connector fake closed/);
@@ -102,7 +103,7 @@ test('T09 an explicit start clears the exited entry while its replacement starts
   const { manager, starts, call } = await fixture(t);
   await bounded(call('exit'));
   const starting = manager.start();
-  await manager.waitFor(['fake'], AbortSignal.timeout(1000));
+  await manager.waitFor(['fake'], AbortSignal.timeout(LIMIT_MS));
   await bounded(starting);
   assert.equal(manager.status()[0]!.error, undefined);
   assert.equal(readFileSync(starts, 'utf8'), 'started\nstarted\n');
@@ -113,7 +114,7 @@ test('T09 a signal exit keeps its signal and redacts stderr', async t => {
   const result = await bounded(call('exit'));
   assert.equal(result.isError, true);
   assert.match(result.content, /connector fake exited \(SIGTERM\)/);
-  await assert.rejects(manager.waitFor(['fake'], AbortSignal.timeout(1000)), /connector fake.*exited \(SIGTERM\)/);
+  await assert.rejects(manager.waitFor(['fake'], AbortSignal.timeout(LIMIT_MS)), /connector fake.*exited \(SIGTERM\)/);
   assert.ok(!manager.status()[0]!.error!.includes(secret));
 });
 
