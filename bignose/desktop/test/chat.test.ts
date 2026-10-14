@@ -456,17 +456,63 @@ test('stream reconnect keeps the live turn', async t => {
   assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['partial more and more end']);
 });
 
-test('an event that arrives while the history loads makes the chat read it again', async t => {
+test('events that arrive while the history loads are applied once, after the render', async t => {
   t.after(installDom());
   const first = Promise.withResolvers<Response>();
   let reads = 0;
-  const { chat, open, messages } = historySetup(async id => ++reads === 1 ? first.promise
-    : detail(id, { messages: [said('user', 'q')], live: { runId: 'r1', text: 'ab', tools: [] } }));
+  const { chat, open, messages } = historySetup(async id => ++reads === 1 ? first.promise : assert.fail('no second read'));
   await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
   open('s1'); await flush();
-  chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', text: 'b' }); // emitted after the first answer was computed
-  first.resolve(detail('s1', { messages: [said('user', 'q')], live: { runId: 'r1', text: 'a', tools: [] } }));
-  for (let i = 0; i < 4; i++) await flush();
-  assert.equal(reads, 2);
-  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['ab']);
+  const delta = (seq: number, text: string) => chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', seq, text });
+  // The daemon answered with the text up to event 1; events 1 and 2 reach the client before the answer does.
+  delta(1, 'a'); delta(2, 'b');
+  first.resolve(detail('s1', { messages: [said('user', 'q')], live: { runId: 'r1', seq: 1, text: 'a', tools: [] } }));
+  for (let i = 0; i < 3; i++) await flush();
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['ab']); // 1 was in the answer, 2 was not: ABCD never becomes ABD or AABCD
+  delta(2, 'b'); delta(3, 'c'); // a late copy of 2 is ignored
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['abc']);
+  assert.equal(reads, 1);
+});
+
+test('a restore in the middle of a batch does not add a second row for the next tool', async t => {
+  t.after(installDom());
+  const batch = { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'list_files', input: {} }, { type: 'tool_use', id: 'c2', name: 'list_files', input: {} }] };
+  const { chat, open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'q'), batch], live: { runId: 'r1', seq: 2, text: '', tools: [{ callId: 'c1', name: 'list_files', input: {}, done: false }] } }));
+  await flush(); chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  open('s1'); await flush();
+  assert.equal(messages.querySelectorAll('.tool').length, 2);
+  const end = (seq: number, callId: string) => chat.onEvent({ type: 'tool_end', sessionId: 's1', runId: 'r1', seq, callId, name: 'list_files', isError: false, output: 'ok' });
+  end(3, 'c1');
+  chat.onEvent({ type: 'tool_start', sessionId: 's1', runId: 'r1', seq: 4, callId: 'c2', name: 'list_files', input: {} });
+  end(5, 'c2');
+  assert.equal(messages.querySelectorAll('.tool').length, 2);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['done', 'done']);
+});
+
+test('a tool call without a result is not shown as running when no run is going', async t => {
+  t.after(installDom());
+  let live: unknown = null;
+  const { chat, open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'q'), usedTool('c1', 'write_file')], live }));
+  await flush(); open('s1'); await flush(); // the daemon was killed mid-run: the call has no result and nothing is running
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => [s.className.trim(), s.textContent]), [['tool-status error', 'error']]);
+  assert.match(messages.querySelector('.tool-out')!.textContent, /did not finish/);
+  live = { runId: 'r1', seq: 1, text: '', tools: [] }; // while a run is going the same call really is running
+  chat.refresh(); await flush();
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['running']);
+});
+
+test('a run_end error is shown when the daemon could not store a note', async t => {
+  t.after(installDom());
+  const reads: PromiseWithResolvers<Response>[] = [];
+  const { chat, open, messages } = historySetup(() => { const read = Promise.withResolvers<Response>(); reads.push(read); return read.promise; });
+  await flush(); open('s1'); reads[0]!.resolve(detail('s1', { messages: [said('user', 'hello?')] })); await flush();
+  chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  chat.onEvent({ type: 'run_end', sessionId: 's1', runId: 'r1', status: 'error', text: '', error: 'disk full' });
+  chat.onEvent({ type: 'session_updated', sessionId: 's1' });
+  for (const read of reads.slice(1)) { read.resolve(detail('s1', { messages: [said('user', 'hello?')], notices: [] })); await flush(); }
+  assert.deepEqual(messages.querySelectorAll('.note').map(n => [n.className.trim(), n.textContent]), [['note error', 'Error: disk full']]);
+  // The next run starts clean.
+  chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r2' });
+  chat.refresh(); await flush(); reads.at(-1)!.resolve(detail('s1', { messages: [said('user', 'again')], live: { runId: 'r2', seq: 0, text: '', tools: [] } })); await flush();
+  assert.equal(messages.querySelectorAll('.note').length, 0);
 });

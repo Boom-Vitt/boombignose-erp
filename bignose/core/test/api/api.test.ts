@@ -710,7 +710,8 @@ test('GET session during a run returns the user message and the live partial ans
     assert.deepEqual(mid.messages.map((m: any) => `${m.role}:${m.content.map((b: any) => b.type).join('+')}`), ['user:text', 'assistant:tool_use', 'user:tool_result']);
     // Like the event stream, the snapshot keeps back the last (longest secret - 1) characters: the API token is the secret here.
     const whole = 'half an answer ' + 'y'.repeat(150);
-    assert.deepEqual(mid.live, { runId: started.body.runId, text: whole.slice(0, whole.length - (a.token.length - 1)), tools: [] });
+    assert.deepEqual(stream.values.filter(e => e.seq !== undefined).map(e => e.seq), [1, 2, 3]); // tool_start, tool_end, one released text_delta
+    assert.deepEqual(mid.live, { runId: started.body.runId, seq: 3, text: whole.slice(0, whole.length - (a.token.length - 1)), tools: [] });
     assert.deepEqual(mid.notices, []);
   } finally { release.resolve(); }
   await stream.wait(e => e.type === 'run_end');

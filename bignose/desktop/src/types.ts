@@ -51,9 +51,9 @@ type Tag = { sessionId: string; runId: string };
 export type RunStatus = 'done' | 'interrupted' | 'max_turns' | 'error';
 export type ApiEvent =
   | ({ type: 'run_start' } & Tag)
-  | ({ type: 'text_delta'; text: string } & Tag)
-  | ({ type: 'tool_start'; callId: string; name: string; input: Record<string, unknown> } & Tag)
-  | ({ type: 'tool_end'; callId: string; name: string; isError: boolean; output: string } & Tag)
+  | ({ type: 'text_delta'; text: string; seq?: number } & Tag)   // seq: numbers text_delta, tool_start and tool_end per run
+  | ({ type: 'tool_start'; callId: string; name: string; input: Record<string, unknown>; seq?: number } & Tag)
+  | ({ type: 'tool_end'; callId: string; name: string; isError: boolean; output: string; seq?: number } & Tag)
   | ({ type: 'approval_request'; approvalId: string; tool: string; input: Record<string, unknown> } & Tag)
   | ({ type: 'approval_result'; approvalId: string; allowed: boolean } & Tag)
   | ({ type: 'compaction'; removedMessages: number } & Tag)
@@ -78,7 +78,7 @@ export interface SessionSummary { id: string; agentId: string; title: string; up
 export type NoticeLevel = 'info' | 'warn' | 'error';
 export interface Notice { after: number; level: NoticeLevel; text: string; at: number }
 export interface LiveTool { callId: string; name: string; input: Record<string, unknown>; done: boolean; isError?: boolean; output?: string }
-export interface LiveTurn { runId: string; text: string; tools: LiveTool[] }
+export interface LiveTurn { runId: string; seq?: number /* of the last numbered event this snapshot includes */; text: string; tools: LiveTool[] }
 export interface SessionDetail { id: string; agentId: string; title: string; messages: Message[]; notices?: Notice[]; live?: LiveTurn | null }
 export interface Settings { config: Config; secrets: Record<string, string> }
 export interface McpServerInfo {

@@ -19,7 +19,7 @@ import type { LineGateway } from '../line/index.ts';
 import type { Agent, AgentEvent, ApprovalRequest, Approver, Config, HooksConfig, Message, Origin, Policy, ProviderConfig, Tool } from '../types.ts';
 import { createCleaner, safeValue } from './settings.ts';
 
-export type ApiEvent = (AgentEvent & { sessionId: string; runId: string })
+export type ApiEvent = (AgentEvent & { sessionId: string; runId: string; seq?: number /* text_delta, tool_start, tool_end: 1, 2, 3 ... per run */ })
   | { type: 'run_start'; sessionId: string; runId: string }
   | { type: 'session_updated'; sessionId: string }
   | { type: 'notification'; title: string; body: string; sessionId?: string };
@@ -37,7 +37,7 @@ export interface RuntimeOptions {
 // The part of the running turn that is not in stored history yet: streamed text of the current provider call, and tool results
 // that wait for the rest of their batch. Tool calls without a result in stored history are the ones still running.
 interface LiveTool { callId: string; name: string; input: Record<string, unknown>; done: boolean; isError?: boolean; output?: string }
-interface Live { text: string; tools: Map<string, LiveTool> }
+interface Live { text: string; tools: Map<string, LiveTool>; seq: number /* of the last numbered event the text and tools above include */ }
 interface ActiveRun { runId: string; controller: AbortController; result: Promise<RunResult>; live: Live }
 interface PendingApproval { event: ApiEvent; decide: (ok: boolean) => void }
 
@@ -92,9 +92,9 @@ export class Runtime {
   }
   isRunning(sessionId: string): boolean { return this.runs.has(sessionId); }
   /** What GET /api/sessions/:id adds while a run is going; undefined when none is. */
-  liveTurn(sessionId: string): { runId: string; text: string; tools: LiveTool[] } | undefined {
+  liveTurn(sessionId: string): { runId: string; seq: number; text: string; tools: LiveTool[] } | undefined {
     const run = this.runs.get(sessionId);
-    return run && { runId: run.runId, text: run.live.text, tools: [...run.live.tools.values()] };
+    return run && { runId: run.runId, seq: run.live.seq, text: run.live.text, tools: [...run.live.tools.values()] };
   }
   interrupt(sessionId: string): boolean {
     const run = this.runs.get(sessionId);
@@ -184,14 +184,14 @@ export class Runtime {
     };
     save({ role: 'user', content: [{ type: 'text', text: input }] });
     if (!session.title) this.store.setTitle(sessionId, this.cleaner()(redaction(input)).replace(/\s+/g, ' ').slice(0, 80));
-    const live: Live = { text: '', tools: new Map() };
+    const live: Live = { text: '', tools: new Map(), seq: 0 };
     let textTail = '';
     const streamText = (text = '', flush = false) => {
       // Redact the joined buffer before cutting it, so a complete secret cannot straddle the release boundary.
       const current = this.cleaner();
       textTail = current(redaction(textTail + text));
       const cut = flush ? textTail.length : Math.max(0, textTail.length - Math.max(0, Math.max(redaction.maxSecretLength, current.maxSecretLength) - 1));
-      if (cut) { live.text += textTail.slice(0, cut); this.emit({ type: 'text_delta', text: textTail.slice(0, cut), sessionId, runId }); }
+      if (cut) { live.text += textTail.slice(0, cut); this.emit({ type: 'text_delta', text: textTail.slice(0, cut), sessionId, runId, seq: ++live.seq }); }
       textTail = textTail.slice(cut);
     };
     // Start after the run is registered, so even an immediate provider completion cannot race the API.
@@ -238,7 +238,7 @@ export class Runtime {
                 event.output = event.output.slice(0, Math.max(0, event.output.length - Math.max(0, Math.max(redaction.maxSecretLength, this.cleaner().maxSecretLength) - 1)));
               if (event.type === 'tool_start') live.tools.set(event.callId, { callId: event.callId, name: event.name, input: event.input, done: false });
               else if (event.type === 'tool_end') Object.assign(live.tools.get(event.callId) ?? {}, { done: true, isError: event.isError, output: event.output });
-              this.emit(event);
+              this.emit(event.type === 'tool_start' || event.type === 'tool_end' ? { ...event, seq: ++live.seq } : event);
             }
           },
         });

@@ -231,6 +231,7 @@ test('a running turn is visible in stored history', async t => {
     yield { type: 'text_delta', text: 'answer' }; yield done;
   } }));
   const session = h.store.createSession({ origin: { kind: 'desktop' }, agentId: h.store.listAgents()[0]!.id });
+  const events: any[] = []; h.runtime.subscribe(e => events.push(e));
   const run = h.runtime.start(session.id, 'work');
   try {
     await second.promise;
@@ -239,7 +240,11 @@ test('a running turn is visible in stored history', async t => {
     try {
       assert.deepEqual(reopened.getMessages(session.id).map(m => `${m.role}:${m.content.map(b => b.type).join('+')}`), ['user:text', 'assistant:text+tool_use', 'user:tool_result']);
     } finally { reopened.close(); }
-    assert.deepEqual(h.runtime.liveTurn(session.id), { runId: run.runId, text: 'partial ', tools: [] });
+    // Text, tool start and tool end events are numbered 1, 2, 3 ... per run; the snapshot says which of them it already includes.
+    const numbered = events.filter(e => e.seq !== undefined);
+    assert.deepEqual(numbered.map(e => e.type), ['text_delta', 'tool_start', 'tool_end', 'text_delta']);
+    assert.deepEqual(numbered.map(e => e.seq), [1, 2, 3, 4]);
+    assert.deepEqual(h.runtime.liveTurn(session.id), { runId: run.runId, seq: 4, text: 'partial ', tools: [] });
   } finally { release.resolve(); }
   await run.result;
   assert.deepEqual(h.store.getMessages(session.id).map(m => m.role), ['user', 'assistant', 'user', 'assistant']);

@@ -40,7 +40,9 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   let sending = false;
   let listTimer = 0;
   let live: { body: HTMLElement; text: string } | null = null;
-  let dirty = false; // an event for the open chat came in while its history was being read
+  let reading: ApiEvent[] | null = null; // text and tool events of the open chat that come in while its history is being read
+  let seen: { runId: string; seq: number } | null = null; // the newest numbered event already on screen
+  const runErrors = new Map<string, string>(); // run_end error per chat, shown when no stored note says it (see renderHistory)
   const running = new Set<string>();
   const approvals = new Map<string, Approval>();
   const tools = new Map<string, ToolRow>();
@@ -124,6 +126,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   }
 
   function addToolRow(callId: string, name: string, input: Record<string, unknown>): void {
+    if (tools.has(callId)) return; // already on screen (restored from history or from the live turn)
     const row = toolRow(name, input);
     tools.set(callId, row);
     append(row.root);
@@ -172,6 +175,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     const notesBefore = (index: number) => {
       for (; next < notices.length && notices[next]!.after <= index; next++) note(notices[next]!.text, notices[next]!.level === 'info' ? '' : notices[next]!.level);
     };
+    const answered = new Set<string>();
     msgs.forEach((m, i) => {
       notesBefore(i);
       for (const b of m.content) {
@@ -180,17 +184,22 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
           if (b.text.startsWith(SUMMARY_PREFIX)) note('Earlier messages were summarised to save space.');
           else bubble(m.role, b.text);
         } else if (b.type === 'tool_use') addToolRow(b.id, b.name, b.input);
-        else if (b.type === 'tool_result') tools.get(b.toolUseId)?.finish(!!b.isError, b.content);
+        else if (b.type === 'tool_result') { answered.add(b.toolUseId); tools.get(b.toolUseId)?.finish(!!b.isError, b.content); }
       }
     });
     notesBefore(Infinity);
     for (const text of notifications.get(currentId ?? '') ?? []) note(text);
+    const failed = currentId && runErrors.get(currentId);
+    if (failed && !notices.some(n => n.text === failed)) note(failed, 'error'); // the daemon could not store it
+    seen = turn && turn.seq !== undefined ? { runId: turn.runId, seq: turn.seq } : null;
     if (turn) { // a run in progress: later deltas and tool_end events carry on in this bubble and these rows
       if (turn.text) live = bubble('assistant', turn.text);
       for (const t of turn.tools) {
-        if (!tools.has(t.callId)) addToolRow(t.callId, t.name, t.input);
+        addToolRow(t.callId, t.name, t.input);
         if (t.done) tools.get(t.callId)!.finish(!!t.isError, t.output ?? '');
       }
+    } else if (turn === null) { // no run is going: a call without a result was cut short (a crash or kill), it is not still running
+      for (const [callId, row] of tools) if (!answered.has(callId)) row.finish(true, 'Interrupted: the run did not finish.');
     }
     messages.scrollTop = messages.scrollHeight;
   }
@@ -261,16 +270,17 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   }
 
   async function readHistory(id: string, seq: number): Promise<void> {
-    for (let pass = 0; ; pass++) {
-      dirty = false;
+    // Text and tool events that arrive during the read are held back and replayed after the render; the numbered ones the answer
+    // already includes are dropped by the `seen` check in onEvent, so nothing is lost and nothing is shown twice.
+    const held: ApiEvent[] = reading = [];
+    try {
       const s = await api.getSession(id);
       if (seq !== loadSeq || id !== currentId) return;
-      // An event that arrived during the read may or may not be in this answer, and would otherwise be lost: read again (twice at most).
-      if (dirty && pass < 2) continue;
       renderHistory(s.messages, s.notices, s.live);
       showApprovals();
-      return;
-    }
+      reading = null;
+      for (const e of held) onEvent(e);
+    } finally { if (reading === held) reading = null; }
   }
 
   // ---- agents and commands
@@ -418,7 +428,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       return;
     }
     const id = e.sessionId;
-    if (e.type === 'run_start') { running.add(id); scheduleList(); }
+    if (e.type === 'run_start') { running.add(id); runErrors.delete(id); scheduleList(); }
     else if (e.type !== 'run_end') running.add(id); // self-heals a missed run_start
     if (e.type === 'approval_request') {
       const a: Approval = { sessionId: id, tool: e.tool, input: e.input, state: 'pending' };
@@ -431,11 +441,18 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       if (a) { a.state = e.allowed ? 'allowed' : 'denied'; settleCard(a); renderList(); }
     } else if (e.type === 'run_end') {
       running.delete(id);
+      if (e.status === 'error' && e.error) runErrors.set(id, `Error: ${e.error}`);
       for (const [k, a] of approvals) if (a.sessionId === id) approvals.delete(k);
       renderList();
     }
     if (id !== currentId) return;
-    if (e.type === 'text_delta' || e.type === 'tool_start' || e.type === 'tool_end') dirty = true;
+    if (e.type === 'text_delta' || e.type === 'tool_start' || e.type === 'tool_end') {
+      if (reading) { reading.push(e); return; }
+      if (e.seq !== undefined) {
+        if (seen?.runId === e.runId && e.seq <= seen.seq) return; // the snapshot on screen already includes it
+        seen = { runId: e.runId, seq: e.seq };
+      }
+    }
 
     switch (e.type) {
       case 'run_start': live = null; break;

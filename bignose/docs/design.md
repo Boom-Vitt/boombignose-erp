@@ -1019,14 +1019,25 @@ crash, a reload, a chat switch or an event-stream reconnect does not lose it.
 
 ### 16.3 Live turn (`GET /api/sessions/:id`)
 - Response: `{id, agentId, title, messages, notices, live}`. `live` is `null` unless a run is active; then
-  `{runId, text, tools: [{callId, name, input, done, isError?, output?}]}`: `text` is the streamed text of the current provider call
+  `{runId, seq, text, tools: [{callId, name, input, done, isError?, output?}]}`: `text` is the streamed text of the current provider call
   (what the event stream has released: the same last-(longest secret - 1)-characters hold-back applies) and `tools` are the calls of
-  the current step that started (a result moves into `messages` when its batch is saved). A tool call in `messages` without a result
-  is still running. Messages, notices and `live` come from one synchronous read, so they agree.
+  the current step that started (a result moves into `messages` when its batch is saved). While a run is active, a tool call in `messages`
+  without a result is still running. Messages, notices and `live` come from one synchronous read, so they agree.
+- Event numbering: the runtime numbers the `text_delta`, `tool_start` and `tool_end` events of a run 1, 2, 3 ... (`seq`, on the
+  event next to `runId`; other events have none). `live.seq` is the number of the last such event that `live.text` and
+  `live.tools` include (0 before the first), and `live.runId` names the run, so a client can tell which events a snapshot already holds.
 - Desktop (`desktop/src/chat.ts`): `renderHistory(messages, notices, live)` renders notices between messages by `after`, then the
   live text as the open assistant bubble and live tools on their rows, so later `text_delta` and `tool_end` events continue the same
-  bubble and row. This runs for opening a chat, switching back to one, and `refresh()` after an event-stream reconnect. `run_end` no
-  longer builds its own note: it reloads the session, and the stored note comes back with it, so `session_updated` cannot wipe it.
-  If a `text_delta`, `tool_start` or `tool_end` for the open chat arrives while its history is being read, the read is repeated
-  (twice at most) so the answer and the stream line up. `running` still comes only from the event stream (replayed `run_start`).
-
+  bubble and row. This runs for opening a chat, switching back to one, and `refresh()` after an event-stream reconnect.
+  - Tool rows are keyed by `callId`: a `tool_start` for a call already on screen (restored from history or from `live`) reuses its row.
+  - Events and snapshots line up by `seq`. While a read is in flight the chat holds back text and tool events for the open chat;
+    after the render it records `{runId, seq}` of the snapshot and replays the held events through the same check. An event of the
+    same run with `seq` at or below the recorded one is dropped (already in the snapshot, or a late copy), any other is applied
+    and advances the record. No re-read is needed, and no text is lost or shown twice. Events without `seq` (an older daemon)
+    are always applied. `running` still comes only from the event stream (replayed `run_start`).
+  - `live === null` means no run is going: a tool call in `messages` without a result (the daemon was killed mid-run) is shown
+    as finished with an error, "Interrupted: the run did not finish.", not as running forever.
+  - `run_end` no longer builds its own note: it reloads the session, and the stored note comes back with it, so `session_updated`
+    cannot wipe it. Fallback: when `run_end` has status `error` and an `error` text, the chat remembers `Error: <error>` for that
+    chat (until its next `run_start`) and renders it, with the `error` tone, after the stored notices unless one of them already
+    has that text. This covers a run whose notice could not be stored (for example the end-of-run write failed).
