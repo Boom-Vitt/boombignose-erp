@@ -88,58 +88,50 @@ for (const failure of ['provider', 'http', 'network']) test(`a ${failure} model-
   assert.equal(h.writes[0]!.body.model, 'any/model');
 });
 
-test('old agents show Default and blank tokens, and the max-token help text is visible', async t => {
+test('old agents show blank tokens without effort, and the max-token help text is visible', async t => {
   t.after(installDom());
   const h = harness(undefined, { ...agent, provider: 'remote' });
   const form = await edit(h);
-  assert.equal(control(form, 'Effort').value, '');
+  assert.ok(!form.querySelectorAll('.field-label').some(n => n.textContent === 'Effort'));
   assert.equal(control(form, 'Max tokens').value, '');
-  assert.ok(form.textContent.includes("Blank uses the provider's setting. High effort spends tokens on thinking first: raise this if replies come back empty."));
+  assert.ok(form.textContent.includes("Blank uses the provider's setting. Thinking models (for example qwen3 or deepseek-r1) spend tokens on thinking first, so leave it blank unless you need a limit."));
   form.fire('submit'); await flush();
-  assert.equal(h.writes[0]!.body.effort, null); assert.equal(h.writes[0]!.body.maxTokens, null);
+  assert.ok(!Object.hasOwn(h.writes[0]!.body, 'effort')); assert.equal(h.writes[0]!.body.maxTokens, null);
 });
 
-test('effort is shown only for supported providers, persists on edit and is cleared for other providers', async t => {
+test('tokens persist on edit across provider changes and cards show provider and model', async t => {
   t.after(installDom());
-  const h = harness(undefined, { ...agent, provider: 'remote', effort: 'xhigh', maxTokens: 9000 });
+  const h = harness(undefined, { ...agent, provider: 'remote', maxTokens: 9000 });
   const form = await edit(h);
-  assert.match(h.pane.querySelector('.agent-card')!.textContent, /remote · one-model · xhigh/);
-  const effort = control(form, 'Effort');
-  assert.equal(effort.parent!.parent!.hidden, false); assert.equal(effort.value, 'xhigh');
-  assert.deepEqual(effort.querySelectorAll('option').map(o => [o.value, o.textContent]), [
-    ['', 'Default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max'],
-  ]);
+  assert.match(h.pane.querySelector('.agent-card')!.textContent, /remote · one-model/);
   assert.equal(control(form, 'Max tokens').value, '9000');
+  const provider = control(form, 'Provider'); provider.value = 'local'; provider.fire('change');
   form.fire('submit'); await flush();
-  assert.equal(h.writes[0]!.body.effort, 'xhigh'); assert.equal(h.writes[0]!.body.maxTokens, 9000);
-  const next = h.pane.querySelectorAll('button').find(b => b.textContent === 'Edit')!; next.fire('click');
-  const edited = h.pane.querySelector('form')!;
-  const provider = control(edited, 'Provider'); provider.value = 'local'; provider.fire('change');
-  assert.equal(control(edited, 'Effort').parent!.parent!.hidden, true);
-  edited.fire('submit'); await flush(); assert.equal(h.writes[1]!.body.effort, null);
+  assert.equal(h.writes[0]!.body.maxTokens, 9000);
+  assert.ok(!Object.hasOwn(h.writes[0]!.body, 'effort'));
 });
 
-test('new agents save explicit effort and max tokens through POST', async t => {
+test('new agents save max tokens through POST', async t => {
   t.after(installDom());
   const h = harness(); const form = await edit(h, true);
   control(form, 'Name').value = 'New';
   const provider = control(form, 'Provider'); provider.value = 'remote'; provider.fire('change');
-  control(form, 'Effort').value = 'max'; control(form, 'Max tokens').value = '1000000';
+  control(form, 'Max tokens').value = '1000000';
   form.fire('submit'); await flush();
   assert.equal(h.writes[0]!.method, 'POST');
-  assert.equal(h.writes[0]!.body.effort, 'max'); assert.equal(h.writes[0]!.body.maxTokens, 1000000);
+  assert.ok(!Object.hasOwn(h.writes[0]!.body, 'effort')); assert.equal(h.writes[0]!.body.maxTokens, 1000000);
 });
 
-test('clearing stored effort and tokens sends null, and model suggestions leave an empty input empty', async t => {
+test('clearing stored tokens sends null, and model suggestions leave an empty input empty', async t => {
   t.after(installDom());
   const pending = Promise.withResolvers<Response>();
-  const h = harness(() => pending.promise, { ...agent, provider: 'remote', effort: 'high', maxTokens: 10 });
+  const h = harness(() => pending.promise, { ...agent, provider: 'remote', maxTokens: 10 });
   const form = await edit(h); control(form, 'Model').value = '';
   pending.resolve(json({ ok: true, models: [{ id: 'suggested' }] })); await flush();
   assert.equal(control(form, 'Model').value, '');
-  control(form, 'Model').value = 'typed'; control(form, 'Effort').value = ''; control(form, 'Max tokens').value = '';
+  control(form, 'Model').value = 'typed'; control(form, 'Max tokens').value = '';
   form.fire('submit'); await flush();
-  assert.equal(h.writes[0]!.body.effort, null); assert.equal(h.writes[0]!.body.maxTokens, null);
+  assert.ok(!Object.hasOwn(h.writes[0]!.body, 'effort')); assert.equal(h.writes[0]!.body.maxTokens, null);
 });
 
 test('invalid native number input is blocked inline even when the browser exposes an empty value', async t => {
@@ -169,7 +161,7 @@ test('max tokens accepts both bounds and blank, and blocks invalid values with a
   }
 });
 
-test('transcript ignores thinking blocks and finishes tool rows only for actual results, including a refused run', async t => {
+test('transcript finishes tool rows only for actual results and reloads after an error', async t => {
   t.after(installDom());
   let finished = false;
   const api = createApi({ port: 1, token: 'test-token', fetch: (async url => {
@@ -181,10 +173,8 @@ test('transcript ignores thinking blocks and finishes tool rows only for actual 
     if (path === '/api/sessions/s1') return json({ id: 's1', agentId: agent.id, title: 'History', messages: [
       { role: 'assistant', content: [
         { type: 'tool_use', id: 'call', name: 'read_file', input: {} },
-        { type: 'thinking', thinking: 'private thought', signature: 'sig-1', toolUseId: 'call', content: 'wrong output' },
-        { type: 'redacted_thinking', data: 'private data', toolUseId: 'call', content: 'wrong output' },
         ...(finished ? [{ type: 'tool_result', toolUseId: 'call', content: 'real output' }] : []),
-        { type: 'text', text: 'Refusal notice' },
+        { type: 'text', text: 'Error notice' },
       ] },
     ] });
     assert.fail(path);
@@ -193,10 +183,9 @@ test('transcript ignores thinking blocks and finishes tool rows only for actual 
   root.querySelector('.session')!.fire('click'); await flush();
   assert.equal(root.querySelector('.tool-status')!.textContent, 'running');
   assert.equal(root.querySelector('.tool-out')!.textContent, '');
-  assert.ok(!/private thought|private data|wrong output/.test(root.textContent));
   finished = true;
-  chat.onEvent({ type: 'run_end', sessionId: 's1', runId: 'r1', status: 'refused', text: 'Refusal notice' }); await flush();
+  chat.onEvent({ type: 'run_end', sessionId: 's1', runId: 'r1', status: 'error', text: 'Error notice' }); await flush();
   assert.equal(root.querySelector('.tool-status')!.textContent, 'done');
   assert.equal(root.querySelector('.tool-out')!.textContent, 'real output');
-  assert.match(root.textContent, /Refusal notice/);
+  assert.match(root.textContent, /Error notice/);
 });

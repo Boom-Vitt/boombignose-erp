@@ -102,3 +102,19 @@ test('LINE /rea errors reply with usage or missing path, and still give the conn
   writeFileSync(join(home, 'existing.app'), 'fake');
   assert.equal(await ask('/rea existing.app'), 'Turn on the rea connector for this agent in the app, then send again.');
 });
+
+test('a non-owner error after a tool round stores no partial assistant answer in context', async t => {
+  const home = testHome(t); configured(home, undefined, c => { c.line.allow.groups = ['Cgroup']; });
+  let calls = 0;
+  const provider: Provider = { kind: 'openai-compatible', async *stream() {
+    if (++calls === 2) throw new Error('mock failure');
+    yield { type: 'text_delta', text: 'partial text the group never saw' };
+    yield { type: 'tool_call', id: 'guest', name: 'read_file', input: { path: 'visitor.txt' } };
+    yield { type: 'done', stopReason: 'tool_use', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const app = await startDaemon({ home, providerFactory: () => provider }); t.after(() => app.close());
+  const session = app.runtime.store.createSession({ origin: { kind: 'line', to: 'Cgroup' }, agentId: app.runtime.store.listAgents()[0]!.id });
+  assert.equal(await app.runtime.lineMessage({ to: 'Cgroup', userId: 'Uguest', text: 'guest question' }), 'Error: mock failure');
+  assert.equal(calls, 2);
+  assert.deepEqual(app.runtime.store.getSession(session.id)!.context, [{ role: 'user', content: [{ type: 'text', text: 'guest question' }] }]);
+});

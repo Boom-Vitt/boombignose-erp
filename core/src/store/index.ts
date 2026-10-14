@@ -14,7 +14,7 @@ export interface Job {
   id: string; agentId: string; cron: string; prompt: string; delivery: Delivery; enabled: boolean;
   lastRunAt?: number; lastStatus?: string;
 }
-export type AgentInput = Pick<Agent, 'name' | 'provider' | 'model'> & Partial<Pick<Agent, 'icon' | 'instructions' | 'permissions' | 'connectors' | 'skills'>>;
+export type AgentInput = Pick<Agent, 'name' | 'provider' | 'model'> & Partial<Pick<Agent, 'icon' | 'instructions' | 'permissions' | 'connectors' | 'skills'>> & { maxTokens?: number | null };
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -78,13 +78,14 @@ export function openStore(file: string) {
   };
   // Older installations keep every row and FTS trigger; only missing ownership columns are added.
   tx(() => {
+    if (!all('PRAGMA table_info(agents)').some(r => r.name === 'max_tokens')) db.exec('ALTER TABLE agents ADD COLUMN max_tokens INTEGER');
     for (const table of ['sessions', 'memory', 'jobs']) {
       if (!all(`PRAGMA table_info(${table})`).some(r => r.name === 'agentId')) db.exec(`ALTER TABLE ${table} ADD COLUMN agentId TEXT`);
       db.exec(`CREATE INDEX IF NOT EXISTS ${table}_agent ON ${table}(agentId)`);
     }
   });
   const agent = (r: Row): Agent => ({ id: r.id, name: r.name, icon: r.icon, instructions: r.instructions,
-    provider: r.provider, model: r.model, permissions: JSON.parse(r.permissions), connectors: JSON.parse(r.connectors),
+    provider: r.provider, model: r.model, ...(r.max_tokens !== null ? { maxTokens: r.max_tokens } : {}), permissions: JSON.parse(r.permissions), connectors: JSON.parse(r.connectors),
     skills: JSON.parse(r.skills), createdAt: r.created_at, updatedAt: r.updated_at });
   const requireAgent = (id: string) => { if (!get('SELECT id FROM agents WHERE id = ?', id)) throw new Error(`unknown agent: ${id}`); };
 
@@ -110,17 +111,18 @@ export function openStore(file: string) {
     createAgent(input: AgentInput): Agent {
       const now = Date.now();
       const a: Agent = { id: 'ag_' + randomBytes(6).toString('hex'), name: input.name.trim(), icon: input.icon ?? '🤖',
-        instructions: input.instructions ?? '', provider: input.provider, model: input.model, permissions: input.permissions ?? {},
+        instructions: input.instructions ?? '', provider: input.provider, model: input.model, ...(input.maxTokens != null ? { maxTokens: input.maxTokens } : {}), permissions: input.permissions ?? {},
         connectors: input.connectors ?? null, skills: input.skills ?? null, createdAt: now, updatedAt: now };
-      run('INSERT INTO agents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', a.id, a.name, a.icon, a.instructions, a.provider, a.model,
-        JSON.stringify(a.permissions), JSON.stringify(a.connectors), JSON.stringify(a.skills), now, now);
+      run('INSERT INTO agents (id, name, icon, instructions, provider, model, permissions, connectors, skills, created_at, updated_at, max_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', a.id, a.name, a.icon, a.instructions, a.provider, a.model,
+        JSON.stringify(a.permissions), JSON.stringify(a.connectors), JSON.stringify(a.skills), now, now, a.maxTokens ?? null);
       return a;
     },
     updateAgent(id: string, patch: Partial<AgentInput>): Agent | undefined {
       const old = this.getAgent(id); if (!old) return undefined;
-      const a = { ...old, ...patch, name: (patch.name ?? old.name).trim(), updatedAt: Date.now() };
-      run('UPDATE agents SET name=?, icon=?, instructions=?, provider=?, model=?, permissions=?, connectors=?, skills=?, updated_at=? WHERE id=?',
-        a.name, a.icon, a.instructions, a.provider, a.model, JSON.stringify(a.permissions), JSON.stringify(a.connectors), JSON.stringify(a.skills), a.updatedAt, id);
+      const a: Agent = { ...old, ...patch, maxTokens: patch.maxTokens === null ? undefined : patch.maxTokens ?? old.maxTokens, name: (patch.name ?? old.name).trim(), updatedAt: Date.now() };
+      if (a.maxTokens === undefined) delete a.maxTokens;
+      run('UPDATE agents SET name=?, icon=?, instructions=?, provider=?, model=?, permissions=?, connectors=?, skills=?, updated_at=?, max_tokens=? WHERE id=?',
+        a.name, a.icon, a.instructions, a.provider, a.model, JSON.stringify(a.permissions), JSON.stringify(a.connectors), JSON.stringify(a.skills), a.updatedAt, a.maxTokens ?? null, id);
       return a;
     },
     deleteAgent(id: string): boolean {

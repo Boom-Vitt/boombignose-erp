@@ -710,7 +710,7 @@ export function ollamaWarnings(cfg: ProviderConfig, apiKey: string | undefined, 
   `Ollama is running <name> with a <n>-token context, below this provider's Context window (<cw>). Restart Ollama with OLLAMA_CONTEXT_LENGTH=<cw>, or set Context window to <n>.`
   A non-2xx answer, a body that is not the expected JSON, or no loaded model -> `[]`. It never throws. (Ollama only
   reports the context size of a loaded model; the note covers the rest.)
-- First run (daemon start, 13.6): with no config file yet and an Ollama active provider, the daemon lists Ollama's
+- First run (daemon start, 13.6): with no config file and no agents yet and an Ollama active provider, the daemon lists Ollama's
   models (2 s timeout). When the list has models and none is the active id or `<active id>:latest`, it sets
   `active.model` to the first listed id that starts with `<active id>:` (for example `qwen3:14b`), else to the first
   listed id, and saves the config before the default agent is created. Any failure keeps
@@ -787,7 +787,8 @@ Local API (the daemon reads the token from `.env` and passes `lineOptions.fetchI
 - `GET /api/line/status` (v1 fields) gains `healthUrl?` (`<publicUrl>/line/webhook/health`) and `warnings: string[]`:
   `Nobody is allowed yet: add your LINE user ID (U…) under Allowed users.` when all three allowlists are empty, and the
   `publicUrlProblem` text when the stored public URL has one.
-- `PUT /api/settings`: a non-empty `line.publicUrl` that differs from the stored value must pass `publicUrlProblem`
+- `PUT /api/settings`: trim `line.publicUrl` before validation and storage; Connect and Test also trim stored URLs.
+  A non-empty `line.publicUrl` that differs from the trimmed stored value must pass `publicUrlProblem`
   (400 with its text); an unchanged stored value always passes, so the other settings screens (which save the whole
   config) keep working with an old http URL stored. Loading a stored config is not stricter than v1 (an old http URL
   still loads; status warns and Connect refuses it).
@@ -823,8 +824,8 @@ Desktop Messaging page (`desktop/src/settings/messaging.ts`, client calls in `de
    `mcp.stop()` and `line.close()`, so a slow MCP shutdown can no longer let the sidecar's SIGKILL land before an
    approved `shell` process group is killed.
 2. A non-owner LINE turn never overwrites the stored context: the model gets the filtered copy as input; the stored
-   model context stays the full previous context plus only the new non-owner turn (the user text and the final
-   assistant text; no tool or thinking blocks).
+   model context stays the full previous context plus only the new non-owner turn (the user text and, only when the run
+   did not error, the final assistant text; no tool or thinking blocks).
 3. LINE slash errors: `lineMessage` replies with a `CommandError`'s own message (usage, path not found) instead of the
    generic `Sorry, something went wrong.`
 4. The file guard also refuses `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.kube/` and `~/.config/gcloud/` for

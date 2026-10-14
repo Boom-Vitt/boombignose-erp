@@ -40,10 +40,14 @@ test('headless chat denies ask tools without a TTY and reports provider failures
   assert.equal(failed.code, 1); assert.match(failed.stderr, /fetch failed|ECONNREFUSED/);
 });
 
-test('CLI MCP commands validate names and persist add/list/enable/disable; doctor warns on missing credentials', async t => {
+test('CLI MCP commands validate names and persist add/list/enable/disable; doctor reports an unavailable Ollama without a key warning', async t => {
   const home = testHome(t);
-  assert.equal((await cli(home, ['doctor'])).code, 0);
-  assert.match((await cli(home, ['doctor'])).stdout, /warn active provider key is unset/);
+  configured(home, undefined, c => { c.providers[0]!.id = 'ollama'; c.active.provider = 'ollama'; });
+  const report = await cli(home, ['doctor']);
+  assert.equal(report.code, 0);
+  assert.match(report.stdout, /warn Ollama is not running/);
+  assert.match(report.stdout, /note Ollama picks its own context size/);
+  assert.ok(!report.stdout.includes('key is unset'));
   assert.equal((await cli(home, ['mcp', 'add', 'bad__name', '--url', 'http://127.0.0.1:1/mcp'])).code, 1);
   assert.equal((await cli(home, ['mcp', 'add', 'fake', '--url', 'http://127.0.0.1:1/mcp'])).code, 0);
   assert.match((await cli(home, ['mcp', 'list'])).stdout, /fake http enabled/);

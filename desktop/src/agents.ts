@@ -1,7 +1,8 @@
 // Agent management uses the same controls and local API as Settings.
 import type { Api } from './api.ts';
-import type { Agent, AgentInput, Effort, Policy } from './types.ts';
-import { badge, btn, check, confirmBtn, el, errMsg, field, guarded, load, select, toast } from './dom.ts';
+import type { Agent, AgentInput, Policy } from './types.ts';
+import { modelField } from './models.ts';
+import { badge, btn, check, confirmBtn, el, field, guarded, load, select, toast } from './dom.ts';
 
 export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: string) => void): void {
   const fetchData = async () => {
@@ -16,7 +17,7 @@ export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: str
     const lineId = agents.find(a => a.id === config.line.agentId)?.id ?? agents[0]?.id;
     const cards = agents.map(a => el('section', { class: 'card agent-card', 'data-agent-id': a.id },
       el('h3', {}, `${a.icon} ${a.name}`, a.id === lineId && badge('LINE', 'ok')),
-      el('p', { class: 'muted' }, `${a.provider} · ${a.model}${a.effort ? ` · ${a.effort}` : ''}`),
+      el('p', { class: 'muted' }, `${a.provider} · ${a.model}`),
       el('div', { class: 'actions' },
         btn('Chat', () => { changed(a.id); location.hash = '#/chat'; }),
         btn('Edit', () => edit(a)),
@@ -45,32 +46,10 @@ export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: str
       const instructions = el('textarea', { rows: 6, value: a?.instructions ?? '' });
       const provider = select(config.providers.map(p => [p.id, p.label || p.id]), a?.provider ?? config.active.provider);
       const model = el('input', { value: a?.model ?? config.active.model, required: true, list: 'agent-models' });
-      const models = el('datalist', { id: 'agent-models' });
-      const modelError = el('div', { class: 'muted hint', role: 'status', hidden: true });
-      const modelField = field('Model', model);
-      modelField.append(models, modelError);
-      const effort = select([['', 'Default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']], a?.effort ?? '');
-      const effortField = field('Effort', effort);
-      let modelSeq = 0;
-      async function loadModels(): Promise<void> {
-        const seq = ++modelSeq;
-        effortField.hidden = config.providers.find(p => p.id === provider.value)?.kind !== 'anthropic';
-        models.replaceChildren(); modelError.hidden = true;
-        try {
-          const result = await api.listModels(provider.value);
-          if (seq !== modelSeq) return;
-          if (!result.ok) throw new Error(result.error || 'Model list unavailable');
-          models.replaceChildren(...result.models.map(m => el('option', { value: m.id }, m.label ?? m.id)));
-        } catch (e) {
-          if (seq !== modelSeq) return;
-          modelError.textContent = `Couldn't load the model list: ${errMsg(e)}. You can still type a model id.`;
-          modelError.hidden = false;
-        }
-      }
-      provider.addEventListener('change', () => void loadModels());
+      const modelRoot = modelField(api, provider, model, 'agent-models');
       const maxTokens = el('input', { type: 'number', min: 1, max: 1000000, step: 1, value: String(a?.maxTokens ?? ''), 'aria-describedby': 'agent-max-tokens-error' });
       const tokensError = el('div', { id: 'agent-max-tokens-error', class: 'notice error', role: 'alert', hidden: true });
-      const tokensField = field('Max tokens', maxTokens, "Blank uses the provider's setting. High effort spends tokens on thinking first: raise this if replies come back empty.");
+      const tokensField = field('Max tokens', maxTokens, "Blank uses the provider's setting. Thinking models (for example qwen3 or deepseek-r1) spend tokens on thinking first, so leave it blank unless you need a limit.");
       tokensField.append(tokensError);
       function validateTokens(): boolean {
         const n = Number(maxTokens.value);
@@ -102,8 +81,8 @@ export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: str
       const form = el('form', { class: 'card agent-form' },
         el('h3', {}, a ? `Edit ${a.name}` : 'Create an agent'),
         el('div', { class: 'grid2' }, field('Name', name), field('Icon', icon)), field('Instructions', instructions),
-        el('div', { class: 'grid2' }, field('Provider', provider), modelField),
-        el('div', { class: 'grid2' }, effortField, tokensField),
+        el('div', { class: 'grid2' }, field('Provider', provider), modelRoot),
+        tokensField,
         el('fieldset', {}, el('legend', {}, 'Tool permissions'), permissions, btn('Add permission', () => addPermission(), 'small')),
         connectors.root, allowedSkills.root, answersLine.root,
         el('div', { class: 'actions' }, submit, btn('Cancel', () => editor.replaceChildren())));
@@ -120,7 +99,6 @@ export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: str
           }
           const input: AgentInput = { name: name.value.trim(), icon: icon.value.trim(), instructions: instructions.value,
             provider: provider.value, model: model.value.trim(), permissions: policies,
-            effort: effortField.hidden || !effort.value ? null : effort.value as Effort,
             maxTokens: maxTokens.value === '' ? null : Number(maxTokens.value),
             connectors: connectors.value(), skills: allowedSkills.value() };
           if (!input.name || !input.icon || !input.model) throw new Error('Enter a name, icon and model');
@@ -137,7 +115,6 @@ export function mountAgents(pane: HTMLElement, api: Api, changed: (agentId?: str
         }, submit);
       });
       editor.replaceChildren(form);
-      void loadModels();
       name.focus();
     }
     pane.append(el('h2', {}, 'Agents'), el('div', { class: 'actions' }, btn('Create agent', () => edit(), 'primary')),
