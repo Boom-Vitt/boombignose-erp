@@ -2,13 +2,13 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { Enums } from "@/lib/types/database"
 
-type Tone = "neutral" | "info" | "progress" | "success" | "warning" | "danger"
+export type Tone = "neutral" | "info" | "progress" | "success" | "warning" | "danger"
 
 const TONE: Record<Tone, string> = {
   neutral: "bg-muted text-muted-foreground border-transparent",
-  info: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-transparent",
-  progress:
-    "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300 border-transparent",
+  // FB teal and orange; dark mode uses lighter text tones to keep 4.5:1 contrast.
+  info: "bg-secondary/15 text-secondary dark:bg-secondary/30 dark:text-chart-3 border-transparent",
+  progress: "bg-primary/15 text-(--erp-accent-text) dark:text-(--erp-accent-2) border-transparent",
   success:
     "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-transparent",
   warning:
@@ -16,7 +16,7 @@ const TONE: Record<Tone, string> = {
   danger: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border-transparent",
 }
 
-function Pill({ label, tone }: { label: string; tone: Tone }) {
+export function Pill({ label, tone }: { label: string; tone: Tone }) {
   return (
     <Badge variant="outline" className={cn("font-medium", TONE[tone])}>
       {label}
