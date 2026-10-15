@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, Pencil } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -61,10 +62,14 @@ export default async function TemplateDetailPage({
         <Button variant="outline" render={<Link href="/templates" />}>
           <ArrowLeft /> Back
         </Button>
-        <Button variant="outline" render={<Link href={`/templates/${template.id}/edit`} />}>
-          <Pencil /> Edit
-        </Button>
-        <DeleteTemplateButton id={template.id} name={template.name} />
+        {can(ctx.role, "template:manage") ? (
+          <>
+            <Button variant="outline" render={<Link href={`/templates/${template.id}/edit`} />}>
+              <Pencil /> Edit
+            </Button>
+            <DeleteTemplateButton id={template.id} name={template.name} />
+          </>
+        ) : null}
       </PageHeader>
 
       <div className="grid gap-6 lg:grid-cols-3">
