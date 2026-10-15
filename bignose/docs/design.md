@@ -264,8 +264,9 @@ export interface Config {
 - `skills/index.ts`: skills live in `<home>/skills/<name>/SKILL.md` (agentskills.io: YAML frontmatter `name`,
   `description`, then the body). `listSkills(dir)`, `loadSkill(dir, name)` (body + list of other files in the
   folder), `saveSkill(dir, {name, description, body}, create?)` (name `^[a-z0-9][a-z0-9-]{0,63}$`; saving over an existing
-  skill rewrites `name`, `description` and the body and keeps every other frontmatter key verbatim, such as `license`,
-  `allowed-tools` and `metadata`; with `create`, a folder that already exists throws `SkillExistsError`), `deleteSkill(dir, name)`,
+  skill rewrites `name`, `description` (including a quoted value that runs over several lines) and the body and keeps
+  every other frontmatter key verbatim, such as `license`, `allowed-tools` and `metadata`; the old SKILL.md is opened
+  with `O_NOFOLLOW`, so a symlinked one is replaced and never read through; with `create`, a folder that already exists throws `SkillExistsError`), `deleteSkill(dir, name)`,
   `skillsIndex(dir, allowed?: string[] | null): string` (one line per skill for the system prompt), `skillTools(dir, allowed?: string[] | null): Tool[]` — `skill_load`
   (allow), `skill_save` (ask).
 - `cron/index.ts`: `parseCron(expr)` (5 fields: minute hour day-of-month month day-of-week; `*`, lists, ranges,
@@ -275,8 +276,12 @@ export interface Config {
   `setEnabled(id, on)`, `list()`. Jobs persist in the store and reload on `start()` (survive restarts; runs missed
   while stopped are skipped, not replayed). The store is shared with other processes (`bignose chat -q` adds jobs
   with its own, never started, Scheduler), so a started Scheduler re-reads it at least every minute: a job that is
-  new, switched on or off, or has a changed cron is planned, a removed one is dropped, and a run that came due since
-  the previous look still fires. It keeps a 60-second timer even with no enabled job, for that check.
+  new, switched on or off, or has a changed cron is planned from the previous look (so a run that came due since then
+  still fires, also when this process added or removed some other job in between), and a removed one is dropped. A job
+  that this process adds or switches on is planned from now, so it never fires in the minute it was made in. The
+  catch-up window is at most one check (about 60 s): a job another process creates during its own matching minute fires
+  once at the next check, which the Job record cannot tell apart from an older one. The Scheduler keeps a 60-second
+  timer even with no enabled job, for that check.
   `scheduleTools(scheduler, agentId): Tool[]` — `schedule_create` (ask; delivery
   defaults to the caller's origin: line → that chat, everything else → desktop), `schedule_list` (allow),
   `schedule_delete` (allow).

@@ -339,6 +339,33 @@ test('a job added by another process fires in the running daemon even when it ca
   assert.deepEqual(h.fired.map((j) => j.prompt), ['due at 08:01']);
 });
 
+test('a job added by another process fires in the running daemon after a daemon-local add, which never fires its own current minute', async (t) => {
+  const sec = (d: Date, n: number) => new Date(d.getTime() + n * 1000);
+  const h = harness(t, { start: sec(at(2026, 10, 13, 8), 30) });
+  const agentId = h.store.listAgents()[0]!.id;
+  h.sched.start(); // the daemon looks at 08:00:30
+  h.setClock(sec(at(2026, 10, 13, 8), 45));
+  const cliJob = new Scheduler({ store: h.store, onFire: async () => {} }).add({ agentId, cron: '1 8 * * *', prompt: 'from the CLI', delivery: desktop });
+  h.setClock(sec(at(2026, 10, 13, 8, 1), 10));
+  h.sched.add({ agentId, cron: '0 12 * * *', prompt: 'unrelated, added here', delivery: desktop }); // must not plan the CLI job past 08:01
+  await h.advance(sec(at(2026, 10, 13, 8, 1), 30));
+  assert.deepEqual(h.fired.map((j) => j.id), [cliJob.id], 'the CLI job fires once, at the first tick after its minute');
+  await h.advance(sec(at(2026, 10, 13, 8, 2), 30));
+  assert.equal(h.fired.length, 1);
+
+  // a job made or switched on in this process in the middle of its own matching minute waits for the next day
+  h.setClock(sec(at(2026, 10, 14, 9, 59), 30));
+  const toggled = h.sched.add({ agentId, cron: '0 10 * * *', prompt: 'switched on at 10:00:15', delivery: desktop });
+  h.sched.setEnabled(toggled.id, false);
+  await h.advance(sec(at(2026, 10, 14, 9, 59), 30)); // the last look before 10:00
+  h.setClock(sec(at(2026, 10, 14, 10), 15));
+  const added = h.sched.add({ agentId, cron: '0 10 * * *', prompt: 'added at 10:00:15', delivery: desktop });
+  h.sched.setEnabled(toggled.id, true);
+  await h.advance(sec(at(2026, 10, 14, 10), 45));
+  assert.deepEqual(h.fired.filter((j) => j.id === added.id || j.id === toggled.id), [], 'neither fires in minute 10:00');
+  for (const j of [added, toggled]) assert.equal(h.sched.list().find((x) => x.id === j.id)!.nextRunAt, at(2026, 10, 15, 10).getTime());
+});
+
 test('scheduler: every due job fires in one tick', async (t) => {
   const h = harness(t, { start: at(2026, 10, 13, 8) });
   h.sched.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'one', delivery: desktop });

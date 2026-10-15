@@ -284,6 +284,25 @@ test('saving a skill keeps its other frontmatter keys, however they are written'
   assert.ok(fs.readFileSync(outside, 'utf8').includes('do-not-copy'), 'the target is untouched');
 });
 
+test('saving a skill replaces a quoted description that runs over several lines, even unindented ones, and keeps the keys around it', (t) => {
+  const dir = tmpSkills(t);
+  const frontmatter: Record<string, string> = {
+    double: 'description: "first part\nsecond part with \\" an escaped quote\nlast part"',
+    single: "description: 'it''s the first part\nsecond part'",
+    oneLine: 'description: "all on one line"',
+    unterminated: 'description: "never closed', // invalid YAML: only that line goes, nothing after it is swallowed
+  };
+  for (const [name, description] of Object.entries(frontmatter)) {
+    write(dir, `${name.toLowerCase()}/SKILL.md`, `---\nname: ${name.toLowerCase()}\n${description}\nlicense: MIT\ncompatibility: node 24\n---\n\nOld body.\n`);
+    saveSkill(dir, { name: name.toLowerCase(), description: 'Fresh description', body: 'New body.' });
+    const text = fs.readFileSync(path.join(dir, name.toLowerCase(), 'SKILL.md'), 'utf8');
+    for (const old of ['first part', 'second part', 'last part', 'all on one line', 'never closed', 'escaped quote']) assert.ok(!text.includes(old), `${name}: no leftover "${old}"`);
+    const parsed = parseSkillFile(text)!;
+    assert.deepEqual([parsed.meta.description, parsed.meta.license, parsed.meta.compatibility, parsed.body], ['Fresh description', 'MIT', 'node 24', 'New body.'], name);
+    assert.equal(text.match(/^description:/gm)?.length, 1, name);
+  }
+});
+
 test('creating a skill with an existing name is refused; saving without create still replaces', (t) => {
   const dir = tmpSkills(t);
   saveSkill(dir, { name: 'taxes', description: 'File taxes', body: 'Original steps.' }, true);

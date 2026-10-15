@@ -1,5 +1,5 @@
 // Skills: <dir>/<name>/SKILL.md (agentskills.io): tiny YAML frontmatter (name, description) + a Markdown body.
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -119,19 +119,30 @@ export function loadSkill(dir: string, name: string): LoadedSkill | undefined {
   return { name, description: r.description, body: r.body, folder, files };
 }
 
+// Does this text, which follows an opening quote, contain the matching closing quote? ('' inside single quotes, \x inside double quotes.)
+const closesQuote = (text: string, quote: string) => (quote === '"' ? /^(?:[^"\\]|\\.)*"/ : /^(?:[^']|'')*'(?!')/).test(text);
+
 // The frontmatter lines of an existing SKILL.md other than name and description (license, allowed-tools, metadata, ...), verbatim.
 function otherFrontmatter(file: string): string[] {
   let text: string;
   try {
-    if (!lstatSync(file).isFile()) return []; // a symlinked SKILL.md is replaced, never read through
-    text = readFileSync(file, 'utf8');
+    // O_NOFOLLOW: a symlinked SKILL.md (also one swapped in after a check) is replaced, never read through
+    const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    try { text = fstatSync(fd).isFile() ? readFileSync(fd, 'utf8') : ''; } finally { closeSync(fd); }
   } catch { return []; }
-  const kept: string[] = [];
+  const kept: string[] = [], lines = (FRONTMATTER_RE.exec(text)?.[1] ?? '').split(/\r?\n/);
   let skipping = false;
-  for (const line of (FRONTMATTER_RE.exec(text)?.[1] ?? '').split(/\r?\n/)) {
-    const key = /^([A-Za-z0-9_-]+)[ \t]*:/.exec(line)?.[1];
-    if (key) skipping = key === 'name' || key === 'description';
-    else if (line.trim() && !/^[ \t]/.test(line)) skipping = false; // indented and blank lines belong to the key above
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!, key = /^([A-Za-z0-9_-]+)[ \t]*:/.exec(line)?.[1];
+    if (key) {
+      skipping = key === 'name' || key === 'description';
+      const value = line.slice(line.indexOf(':') + 1).trim(), quote = value[0];
+      if (skipping && (quote === '"' || quote === "'") && !closesQuote(value.slice(1), quote)) {
+        // A quoted value that goes on over the next lines, even unindented ones, ends at its closing quote; with none, it is left as it is.
+        const end = lines.findIndex((l, j) => j > i && closesQuote(l, quote));
+        if (end > i) i = end;
+      }
+    } else if (line.trim() && !/^[ \t]/.test(line)) skipping = false; // indented and blank lines belong to the key above
     if (!skipping) kept.push(line);
   }
   while (kept.length && !kept.at(-1)!.trim()) kept.pop();
