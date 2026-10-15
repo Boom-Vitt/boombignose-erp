@@ -46,6 +46,7 @@ test('built UI creates an agent on an unlisted Ollama model, chats with its toke
   assert.equal(requests.length, 1); assert.equal(requests[0]!.body.model, 'typed/not-in-list');
   assert.equal(requests[0]!.body.max_tokens, 512); assert.equal(requests[0]!.auth, undefined);
   await ui.click('Settings'); await ui.click('Model');
+  await ui.wait(`document.querySelector('#settings-panel details')`, 'the Model tab has loaded');
   await ui.cdp.evaluate(`document.querySelector('#settings-panel details').open = true`);
   await ui.wait(`document.querySelector('[aria-label="Settings"]').textContent.includes('4096-token context')`);
   assert.ok(await ui.cdp.evaluate(`document.querySelector('[aria-label="Settings"]').textContent.includes(${JSON.stringify(OLLAMA_CONTEXT_NOTE)})`));
