@@ -48,3 +48,10 @@
 2026-10-14 — Correction (same evening): the ERP is the base, not this repo
 - Supersedes the entry above. The owner chose "ERP Company OS is the base": `boombignose-erp` (~/Desktop/erp/boombignose-erp) stays the main repo, and BigNose plays a supporting role there as a snapshot of fee9b53 under `bignose/` (no history). This repo stays the read-only source; nothing here changes.
 - Product direction: no more web use for the owner. The ERP becomes ONE native desktop app ("BigNose OS": a Tauri shell that starts the ERP's Next.js server, local Supabase in Docker starting from migrations + seed with cloud untouched, a slide-out BigNose chat/agents panel, a read-only ERP MCP server for the agent, and a three.js "exploded blueprint" 3D scene in the app). AI runs on Gemini 4 via OpenRouter; Gemini (Hermes `bbn-gemini`) builds every stream. Goal: ERP .git/bbn/bbn-boombignose-erp-235858-20261014.goal.
+
+2026-10-15 — BigNose OS phases 1-2 (ERP repo hub bbn-boombignose-erp-010517)
+- Correction to 2026-10-14 "Code default OLLAMA_DEFAULT_MODEL is still 'qwen3'": it is 'qwen3:4b' now (`core/src/providers/ollama.ts:4`).
+- Permissions: an agent's own rules beat the global rules as a whole (agent exact, agent longest prefix, global exact, global longest prefix, tool default; `core/src/agent/permissions.ts` layeredPolicy). A broad agent allow overrides a global Never. Denied tools are not offered to the model.
+- LINE settings saves reconfigure the gateway in place (no rebuild), so in-flight answers, queued messages, approvals and parked "Get answer" answers survive; a chat removed from the allow list gets no new run or answer.
+- Settings are five tabs: Model · LINE · Tools · Memory · Schedules; LINE "Answered by" picks the LINE agent (the agent form no longer has it).
+- Builds: the OpenRouter account ran out of credit on 2026-10-15, so every phase-2 build and fix ran on Claude Code teammates (owner: "just use claude with orca skill and bbnw and let go").
