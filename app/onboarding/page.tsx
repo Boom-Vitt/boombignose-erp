@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getAuthenticatedUser, getOrgContext } from "@/lib/auth"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { AuthShell } from "@/components/auth-shell"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { signOutTo } from "./actions"
 import { WorkspaceForm } from "./workspace-form"
@@ -13,8 +14,7 @@ export default async function OnboardingPage() {
   if (await getOrgContext()) redirect("/dashboard")
 
   return (
-    <div className="flex min-h-svh items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+    <AuthShell>
         <CardHeader>
           <CardTitle>Create your workspace / สร้างพื้นที่ทำงาน</CardTitle>
           <CardDescription>Your account is ready. Create a workspace to begin, or open your teammate’s invitation link.</CardDescription>
@@ -27,7 +27,6 @@ export default async function OnboardingPage() {
           </form>
           <p className="text-muted-foreground text-sm">Joining an existing team? Open its invitation link while signed in with the email address that received it.</p>
         </CardContent>
-      </Card>
-    </div>
+    </AuthShell>
   )
 }

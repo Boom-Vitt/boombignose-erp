@@ -5,8 +5,8 @@ import { Sparkles, MailWarning } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { Button } from "@/components/ui/button"
+import { AuthShell } from "@/components/auth-shell"
 import {
-  Card,
   CardHeader,
   CardTitle,
   CardDescription,
@@ -62,8 +62,7 @@ export default async function InvitePage({
 
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+    <AuthShell>
         <CardHeader className="items-center text-center">
           <div className="bg-primary text-primary-foreground mb-2 flex size-10 items-center justify-center rounded-md">
             {isValid ? (
@@ -103,7 +102,6 @@ export default async function InvitePage({
             </Button>
           </CardFooter>
         )}
-      </Card>
-    </div>
+    </AuthShell>
   )
 }
