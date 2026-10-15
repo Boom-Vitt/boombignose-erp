@@ -115,7 +115,7 @@ it('an inactive deal cannot create an activity in the active workspace', async (
 it('a failed dashboard query cannot report invented zero balances', async () => {
  const client = state.client as ReturnType<typeof databaseFixture>
  state.client = {from: (table:string) => table === 'costs'
-   ? {select: () => ({eq: async () => ({data:null,error:{message:'Unavailable'}})})}
+   ? {select: () => ({eq: () => ({gte: () => ({lt: async () => ({data:null,error:{message:'Unavailable'}})})})})}
    : client.from(table)}
  await expect(getDashboardData()).rejects.toThrow('Unable to load dashboard data')
 })

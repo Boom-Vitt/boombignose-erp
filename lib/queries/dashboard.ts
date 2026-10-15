@@ -93,7 +93,13 @@ export async function getDashboardData(): Promise<DashboardData> {
       .select("id,status,amount_satang,is_recurring,recurring_interval,due_date")
       .eq("org_id", ctx.orgId),
     supabase.from("payments").select("invoice_id,amount_satang,paid_at").eq("org_id", ctx.orgId).eq("verification_state", "verified"),
-    supabase.from("costs").select("amount_satang,incurred_on").eq("org_id", ctx.orgId),
+    // Only this month's burn is used; an all-time read would hit the 1000-row API cap.
+    supabase
+      .from("costs")
+      .select("amount_satang,incurred_on")
+      .eq("org_id", ctx.orgId)
+      .gte("incurred_on", `${month}-01`)
+      .lt("incurred_on", nextMonthStart(month)),
     supabase.from("projects").select("status").eq("org_id", ctx.orgId),
     supabase.from("activities").select("id,body,type,due_date,done").eq("org_id", ctx.orgId),
     supabase
