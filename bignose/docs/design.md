@@ -237,12 +237,23 @@ export interface Config {
   `MCP-Protocol-Version` headers after init, 202 for notifications). Request timeout 60 s, except the first stdio
   `initialize` (180 s: a cold `npx` download is slow). Stdio servers get `process.env` overlaid with the configured
   `env` (after `${NAME}` expansion). Answer a server→client `ping`; ignore notifications and unknown messages.
+  An HTTP client goes down (`connected` false, the reason kept for the card) when `fetch` fails (dead server) or the
+  server answers 401/403; a timed-out or interrupted request does not take it down. On a 404 for a request that
+  carried a session id (the server forgot the session) it re-initializes once with a new session and repeats the
+  request; calls that fail together share that one renewal, and a second 404 on the fresh session takes it down.
 - `mcp/manager.ts`: `McpManager(servers: Record<string, McpServerConfig>, env: Record<string,string>)`:
-  `start()` connects enabled servers, `tools(): Tool[]` (selected tools only; name `mcp__<server>__<tool>`
+  `start()` connects enabled servers all at once (a slow one never delays the next; each failure stays on its own
+  entry) and resolves when each is up or failed, `tools(): Tool[]` (selected tools only; name `mcp__<server>__<tool>`
   sanitised to 64 chars; defaultPolicy `ask`), `test(name)` → `{ ok, tools: number, error? }` (works for disabled
-  servers too), `status()`, `listTools(name)` (cached descriptors, including descriptions),
-  `update(servers, env?)` (reconnect changed configs or secrets), `waitFor(names, signal)` (wait for initialization
-  and tool discovery, up to 180 s, abortable, throws on startup failure), `stop()`.
+  servers too), `status()` (`{name, transport, enabled, connected, starting, tools, error?}`; `starting` is an enabled
+  connector that is initializing or about to), `listTools(name)` (cached descriptors, including descriptions),
+  `apply(servers, env?)` (close the connectors whose config changed or that reference a changed variable, start the
+  rest in the background, return the names it started; a secret save restarts only connectors whose `env`/`headers`
+  reference a changed `${NAME}`; a connector that failed to start is not retried until its config or one of its
+  variables changes, one that was up and exited is restarted by the next apply), `update(servers, env?)` (`apply`
+  then wait for the starts), `settle(names, ms, signal)` (wait up to `ms` for those connectors that are still
+  starting; never throws), `waitFor(names, signal)` (wait for initialization and tool discovery, up to 180 s,
+  abortable, throws on startup failure), `stop()`.
   Provider and MCP HTTP requests reject redirects (`redirect: 'error'`), including MCP session cleanup, so
   authentication headers never follow a redirect to another origin.
 
@@ -302,7 +313,8 @@ export interface Config {
   messages (including intermediate text), tool blocks and internal compaction summaries are dropped. Owner runs
   keep full context; the messages table retains the full transcript when visitor context is saved.
 - `app/runtime.ts`: builds the provider (the session's agent provider + key), the tool list (builtin + memory + session_search +
-  skills + schedule + MCP), the system prompt (the agent's instructions or a short default, + shared user and own agent memory notes + its skills
+  skills + schedule + MCP; a run first waits up to 5 s for the agent's enabled connectors that are still starting, so a chat sent just after boot
+  or an enable gets their tools), the system prompt (the agent's instructions or a short default, + shared user and own agent memory notes + its skills
   index + today's date), runs `runAgent` per session (one run per session at a time), persists `added` and
   `context` in the store, sets a title from the first user message, routes approvals to the origin's channel
   (desktop → API event + `POST /api/approvals/:id`; cli = `chat -q` in-process → TTY prompt, denied without a TTY;
@@ -322,12 +334,15 @@ export interface Config {
   daemon binds the API on port 0, and LINE on port 0 when it is the default 47822, so first-run tests without a config
   file never bind 47821/47822); apply settings changes live (LINE hot-apply, MCP update); clean shutdown on
   SIGINT/SIGTERM.
-  The API listens and `daemon.json` is written before connectors finish initializing. Initial connector startup
-  runs asynchronously in the same serialized queue as settings writes; pending connectors show `connected:false`.
+  The API listens and `daemon.json` is written before connectors finish initializing. The serialized queue
+  only closes changed connectors and starts new ones (`mcp.apply`); initialization itself (up to the 180 s stdio
+  timeout) runs outside the queue, in parallel per connector, and pending connectors show `starting:true`
+  (`connected:false`). A settings or secrets write waits at most 3 s (`mcpWaitMs`), after leaving the queue, for the
+  connectors that write started, so a fast connector is `connected` when the write returns and a stuck one only
+  delays the write that started it; every other write, and turning the stuck connector off, returns at once.
   Shutdown cancels their initialization and waits for the queue before closing the store.
   LINE starts before MCP initialization, and the scheduler starts after that LINE startup attempt, so slow
-  connectors cannot delay inbound LINE or cron LINE delivery. Settings writes wait behind an in-flight connector
-  initialization (up to the 180 s stdio initialize timeout).
+  connectors cannot delay inbound LINE or cron LINE delivery.
   A failed LINE bind is retried on the next settings/secrets reload, even when those values are unchanged.
   A LINE settings or secret save is applied to the running gateway (`reconfigure`), never by building a new one: chats
   in flight, queued messages, open approvals and parked "Get answer" answers stay, and finish through the new
@@ -413,7 +428,7 @@ export interface Config {
     API port changes apply on daemon restart.
     `PUT /api/secrets` `{name, value}` (`''` deletes)
     → `{name, masked}`.
-  - `GET /api/mcp` → `{ servers: [{name, transport, enabled, connected, error?, tools?: [{name, selected}]}] }`;
+  - `GET /api/mcp` → `{ servers: [{name, transport, enabled, connected, starting, error?, tools?: [{name, selected}]}] }`;
     `POST /api/mcp` `{name, config: McpServerConfig}`; `PATCH /api/mcp/:name` `{enabled?, tools?}`;
     `DELETE /api/mcp/:name`; `POST /api/mcp/:name/test` → `{ok, tools, error?}`; `GET /api/mcp/:name/tools` →
     `{tools: [{name, description, selected}]}`.
@@ -503,7 +518,10 @@ export interface Config {
 - Screens: **Chat** — session list with search, new chat, streaming answer, live tool activity (name, input,
   result, collapsible), Allow/Deny cards for approvals, stop button. **Settings** — Providers & models (masked keys,
   set/replace key, base URL, model, active provider), Connectors (MCP list, enable toggle, per-tool selection, add
-  stdio/http, test; REA card with one-click enable), Messaging (LINE: token, secret, allowlists, port, public URL,
+  stdio/http, test; REA card with one-click enable; the badge reads Off, Starting…, Connected or Error, and the card
+  polls while a connector is starting; the Tools panel of a connector that is not connected says to turn it on and has no
+  Save selection, and a connector that lists no tools has none either, so an empty selection is saved only by choosing
+  None on a connected connector), Messaging (LINE: token, secret, allowlists, port, public URL,
   enable, status, webhook URL), Skills, Memory, Schedules.
 - Look: dark, modern, serious. No third-party product names in the app's own labels (names inside provider and
   connector pickers/cards are fine).

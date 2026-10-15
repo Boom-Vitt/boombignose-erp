@@ -4,7 +4,10 @@ import { createHash } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 import { McpClient } from './client.ts';
 
-interface Entry { client: McpClient; specs?: ToolSpec[]; error?: string }
+interface Entry { client: McpClient; specs?: ToolSpec[]; error?: string; starting?: Promise<void> }
+const REF = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+// The variables a connector's config expands at connect time (stdio env values, HTTP header values).
+const refs = (config?: McpServerConfig) => Object.values((config?.transport === 'stdio' ? config.env : config?.headers) ?? {}).flatMap(v => [...v.matchAll(REF)].map(m => m[1]!));
 export class McpManager {
   private servers: Record<string, McpServerConfig>;
   private env: Record<string, string>;
@@ -12,18 +15,34 @@ export class McpManager {
   private testing = new Set<McpClient>();
   private generation = 0;
   constructor(servers: Record<string, McpServerConfig>, env: Record<string, string>) { this.servers = structuredClone(servers); this.env = { ...env }; }
-  async start(): Promise<void> {
-    const generation = this.generation;
+  /** Connects every enabled connector that is not up, all at once, and resolves when each has connected or failed. */
+  async start(): Promise<void> { this.launch(); await this.ready(); }
+  async ready(): Promise<void> { await Promise.all([...this.entries.values()].map(e => e.starting)); }
+  /** Waits up to `ms` for the named connectors that are still starting; never throws. */
+  async settle(names: string[], ms: number, signal: AbortSignal): Promise<void> {
+    const pending = names.flatMap(name => this.entries.get(name)?.starting ?? []);
+    if (!pending.length) return;
+    const done = new AbortController();
+    try { await Promise.race([Promise.all(pending), setTimeout(ms, undefined, { signal: AbortSignal.any([done.signal, signal]) })]); }
+    catch { /* interrupted: the caller checks its own signal */ }
+    finally { done.abort(); }
+  }
+  // A connector that failed to start is left alone until its config or a variable it references changes; one that was up and exited is restarted.
+  private launch(): string[] {
+    const launched: string[] = [];
     for (const [name, config] of Object.entries(this.servers)) {
-      if (generation !== this.generation) return;
-      if (!config.enabled || this.entries.get(name)?.client.connected) continue;
-      const previous = this.entries.get(name); this.entries.delete(name);
-      await previous?.client.close();
-      if (generation !== this.generation) return;
-      const entry: Entry = { client: new McpClient(config, this.env) }; this.entries.set(name, entry);
-      try { await entry.client.connect(); entry.specs = await entry.client.listTools(); }
-      catch (e) { entry.error = `connector ${name}: ${e instanceof Error ? e.message : String(e)}`; await entry.client.close(); }
+      const previous = this.entries.get(name);
+      if (!config.enabled || previous?.client.connected || previous?.starting || (previous?.error && previous.specs === undefined)) continue;
+      const entry: Entry = { client: new McpClient(config, this.env) }; this.entries.set(name, entry); launched.push(name);
+      entry.starting = (async () => {
+        try {
+          await previous?.client.close();
+          await entry.client.connect(); entry.specs = await entry.client.listTools();
+        } catch (e) { entry.error = `connector ${name}: ${e instanceof Error ? e.message : String(e)}`; await entry.client.close(); }
+        finally { entry.starting = undefined; }
+      })();
     }
+    return launched;
   }
   async waitFor(names: string[], signal: AbortSignal): Promise<void> {
     const deadline = Date.now() + 180_000;
@@ -76,11 +95,11 @@ export class McpManager {
     catch (e) { return { ok: false, tools: 0, error: e instanceof Error ? e.message : String(e) }; }
     finally { this.testing.delete(client); await client.close(); }
   }
-  status(): { name: string; transport: 'stdio' | 'http'; enabled: boolean; connected: boolean; tools: { name: string; selected: boolean }[]; error?: string }[] {
+  status(): { name: string; transport: 'stdio' | 'http'; enabled: boolean; connected: boolean; starting: boolean; tools: { name: string; selected: boolean }[]; error?: string }[] {
     return Object.entries(this.servers).map(([name, config]) => {
       const entry = this.entries.get(name);
       if (entry) this.connectionError(name, entry);
-      return { name, transport: config.transport, enabled: config.enabled, connected: !!entry?.client.connected && entry.specs !== undefined,
+      return { name, transport: config.transport, enabled: config.enabled, connected: !!entry?.client.connected && entry.specs !== undefined, starting: config.enabled && (!entry || !!entry.starting), // enabled but not launched yet counts: it is about to start
         tools: (entry?.specs ?? []).map(t => ({ name: t.name, selected: !config.tools || config.tools.includes(t.name) })),
         ...(entry?.error ? { error: entry.error } : {}),
       };
@@ -91,16 +110,18 @@ export class McpManager {
     return entry.error;
   }
   listTools(name: string): ToolSpec[] { return structuredClone(this.entries.get(name)?.specs ?? []); }
-  async update(servers: Record<string, McpServerConfig>, env = this.env): Promise<void> {
+  /** Applies new settings: closes connectors whose config (or a variable it references) changed and starts the rest in the background. Returns the names it started. */
+  async apply(servers: Record<string, McpServerConfig>, env = this.env): Promise<string[]> {
     const generation = this.generation;
-    const envChanged = JSON.stringify(env) !== JSON.stringify(this.env);
+    const changed = new Set([...Object.keys(env), ...Object.keys(this.env)].filter(k => env[k] !== this.env[k]));
     for (const [name, entry] of this.entries) {
-      if (envChanged || JSON.stringify(this.servers[name]) !== JSON.stringify(servers[name])) { this.entries.delete(name); await entry.client.close(); }
+      if (JSON.stringify(this.servers[name]) !== JSON.stringify(servers[name]) || refs(servers[name]).some(v => changed.has(v))) { this.entries.delete(name); await entry.client.close(); }
     }
     this.env = { ...env };
     this.servers = structuredClone(servers);
-    if (generation === this.generation) await this.start();
+    return generation === this.generation ? this.launch() : [];
   }
+  async update(servers: Record<string, McpServerConfig>, env = this.env): Promise<void> { await this.apply(servers, env); await this.ready(); }
   async stop(): Promise<void> {
     this.generation++;
     const entries = [...this.entries.values()]; this.entries.clear();

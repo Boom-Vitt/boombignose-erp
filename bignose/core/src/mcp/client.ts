@@ -16,6 +16,7 @@ export class McpClient {
   private sequence = 0;
   private stderr = '';
   private session?: string;
+  private renewing?: Promise<void>;
   private version = '2025-11-25';
   private headers: Record<string, string> = {};
   private controller = new AbortController();
@@ -69,12 +70,23 @@ export class McpClient {
           catch { /* Ignore non-protocol stdout such as startup banners. */ }
         });
       } else this.headers = Object.fromEntries(Object.entries(this.config.headers ?? {}).map(([k, v]) => [k, this.expand(v)]));
-      const result = await this.request('initialize', { protocolVersion: this.version, capabilities: {}, clientInfo: { name: 'BigNose', version: VERSION } }, undefined, this.config.transport === 'stdio' ? 180_000 : 60_000);
-      if (typeof result?.protocolVersion !== 'string') throw new Error('Invalid MCP initialize result');
-      this.version = result.protocolVersion;
-      await this.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+      await this.handshake();
       this.connected = true;
     } catch (e) { await this.close(); throw this.safe(e instanceof Error ? e.message : String(e)); }
+  }
+  private async handshake(): Promise<void> {
+    const result = await this.request('initialize', { protocolVersion: this.version, capabilities: {}, clientInfo: { name: 'BigNose', version: VERSION } }, undefined, this.config.transport === 'stdio' ? 180_000 : 60_000);
+    if (typeof result?.protocolVersion !== 'string') throw new Error('Invalid MCP initialize result');
+    this.version = result.protocolVersion;
+    await this.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  }
+  // The server forgot our HTTP session (404): start a new one, as the MCP spec says. Calls that fail together share one renewal.
+  private renew(used: string): Promise<void> {
+    if (this.session !== used && !this.renewing) return Promise.resolve();
+    return this.renewing ??= (async () => {
+      this.session = undefined; this.version = '2025-11-25';
+      try { await this.handshake(); } catch (e) { this.fail(e instanceof Error ? e : new Error(String(e))); throw e; }
+    })().finally(() => { this.renewing = undefined; });
   }
   private unwrap(message: Rpc): any {
     if (message.error) throw this.safe(`MCP error ${message.error.code}: ${message.error.message}`);
@@ -92,15 +104,29 @@ export class McpClient {
     this.pending.delete(message.id);
     try { pending.resolve(this.unwrap(message)); } catch (e) { pending.reject(e as Error); }
   }
-  private async post(message: Rpc, signal?: AbortSignal, timeoutMs = 60_000): Promise<any> {
+  private async post(message: Rpc, signal?: AbortSignal, timeoutMs = 60_000, renewed = false): Promise<any> {
     if (this.config.transport !== 'http') throw new Error('Not an HTTP server');
-    const response = await fetch(this.config.url, {
-      method: 'POST', redirect: 'error', signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]),
-      headers: { ...this.headers, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
-        ...(this.session ? { 'Mcp-Session-Id': this.session } : {}), 'MCP-Protocol-Version': this.version },
-      body: JSON.stringify(message),
-    });
-    if (!response.ok) throw this.safe(`MCP HTTP ${response.status}: ${await response.text()}`);
+    const used = this.session, aborted = AbortSignal.any([this.controller.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
+    let response: Response;
+    try {
+      response = await fetch(this.config.url, {
+        method: 'POST', redirect: 'error', signal: aborted,
+        headers: { ...this.headers, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+          ...(used ? { 'Mcp-Session-Id': used } : {}), 'MCP-Protocol-Version': this.version },
+        body: JSON.stringify(message),
+      });
+    } catch (e) {
+      const error = this.safe(e instanceof Error ? e.message : String(e));
+      if (!aborted.aborted) this.fail(error); // unreachable server; a timeout or an interrupted call says nothing about it
+      throw error;
+    }
+    if (!response.ok) {
+      const error = this.safe(`MCP HTTP ${response.status}: ${await response.text()}`);
+      const handshake = message.method === 'initialize' || message.method === 'notifications/initialized';
+      if (response.status === 404 && used && !renewed && !handshake) { await this.renew(used); return this.post(message, signal, timeoutMs, true); }
+      if (response.status === 401 || response.status === 403 || response.status === 404) this.fail(error); // credentials refused, or a fresh session refused too
+      throw error;
+    }
     if (message.method === 'initialize') this.session = response.headers.get('mcp-session-id') ?? undefined;
     if (response.status === 202 && (message.id === undefined || !message.method)) return;
     if (response.headers.get('content-type')?.includes('text/event-stream')) {

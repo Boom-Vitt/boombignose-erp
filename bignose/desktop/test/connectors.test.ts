@@ -4,7 +4,8 @@ import { addConnector, prepareConnector, secretName } from '../src/settings/conn
 import type { ConnectorForm } from '../src/settings/connector-form.ts';
 import { createApi } from '../src/api.ts';
 import type { Settings } from '../src/types.ts';
-import { json } from './dom-fixture.ts';
+import { mountConnectors } from '../src/settings/connectors.ts';
+import { TestNode, flush, installDom, json } from './dom-fixture.ts';
 
 const form: ConnectorForm = { name: 'my', transport: 'stdio', command: 'npx', args: '-y "a b"', url: '', pairs: [['K', 'fake-one']] };
 function settings(): Settings {
@@ -169,4 +170,42 @@ test('delete clears only its own unshared secrets and permits same-name credenti
   delete stored.secrets.MCP_6D79_4B;
   await addConnector(api, form);
   assert.equal(secrets.get('MCP_6D79_4B'), 'fake-one');
+});
+
+function mcpPane(servers: { name: string; connected: boolean; enabled?: boolean; starting?: boolean; error?: string }[], tools: Record<string, { name: string; selected: boolean }[]>) {
+  const patches: { path: string; body: any }[] = [];
+  const api = createApi({ port: 1, token: 'fake-token', fetch: (async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    if (init?.method === 'PATCH') { patches.push({ path, body: JSON.parse(String(init.body)) }); return json({ ok: true }); }
+    if (path === '/api/mcp') return json({ servers: servers.map((s) => ({ transport: 'stdio', enabled: true, ...s })) });
+    const name = path.split('/')[3]!;
+    return json({ tools: tools[name] ?? [] });
+  }) as typeof fetch });
+  const pane = new TestNode('div');
+  mountConnectors(pane as unknown as HTMLElement, api);
+  const card = (name: string) => pane.querySelectorAll('section').find((s) => s.querySelector('h3')!.textContent.startsWith(name))!;
+  const button = (node: TestNode, label: string) => node.querySelectorAll('button').find((b) => b.textContent === label);
+  return { pane, patches, card, button };
+}
+
+test('Save selection is hidden while the connector is not connected', async (t) => {
+  t.after(installDom());
+  const h = mcpPane([{ name: 'off', connected: false, enabled: false }, { name: 'boot', connected: false, starting: true }, { name: 'live', connected: true }, { name: 'bare', connected: true }],
+    { live: [{ name: 'echo', selected: true }, { name: 'add', selected: true }] });
+  await flush();
+  for (const name of ['off', 'boot']) {
+    h.button(h.card(name), 'Tools')!.fire('click'); await flush();
+    assert.equal(h.button(h.card(name), 'Save selection'), undefined, `${name}: no Save`);
+    assert.equal(h.card(name).querySelector('.tool-picks'), null, `${name}: no empty picker`);
+    assert.match(h.card(name).querySelector('.tools-panel')!.textContent, /turn this connector on/i);
+  }
+  h.button(h.card('bare'), 'Tools')!.fire('click'); await flush(); // connected but lists nothing: an empty save would hide every tool later
+  assert.equal(h.button(h.card('bare'), 'Save selection'), undefined);
+  assert.match(h.card('bare').querySelector('.tools-panel')!.textContent, /lists no tools/);
+
+  h.button(h.card('live'), 'Tools')!.fire('click'); await flush();
+  assert.deepEqual(h.card('live').querySelectorAll('.tool-pick').length, 2);
+  h.button(h.card('live'), 'None')!.fire('click');
+  h.button(h.card('live'), 'Save selection')!.fire('click'); await flush();
+  assert.deepEqual(h.patches, [{ path: '/api/mcp/live', body: { tools: [] } }], 'a deliberate None on a connected connector still saves, and nothing else was saved');
 });

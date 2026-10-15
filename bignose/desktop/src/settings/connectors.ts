@@ -17,8 +17,8 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
       const sorted = [...servers].sort((a, b) => (a.name === BUILTIN ? -1 : b.name === BUILTIN ? 1 : a.name.localeCompare(b.name)));
       cards.replaceChildren(...sorted.map(card));
       if (!sorted.length) cards.append(el('p', { class: 'muted' }, 'No connectors yet.'));
-      // an enabled server that is neither connected nor failed is still starting (a first npx run is slow)
-      if (servers.some((s) => s.enabled && !s.connected && !s.error) && polls++ < 90) window.setTimeout(() => { if (cards.isConnected) void refreshCards(); }, 2000);
+      // a first npx run is slow: poll until every starting connector is up or failed
+      if (servers.some((s) => s.starting) && polls++ < 90) window.setTimeout(() => { if (cards.isConnected) void refreshCards(); }, 2000);
     } catch (e) {
       cards.replaceChildren(el('div', { class: 'notice error', role: 'alert' }, el('p', {}, errMsg(e)), btn('Retry', () => void refreshCards())));
     }
@@ -26,7 +26,7 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
 
   function card(s: McpServerInfo): HTMLElement {
     const builtin = s.name === BUILTIN;
-    const [stateText, tone] = !s.enabled ? ['Off', ''] : s.connected ? ['Connected', 'ok'] : s.error ? ['Error', 'bad'] : ['Starting…', 'warn'];
+    const [stateText, tone] = !s.enabled ? ['Off', ''] : s.connected ? ['Connected', 'ok'] : s.starting ? ['Starting…', 'warn'] : ['Error', 'bad'];
     const result = el('div', { class: 'result', role: 'status' });
     const panel = el('div', { class: 'tools-panel', hidden: true });
 
@@ -50,7 +50,11 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
     let loaded = false;
     const toolsBtn = btn('Tools', () => {
       panel.hidden = !panel.hidden;
-      if (!panel.hidden && !loaded) { loaded = true; void load(panel, () => api.mcpTools(s.name), ({ tools }) => renderTools(panel, s.name, tools)); }
+      if (panel.hidden || loaded) return;
+      loaded = true;
+      // a connector that is off or still starting lists no tools yet; offering to save then would store an empty selection
+      if (!s.connected) panel.replaceChildren(el('p', { class: 'muted' }, 'Turn this connector on and wait until it shows Connected to choose its tools.'));
+      else void load(panel, () => api.mcpTools(s.name), ({ tools }) => renderTools(panel, s.name, tools));
     });
 
     return el('section', { class: 'card' },
@@ -79,6 +83,7 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
     });
     const setVisible = (on: boolean) => { items.forEach((it, i) => { if (!it.hidden) rows[i].box.checked = on; }); update(); };
     update();
+    if (!rows.length) { panel.append(el('p', { class: 'muted' }, 'This server lists no tools.')); return; }
     panel.append(
       el('div', { class: 'actions' }, el('label', {}, el('span', { class: 'sr-only' }, 'Filter tools'), filter), btn('All', () => setVisible(true), 'small'), btn('None', () => setVisible(false), 'small'), count,
         btn('Save selection', (b) => void guarded(async () => {
@@ -86,7 +91,6 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
           toast('Tool selection saved');
         }, b), 'primary')),
       el('div', { class: 'tool-picks' }, ...items));
-    if (!rows.length) panel.append(el('p', { class: 'muted' }, 'This server lists no tools.'));
   }
 
   // ---- add form
