@@ -125,3 +125,21 @@ it('a pending challenge keeps the query of the page it interrupted', async () =>
  const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa?redirect=%2Finvite%2Fvalid-token'))
  expect(new URL(res.headers.get('location')!).searchParams.get('redirect')).toBe('/setup-2fa?redirect=%2Finvite%2Fvalid-token')
 })
+it.each(['/portal/share-token','/api/webhooks/n8n/followup','/api/cron/outbox','/','/blueprint-preview'])('signed-out %s stays public', async path => {
+ state.user=null
+ expect((await updateSession(new NextRequest(`https://app.example.test${path}`))).headers.get('location')).toBeNull()
+})
+it('a route that only shares a public prefix still needs sign-in', async () => {
+ state.user=null
+ const res=await updateSession(new NextRequest('https://app.example.test/portals'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login?redirect=%2Fportals')
+})
+it('a pending challenge does not block the public client portal', async () => {
+ mfaUser('aal1')
+ expect((await updateSession(new NextRequest('https://app.example.test/portal/share-token'))).headers.get('location')).toBeNull()
+})
+it('a signed-in sign-up visit with a pending challenge goes to the challenge, not the app', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest('https://app.example.test/signup?redirect=%2Fdeals'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login/mfa?redirect=%2Fdeals')
+})
