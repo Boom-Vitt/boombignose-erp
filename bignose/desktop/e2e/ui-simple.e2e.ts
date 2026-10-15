@@ -292,3 +292,251 @@ test('the OS panel at 420x640 has no horizontal overflow and keeps the composer 
   assert.deepEqual(await ui.cdp.evaluate(`window.__csp`), []);
   assert.deepEqual(ui.cdp.errors, []);
 });
+
+test('the agents pages', { timeout: 300_000 }, async (t) => {
+  // Own daemon and temp home. The default agent has the bot icon and blank instructions; the others are made through the API.
+  const home = testHome(t);
+  configured(home);
+  const app = await startDaemon({ home }); t.after(() => app.close());
+  const api = createApi({ port: app.port, token: app.token });
+  const base = { provider: 'mock', model: 'test-model' };
+  const bot = (await api.listAgents()).agents[0]!;
+  const shop = await api.createAgent({ ...base, name: 'ผู้ช่วยแอดมินร้าน', icon: '🛍️', instructions: 'Answers shop questions.\nSecond line.' });
+  const clipped = 'Write captions and short scripts in the BoomBigNose voice: short, dry, with the hook in the first second.';
+  const writer = await api.createAgent({ ...base, name: 'Writer', icon: '✍️', instructions: clipped });
+  await api.addSchedule({ cron: '0 9 * * 1-5', prompt: 'Morning summary', delivery: { kind: 'desktop' }, agentId: shop.id });
+  const ui = await openUi(t, app, { viewport: SIZES[1]!, hash: '#/agents' });
+  const row = (id: string) => `document.querySelector('[data-agent-id="${id}"]')`;
+  const text = (selector: string) => ui.cdp.evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent`);
+  const press = async (key: string, code: number) => { for (const type of ['keyDown', 'keyUp']) await ui.cdp.call('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: code }); };
+  const open = (id: string) => ui.cdp.evaluate(`${row(id)}.querySelector('[aria-haspopup=menu]').click()`);
+  const rowsReady = (n: number) => ui.wait(`document.querySelectorAll('.agent-row').length === ${n}`, `${n} agent rows`);
+  const go = async (hash: string) => { await ui.cdp.evaluate(`location.hash = ${JSON.stringify(hash)}`); };
+  const accent = () => ui.cdp.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()`);
+  /** True once the page for `hash` is showing (the form's h1 names it, so a form from the last route cannot count). */
+  const arrived = (hash: string) => hash === '#/agents' ? `location.hash === '#/agents' && document.querySelectorAll('.agent-row').length === 4`
+    : hash === '#/agents/new' ? `document.querySelector('.page-head h1')?.textContent === 'New agent' && document.querySelector('.agent-form')`
+      : `document.querySelector('.page-head h1')?.textContent.startsWith('Edit') && document.querySelector('.agent-form')`;
+  await rowsReady(3);
+
+  await t.test('the roster is one card of rows: avatar, name and what the agent is for', async () => {
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.agent-card').length`), 0);
+    assert.equal(await ui.cdp.evaluate(`(() => { const rows = [...document.querySelectorAll('.agent-row')]; const parents = new Set(rows.map(r => r.parentElement)); return parents.size === 1 && [...parents][0].classList.contains('card') && rows.every(r => r.querySelector('.avatar') && r.querySelector('.agent-name') && r.querySelector('.agent-mission')); })()`), true);
+    assert.equal(await text('.page-head h1'), 'Agents');
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.page-head .btn.primary').textContent`), 'New agent');
+    assert.equal(await text(`[data-agent-id="${bot.id}"] .agent-mission`), 'General assistant', 'blank instructions');
+    assert.equal(await text(`[data-agent-id="${shop.id}"] .agent-mission`), 'Answers shop questions.', 'the first line');
+    const long = await text(`[data-agent-id="${writer.id}"] .agent-mission`);
+    assert.equal(long, `${clipped.slice(0, 79)}…`, 'a long first line is cut at 80 characters');
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('[data-agent-id="${bot.id}"] .avatar.bot svg use').getAttribute('href')`), '#bot', 'the default icon is the headphone bot');
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('[data-agent-id="${shop.id}"] .avatar').classList.contains('bot')`), false);
+    assert.equal(await text(`[data-agent-id="${shop.id}"] .avatar`), '🛍️');
+    assert.equal(await text(`[data-agent-id="${shop.id}"] .agent-meta`), 'test-model · 1 schedule');
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('[data-agent-id="${shop.id}"] .agent-meta a').getAttribute('href')`), `#/settings/schedules?agent=${shop.id}`);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.nav-link[href="#/agents"]').getAttribute('aria-current')`), 'page');
+    await shot(ui, 'agents-light.png');
+    await scheme(ui, 'dark'); await shot(ui, 'agents-dark.png'); await scheme(ui, 'light');
+  });
+
+  await t.test('an agent row shows Chat only on hover or focus', async () => {
+    const chat = (id: string) => ui.cdp.evaluate(`getComputedStyle(${row(id)}.querySelector('.agent-chat')).opacity`);
+    await ui.wait(`getComputedStyle(${row(bot.id)}.querySelector('.agent-chat')).opacity === '0'`, 'idle rows hide Chat');
+    assert.equal(await chat(shop.id), '0');
+    assert.equal(await ui.cdp.evaluate(`(() => { const b = ${row(shop.id)}.querySelector('.agent-chat'); return b.tabIndex === 0 && b.getClientRects().length > 0; })()`), true, 'hidden by opacity only, so the keyboard still reaches it');
+    await ui.cdp.evaluate(`${row(shop.id)}.querySelector('[aria-haspopup=menu]').focus()`);
+    await ui.wait(`getComputedStyle(${row(shop.id)}.querySelector('.agent-chat')).opacity === '1'`, 'focus shows Chat');
+    assert.equal(await chat(bot.id), '0', 'only the row with focus');
+    await ui.cdp.evaluate(`document.activeElement.blur()`);
+    await ui.wait(`getComputedStyle(${row(shop.id)}.querySelector('.agent-chat')).opacity === '0'`);
+    const at = await ui.cdp.evaluate(`(() => { const r = ${row(writer.id)}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await ui.cdp.call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at });
+    await ui.wait(`getComputedStyle(${row(writer.id)}.querySelector('.agent-chat')).opacity === '1'`, 'hover shows Chat');
+    await ui.cdp.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+    await ui.wait(`getComputedStyle(${row(writer.id)}.querySelector('.agent-chat')).opacity === '0'`);
+  });
+
+  await t.test('the ⋯ menu: neutral highlight, no Use for LINE, arrows, Esc, Tab and a press outside close it', async () => {
+    await open(shop.id);
+    assert.equal(await ui.cdp.evaluate(`${row(shop.id)}.querySelector('[aria-haspopup=menu]').getAttribute('aria-expanded')`), 'true');
+    assert.deepEqual(await ui.cdp.evaluate(`[...${row(shop.id)}.querySelectorAll('.menu-item')].map(b => b.textContent)`), ['Edit…', 'Duplicate', 'Delete…']);
+    assert.equal(await ui.cdp.evaluate(`document.activeElement.textContent`), 'Edit…', 'the first item has focus');
+    const hex = await accent();
+    const rgb = `rgb(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
+    assert.notEqual(await ui.cdp.evaluate(`getComputedStyle(document.activeElement).backgroundColor`), rgb, 'the highlight is neutral, not the accent');
+    assert.equal(await ui.cdp.evaluate(`/use for line/i.test(document.querySelector('.agent-row').closest('section').textContent)`), false);
+    await ui.wait(`getComputedStyle(${row(shop.id)}.querySelector('.agent-chat')).opacity === '1'`, 'Chat stays while the menu is open');
+    await press('ArrowDown', 40);
+    assert.equal(await ui.cdp.evaluate(`document.activeElement.textContent`), 'Duplicate');
+    await press('ArrowUp', 38); await press('ArrowUp', 38);
+    assert.equal(await ui.cdp.evaluate(`document.activeElement.textContent`), 'Delete…', 'it wraps');
+    await press('Escape', 27);
+    assert.equal(await ui.cdp.evaluate(`${row(shop.id)}.querySelector('.menu').hidden`), true);
+    assert.equal(await ui.cdp.evaluate(`document.activeElement === ${row(shop.id)}.querySelector('[aria-haspopup=menu]')`), true, 'Esc gives focus back to ⋯');
+    await press('ArrowDown', 40);
+    assert.equal(await ui.cdp.evaluate(`${row(shop.id)}.querySelector('.menu').hidden`), false, 'ArrowDown on ⋯ opens it');
+    await press('Tab', 9);
+    assert.equal(await ui.cdp.evaluate(`${row(shop.id)}.querySelector('.menu').hidden`), true, 'Tab closes it');
+    await open(shop.id);
+    const away = await ui.cdp.evaluate(`(() => { const r = document.querySelector('.page-head h1').getBoundingClientRect(); return { x: r.left + 4, y: r.top + 4 }; })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) await ui.cdp.call('Input.dispatchMouseEvent', { type, ...away, button: 'left', clickCount: 1 });
+    assert.equal(await ui.cdp.evaluate(`${row(shop.id)}.querySelector('.menu').hidden`), true, 'a press elsewhere closes it');
+    await open(shop.id); await open(writer.id);
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.menu:not([hidden])').length`), 1, 'one menu at a time');
+    await shot(ui, 'agents-menu-light.png');
+    await press('Escape', 27);
+  });
+
+  await t.test('the LINE badge shows only while LINE is on, on the agent that answers', async () => {
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.agent-row .badge.ok').length`), 0, 'LINE is off');
+    await api.updateSettings((c) => { c.line.enabled = true; c.line.agentId = shop.id; });
+    await go('#/chat'); await go('#/agents'); await rowsReady(3);
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.agent-row .badge.ok').length`), 1);
+    assert.equal(await text(`[data-agent-id="${shop.id}"] .badge.ok`), 'Answers LINE');
+  });
+
+  await t.test('the agent form is its own page: Agents back link, a card of rows, More options, a save bar', async () => {
+    await ui.click('New agent');
+    await ui.wait(`document.querySelector('.agent-form')`);
+    assert.equal(await ui.cdp.evaluate(`location.hash`), '#/agents/new');
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.agent-row').length`), 0, 'the roster is not on this page');
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.nav-link[href="#/agents"]').getAttribute('aria-current')`), 'page');
+    assert.equal(await text('a.back'), 'Agents'); assert.equal(await ui.cdp.evaluate(`document.querySelector('a.back').getAttribute('href')`), '#/agents');
+    assert.equal(await text('.page-head h1'), 'New agent');
+    const labels = `[...document.querySelectorAll('.agent-form .card > .field:not([hidden]) .field-label')].map(l => l.textContent)`;
+    assert.deepEqual(await ui.cdp.evaluate(labels), ['Name', 'Icon', 'Instructions', 'Model']);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.agent-form .card select').selectedOptions[0].textContent`), 'Same as Settings (test-model)');
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.agent-form details.disclosure').length`), 1);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.agent-form details').open`), false, 'expert fields are folded');
+    assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.group-title')].some(g => /advanced/i.test(g.textContent))`), false);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.agent-form .avatar-field .avatar').classList.contains('bot')`), true, 'a blank icon previews the bot');
+    await ui.field('Icon', '🔎', `document.querySelector('.agent-form')`);
+    assert.equal(await text('.agent-form .avatar-field .avatar'), '🔎');
+    await ui.field('Icon', '', `document.querySelector('.agent-form')`);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.agent-form .avatar-field .avatar').classList.contains('bot')`), true);
+    assert.equal(await text('.save-bar-text'), 'New agent');
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.save-bar .btn')].map(b => b.textContent)`), ['Cancel', 'Create agent']);
+    // Other… brings in the provider and the typed name
+    assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.agent-form .field')].filter(f => ['Provider', 'Model name'].includes(f.querySelector('.field-label').textContent)).every(f => f.getClientRects().length === 0)`), true);
+    await ui.cdp.evaluate(`(() => { const s = [...document.querySelectorAll('.agent-form .field')].find(f => f.querySelector('.field-label').textContent === 'Model').querySelector('select'); s.value = 'other'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.agent-form .field')].filter(f => ['Provider', 'Model name'].includes(f.querySelector('.field-label').textContent)).every(f => f.getClientRects().length > 0)`), true);
+    await ui.cdp.evaluate(`(() => { const s = [...document.querySelectorAll('.agent-form .field')].find(f => f.querySelector('.field-label').textContent === 'Model').querySelector('select'); s.value = 'same'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    // More options: what it may do, connectors and skills, longest answer
+    await ui.cdp.evaluate(`document.querySelector('.agent-form details').open = true`);
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.agent-form details > div > .row > .row-text')].map(r => r.firstChild.textContent)`), ['What it may do', 'Connectors and skills']);
+    assert.equal(await text('.agent-form details .field .field-label'), 'Longest answer');
+    await ui.click('Change…', `document.querySelector('.agent-form')`);
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.agent-form .seg')].map(s => s.getAttribute('aria-label'))`), ['Read files', 'Change files', 'Run commands', 'Open web pages']);
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelector('.agent-form .seg').querySelectorAll('button')].map(b => b.textContent)`), ['Allow', 'Ask', 'Never']);
+    await ui.cdp.evaluate(`[...document.querySelectorAll('.agent-form .seg')][2].querySelectorAll('button')[2].click()`);
+    assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.agent-form .seg')][2].querySelectorAll('button')[2].getAttribute('aria-pressed')`), 'true');
+    await shot(ui, 'agent-new-light.png');
+    // create it
+    await ui.field('Name', 'Temp', `document.querySelector('.agent-form')`);
+    await ui.click('Create agent', `document.querySelector('.agent-form')`);
+    const temp = await until(async () => (await api.listAgents()).agents.find((a) => a.name === 'Temp'), 'the new agent is saved');
+    assert.equal(temp.icon, '🤖'); assert.equal(temp.provider, 'mock'); assert.equal(temp.model, 'test-model'); assert.deepEqual(temp.permissions, { shell: 'deny' });
+    await ui.wait(`location.hash === '#/agents' && document.querySelectorAll('.agent-row').length === 4`, 'back on the roster');
+    assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.toast')].some(x => x.textContent === 'Agent saved')`), true);
+
+    // edit it: the bar appears only when something differs, names it, and Discard puts it back
+    await open(temp.id); await ui.click('Edit…', row(temp.id));
+    await ui.wait(`location.hash === '#/agents/${temp.id}' && document.querySelector('.agent-form')`);
+    assert.equal(await text('.page-head h1'), 'Edit Temp');
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.save-bar').hidden`), true);
+    await ui.field('Instructions', 'Checks the stock list.', `document.querySelector('.agent-form')`);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.save-bar').hidden`), false);
+    assert.equal(await text('.save-bar-text'), 'Instructions changed');
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.save-bar .btn')].map(b => b.textContent)`), ['Discard', 'Save']);
+    await ui.click('Discard', `document.querySelector('.save-bar')`);
+    await ui.wait(`document.querySelector('.save-bar')?.hidden === true && document.querySelector('.agent-form textarea').value === ''`, 'Discard puts the form back');
+    await ui.field('Instructions', 'Checks the stock list.', `document.querySelector('.agent-form')`);
+    await shot(ui, 'agent-edit-light.png');
+    await ui.click('Save', `document.querySelector('.save-bar')`);
+    await until(async () => (await api.getAgent(temp.id)).instructions === 'Checks the stock list.', 'the edit is saved');
+    await ui.wait(`location.hash === '#/agents'`);
+
+    // an agent that is gone
+    await go('#/agents/ag_nope');
+    await ui.wait(`document.querySelector('.notice.error')?.textContent.includes('That agent no longer exists.')`);
+    await ui.click('Agents', `document.querySelector('a.back').parentElement`);
+    await ui.wait(`location.hash === '#/agents' && document.querySelectorAll('.agent-row').length === 4`);
+  });
+
+  await t.test('Chat on a row opens that agent in the chat', async () => {
+    await ui.click('Chat', row(writer.id));
+    await ui.wait(`location.hash === '#/chat' && document.querySelector('[aria-label="Chat agent"]').value === ${JSON.stringify(writer.id)}`);
+    await go('#/agents'); await rowsReady(4);
+  });
+
+  await t.test('no sideways scroll and no stray accent on the agents routes, light and dark, at 820x540 and 1280x800', async () => {
+    const parts = '.shell, .main, .settings, .card, .agent-row, .save-bar';
+    for (const hash of ['#/agents', '#/agents/new', `#/agents/${shop.id}`]) {
+      await go(hash);
+      await ui.wait(arrived(hash));
+      if (hash.endsWith(shop.id)) await ui.cdp.evaluate(`document.querySelector('.agent-form details').open = true`);
+      for (const size of SIZES) {
+        await resize(ui, size); await ui.wait(`innerWidth === ${size.width}`);
+        assert.deepEqual(await overflow(ui, parts), { page: 0, wide: [] }, `${hash} at ${size.width}x${size.height}`);
+      }
+      for (const mode of ['light', 'dark'] as const) {
+        await scheme(ui, mode);
+        assert.deepEqual((await strayAccent(ui)).stray, [], `${hash} ${mode}`);
+      }
+      await scheme(ui, 'light');
+    }
+    await shot(ui, 'agent-edit-thai-light.png');
+    await resize(ui, SIZES[1]!); await ui.wait(`innerWidth === ${SIZES[1]!.width}`);
+  });
+
+  await t.test('Thai is tagged on the agents pages and clipped lines keep room', async () => {
+    for (const hash of ['#/agents', `#/agents/${shop.id}`]) {
+      await go(hash);
+      await ui.wait(arrived(hash));
+      assert.deepEqual(await ui.cdp.evaluate(`(() => {
+        const walk = document.createTreeWalker(document.getElementById('app'), NodeFilter.SHOW_TEXT);
+        const bare = [];
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) if (/[฀-๿]/.test(n.textContent) && !n.parentElement.closest('[lang="th"]')) bare.push(n.textContent);
+        return bare;
+      })()`), [], hash);
+    }
+    assert.equal(await text('.page-head h1'), 'Edit ผู้ช่วยแอดมินร้าน');
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.page-head h1').lang`), 'th');
+    await go('#/agents'); await rowsReady(4);
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.agent-mission, .save-bar-text')]
+      .filter(e => e.getClientRects().length).filter(e => parseFloat(getComputedStyle(e).lineHeight) / parseFloat(getComputedStyle(e).fontSize) < 1.74).map(e => e.className)`), []);
+  });
+
+  await t.test('Delete… asks first: Cancel has focus, Esc keeps the agent, Delete removes it and says what goes with it', async () => {
+    const count = async () => (await api.listAgents()).agents.length;
+    const before = await count();
+    const key = (type: string) => ui.cdp.call('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await open(shop.id); await ui.click('Delete…', row(shop.id));
+    await ui.wait(`document.querySelector('dialog[open]')`);
+    assert.equal(await ui.cdp.evaluate(`document.activeElement.textContent`), 'Cancel');
+    assert.equal(await text('dialog[open] h2'), 'Delete ผู้ช่วยแอดมินร้าน?');
+    const other = (await api.listAgents()).agents.find((a) => a.id !== shop.id)!.name;
+    assert.equal(await text('dialog[open] p'), `Its chats, its notes and its 1 schedule are deleted too. LINE will be answered by ${other}.`);
+    await key('keyDown'); await key('keyUp');
+    await ui.wait(`!document.querySelector('dialog[open]')`);
+    assert.equal(await count(), before, 'Esc deletes nothing');
+    await open(shop.id); await ui.click('Delete…', row(shop.id));
+    await ui.wait(`document.querySelector('dialog[open]')`);
+    await ui.click('Delete', `document.querySelector('dialog[open]')`);
+    await until(async () => (await count()) === before - 1, 'the agent is deleted');
+    await rowsReady(3);
+    assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.agent-row .badge.ok')].map(b => b.closest('.agent-row').querySelector('.agent-name span').textContent).join()`), other, 'LINE moved to the agent the dialog named');
+  });
+
+  await t.test('the last agent cannot be deleted', async () => {
+    for (const a of (await api.listAgents()).agents.slice(1)) await api.deleteAgent(a.id);
+    await go('#/chat'); await go('#/agents'); await rowsReady(1);
+    await open(bot.id);
+    assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.menu-item')].find(b => b.textContent === 'Delete…').disabled`), true);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.menu-note').textContent`), 'BigNose needs at least one agent.');
+  });
+
+  await t.test('no CSP violations and no console errors', async () => {
+    assert.deepEqual(await ui.cdp.evaluate(`window.__csp`), []);
+    assert.deepEqual(ui.cdp.errors, []);
+  });
+});

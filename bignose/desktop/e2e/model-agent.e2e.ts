@@ -27,12 +27,15 @@ test('built UI creates an agent on an unlisted Ollama model, chats with its toke
   const app = await startDaemon({ home }); t.after(() => app.close());
   const api = createApi({ port: app.port, token: app.token });
   const ui = await openUi(t, app);
-  await ui.click('Agents'); await ui.click('Create agent');
+  await ui.click('Agents'); await ui.click('New agent');
   await ui.wait(`document.querySelector('.agent-form datalist')?.options.length===2`);
   assert.deepEqual(await ui.cdp.evaluate(`Array.from(document.querySelector('.agent-form datalist').options).map(o=>o.value)`), ['mock:one', 'mock:two']);
   await ui.field('Name', 'Any model', "document.querySelector('.agent-form')");
-  await ui.field('Model', 'typed/not-in-list', "document.querySelector('.agent-form')");
-  await ui.field('Max tokens', '512', "document.querySelector('.agent-form')");
+  // a model nobody lists: Other… shows the typed name
+  await ui.cdp.evaluate(`(()=>{const s=document.querySelector('.agent-form .card select');s.value='other';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await ui.field('Model name', 'typed/not-in-list', "document.querySelector('.agent-form')");
+  await ui.cdp.evaluate(`document.querySelector('.agent-form details').open=true`);
+  await ui.field('Longest answer', '512', "document.querySelector('.agent-form')");
   await ui.click('Create agent', "document.querySelector('.agent-form')");
   const agent = await until(async () => (await api.listAgents()).agents.find(a => a.name === 'Any model'), 'agent persisted');
   assert.equal(agent.model, 'typed/not-in-list'); assert.equal(agent.maxTokens, 512); assert.ok(!Object.hasOwn(agent, 'effort'));
