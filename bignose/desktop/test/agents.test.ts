@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApi } from '../src/api.ts';
 import { mountAgentForm, mountAgents } from '../src/agents.ts';
-import { mountProviders } from '../src/settings/providers.ts';
+import { mountModel } from '../src/settings/providers.ts';
 import { mountMemory } from '../src/settings/memory.ts';
 import { mountSchedules } from '../src/settings/schedules.ts';
 import { agent, config } from './agent-fixture.ts';
@@ -206,40 +206,26 @@ test('Duplicate copies the agent; Delete… asks first, says what goes with it, 
   assert.ok(last.pane.textContent.includes('BigNose needs at least one agent.'));
 });
 
-test('Providers shows and patches the selected agent model rather than the seed model', async t => {
+test('Settings › Model sets the Settings model, not an agent: an agent keeps its own model until it is moved on purpose', async t => {
   t.after(installDom());
   const h = harness();
-  mountProviders(h.pane as unknown as HTMLElement, h.api, 'a2'); await flush();
-  assert.equal(field(h.pane, 'Model').value, 'two-model');
-  field(h.pane, 'Model').value = 'changed'; button(h.pane, 'Save').fire('click'); await flush();
-  assert.equal(h.agents()[1]!.model, 'changed'); assert.equal(h.agents()[0]!.model, 'one-model');
-  assert.equal(h.config().active.model, 'seed-only');
-  assert.ok(!h.calls.some(c => c.path === '/api/settings' && c.method === 'PUT'));
+  mountModel(h.pane as unknown as HTMLElement, h.api); await flush();
+  assert.equal(field(h.pane, 'Model').value, 'seed-only');
+  assert.ok(!h.pane.textContent.includes('Agent model'));
+  assert.equal(h.agents()[1]!.model, 'two-model');
 });
 
-test('Memory and Schedules filter and create with an explicit agent owner', async t => {
+test('Memory and Schedules create with an explicit agent owner', async t => {
   t.after(installDom());
   for (const mount of [mountMemory, mountSchedules]) {
     const h = harness(); mount(h.pane as unknown as HTMLElement, h.api); await flush();
-    const selectors = h.pane.querySelectorAll('select');
-    const filter = selectors.find(s => s.querySelectorAll('option').some(o => o.textContent === 'All agents'))!;
-    filter.value = 'a2'; filter.fire('change'); await flush();
-    const path = mount === mountMemory ? '/api/memory' : '/api/schedules';
-    assert.equal(h.calls.filter(c => c.path === path).at(-1)!.agent, 'a2');
     const form = h.pane.querySelector('form')!;
     const owner = form.querySelectorAll('select').find(s => s.querySelectorAll('option').some(o => o.value === 'a2'))!;
     owner.value = 'a2';
     form.querySelector('textarea')!.value = 'Owned note or prompt';
-    if (mount === mountMemory) form.querySelector('select')!.value = 'agent';
-    else form.querySelector('input')!.value = '0 9 * * *';
+    if (mount === mountMemory) { const kind = form.querySelector('select')!; kind.value = 'agent'; kind.fire('change'); }
     form.fire('submit'); await flush();
+    const path = mount === mountMemory ? '/api/memory' : '/api/schedules';
     assert.equal(h.calls.find(c => c.path === path && c.method === 'POST')!.body.agentId, 'a2');
   }
-});
-
-test('Providers falls back when the previously selected agent was deleted', async t => {
-  t.after(installDom());
-  const h = harness();
-  mountProviders(h.pane as unknown as HTMLElement, h.api, 'deleted'); await flush();
-  assert.equal(field(h.pane, 'Model').value, 'one-model');
 });

@@ -366,7 +366,7 @@ export interface Config {
   daemon: text to stdout, tool activity to stderr, `ask` tools prompt on a TTY and are denied otherwise; exit 0 when
   done, 1 otherwise), `bignose mcp add <name> (--url <url> | -- <command> [args…])`, `mcp list`, `mcp test <name>`
   (prints `ok <name> <n> tools`, exit 0; or `fail <name>: <error>`, exit 1), `mcp enable|disable <name>`,
-  `bignose doctor` (node version, sqlite + FTS5 trigram, home writable, config valid, active provider has a key,
+  `bignose doctor` (node version, sqlite + FTS5 trigram, home writable, config valid, the active agent's provider has a key (the daemon passes that agent; the CLI uses `config.active`),
   LINE settings when enabled; exit 1 only on hard failures: node < 24, sqlite/FTS5 trigram missing, home not
   writable, invalid config; a missing provider key or LINE secret is a warning and exits 0).
   Doctor creates a missing fresh-install home with mode 0700 before checking writability.
@@ -429,6 +429,8 @@ export interface Config {
     the masked form of its stored value preserves the original value. The same applies to any string leaf equal
     to the blanket-redacted form GET returned for that stored leaf, including workspace, prompts, hooks and URLs;
     restore these before validation. Explicit new values still apply (whole-config read-modify-write is safe).
+    When a save changes `agent.workspace`, the new folder must be absolute after `~` expansion, exist and be a directory, and the
+    expanded path is stored (`400` otherwise); an unchanged stored folder is never re-checked.
     Array elements with an `id` (providers) match by id first; otherwise elements match by redacted content,
     preferring the same index then the first unused match, before falling back to index.
     If any restored string still contains `••••`, PUT returns

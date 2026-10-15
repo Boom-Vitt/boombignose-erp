@@ -85,20 +85,50 @@ list is a sideways strip under it, and the 40 px rail is only the toggle button.
 (`waitForStop`): when the ERP server exits, `boot()` shows the launcher's own "The ERP server stopped" screen with **Retry** and
 returns to the panel once the server is up. The toggle button is mounted on `<body>`, outside `#app`, so that screen keeps it: collapsed to the rail, the stopped screen is hidden and the toggle is the way back.
 
-## Not finished here (next streams)
+## Settings
 
-- The five Settings tabs (migration steps 4 and 5 of the spec). Until then Settings keeps its old DOM: `style.css` ends with a
-  `/* phase1 bridge */` block that styles it with the new tokens, and the Settings page shows its eight sections as a tab row. The
-  step that moves them deletes the bridge and that tab row, and replaces the `model` entry in `ALIASES` in `main.ts`
-  (`#/settings/model` opens Providers & models for now). The agent form does not rely on the bridge (its own rules sit above it).
-  `confirmBtn` stays exported in `dom.ts` for Settings until its stream moves to `confirmDialog`.
-- The e2e checks cover the chat routes, the panel and the agents pages. Each later stream adds its own routes to `e2e/ui-simple.e2e.ts`.
+Five plain-text tabs under `.page-head` + `.tabs`: **Model · LINE · Tools · Memory · Schedules** (`#/settings/<tab>`). The old
+section names still work (`ALIASES` in `main.ts`: `general` and `providers` open Model, `connectors`, `hooks` and `skills` open
+Tools, `messaging` opens LINE). The Settings link, ⌘, and the header model link all land on Model. The `phase1 bridge` rules are
+gone from `style.css`.
+
+- **Save bar.** A tab with a form shows no bar until something differs; then it reads "Model changed from X to Y" (or "A and B
+  changed", or "API key replaced"; it never shows a key) with Discard and Save, and hides again when the value is put back. LINE
+  adds " · LINE will reconnect" for fields that restart the gateway.
+- **Model.** Two "Runs on" cards (This Mac / A cloud service), the Model field with the provider's models as suggestions, and a test
+  line. The line only checks that the server answers and lists the model: core has no test-message route, so it never sends a
+  prompt. It tests the saved address and key, so with an unsaved one it says "Save to test the new address". One More options fold: Context window, Most steps, Summarise at 60/80/90%, address, API key, Run diagnostics. The
+  diagnostics verdict is "All checks passed" only when nothing is `warn` or `fail`; a `note` does not count. Saving a new default
+  also moves every agent that followed the old default (same provider and model) so "Every agent uses this model unless you pick
+  another" stays true; an agent with its own model is left alone. "Other server…" is not offered.
+- **LINE.** Enable switch, **Answered by** (writes `line.agentId`; the first agent when unset), three steps (token and secret,
+  Connect / Test webhook, allowed IDs), then More options (address, port, "Still working" after, the three allow lists). "Tried to
+  reach you" appears only when the status carries `blocked`, which core does not report yet (a marked shortcut).
+- **Tools.** Allow / Ask / Never for four groups (Read files, Change files, Run commands, Open web pages). A group shows what the
+  core would do: the tool's own rule, else the longest `prefix*` rule, else the default; a mixed group lists each tool's policy.
+  Pressing a segment writes one exact rule per tool, so it always needs Save. Then the workspace folder,
+  connectors as rows with a switch (a connector that is starting stays "Starting…"; the tool selection is hidden unless it is
+  connected), Skills behind Manage. More options: single-tool rules, the add-connector form, hooks.
+- **Memory** and **Schedules** are lists with a ⋯ menu per row. Schedules pick a plain When (Every day, Weekdays, Every week, Every
+  hour, Custom (cron)) that becomes the cron; `#/settings/schedules?agent=<id>` shows only that agent's jobs and says so.
+  Once and Run now are not built (core has no such job type or route).
+
+Rules that live in the daemon, not the page:
+
+- The workspace folder is checked only when a save changes `agent.workspace` (`resolveWorkspace`, in `PUT /api/settings`): `~` is
+  expanded, the path must be absolute, exist and be a directory, and the expanded path is what is stored. `validateConfig` does not
+  check it, so a stored relative folder never blocks an unrelated save.
+- The **active agent** is the one that answers LINE, else the first agent. `/api/status` and the diagnostics check that agent's
+  provider and model (a missing provider fails, a missing Ollama model warns), not the Settings default. `bignose doctor` on the CLI
+  has no agent and still checks `config.active`.
+
+Still not built: the test-message route, Once and Run now for schedules, and the "Tried to reach you" data.
 
 ## Checks
 
 - `pnpm --filter desktop test`: unit tests (`chat`, `ui-simple`, `agents`, `agent-model`, `format`, `os/startup` among them).
-- `pnpm --filter desktop e2e`: builds (contrast gate included) and runs `agents-rea`, `os-layout` and `ui-simple` in headless
+- `pnpm --filter desktop e2e`: builds (contrast gate included) and runs `agents-rea`, `line-connect`, `model-agent`, `os-layout` and `ui-simple` in headless
   Chrome, each with its own daemon on a temp home. Set `BIGNOSE_SHOTS=<dir>` to save `chat-light.png`, `chat-dark.png`,
-  `agents-light.png`, `agent-edit-light.png` and a few more for a human look.
+  `agents-light.png`, `agent-edit-light.png`, `settings-light.png`, `settings-line-light.png` and a few more for a human look.
 - Not covered: the real Tauri WKWebView. `size-adjust`, the `local()` Sukhumvit names, `:has()`, `text-wrap: balance` and
   `content: "Esc" / ""` need one look in the app window.

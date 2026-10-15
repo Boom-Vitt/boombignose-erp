@@ -45,10 +45,12 @@ test('built UI creates an agent on an unlisted Ollama model, chats with its toke
   await ui.wait(`document.querySelector('.messages').textContent.includes('Mock Ollama reply.')`);
   assert.equal(requests.length, 1); assert.equal(requests[0]!.body.model, 'typed/not-in-list');
   assert.equal(requests[0]!.body.max_tokens, 512); assert.equal(requests[0]!.auth, undefined);
-  await ui.click('Providers & models');
+  await ui.click('Settings'); await ui.click('Model');
+  await ui.wait(`document.querySelector('#settings-panel details')`, 'the Model tab has loaded');
+  await ui.cdp.evaluate(`document.querySelector('#settings-panel details').open = true`);
   await ui.wait(`document.querySelector('[aria-label="Settings"]').textContent.includes('4096-token context')`);
   assert.ok(await ui.cdp.evaluate(`document.querySelector('[aria-label="Settings"]').textContent.includes(${JSON.stringify(OLLAMA_CONTEXT_NOTE)})`));
-  assert.ok(await ui.cdp.evaluate(`document.querySelector('[aria-label="Settings"]').textContent.includes('API key (optional):')`));
+  assert.ok(await ui.cdp.evaluate(`[...document.querySelectorAll('#settings-panel .field-label')].some(l => l.textContent === 'API key (optional)')`));
   await ui.wait(`document.querySelector('#provider-models')?.options.length===2`);
   assert.deepEqual(ui.cdp.errors, []);
 });

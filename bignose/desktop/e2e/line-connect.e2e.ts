@@ -9,16 +9,16 @@ import { createApi } from '../src/api.ts';
 import { openUi } from './cdp.ts';
 
 test('desktop Connect and Test webhook reach a mock LINE API and a signed local webhook; status and health work', { timeout: 120_000 }, async t => {
-  const home = testHome(t), calls: { path: string; body?: any; auth?: string }[] = [];
+  const home = testHome(t), calls: { method?: string; path: string; body?: any; auth?: string }[] = [];
   let app: Awaited<ReturnType<typeof startDaemon>>;
   const mock = createServer(async (req, res) => {
     try {
       let raw = ''; for await (const chunk of req) raw += chunk;
       const body = raw ? JSON.parse(raw) : undefined;
-      calls.push({ path: req.url!, body, auth: req.headers.authorization });
+      calls.push({ method: req.method, path: req.url!, body, auth: req.headers.authorization });
       res.setHeader('Content-Type', 'application/json');
       if (req.url === '/v2/bot/info') res.end(JSON.stringify({ displayName: 'Mock LINE bot', basicId: '@mock' }));
-      else if (req.url === '/v2/bot/channel/webhook/endpoint') res.end('{}');
+      else if (req.url === '/v2/bot/channel/webhook/endpoint') res.end(JSON.stringify(req.method === 'GET' ? { active: true, endpoint: 'https://tunnel.example/base/line/webhook' } : {}));
       else if (req.url === '/v2/bot/channel/webhook/test') {
         const event = JSON.stringify({ events: [] });
         const verified = await fetch(`http://127.0.0.1:${app.lineStatus().port}/line/webhook`, { method: 'POST', body: event,
@@ -36,14 +36,14 @@ test('desktop Connect and Test webhook reach a mock LINE API and a signed local 
   t.after(() => app.close());
   const api = createApi({ port: app.port, token: app.token });
   const ui = await openUi(t, app);
-  await ui.click('Messaging');
-  await ui.wait(`document.querySelector('[aria-label="Settings"]').textContent.includes('Local listener running')`);
+  await ui.click('LINE');
+  await ui.wait(`document.querySelector('[aria-label="Settings"]').textContent.includes('Needs setup')`);
   await ui.wait(`document.querySelector('[aria-label="Settings"]').textContent.includes('Nobody is allowed yet')`);
   await ui.click('Connect');
   await ui.wait(`document.querySelector('.line-connect-result')?.textContent.includes('Webhook: ok')`);
   const connected = await ui.cdp.evaluate(`document.querySelector('.line-connect-result').textContent`);
   assert.match(connected, /Token: ok.*Mock LINE bot \(@mock\)/); assert.match(connected, /Webhook: ok.*https:\/\/tunnel.example\/base\/line\/webhook/);
-  assert.deepEqual(calls.map(c => c.path), ['/v2/bot/info', '/v2/bot/channel/webhook/endpoint']);
+  assert.deepEqual(calls.map(c => `${c.method} ${c.path}`), ['GET /v2/bot/info', 'PUT /v2/bot/channel/webhook/endpoint', 'GET /v2/bot/channel/webhook/endpoint']);
   assert.deepEqual(calls[1]!.body, { endpoint: 'https://tunnel.example/base/line/webhook' });
   await ui.click('Test webhook');
   await ui.wait(`document.querySelector('.line-test-result')?.textContent.includes('Signed webhook verified')`);

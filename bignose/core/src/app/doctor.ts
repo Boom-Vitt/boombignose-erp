@@ -7,7 +7,8 @@ import { listModels } from '../providers/models.ts';
 import { isOllama, OLLAMA_CONTEXT_NOTE, ollamaWarnings } from '../providers/ollama.ts';
 import { createCleaner, validateConfig } from './settings.ts';
 
-export async function doctor(home = homeDir(), fetchImpl: typeof fetch = fetch): Promise<{ code: number; lines: string[] }> {
+/** `agent` is the provider and model the active agent uses; without one (the CLI has no store) the Settings seed in config.active is checked. */
+export async function doctor(home = homeDir(), fetchImpl: typeof fetch = fetch, agent?: { provider: string; model: string }): Promise<{ code: number; lines: string[] }> {
   const lines: string[] = [];
   let code = 0;
   const hard = (label: string, fn: () => void) => {
@@ -27,17 +28,23 @@ export async function doctor(home = homeDir(), fetchImpl: typeof fetch = fetch):
   });
   try {
     const config = loadConfig(home); validateConfig(config); lines.push('ok config');
-    const provider = config.providers.find(p => p.id === config.active.provider)!;
-    const key = getApiKey(config, provider.id, home);
-    if (isOllama(provider)) {
-      try { lines.push(`ok Ollama has ${(await listModels(provider, key, fetchImpl)).length} models`); }
-      catch (e) { lines.push(`warn ${e instanceof Error ? e.message : String(e)}`); }
-      for (const warning of await ollamaWarnings(provider, key, fetchImpl)) {
-        const line = `warn ${warning}`;
-        if (!lines.includes(line)) lines.push(line);
-      }
-      lines.push(`note ${OLLAMA_CONTEXT_NOTE}`);
-    } else lines.push(provider.apiKeyEnv && !getApiKey(config, provider.id, home) ? `warn active provider key is unset (${provider.apiKeyEnv})` : 'ok active provider');
+    const used = agent ?? config.active, provider = config.providers.find(p => p.id === used.provider);
+    if (!provider) { code = 1; lines.push(`fail provider ${used.provider} is not configured`); }
+    else {
+      const key = getApiKey(config, provider.id, home);
+      if (isOllama(provider)) {
+        try {
+          const models = await listModels(provider, key, fetchImpl);
+          lines.push(`ok Ollama has ${models.length} models`);
+          if (!models.some(m => m.id === used.model || m.id === `${used.model}:latest`)) lines.push(`warn Ollama does not have ${used.model} (run "ollama pull ${used.model}" or pick another model)`);
+        } catch (e) { lines.push(`warn ${e instanceof Error ? e.message : String(e)}`); }
+        for (const warning of await ollamaWarnings(provider, key, fetchImpl)) {
+          const line = `warn ${warning}`;
+          if (!lines.includes(line)) lines.push(line);
+        }
+        lines.push(`note ${OLLAMA_CONTEXT_NOTE}`);
+      } else lines.push(provider.apiKeyEnv && !key ? `warn the ${provider.label || provider.id} key is unset (${provider.apiKeyEnv})` : `ok ${provider.label || provider.id} for ${used.model}`);
+    }
     if (config.line.enabled) {
       const env = readEnv(home);
       lines.push(env.LINE_CHANNEL_ACCESS_TOKEN && env.LINE_CHANNEL_SECRET ? 'ok LINE credentials' : 'warn LINE token or secret is unset');

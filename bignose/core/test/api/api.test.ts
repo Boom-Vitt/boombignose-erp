@@ -566,7 +566,7 @@ test('literal MCP paths and URLs are masked in their own fields while ordinary c
   assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
   assert.deepEqual(loadConfig(home), original);
   const changed = structuredClone(settings);
-  changed.config.agent.workspace = join(home, 'new-workspace');
+  changed.config.agent.workspace = join(home, 'new-workspace'); mkdirSync(changed.config.agent.workspace);
   changed.config.agent.systemPrompt = 'New prompt'; changed.config.hooks.preTool[0].command = 'true';
   assert.equal((await call(a, '/api/settings', 'PUT', changed)).status, 200);
   const saved = loadConfig(home);
@@ -784,4 +784,38 @@ test('saving a skill keeps its other frontmatter keys when the Skills page saves
   assert.equal((await call(a, '/api/skills/imported', 'PUT', { description: skill.description, body: skill.body })).status, 200);
   const text = readFileSync(join(folder, 'SKILL.md'), 'utf8');
   for (const line of ['license: Apache-2.0', 'allowed-tools: Bash(git:*) Read', 'metadata:\n  author: someone']) assert.ok(text.includes(line), line);
+});
+
+test('a relative or missing workspace folder is refused, ~ is expanded, and an unchanged stored folder never blocks a save', async t => {
+  const home = testHome(t), work = join(home, 'work'), stale = join(home, 'gone'), file = join(home, 'file.txt');
+  mkdirSync(work); writeFileSync(file, 'x');
+  configured(home, undefined, c => { c.agent.workspace = stale; }); // a stored folder that no longer exists
+  const a = await app(t, { home }), settings = (await call(a, '/api/settings')).body;
+  settings.config.agent.maxTurns = 12; // an unrelated save keeps working: only a change of the workspace is checked
+  assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
+  assert.deepEqual([loadConfig(home).agent.workspace, loadConfig(home).agent.maxTurns], [stale, 12]);
+  for (const bad of ['relative/dir', '.', '~user/x', join(home, 'missing'), file]) {
+    settings.config.agent.workspace = bad;
+    const refused = await call(a, '/api/settings', 'PUT', settings);
+    assert.equal(refused.status, 400, bad); assert.match(refused.body.error, /Workspace folder/);
+    assert.equal(loadConfig(home).agent.workspace, stale, 'nothing was saved');
+  }
+  const oldHome = process.env.HOME; process.env.HOME = home;
+  try {
+    settings.config.agent.workspace = '~/work/';
+    assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
+  } finally { if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome; }
+  assert.equal(loadConfig(home).agent.workspace, work, 'the expanded absolute path is what gets saved');
+  assert.equal((await call(a, '/api/settings')).body.config.agent.workspace, work);
+});
+
+test('diagnostics and /api/status report the provider and model the active agent uses', async t => {
+  const a = await app(t, {}, c => { c.providers.push({ id: 'remote', kind: 'anthropic', baseUrl: 'https://remote.invalid', apiKeyEnv: 'REMOTE_API_KEY' }); });
+  const agent = a.runtime.store.listAgents()[0]!;
+  assert.deepEqual((await call(a, '/api/status')).body.provider, { id: 'mock', kind: 'openai-compatible', model: 'test-model' });
+  assert.equal((await call(a, `/api/agents/${agent.id}`, 'PATCH', { provider: 'remote', model: 'claude-x' })).status, 200);
+  assert.deepEqual((await call(a, '/api/status')).body.provider, { id: 'remote', kind: 'anthropic', model: 'claude-x' });
+  assert.equal(a.config().active.provider, 'mock', 'the Settings seed is unchanged');
+  const report = (await call(a, '/api/doctor', 'POST', {})).body;
+  assert.ok(report.lines.includes('warn the remote key is unset (REMOTE_API_KEY)'), report.lines.join('\n'));
 });
