@@ -17,6 +17,7 @@ import DealDetailPage from '@/app/(app)/deals/[id]/page'
 import EditDealPage from '@/app/(app)/deals/[id]/edit/page'
 import NewDealPage from '@/app/(app)/deals/new/page'
 import { addActivity } from '@/app/(app)/deals/actions'
+import { addContact } from '@/app/(app)/clients/actions'
 import { GET as exportDeals } from '@/app/(app)/deals/export/route'
 import { currentMonthKey } from '@/lib/dates'
 import { getDashboardData } from '@/lib/queries/dashboard'
@@ -136,4 +137,15 @@ it.each(['deals','clients'])('a failed %s read fails the deal export instead of 
  }}
  const res = await exportDeals(new Request('https://app.example.test/deals/export'))
  expect(res.status).toBe(503)
+})
+
+it('a contact email without a domain ending is refused before any write', async () => {
+ const contacts: Record<string,unknown>[] = []
+ state.client = databaseFixture({contacts})
+ const client_id = '00000000-0000-4000-8000-000000000001'
+ expect(await addContact({client_id,name:'Somchai',email:'somchai@acme'})).toEqual({error:'Enter a valid email address'})
+ expect(contacts).toHaveLength(0)
+ expect(await addContact({client_id,name:'Somchai',email:'  '})).toEqual({})
+ expect(await addContact({client_id,name:'Somchai',email:' somchai@acme.co.th '})).toEqual({})
+ expect(contacts.map(c => c.email)).toEqual([null,'somchai@acme.co.th'])
 })

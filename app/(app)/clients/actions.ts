@@ -17,7 +17,8 @@ const ClientInput = z.object({
 const ContactInput = z.object({
   client_id: z.string().uuid(),
   name: z.string().min(1, "Name is required"),
-  email: z.string().optional(),
+  // Invoice and quote emails go to the first contact with an address; a typo there blocks every send.
+  email: z.string().trim().pipe(z.union([z.literal(""), z.email()])).optional(),
   phone: z.string().optional(),
   role: z.string().optional(),
 })
@@ -108,7 +109,9 @@ export async function addContact(
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   const parsed = ContactInput.safeParse(input)
-  if (!parsed.success) return { error: "Invalid input" }
+  if (!parsed.success) {
+    return { error: parsed.error.issues.some((i) => i.path[0] === "email") ? "Enter a valid email address" : "Invalid input" }
+  }
 
   const supabase = await createSupabaseClient()
   const { error } = await supabase.from("contacts").insert({

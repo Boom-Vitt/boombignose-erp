@@ -30,7 +30,7 @@ import { addContact } from "../actions"
 
 const ContactSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  email: z.string().optional(),
+  email: z.string().trim().pipe(z.union([z.literal(""), z.email("Enter a valid email address")])).optional(),
   phone: z.string().optional(),
   role: z.string().optional(),
 })
