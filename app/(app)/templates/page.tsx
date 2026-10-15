@@ -12,19 +12,21 @@ import { TemplatesLibrary, type TemplateCard } from "./_components/templates-lib
 export const dynamic = "force-dynamic"
 
 export default async function TemplatesPage() {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const [{ data: categories }, { data: templates }] = await Promise.all([
     supabase
       .from("template_categories")
       .select("id, name, slug")
+      .eq("org_id", ctx.orgId)
       .order("name", { ascending: true }),
     supabase
       .from("automation_templates")
       .select(
         "id, name, description, internal_value_satang, price_satang, tags, category_id"
       )
+      .eq("org_id", ctx.orgId)
       .order("name", { ascending: true }),
   ])
 

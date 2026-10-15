@@ -29,7 +29,7 @@ export default async function TemplateDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const { data: template } = await supabase
@@ -38,6 +38,7 @@ export default async function TemplateDetailPage({
       "id, name, description, internal_value_satang, price_satang, reusable_notes, implementation_checklist, tags, category_id"
     )
     .eq("id", id)
+    .eq("org_id", ctx.orgId)
     .maybeSingle()
 
   if (!template) notFound()
@@ -47,6 +48,7 @@ export default async function TemplateDetailPage({
         .from("template_categories")
         .select("name")
         .eq("id", template.category_id)
+        .eq("org_id", ctx.orgId)
         .maybeSingle()
     : { data: null }
 

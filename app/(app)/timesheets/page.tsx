@@ -53,7 +53,7 @@ type EntryRow = {
 }
 
 export default async function TimesheetsPage() {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const month = currentMonthKey()
   const today = todayISO()
@@ -64,12 +64,14 @@ export default async function TimesheetsPage() {
       .select(
         "id, work_date, minutes, billable, rate_satang, project_id, user_id, projects(name)"
       )
+      .eq("org_id", ctx.orgId)
       .order("work_date", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(100),
     supabase
       .from("projects")
       .select("id, name")
+      .eq("org_id", ctx.orgId)
       .order("name", { ascending: true }),
   ])
 

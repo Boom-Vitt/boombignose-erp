@@ -27,7 +27,7 @@ export default async function EditTemplatePage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
 
   const [{ data: template }, { data: categories }] = await Promise.all([
@@ -37,10 +37,12 @@ export default async function EditTemplatePage({
         "id, name, description, internal_value_satang, price_satang, reusable_notes, implementation_checklist, tags, category_id"
       )
       .eq("id", id)
+      .eq("org_id", ctx.orgId)
       .maybeSingle(),
     supabase
       .from("template_categories")
       .select("id, name")
+      .eq("org_id", ctx.orgId)
       .order("name", { ascending: true }),
   ])
 

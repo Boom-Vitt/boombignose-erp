@@ -12,11 +12,12 @@ import { createTemplate } from "../actions"
 export const dynamic = "force-dynamic"
 
 export default async function NewTemplatePage() {
-  await requireOrgContext()
+  const ctx = await requireOrgContext()
   const supabase = await createClient()
   const { data: categories } = await supabase
     .from("template_categories")
     .select("id, name")
+    .eq("org_id", ctx.orgId)
     .order("name", { ascending: true })
 
   async function action(payload: Parameters<typeof createTemplate>[0]) {
