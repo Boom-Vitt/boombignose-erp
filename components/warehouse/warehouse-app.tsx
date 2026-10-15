@@ -53,7 +53,7 @@ const STATE_STYLE: Record<string, string> = {
   Unloading: "bg-emerald-50 text-emerald-700",
   Arriving: "bg-amber-50 text-amber-700",
   Departing: "bg-amber-50 text-amber-700",
-  "En route": "bg-blue-50 text-blue-700",
+  "En route": "bg-[#1f5a7a]/10 text-[#1f5a7a]",
   Departed: "bg-slate-100 text-slate-500",
   Available: "bg-slate-100 text-slate-500",
 }
@@ -142,15 +142,15 @@ export function WarehouseApp({ onOpenModule }: { onOpenModule: () => void }) {
             placeholder="Search people, rooms, forklifts, trucks… (Enter)"
             aria-label="Search people, rooms, forklifts and trucks"
             className={cn(
-              "h-10 w-full rounded-xl border bg-white pr-10 pl-9 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100",
+              "h-10 w-full rounded-xl border bg-white pr-10 pl-9 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#f07a1a] focus:ring-2 focus:ring-[#f07a1a]/25",
               miss ? "border-rose-300" : "border-slate-200",
             )}
           />
           <kbd className="absolute top-1/2 right-3 -translate-y-1/2 rounded border border-slate-200 px-1.5 text-[11px] text-slate-400">/</kbd>
         </form>
         <div className="ml-auto flex items-center gap-2 md:gap-3">
-          <div className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white py-1.5 pr-3 pl-1.5 lg:flex">
-            <span className="rounded-lg bg-blue-600 px-2 py-1 text-xs font-bold text-white">WH-01</span>
+          <div className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white py-1.5 pr-3 pl-1.5 text-slate-900 lg:flex">
+            <span className="rounded-lg bg-[#1f5a7a] px-2 py-1 text-xs font-bold text-[#ece7d6]">WH-01</span>
             <div className="leading-tight">
               <div className="text-sm font-semibold">Bangna Hub</div>
               <div className="text-[11px] text-slate-500">
@@ -166,15 +166,15 @@ export function WarehouseApp({ onOpenModule }: { onOpenModule: () => void }) {
             </span>
             Live <span className="tabular-nums">{snap ? hhmm(snap.sim) : "09:40"}</span>
           </div>
-          <button type="button" aria-label="Notifications" className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+          <button type="button" aria-label="Notifications" className="relative rounded-lg p-2 text-[#ece7d6]/80 hover:bg-white/10 hover:text-[#ece7d6]">
             <Bell className="size-5" />
             <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-rose-500" />
           </button>
-          <div className="hidden items-center gap-2 border-l border-slate-200 pl-3 sm:flex">
-            <div className="grid size-9 place-items-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-sm font-semibold text-white">BB</div>
+          <div className="hidden items-center gap-2 border-l border-[#ece7d6]/15 pl-3 sm:flex">
+            <div className="grid size-9 place-items-center rounded-full bg-gradient-to-br from-[#f07a1a] to-[#ffb35c] text-sm font-semibold text-[#0b1e3a]">BB</div>
             <div className="leading-tight">
               <div className="text-sm font-semibold">Ops Control</div>
-              <div className="text-[11px] text-slate-500">BoomBigNose</div>
+              <div className="text-[11px] text-[#b9b4a4]">BoomBigNose</div>
             </div>
           </div>
         </div>
@@ -210,7 +210,7 @@ export function WarehouseApp({ onOpenModule }: { onOpenModule: () => void }) {
               onClick={() => select(z.id)}
               className={cn(
                 "pointer-events-auto flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm ring-1 backdrop-blur",
-                selected === z.id ? "bg-blue-600 text-white ring-blue-600" : "bg-white/90 text-slate-700 ring-slate-900/5 hover:bg-white",
+                selected === z.id ? "bg-[#1f5a7a] text-[#ece7d6] ring-[#1f5a7a]" : "bg-white/90 text-slate-700 ring-slate-900/5 hover:bg-white",
               )}
             >
               <MapPin className="size-3.5" aria-hidden />
@@ -242,11 +242,11 @@ export function WarehouseApp({ onOpenModule }: { onOpenModule: () => void }) {
       {current && (
         <aside className={cn(card, "absolute top-20 right-4 z-10 hidden w-[23rem] p-4 md:block")} aria-label={`${current.id} details`}>
           <div className="flex items-start gap-3">
-            <div className="grid size-12 place-items-center rounded-xl bg-slate-50 text-blue-600 ring-1 ring-slate-200">
+            <div className="grid size-12 place-items-center rounded-xl bg-slate-50 text-[#1f5a7a] ring-1 ring-slate-200">
               {{ forklift: <Forklift className="size-6" />, truck: <Truck className="size-6" />, person: <User className="size-6" />, zone: <MapPin className="size-6" /> }[current.kind]}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-semibold tracking-wide text-blue-600 uppercase">
+              <div className="text-[11px] font-semibold tracking-wide text-[#1f5a7a] uppercase">
                 {current.kind === "person" ? `Team · ${current.zone}` : current.kind === "zone" ? "Zone · HQ office" : `${current.kind} · WH-01`}
               </div>
               <div className="text-lg leading-tight font-bold">{current.kind === "zone" ? current.name : current.id}</div>
@@ -270,7 +270,7 @@ export function WarehouseApp({ onOpenModule }: { onOpenModule: () => void }) {
               </dl>
               <div className="mt-3 flex gap-2">
                 {current.links.map(([label, href]) => (
-                  <Link key={href} href={href} onClick={onOpenModule} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-blue-700">
+                  <Link key={href} href={href} onClick={onOpenModule} className="flex-1 rounded-lg bg-[#f07a1a] px-3 py-2 text-center text-sm font-semibold text-[#0b1e3a] hover:bg-[#ffb35c]">
                     Open {label} →
                   </Link>
                 ))}
@@ -291,7 +291,7 @@ export function WarehouseApp({ onOpenModule }: { onOpenModule: () => void }) {
                 <Row k="Carrying" v={current.carrying} />
                 <Row k="Moves today" v={current.moves} />
                 <Row k="Speed" v={`${current.speedKmh.toFixed(1)} km/h`} />
-                <Row k="Charger" v={<span className="text-blue-600">{current.charger}</span>} />
+                <Row k="Charger" v={<span className="text-[#1f5a7a]">{current.charger}</span>} />
                 <Row k="Site" v="Bangna Hub" />
               </dl>
             </>
@@ -405,7 +405,7 @@ function caption(e: Entity) {
 function Kpi({ icon, label, value, sub, delta, unit = "", className }: { icon: React.ReactNode; label: string; value: string; sub: string; delta?: number; unit?: string; className?: string }) {
   return (
     <div className={cn(card, "flex w-56 items-center gap-3 px-4 py-3", className)}>
-      <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">{icon}</div>
+      <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#1f5a7a]/10 text-[#1f5a7a]">{icon}</div>
       <div className="min-w-0">
         <div className="text-xs font-medium text-slate-600">{label}</div>
         <div className="flex items-baseline gap-2">
@@ -431,7 +431,7 @@ function CtrlBtn({ label, onClick, children }: { label: string; onClick: () => v
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="grid size-9 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none [&>svg]:size-4"
+      className="grid size-9 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-[#f07a1a] focus-visible:outline-none [&>svg]:size-4"
     >
       {children}
     </button>
@@ -466,7 +466,7 @@ function BoardRow(p: { title: string; sub: string; name: string; state: string; 
         <div className="text-[11px] text-slate-400 capitalize">{p.sub}</div>
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-2 truncate">
-        {p.state !== "Available" && <span className="size-1.5 shrink-0 rounded-full bg-blue-600" />}
+        {p.state !== "Available" && <span className="size-1.5 shrink-0 rounded-full bg-[#f07a1a]" />}
         <span className={cn("truncate", p.state === "Available" && "text-slate-500")}>{p.name}</span>
       </div>
       <span className={cn("w-24 shrink-0 rounded-md px-2 py-1 text-center text-xs font-semibold", STATE_STYLE[p.state] ?? STATE_STYLE.Available)}>{p.stateLabel ?? p.state}</span>
@@ -510,7 +510,7 @@ function Shipment({ snap, onOpen }: { snap: Snapshot; onOpen: () => void }) {
       <div className="min-w-0 flex-1">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 font-semibold">
-            <Truck className="size-4 text-blue-600" aria-hidden /> Shipment Tracking
+            <Truck className="size-4 text-[#1f5a7a]" aria-hidden /> Shipment Tracking
           </h2>
           <span className="text-xs text-slate-500">{s.truckId} · BoomBigNose Logistics</span>
         </div>
@@ -520,12 +520,12 @@ function Shipment({ snap, onOpen }: { snap: Snapshot; onOpen: () => void }) {
             const active = i === s.step
             return (
               <li key={st.label} className="relative flex flex-1 flex-col items-center text-center">
-                {i > 0 && <span className={cn("absolute top-4 right-1/2 h-0.5 w-full -translate-y-1/2", i <= s.step ? "bg-blue-600" : "bg-slate-200")} />}
+                {i > 0 && <span className={cn("absolute top-4 right-1/2 h-0.5 w-full -translate-y-1/2", i <= s.step ? "bg-[#f07a1a]" : "bg-slate-200")} />}
                 <span
                   className={cn(
                     "relative grid size-8 place-items-center rounded-full",
-                    done && "bg-blue-600 text-white",
-                    active && "bg-blue-600 text-white ring-4 ring-blue-100",
+                    done && "bg-[#1f5a7a] text-[#ece7d6]",
+                    active && "bg-[#f07a1a] text-[#0b1e3a] ring-4 ring-[#f07a1a]/25",
                     !done && !active && "bg-slate-100 text-slate-400",
                   )}
                 >
@@ -539,7 +539,7 @@ function Shipment({ snap, onOpen }: { snap: Snapshot; onOpen: () => void }) {
         </ol>
       </div>
       <button type="button" onClick={onOpen} className="hidden w-64 shrink-0 items-center gap-3 rounded-xl bg-slate-50 p-3 text-left ring-1 ring-slate-200 hover:bg-slate-100 xl:flex">
-        <Truck className="size-10 shrink-0 text-blue-600" aria-hidden />
+        <Truck className="size-10 shrink-0 text-[#1f5a7a]" aria-hidden />
         <div className="min-w-0 flex-1 leading-tight">
           <div className="font-bold">{s.no}</div>
           <div className="truncate text-xs text-slate-500">To: {s.to}</div>
