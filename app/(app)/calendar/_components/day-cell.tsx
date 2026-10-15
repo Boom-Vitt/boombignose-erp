@@ -5,9 +5,9 @@ import type { CalendarDay } from "@/lib/calendar/month"
 import type { CalendarItem } from "../types"
 
 const DOT: Record<CalendarItem["tone"], string> = {
-  amber: "bg-amber-500",
-  violet: "bg-violet-500",
-  blue: "bg-blue-500",
+  amber: "bg-primary",
+  violet: "bg-secondary dark:bg-chart-3",
+  blue: "bg-foreground",
   neutral: "bg-muted-foreground",
   red: "bg-red-500",
   emerald: "bg-emerald-500",

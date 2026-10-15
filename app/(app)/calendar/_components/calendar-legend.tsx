@@ -2,9 +2,9 @@ import { cn } from "@/lib/utils"
 
 /** Dot + label pairs describing the colour coding used across day cells. */
 const LEGEND: { label: string; className: string }[] = [
-  { label: "Follow-up", className: "bg-amber-500" },
-  { label: "Meeting", className: "bg-violet-500" },
-  { label: "Call", className: "bg-blue-500" },
+  { label: "Follow-up", className: "bg-primary" },
+  { label: "Meeting", className: "bg-secondary dark:bg-chart-3" },
+  { label: "Call", className: "bg-foreground" },
   { label: "Email / Note", className: "bg-muted-foreground" },
   { label: "Invoice due", className: "bg-red-500" },
   { label: "Project deadline", className: "bg-emerald-500" },
