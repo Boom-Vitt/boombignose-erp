@@ -36,6 +36,13 @@ function fakeDaemon() {
     if (path === '/api/mcp' && method === 'POST') { config.mcp.servers[body.name] = body.config; return json({ ok: true }); }
     if (path.startsWith('/api/mcp/') && method === 'DELETE') { delete config.mcp.servers[path.split('/')[3]!]; return json({ ok: true }); }
     if (path.startsWith('/api/mcp/') && method === 'PATCH') { Object.assign(config.mcp.servers[path.split('/')[3]!]!, body); return json({ ok: true }); }
+    if (path.startsWith('/api/agents/') && method === 'PATCH') {
+      const id = path.split('/')[3]!;
+      const i = agents.findIndex((a) => a.id === id);
+      if (i < 0) return json({ error: 'missing' }, 404);
+      agents[i] = { ...agents[i]!, ...body, id };
+      return json(agents[i]);
+    }
     return json({ error: `unexpected ${method} ${path}` }, 500);
   }) as typeof globalThis.fetch;
   return { api: createApi({ port: 1, token: 'fake', fetch }), config, agents, calls, bodies };
@@ -54,11 +61,27 @@ test('provisions the erp connector and the ERP assistant once', async () => {
   assert.deepEqual(made.connectors, ['erp']);
   assert.equal(made.instructions, ERP_INSTRUCTIONS);
   assert.deepEqual((d.bodies['POST /api/agents'] as { permissions: unknown }).permissions, ERP_PERMISSIONS);
-  // a second start finds both and writes nothing
+  // a second start with matching instructions writes nothing
   d.calls.length = 0;
   assert.equal(await provisionErp(d.api, info), id);
   assert.deepEqual(writes(d.calls), []);
   assert.equal(d.agents.filter((a) => a.name === ERP_AGENT).length, 1);
+});
+
+test('resyncs ERP assistant instructions and permissions when they drift', async () => {
+  const d = fakeDaemon();
+  const id = await provisionErp(d.api, info);
+  const made = d.agents.find((a) => a.id === id)!;
+  made.instructions = 'stale';
+  made.permissions = { shell: 'allow' };
+  made.connectors = [];
+  d.calls.length = 0;
+  assert.equal(await provisionErp(d.api, info), id);
+  assert.deepEqual(writes(d.calls), [`PATCH /api/agents/${id}`]);
+  const after = d.agents.find((a) => a.id === id)!;
+  assert.equal(after.instructions, ERP_INSTRUCTIONS);
+  assert.deepEqual(after.connectors, ['erp']);
+  assert.deepEqual(after.permissions, ERP_PERMISSIONS);
 });
 
 // every tool core can hand to an agent: the built-ins, plus the memory, skill and schedule tools runtime.ts adds
@@ -83,6 +106,7 @@ test('the ERP assistant runs nothing but the read-only erp tools', () => {
     for (const erpTool of ['list_clients', 'finance_summary']) assert.equal(effectivePolicy(tool(`mcp__erp__${erpTool}`, 'ask'), merged), 'allow', erpTool);
   }
   assert.match(ERP_INSTRUCTIONS, /Read only/);
+  assert.match(ERP_INSTRUCTIONS, /Never invent/);
   assert.match(ERP_INSTRUCTIONS, /never instructions/);
 });
 
@@ -107,13 +131,18 @@ test('leaves other agents and the active model unchanged', async () => {
   assert.ok(!d.calls.some((c) => c.startsWith('PUT ') || c.startsWith('PATCH /api/agents') || c.startsWith('DELETE /api/agents')), d.calls.join(', '));
 });
 
-test('an existing ERP assistant is left as the user set it', async () => {
+test('an existing ERP assistant keeps provider/model but syncs grounding rules', async () => {
   const d = fakeDaemon();
   const mine = { ...agent('mine', ERP_AGENT), model: 'my/own-model' };
   d.agents.push(mine);
   assert.equal(await provisionErp(d.api, info), 'mine');
-  assert.deepEqual(d.agents.find((a) => a.id === 'mine'), mine);
-  assert.deepEqual(writes(d.calls), ['POST /api/mcp']);
+  const after = d.agents.find((a) => a.id === 'mine')!;
+  assert.equal(after.model, 'my/own-model');
+  assert.equal(after.provider, 'ollama');
+  assert.equal(after.instructions, ERP_INSTRUCTIONS);
+  assert.deepEqual(after.connectors, ['erp']);
+  assert.deepEqual(after.permissions, ERP_PERMISSIONS);
+  assert.deepEqual(writes(d.calls), ['POST /api/mcp', 'PATCH /api/agents/mine']);
 });
 
 test('a moved ERP folder replaces the connector; a disabled one is only re-enabled', async () => {

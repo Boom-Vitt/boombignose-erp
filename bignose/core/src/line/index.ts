@@ -283,13 +283,20 @@ export function createLineGateway(options: LineGatewayOptions) {
     }
     const chat = resolveChat(ev.source);
     if (!chat?.allowed) return; // deny by default: strangers get no reply and no work
-    const isText = ev.type === 'message' && ev.message?.type === 'text' && typeof ev.message.text === 'string';
+    const msgType = ev.type === 'message' ? ev.message?.type : undefined;
+    const isText = msgType === 'text' && typeof ev.message?.text === 'string';
+    const isMedia = msgType === 'image' || msgType === 'video' || msgType === 'audio' || msgType === 'file';
     const isTap = ev.type === 'postback' && typeof ev.postback?.data === 'string';
-    if (!isText && !isTap) return;
+    if (!isText && !isMedia && !isTap) return;
     if (typeof ev.replyToken === 'string') chatOf(chat.to).token = { value: ev.replyToken, at: now() };
     if (isText) {
       const text = ev.message!.text as string;
       enqueue(chat.to, () => runMessage(chat.to, chat.userId, text));
+    } else if (isMedia) {
+      // Media bytes are not fetched yet (needs content API + store). Acknowledge so groups/OA do not look dead.
+      const kind = String(msgType);
+      enqueue(chat.to, () => say(chat.to,
+        `รับ${kind === 'image' ? 'รูป' : kind === 'video' ? 'วิดีโอ' : kind === 'audio' ? 'เสียง' : 'ไฟล์'}แล้วครับ — ตอนนี้ยังประมวลผลมีเดียไม่ได้ ช่วยพิมพ์ข้อความสั้น ๆ แทนได้ไหม`).then(() => {}));
     } else {
       onTap(chat.to, chat.userId, ev.postback!.data as string); // taps bypass the queue: a run may be waiting on this very answer
     }

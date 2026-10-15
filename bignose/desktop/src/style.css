@@ -182,6 +182,42 @@
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: var(--fs-sm)/var(--lh-ui) var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; }
+
+/* BigNose OS panel (right of ERP): match ERP html.dark FB BoomBigNose navy/teal/orange so both panes share chrome. */
+body.os-panel {
+  color-scheme: dark;
+  --bg:           #0b1e3a;
+  --sidebar:      #1f5a7a;
+  --surface:      #12294b;
+  --raised:       #163257;
+  --bubble:       #1d4669;
+  --code-bg:      #081628;
+  --code-inline:  #183559;
+  --hover:        rgb(236 231 214 / .06);
+  --select:       #1d4669;
+  --line:         rgb(236 231 214 / .12);
+  --line-strong:  #b9b4a4;
+  --text:         #ece7d6;
+  --muted:        #b9b4a4;
+  --faint:        #9a9588;
+  --accent:       #f07a1a;
+  --accent-hover: #ff8a2e;
+  --accent-press: #d46812;
+  --accent-ink:   #0b1e3a;
+  --accent-text:  #ffb35c;
+  --accent-soft:  #2a1a0e;
+  --ok:           #5ccf8f;  --ok-soft:   #15261c;
+  --warn:         #f2c45a;  --warn-soft: #2a2214;
+  --bad:          #ff5a45;  --bad-soft:  #2c1719;
+  --bot-bg:       #3a2618;
+  --bot-face:     #ece7d6;
+  --bot-ink:      #0b1e3a;
+  --bot-gear:     #b9b4a4;
+  --bot-nose:     #f07a1a;
+  --shadow-color: rgb(0 0 0 / .45);
+  --scrim:        rgb(0 0 0 / .5);
+}
+
 h1, h2, h3, p { margin: 0; }
 button, input, textarea, select { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }

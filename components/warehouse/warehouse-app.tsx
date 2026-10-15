@@ -107,16 +107,16 @@ export function WarehouseApp() {
   const inbound = trucks.filter((t) => t.state === "En route")
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-[#e7ebf7] text-slate-900">
+    <div className="relative h-dvh w-full overflow-hidden bg-[#0b1e3a] text-slate-900">
       {/* isolate: CSS2D label z-indexes must not climb over the HUD */}
       <div ref={host} className="absolute inset-0 isolate" />
 
       {/* header */}
-      <header className="absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200/70 bg-white/90 px-4 backdrop-blur md:gap-6 md:px-6">
+      <header className="absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-3 border-b border-[#1f5a7a]/40 bg-[#0b1e3a]/90 px-4 text-[#ece7d6] backdrop-blur md:gap-6 md:px-6">
         <div className="flex items-center gap-2">
-          <Box className="size-7 fill-blue-500 text-blue-700" aria-hidden />
-          <span className="text-lg font-bold tracking-tight">BoomBigNose</span>
-          <span className="hidden rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 sm:inline">Campus</span>
+          <Box className="size-7 fill-[#f07a1a] text-[#ffb35c]" aria-hidden />
+          <span className="text-lg font-bold tracking-tight text-[#ece7d6]">BoomBigNose</span>
+          <span className="hidden rounded-md bg-[#1f5a7a] px-1.5 py-0.5 text-[11px] font-semibold text-[#ece7d6] sm:inline">Campus</span>
         </div>
         <form onSubmit={onSearch} className="relative hidden max-w-md flex-1 md:block">
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" aria-hidden />

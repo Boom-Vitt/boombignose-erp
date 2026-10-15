@@ -14,7 +14,6 @@ import {
   ScrollText,
   Settings,
   Compass,
-  Boxes,
   type LucideIcon,
 } from "lucide-react"
 
@@ -44,7 +43,6 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Intake", href: "/intake", icon: NotebookPen },
   { title: "Automation", href: "/automation", icon: Workflow },
   { title: "Activity", href: "/audit", icon: ScrollText, ownerAdminOnly: true },
-  { title: "Campus 3D", href: "/warehouse", icon: Boxes },
   { title: "Blueprint", href: "/blueprint", icon: Compass },
   { title: "Settings", href: "/settings", icon: Settings },
 ]
