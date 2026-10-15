@@ -6,7 +6,9 @@ import { Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { normalizeTotpCode, totpErrorMessage } from "@/lib/auth/mfa"
+import { isDeadSessionError } from "@/lib/auth/password"
 import { createClient } from "@/lib/supabase/client"
+import { withReturnPath } from "@/lib/supabase/redirect"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +43,11 @@ export function TwoFactorSettings({
   const [codeError, setCodeError] = useState<string | null>(null)
   const codeInput = useRef<HTMLInputElement>(null)
 
+  // Signed out elsewhere or idle too long: only a fresh sign-in helps, so come back here after it.
+  function signInAgain() {
+    router.push(withReturnPath("/login", window.location.pathname + window.location.search))
+  }
+
   async function startSetup() {
     setBusy(true)
     const { mfa } = createClient().auth
@@ -51,6 +58,7 @@ export function TwoFactorSettings({
     }
     const { data, error } = await mfa.enroll({ factorType: "totp", issuer: "BoomBigNose" })
     setBusy(false)
+    if (error && isDeadSessionError(error)) return signInAgain()
     if (error) {
       toast.error("Could not start setup", { description: error.message })
       return
@@ -69,6 +77,7 @@ export function TwoFactorSettings({
       code,
     })
     setBusy(false)
+    if (error && isDeadSessionError(error)) return signInAgain()
     if (error) {
       setCode("")
       setCodeError(totpErrorMessage(error))

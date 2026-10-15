@@ -143,4 +143,14 @@ describe("isDeadSessionError with the real auth client", () => {
       expect(listError && isDeadSessionError(listError)).toBe(true)
     }
   )
+
+  it.each(["refresh_token_not_found", "session_not_found"])(
+    "treats authenticator enrollment and verification on a dead %s session as a dead session",
+    async (code) => {
+      const { error: enrollError } = await (await idleSessionClient(code)).auth.mfa.enroll({ factorType: "totp" })
+      expect(enrollError && isDeadSessionError(enrollError)).toBe(true)
+      const { error: verifyError } = await (await idleSessionClient(code)).auth.mfa.challengeAndVerify({ factorId: "f", code: "123456" })
+      expect(verifyError && isDeadSessionError(verifyError)).toBe(true)
+    }
+  )
 })
