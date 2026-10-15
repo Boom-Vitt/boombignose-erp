@@ -112,7 +112,7 @@ export async function deleteTimeEntry(
     .select("id")
 
   if (error) return { error: error.message }
-  if (!deleted?.length) return { error: "You can only delete your own time entries." }
+  if (!deleted?.length) return { error: "That entry is already gone, or it is not yours to delete." }
 
   await writeAudit(ctx, {
     entity: "time_entry",

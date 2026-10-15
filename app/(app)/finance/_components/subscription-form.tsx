@@ -32,7 +32,11 @@ const Schema = z.object({
   name: z.string().min(1, "Name is required"),
   client_id: z.string().min(1, "Choose a client"),
   project_id: z.string().optional(),
-  amountBaht: z.coerce.number().positive("Amount must be more than 0"),
+  amountBaht: z.coerce
+    .number()
+    .positive("Amount must be more than 0")
+    // The server parses the exact decimal and refuses sub-satang amounts.
+    .refine((v) => /^\d+(\.\d{1,2})?$/.test(String(v)), "Use at most two decimals"),
   interval: z.enum(["weekly", "monthly", "quarterly", "yearly"]),
   start_date: z.string().optional(),
   notes: z.string().optional(),
