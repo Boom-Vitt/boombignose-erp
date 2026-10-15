@@ -166,17 +166,17 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
-# Password-reset mail via Gmail: uncomment, use a Google App Password, and set
-# GMAIL_SMTP_USER / GMAIL_SMTP_APP_PASSWORD in the env (host smtp.gmail.com, port 587).
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# Auth emails (forgot-password, invite, confirm) via Resend SMTP.
+# Set RESEND_API_KEY in the environment (or project .env) before `supabase start`.
+# App Password / Gmail SMTP is NOT used — Resend only.
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 587
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+admin_email = "onboarding@resend.dev"
+sender_name = "BoomBigNose ERP"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
