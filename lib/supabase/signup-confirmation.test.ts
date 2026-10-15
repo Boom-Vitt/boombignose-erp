@@ -24,3 +24,20 @@ it('a confirmation error without a session remains a sign-in error',async()=>{
  const response=await GET(new NextRequest('https://app.example.test/auth/confirm?token_hash=expired&type=signup'))
  expect(response.headers.get('location')).toBe('https://app.example.test/login?error=Expired+token')
 })
+it('a password recovery link lands on the reset form',async()=>{
+ state.exchange.mockResolvedValue({error:null})
+ const response=await GET(new NextRequest('https://app.example.test/auth/confirm?next=/reset-password&code=pkce'))
+ expect(state.exchange).toHaveBeenCalledWith('pkce')
+ expect(response.headers.get('location')).toBe('https://app.example.test/reset-password')
+})
+it('a recovery token hash also lands on the reset form',async()=>{
+ state.verifyOtp.mockResolvedValue({error:null})
+ const response=await GET(new NextRequest('https://app.example.test/auth/confirm?token_hash=t&type=recovery&next=%2Freset-password'))
+ expect(state.verifyOtp).toHaveBeenCalledWith({type:'recovery',token_hash:'t'})
+ expect(response.headers.get('location')).toBe('https://app.example.test/reset-password')
+})
+it.each(['https://evil.example.test/x','//evil.example.test','/login'])('an unsafe next %s falls back to the dashboard',async next=>{
+ state.exchange.mockResolvedValue({error:null})
+ const response=await GET(new NextRequest(`https://app.example.test/auth/confirm?code=pkce&next=${encodeURIComponent(next)}`))
+ expect(response.headers.get('location')).toBe('https://app.example.test/dashboard')
+})

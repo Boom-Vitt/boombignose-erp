@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { safeReturnPath } from "@/lib/supabase/redirect"
 
 /**
  * Email-confirmation callback for signups (and other email OTP links).
@@ -15,13 +16,15 @@ import { createClient } from "@/lib/supabase/server"
  *
  * IMPORTANT: uses the SSR server client so the verified session is written to
  * the response cookies; a plain `@supabase/supabase-js` client would verify but
- * leave the user unauthenticated. On success → /dashboard, else → /login.
+ * leave the user unauthenticated. On success → the local `next` path (password
+ * recovery sends `/reset-password`, default /dashboard), else → /login.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const tokenHash = searchParams.get("token_hash")
   const type = searchParams.get("type") as EmailOtpType | null
   const code = searchParams.get("code")
+  const next = safeReturnPath(searchParams.get("next"))
 
   const supabase = await createClient()
 
@@ -29,11 +32,11 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      return NextResponse.redirect(new URL("/dashboard", request.url), {
+      return NextResponse.redirect(new URL(next, request.url), {
         status: 303,
       })
     }
-    return failureOrExistingSession(request, error.message)
+    return failureOrExistingSession(request, error.message, next)
   }
 
   // OTP flow: verify the email token hash.
@@ -43,21 +46,21 @@ export async function GET(request: NextRequest) {
       token_hash: tokenHash,
     })
     if (!error) {
-      return NextResponse.redirect(new URL("/dashboard", request.url), {
+      return NextResponse.redirect(new URL(next, request.url), {
         status: 303,
       })
     }
-    return failureOrExistingSession(request, error.message)
+    return failureOrExistingSession(request, error.message, next)
   }
 
-  return failureOrExistingSession(request, "Invalid or expired confirmation link.")
+  return failureOrExistingSession(request, "Invalid or expired confirmation link.", next)
 }
 
 /** Reusing a consumed link must not discard an already authenticated session. */
-async function failureOrExistingSession(request: NextRequest, message: string) {
+async function failureOrExistingSession(request: NextRequest, message: string, next: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (user) return NextResponse.redirect(new URL("/dashboard", request.url), { status: 303 })
+  if (user) return NextResponse.redirect(new URL(next, request.url), { status: 303 })
   return failure(request, message)
 }
 
