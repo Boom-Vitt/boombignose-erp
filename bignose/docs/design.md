@@ -241,15 +241,21 @@ export interface Config {
   server answers 401/403; a timed-out or interrupted request does not take it down. On a 404 for a request that
   carried a session id (the server forgot the session) it re-initializes once with a new session and repeats the
   request; calls that fail together share that one renewal, a request that starts during a renewal waits for it
-  (so it never goes out without a session id), and a second 404 on the fresh session takes it down.
+  (so it never goes out without a session id; the cancel or timeout of that call ends its wait, the renewal carries
+  on for the others), and a second 404 on the fresh session takes it down. The handshake messages and the client's
+  replies to server requests (a ping can arrive inside the initialize reply) never wait for a renewal, and a reply
+  that the server rejects with 404 fails only the call whose stream carried it: it neither starts a renewal nor takes
+  the connector down. A reply body that is not JSON is reported as `Invalid MCP response`/`Invalid MCP event`, never
+  with the parser's own message, which quotes short bodies (a server may echo a header value).
 - `mcp/manager.ts`: `McpManager(servers: Record<string, McpServerConfig>, env: Record<string,string>)`:
   `start()` connects enabled servers all at once (a slow one never delays the next; each failure stays on its own
   entry) and resolves when each is up or failed, `tools(): Tool[]` (selected tools only; name `mcp__<server>__<tool>`
   sanitised to 64 chars; defaultPolicy `ask`), `test(name)` → `{ ok, tools: number, error? }` (works for disabled
-  servers too), `status()` (`{name, transport, enabled, connected, starting, tools, error?}`; `starting` is an enabled
-  connector that is initializing or about to), `listTools(name)` (cached descriptors, including descriptions),
-  `apply(servers, env?)` (close the connectors whose config changed or that reference a changed variable, start the
-  rest in the background, return the names it started; a secret save restarts only connectors whose `env`/`headers`
+  servers too), `status()` (`{name, transport, enabled, connected, starting, tools, error?}`; `starting` is a connector that is
+  initializing right now, exactly the set `settle` waits for), `listTools(name)` (cached descriptors, including descriptions),
+  `apply(servers, env?)` (close the connectors that were removed or disabled, restart the ones whose config changed or that
+  reference a changed variable and start the rest in the background, return the names it started; a restarting
+  connector has its new entry at once, which closes the old client first, so it shows as starting the whole time; a secret save restarts only connectors whose `env`/`headers`
   reference a changed `${NAME}`; a connector that failed to start is not retried until its config or one of its
   variables changes, one that was up and exited is restarted by the next apply), `update(servers, env?)` (`apply`
   then wait for the starts), `settle(names, ms, signal)` (wait up to `ms` for those connectors that are still
@@ -336,15 +342,17 @@ export interface Config {
   daemon binds the API on port 0, and LINE on port 0 when it is the default 47822, so first-run tests without a config
   file never bind 47821/47822); apply settings changes live (LINE hot-apply, MCP update); clean shutdown on
   SIGINT/SIGTERM.
-  The API listens and `daemon.json` is written before connectors finish initializing. The serialized queue
+  Connectors start (`mcp.start()`, in the background) as soon as the daemon is built, before the API listens, so no
+  moment exists in which an enabled connector is neither up nor starting. The API listens and `daemon.json` is
+  written before connectors finish initializing. The serialized queue
   only closes changed connectors and starts new ones (`mcp.apply`); initialization itself (up to the 180 s stdio
   timeout) runs outside the queue, in parallel per connector, and pending connectors show `starting:true`
   (`connected:false`). A settings or secrets write waits at most 3 s (`mcpWaitMs`), after leaving the queue, for the
   connectors that write started, so a fast connector is `connected` when the write returns and a stuck one only
   delays the write that started it; every other write, and turning the stuck connector off, returns at once.
   Shutdown cancels their initialization and waits for the queue before closing the store.
-  LINE starts before MCP initialization, and the scheduler starts after that LINE startup attempt, so slow
-  connectors cannot delay inbound LINE or cron LINE delivery.
+  Connector initialization never waits for LINE and LINE never waits for it; the scheduler starts after the LINE
+  startup attempt, so slow connectors cannot delay inbound LINE or cron LINE delivery.
   A failed LINE bind is retried on the next settings/secrets reload, even when those values are unchanged.
   A LINE settings or secret save is applied to the running gateway (`reconfigure`), never by building a new one: chats
   in flight, queued messages, open approvals and parked "Get answer" answers stay, and finish through the new

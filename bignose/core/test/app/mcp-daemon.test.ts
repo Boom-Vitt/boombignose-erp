@@ -34,7 +34,7 @@ test('a slow connector does not block settings writes', async t => {
     return JSON.parse(text);
   };
   const slow = () => app.mcp.status().find(s => s.name === 'slow')!;
-  await until(() => slow().starting === true);
+  assert.equal(slow().starting, true, 'connectors start with the daemon, before the first reload'); // no waiting for it
 
   await api('PUT', '/api/secrets', { name: 'UNRELATED_KEY', value: 'fake-secret' }); // each of these hung until the connector finished starting
   await api('POST', '/api/mcp', { name: 'quick', config: stdio() }); // returned although `slow` is stuck

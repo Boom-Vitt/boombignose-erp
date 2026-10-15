@@ -85,8 +85,13 @@ export class McpClient {
     if (this.session !== used && !this.renewing) return Promise.resolve();
     return this.renewing ??= (async () => {
       this.session = undefined; this.version = '2025-11-25';
-      try { await this.handshake(); } catch (e) { this.fail(e instanceof Error ? e : new Error(String(e))); throw e; }
+      try { await this.handshake(); } catch (e) { const error = this.safe(e instanceof Error ? e.message : String(e)); this.fail(error); throw error; }
     })().finally(() => { this.renewing = undefined; });
+  }
+  // Waits for `pending`, but gives up as soon as the call is cancelled or times out (the shared work carries on for the others).
+  private until(pending: Promise<void>, aborted: AbortSignal): Promise<void> {
+    if (aborted.aborted) return Promise.reject(aborted.reason);
+    return Promise.race([pending, new Promise<never>((_, reject) => aborted.addEventListener('abort', () => reject(aborted.reason), { once: true }))]);
   }
   private unwrap(message: Rpc): any {
     if (message.error) throw this.safe(`MCP error ${message.error.code}: ${message.error.message}`);
@@ -106,12 +111,13 @@ export class McpClient {
   }
   private async post(message: Rpc, signal?: AbortSignal, timeoutMs = 60_000, renewed = false): Promise<any> {
     if (this.config.transport !== 'http') throw new Error('Not an HTTP server');
-    const handshake = message.method === 'initialize' || message.method === 'notifications/initialized';
+    // The handshake itself and our replies to server requests (a ping can arrive inside the initialize reply) never wait for a renewal,
+    // which would wait on them; a reply belongs to the stream that carried the request, so it never starts a renewal either.
+    const reply = !message.method, exempt = reply || message.method === 'initialize' || message.method === 'notifications/initialized';
     const aborted = AbortSignal.any([this.controller.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
-    if (this.renewing && !handshake) { // a new session is being set up: a request sent now would carry no session id
-      await Promise.race([this.renewing.catch(() => {}), new Promise<never>((_, reject) => aborted.addEventListener('abort', () => reject(aborted.reason), { once: true }))]);
-      if (this.failure) throw this.failure;
-    }
+    // a new session is being set up: a request sent now would carry no session id
+    if (this.renewing && !exempt) await this.until(this.renewing.catch(() => {}), aborted);
+    if (this.failure && !exempt) throw this.failure;
     const used = this.session;
     let response: Response;
     try {
@@ -128,8 +134,8 @@ export class McpClient {
     }
     if (!response.ok) {
       const error = this.safe(`MCP HTTP ${response.status}: ${await response.text()}`);
-      if (response.status === 404 && used && !renewed && !handshake) { await this.renew(used); return this.post(message, signal, timeoutMs, true); }
-      if (response.status === 401 || response.status === 403 || response.status === 404) this.fail(error); // credentials refused, or a fresh session refused too
+      if (response.status === 404 && used && !renewed && !exempt) { await this.until(this.renew(used), aborted); return this.post(message, signal, timeoutMs, true); }
+      if (response.status === 401 || response.status === 403 || (response.status === 404 && !reply)) this.fail(error); // credentials refused, or a fresh session refused too
       throw error;
     }
     if (message.method === 'initialize') this.session = response.headers.get('mcp-session-id') ?? undefined;
@@ -138,14 +144,15 @@ export class McpClient {
       if (!response.body) throw new Error('Empty MCP response');
       for await (const event of readSse(response.body)) {
         if (!event.data) continue;
-        const value: Rpc = JSON.parse(event.data);
+        let value: Rpc;
+        try { value = JSON.parse(event.data); } catch { throw new Error('Invalid MCP event'); } // not the parser's message: it quotes short bodies
         if (value.jsonrpc !== '2.0') continue;
         if (!value.method && value.id === message.id && message.id !== undefined) return this.unwrap(value);
         await this.receive(value);
       }
       throw new Error('MCP stream ended without a response');
     }
-    const value: Rpc = await response.json();
+    const value: Rpc = await response.json().catch(() => { throw new Error('Invalid MCP response'); });
     if (value.jsonrpc !== '2.0' || value.id !== message.id || value.method) throw new Error('Invalid MCP response');
     return this.unwrap(value);
   }

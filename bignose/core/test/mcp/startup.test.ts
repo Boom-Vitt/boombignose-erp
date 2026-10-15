@@ -57,6 +57,7 @@ test('a connector still starting is waited for only a bounded time', async t => 
   const { server, gate, cleanup } = stdioFixture(t);
   const manager = new McpManager({ slow: server('slow', ['--gate', gate]).config, off: { ...server('off').config, enabled: false } }, {});
   cleanup(manager);
+  assert.equal(manager.status()[0]!.starting, false, 'nothing is starting before it is launched: settle() would not wait either');
   void manager.start();
   const began = Date.now();
   await bounded(manager.settle(['slow', 'off', 'missing'], 100, new AbortController().signal));
@@ -94,31 +95,43 @@ test('a secret save restarts only the connectors that use it', async t => {
 });
 
 // A fake streamable-HTTP MCP server whose sessions the test can expire, and which can answer 401.
-async function httpFixture(t: TestContext) {
+async function httpFixture(t: TestContext, headers?: Record<string, string>) {
   // holdDelete / holdInitialize: promises a test sets to keep the server's DELETE / initialize reply waiting until it resolves them.
-  const state = { initializes: 0, deletes: 0, sessions: new Set<string>(), unauthorized: false, alwaysExpired: false,
+  // From the second initialize on: malformedInitialize answers with the X-Key header value as a broken body; pingOnInitialize answers over SSE
+  // with a server ping first. pingOnCall does that for tool calls; rejectReplies answers 404 to the client's reply to such a ping.
+  const state = { initializes: 0, deletes: 0, replies: 0, sessions: new Set<string>(), unauthorized: false, alwaysExpired: false,
+    malformedInitialize: false, pingOnInitialize: false, pingOnCall: false, rejectReplies: false,
     holdDelete: undefined as Promise<void> | undefined, holdInitialize: undefined as Promise<void> | undefined };
   const server = http.createServer(async (req, res) => {
     if (req.method === 'DELETE') { state.deletes++; await state.holdDelete; state.sessions.delete(String(req.headers['mcp-session-id'])); res.writeHead(200); res.end(); return; }
     let raw = ''; for await (const chunk of req) raw += chunk;
     const m = JSON.parse(raw), json = (body: unknown, headers: Record<string, string> = {}) => {
       res.writeHead(200, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify({ jsonrpc: '2.0', id: m.id, result: body }));
+    }, sse = (body: unknown, headers: Record<string, string> = {}) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', ...headers });
+      res.write('data: ' + JSON.stringify({ jsonrpc: '2.0', id: 'srv-ping', method: 'ping' }) + '\n\n');
+      res.end('data: ' + JSON.stringify({ jsonrpc: '2.0', id: m.id, result: body }) + '\n\n');
     };
     if (state.unauthorized) { res.writeHead(401); res.end('bad token'); return; }
     if (m.method === 'initialize') {
       state.initializes++;
       const session = `session-${state.initializes}`; state.sessions.add(session);
       await state.holdInitialize;
-      return json({ protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'http-fake', version: '1' } }, { 'Mcp-Session-Id': session });
+      const result = { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'http-fake', version: '1' } };
+      if (state.initializes > 1 && state.malformedInitialize) { res.writeHead(200, { 'Content-Type': 'application/json', 'Mcp-Session-Id': session }); res.end(String(req.headers['x-key'])); return; }
+      if (state.initializes > 1 && state.pingOnInitialize) return sse(result, { 'Mcp-Session-Id': session });
+      return json(result, { 'Mcp-Session-Id': session });
     }
     const session = String(req.headers['mcp-session-id']);
     if (state.alwaysExpired || !state.sessions.has(session)) { res.writeHead(404); res.end('unknown session'); return; }
+    if (!m.method) { state.replies++; res.writeHead(state.rejectReplies ? 404 : 202); res.end(state.rejectReplies ? 'unknown session' : ''); return; } // the client's reply to our ping
     if (m.method === 'notifications/initialized') { res.writeHead(202); res.end(); return; }
     if (m.method === 'tools/list') return json({ tools: [{ name: 'echo', description: 'Echo', inputSchema: { type: 'object' } }] });
-    json({ content: [{ type: 'text', text: `answer from ${session}` }] });
+    const answer = { content: [{ type: 'text', text: `answer from ${session}` }] };
+    if (state.pingOnCall) sse(answer); else json(answer);
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  const config: McpServerConfig = { transport: 'http', enabled: true, url: `http://127.0.0.1:${(server.address() as { port: number }).port}/mcp` };
+  const config: McpServerConfig = { transport: 'http', enabled: true, url: `http://127.0.0.1:${(server.address() as { port: number }).port}/mcp`, ...(headers ? { headers } : {}) };
   const manager = new McpManager({ h: config }, {});
   t.after(async () => { await manager.stop(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); });
   await bounded(manager.start());
@@ -192,4 +205,62 @@ test('a call that starts while the HTTP session is being renewed waits for the n
   assert.deepEqual((await bounded(Promise.all([first, second]))).map(r => r.content), ['answer from session-2', 'answer from session-2']);
   assert.equal(state.initializes, 2, 'one renewal');
   assert.equal(manager.status()[0]!.connected, true);
+});
+
+test('a renewal that fails on a malformed reply does not leak a header value into the card or the tool result', async t => {
+  const credential = 'topsecret-0123'; // short: V8 quotes a body this short in its JSON parse error
+  const { state, manager, tools } = await httpFixture(t, { 'X-Key': credential });
+  state.sessions.clear(); state.malformedInitialize = true;
+  const result = await bounded(run(tools, 'mcp__h__echo'));
+  const { connected, error } = manager.status()[0]!;
+  assert.equal(result.isError, true); assert.equal(connected, false);
+  assert.match(error!, /connector h /);
+  for (const text of [result.content, error!]) assert.ok(!text.includes(credential), `leaked in: ${text}`);
+});
+
+test('a server ping inside the renewal initialize reply is answered instead of deadlocking the renewal', async t => {
+  const { state, manager, tools } = await httpFixture(t);
+  state.sessions.clear(); state.pingOnInitialize = true;
+  assert.equal((await bounded(run(tools, 'mcp__h__echo'))).content, 'answer from session-2'); // bounded() is 5 s: the deadlock lasted 60 s
+  assert.deepEqual([state.initializes, state.replies, manager.status()[0]!.connected], [2, 1, true]);
+});
+
+test('a reply the server rejects with 404 fails that call only: no renewal, the connector stays up', async t => {
+  const { state, manager, tools } = await httpFixture(t);
+  state.pingOnCall = true; state.rejectReplies = true;
+  const result = await bounded(run(tools, 'mcp__h__echo'));
+  assert.equal(result.isError, true); assert.match(result.content, /404/);
+  assert.deepEqual([state.initializes, manager.status()[0]!.connected], [1, true]);
+  state.rejectReplies = false;
+  assert.equal((await bounded(run(tools, 'mcp__h__echo'))).content, 'answer from session-1');
+});
+
+test('a restarted connector stays starting while its old client closes, and settle() waits for it', async t => {
+  const { state, config, manager } = await httpFixture(t);
+  assert.equal(manager.status()[0]!.starting, false);
+  let release!: () => void; state.holdDelete = new Promise<void>(resolve => { release = resolve; });
+  await bounded(manager.apply({ h: { ...config, headers: { 'X-Test': 'two' } } })); // a changed config restarts it; apply does not wait for the DELETE
+  await until(() => state.deletes === 1);
+  assert.equal(manager.status()[0]!.starting, true, 'no gap without an entry');
+  let settled = false;
+  const waiting = manager.settle(['h'], LIMIT_MS, new AbortController().signal).then(() => { settled = true; });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.equal(settled, false, 'settle() waits for the restart');
+  release();
+  await bounded(waiting);
+  assert.deepEqual([manager.status()[0]!.connected, manager.status()[0]!.starting, state.initializes], [true, false, 2]);
+});
+
+test('a call can be cancelled while it waits for a session renewal, and the renewal carries on', async t => {
+  const { state, tools } = await httpFixture(t);
+  state.sessions.clear();
+  let release!: () => void; state.holdInitialize = new Promise<void>(resolve => { release = resolve; });
+  const controller = new AbortController();
+  const call = tools.find(tool => tool.name === 'mcp__h__echo')!.run({ text: 'hi' }, { ...ctx, signal: controller.signal });
+  await until(() => state.initializes === 2); // the 404 came back and the renewal's initialize is held
+  controller.abort();
+  assert.equal((await bounded(call)).isError, true); // returned although the renewal is still held
+  release();
+  assert.equal((await bounded(run(tools, 'mcp__h__echo'))).content, 'answer from session-2');
+  assert.equal(state.initializes, 2);
 });

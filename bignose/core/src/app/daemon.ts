@@ -123,6 +123,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
   options.signal?.addEventListener('abort', abort, { once: true });
   try {
     options.signal?.throwIfAborted();
+    void mcp.start(); // connectors initialize in the background from the first moment, so a chat never finds one that is neither up nor starting
     const port = await api.listen(apiPort);
     options.signal?.throwIfAborted();
     const file = paths(home).daemon, tmp = `${file}.${process.pid}.tmp`;
