@@ -58,6 +58,11 @@ export async function createTemplate(
   input: TemplateValues
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try {
+    requireCapability(ctx, "template:manage")
+  } catch {
+    return { error: "Only owners and admins can manage templates." }
+  }
   const parsed = TemplateInput.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
 
@@ -79,6 +84,11 @@ export async function updateTemplate(
   input: TemplateValues
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try {
+    requireCapability(ctx, "template:manage")
+  } catch {
+    return { error: "Only owners and admins can manage templates." }
+  }
   const parsed = TemplateInput.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
 
