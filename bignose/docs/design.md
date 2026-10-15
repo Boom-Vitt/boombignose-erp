@@ -208,7 +208,7 @@ export interface Config {
     tools minus `delegate`, no `onEvent` text streaming, and returns its final text.
 - `agent/permissions.ts`: `layeredPolicy(tool, ...layers)`: the first layer with a rule for the tool decides, as a whole (inside a
   layer: `layer[name]` ?? longest matching `prefix*` key); no layer has one → `tool.defaultPolicy`. `effectivePolicy(tool, permissions)`
-  is the one-layer case, which the loop uses on the exact rules runtime.ts hands it (§13).
+  is the one-layer case, which the loop uses on the exact rules runtime.ts hands it (§10).
   `deny` → error result `denied by policy`; `ask` → `approve(req)`; no approver or `false` →
   error result `denied by user`.
 - `agent/hooks.ts`: run each matching hook with `/bin/sh -c command`, JSON on stdin (`{event, sessionId, tool?,
@@ -575,7 +575,7 @@ export interface Agent {
   icon: string;                            // short text, usually one emoji; 1..16 UTF-16 units; default '🤖'
   instructions: string;                    // the agent's system prompt; '' = the built-in default prompt
   provider: string; model: string;         // a ProviderConfig.id and a model name
-  permissions: Record<string, Policy>;     // the agent's own rules: they win over config.permissions as a whole (§13), same key rules
+  permissions: Record<string, Policy>;     // the agent's own rules: they win over config.permissions as a whole (§10), same key rules
   connectors: string[] | null;             // MCP server names the agent uses; null = every enabled server
   skills: string[] | null;                 // skill names the agent sees; null = every skill
   createdAt: number; updatedAt: number;    // epoch ms

@@ -106,7 +106,7 @@ gone from `style.css`.
   reach you" appears only when the status carries `blocked`, which core does not report yet (a marked shortcut).
 - **Tools.** Allow / Ask / Never for four groups (Read files, Change files, Run commands, Open web pages). A group shows what the
   core would do: the tool's own rule, else the longest `prefix*` rule, else the default; a mixed group lists each tool's policy.
-  A foot line says that an agent's own rules on the Agents page beat these (core asks the agent's rules first, see design §13).
+  A foot line says that an agent's own rules on the Agents page beat these (core asks the agent's rules first, see design §10).
   Pressing a segment writes one exact rule per tool, so it always needs Save. Then the workspace folder,
   connectors as rows with a switch (a connector that is starting stays "Starting…"; the tool selection is hidden unless it is
   connected), Skills behind Manage. More options: single-tool rules, the add-connector form, hooks.
