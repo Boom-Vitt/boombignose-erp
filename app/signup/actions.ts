@@ -17,8 +17,8 @@ export type SignupResult =
 /**
  * Real (non-demo) signup. Never trusts client input: validates the email with
  * Zod and the password against the shared policy before touching Supabase.
- * On success Supabase sends a confirmation email; the user is created in an
- * unconfirmed state until they click the link, which lands on /auth/confirm.
+ * Email confirmation is off: a session is returned immediately and the user is
+ * sent to /setup-2fa to enroll an authenticator app (TOTP).
  */
 export async function signUp(input: {
   email: string

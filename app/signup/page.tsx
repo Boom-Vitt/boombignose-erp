@@ -51,7 +51,7 @@ export default function SignupPage() {
       return
     }
     if (!result.requiresConfirmation) {
-      router.push("/onboarding")
+      router.push("/setup-2fa")
       router.refresh()
       return
     }

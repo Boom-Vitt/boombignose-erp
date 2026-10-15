@@ -155,8 +155,8 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-# Local stack: confirmation mails land in Inbucket (see [inbucket] port above).
-enable_confirmations = true
+# Signup is ID + password only; account security comes from TOTP MFA, not email confirmation.
+enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
@@ -167,6 +167,8 @@ otp_length = 6
 otp_expiry = 3600
 
 # Use a production-ready SMTP server
+# Password-reset mail via Gmail: uncomment, use a Google App Password, and set
+# GMAIL_SMTP_USER / GMAIL_SMTP_APP_PASSWORD in the env (host smtp.gmail.com, port 587).
 # [auth.email.smtp]
 # enabled = true
 # host = "smtp.sendgrid.net"

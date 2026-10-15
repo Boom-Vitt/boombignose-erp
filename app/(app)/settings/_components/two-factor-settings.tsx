@@ -26,7 +26,14 @@ import { Label } from "@/components/ui/label"
 type Enrollment = { factorId: string; qrCode: string; secret: string }
 
 /** TOTP on/off for the signed-in user. `factorId` is their verified factor, if any. */
-export function TwoFactorSettings({ factorId }: { factorId: string | null }) {
+export function TwoFactorSettings({
+  factorId,
+  onEnabled,
+}: {
+  factorId: string | null
+  /** Called after a factor is verified; defaults to refreshing the page. */
+  onEnabled?: () => void
+}) {
   const router = useRouter()
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null)
   const [code, setCode] = useState("")
@@ -66,7 +73,8 @@ export function TwoFactorSettings({ factorId }: { factorId: string | null }) {
     toast.success("Two-factor authentication is on")
     setEnrollment(null)
     setCode("")
-    router.refresh()
+    if (onEnabled) onEnabled()
+    else router.refresh()
   }
 
   async function turnOff() {
