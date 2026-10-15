@@ -70,3 +70,13 @@ it('signup rejects a malformed email before calling Supabase',async()=>{
  expect(await signUp({email:'not-an-email',password:'FixturePass1234'})).toEqual({ok:false,error:'Enter a valid email address.'})
  expect(state.signUp).not.toHaveBeenCalled()
 })
+it('the confirmation email leads to authenticator setup and keeps an invitation',async()=>{
+ vi.stubEnv('NEXT_PUBLIC_APP_URL','https://app.example.test')
+ state.signUp.mockResolvedValue({data:{session:null,user:{id:'new'}},error:null})
+ await signUp({email:'new@example.test',password:'Str0ngPassword',returnTo:'/invite/valid-token'})
+ const redirectTo=state.signUp.mock.calls[0]![0].options.emailRedirectTo as string
+ state.exchange.mockResolvedValue({error:null})
+ const response=await GET(new NextRequest(`${redirectTo}&code=pkce`))
+ expect(response.headers.get('location')).toBe('https://app.example.test/setup-2fa?redirect=%2Finvite%2Fvalid-token')
+ vi.unstubAllEnvs()
+})

@@ -46,7 +46,7 @@ function SignupForm() {
     }
 
     setLoading(true)
-    const result = await signUp({ email, password })
+    const result = await signUp({ email, password, returnTo })
     setLoading(false)
 
     if (!result.ok) {
@@ -71,8 +71,8 @@ function SignupForm() {
           </div>
           <CardDescription>
             We sent a confirmation link to{" "}
-            <span className="font-medium">{email}</span>. Click it to confirm
-            your account, then sign in.
+            <span className="font-medium">{email}</span>. Open it in this
+            browser to confirm your account and set up two-factor sign-in.
           </CardDescription>
         </CardHeader>
         <CardFooter>
