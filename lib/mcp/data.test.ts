@@ -177,6 +177,28 @@ describe("Supabase data layer", () => {
     await expect(layer.listOrganizations()).rejects.toThrow("Database query failed on organizations: boom")
   })
 
+  it("an offset past the end is an empty last page with the real total, not PostgREST's 416", async () => {
+    const pastEnd = { data: null, error: { code: "PGRST103", message: "Requested range not satisfiable" }, count: null }
+    const results: Array<{ data: null; error: unknown; count: number | null }> = [pastEnd, { data: null, error: null, count: 3 }]
+    const selects: unknown[] = []
+    const eqCalls: Array<[string, string]> = []
+    let pending: (typeof results)[number] | undefined
+    const builder = {
+      select: (_cols: string, opts: unknown) => (selects.push(opts), (pending = results.shift()), builder),
+      order: () => builder,
+      range: () => builder,
+      eq: (col: string, val: string) => (eqCalls.push([col, val]), builder),
+      then: (resolve: (v: unknown) => void) => resolve(pending),
+    }
+    const layer = createSupabaseDataLayer({ from: () => builder })
+    expect(await layer.listClients(ORG_A, { limit: 10, offset: 10 })).toEqual({ rows: [], total: 3 })
+    expect(selects).toEqual([{ count: "exact" }, { count: "exact", head: true }])
+    expect(eqCalls).toEqual([["org_id", ORG_A], ["org_id", ORG_A]])
+
+    results.push(pastEnd, { data: null, error: null, count: 2 })
+    expect(await layer.listOrganizations({ limit: 5, offset: 5 })).toEqual({ rows: [], total: 2 })
+  })
+
   it("strips undeclared columns and falls back to the row count without an exact count", async () => {
     const rec = recordingClient({
       data: [{ id: "c1", org_id: ORG_A, name: "A", notes: "PRIVATE", tax_id: "PRIVATE" }],
