@@ -20,6 +20,15 @@ export const PASSWORD_MIN_LENGTH = 10
 export const EXPIRED_RESET_MESSAGE =
   "This reset link has expired or was already used. Request a new one below, and open it in this browser."
 
+/** True when a password update failed because the recovery session is gone, not the password. */
+export function isDeadSessionError(error: { name?: string; code?: string }): boolean {
+  return (
+    error.name === "AuthSessionMissingError" ||
+    error.code === "session_not_found" ||
+    error.code === "session_expired"
+  )
+}
+
 export type PasswordCheck = {
   /** True only when every policy rule is satisfied. */
   ok: boolean

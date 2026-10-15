@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { validatePassword } from "@/lib/auth/password"
+import { EXPIRED_RESET_MESSAGE, isDeadSessionError, validatePassword } from "@/lib/auth/password"
 import { createClient } from "@/lib/supabase/client"
 import { AuthShell } from "@/components/auth-shell"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,10 @@ export default function ResetPasswordPage() {
     setLoading(true)
     const { error } = await createClient().auth.updateUser({ password })
     setLoading(false)
+    if (error && isDeadSessionError(error)) {
+      router.push(`/forgot-password?error=${encodeURIComponent(EXPIRED_RESET_MESSAGE)}`)
+      return
+    }
     if (error) {
       toast.error("Could not update password", { description: error.message })
       return

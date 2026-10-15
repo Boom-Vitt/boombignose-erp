@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { validatePassword, PASSWORD_MIN_LENGTH } from "@/lib/auth/password"
+import { isDeadSessionError, validatePassword, PASSWORD_MIN_LENGTH } from "@/lib/auth/password"
 
 describe("validatePassword", () => {
   it("accepts a strong password", () => {
@@ -76,5 +76,18 @@ describe("validatePassword", () => {
       expect(typeof issue).toBe("string")
       expect(issue.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe("isDeadSessionError", () => {
+  it("recognizes a recovery session that expired or was signed out", () => {
+    expect(isDeadSessionError({ name: "AuthSessionMissingError" })).toBe(true)
+    expect(isDeadSessionError({ name: "AuthApiError", code: "session_not_found" })).toBe(true)
+    expect(isDeadSessionError({ name: "AuthApiError", code: "session_expired" })).toBe(true)
+  })
+
+  it("leaves password problems to the form", () => {
+    expect(isDeadSessionError({ name: "AuthApiError", code: "same_password" })).toBe(false)
+    expect(isDeadSessionError({ name: "AuthWeakPasswordError", code: "weak_password" })).toBe(false)
   })
 })
