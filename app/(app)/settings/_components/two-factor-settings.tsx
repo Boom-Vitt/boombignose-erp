@@ -97,6 +97,7 @@ export function TwoFactorSettings({
     setBusy(true)
     const { error } = await createClient().auth.mfa.unenroll({ factorId })
     setBusy(false)
+    if (error && isDeadSessionError(error)) return signInAgain()
     if (error) {
       toast.error("Could not turn off two-factor authentication", { description: error.message })
       return
