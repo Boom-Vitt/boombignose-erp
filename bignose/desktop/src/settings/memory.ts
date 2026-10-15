@@ -1,7 +1,7 @@
 // Settings › Memory: the notes BigNose keeps between chats, one row each.
 import type { Api } from '../api.ts';
 import type { Agent, MemoryKind, MemoryNote } from '../types.ts';
-import { btn, confirmDialog, el, errMsg, field, formatTime, guarded, load, select, th, toast } from '../dom.ts';
+import { btn, confirmDialog, el, errMsg, field, formatTime, guarded, load, select, setLang, th, toast } from '../dom.ts';
 import { agentSelect, menuHost, moreMenu } from './parts.ts';
 
 export function mountMemory(pane: HTMLElement, api: Api): void {
@@ -38,9 +38,10 @@ export function mountMemory(pane: HTMLElement, api: Api): void {
 
     function noteRow(n: MemoryNote): HTMLElement {
       const item = el('div', { class: 'note' });
+      const owner = `${n.kind === 'user' ? 'About you' : agentName(n.agentId)} · ${formatTime(n.updatedAt)}`;
       const view = () => item.replaceChildren(el('div', { class: 'row' },
         el('div', { class: 'row-text' }, el('div', { class: 'note-text', lang: th(n.text) }, n.text),
-          el('div', { class: 'row-sub' }, `${n.kind === 'user' ? 'About you' : agentName(n.agentId)} · ${formatTime(n.updatedAt)}`)),
+          el('div', { class: 'row-sub', lang: th(owner) }, owner)),
         moreMenu('More for this note', [['Edit…', edit], ['Delete…', () => void remove(), true]])));
       async function remove(): Promise<void> {
         const preview = n.text.length > 80 ? `${n.text.slice(0, 79)}…` : n.text;
@@ -50,7 +51,7 @@ export function mountMemory(pane: HTMLElement, api: Api): void {
       function edit(): void {
         const box = el('textarea', { rows: 4, 'aria-label': 'Note text' });
         box.value = n.text;
-        setLang(box);
+        setLang(box, box.value);
         item.replaceChildren(el('div', { class: 'field' }, box), el('div', { class: 'row' }, el('span', { class: 'spacer' }),
           btn('Cancel', view, 'quiet'),
           btn('Save', (b) => void guarded(async () => {
@@ -63,7 +64,6 @@ export function mountMemory(pane: HTMLElement, api: Api): void {
       view();
       return item;
     }
-    const setLang = (box: HTMLTextAreaElement) => { const lang = th(box.value); if (lang) box.setAttribute('lang', lang); };
 
     // ---- Add note
     const newKind = select([['user', 'About you'], ['agent', "BigNose's notes"]], 'user');

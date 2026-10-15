@@ -47,7 +47,7 @@ export function mountModel(pane: HTMLElement, api: Api, changed: () => void = ()
     const general = generalFromConfig(config);
     const maxTurns = el('input', { type: 'number', value: general.maxTurns, required: true, min: 1, step: 1 });
     const compact = select([...COMPACT, ...(COMPACT.some(([v]) => v === general.compactAt) ? [] : [[general.compactAt, percent(general.compactAt)] as [string, string]])], general.compactAt);
-    const ctx = el('input', { type: 'number', min: 1000, step: 1000 });
+    const ctx = el('input', { type: 'number', min: 1000, step: 1 });
     const url = el('input', { type: 'url', autocomplete: 'off', spellcheck: 'false' });
     const key = el('input', { type: 'password', autocomplete: 'new-password' });
     const optKey = el('input', { type: 'password', autocomplete: 'new-password' });

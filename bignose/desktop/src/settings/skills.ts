@@ -1,7 +1,7 @@
 // Settings › Tools › Skills (folders with SKILL.md). The Tools tab opens this as its own view.
 import type { Api } from '../api.ts';
 import type { Skill, SkillSummary } from '../types.ts';
-import { btn, confirmDialog, el, field, guarded, load, toast } from '../dom.ts';
+import { btn, confirmDialog, el, field, guarded, load, th, toast } from '../dom.ts';
 import { row } from './parts.ts';
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -46,7 +46,7 @@ export function mountSkills(pane: HTMLElement, api: Api): void {
   const listBox = el('div', { class: 'card skill-list' });
   function renderList(skills: SkillSummary[]): void {
     listBox.replaceChildren(...skills.map((s) => el('button', { type: 'button', class: 'row skill-pick', onclick: () => void guarded(async () => openEditor(await api.getSkill(s.name))) },
-      el('span', { class: 'row-text' }, el('span', { class: 'skill-name' }, s.name), el('span', { class: 'row-sub' }, s.description)))));
+      el('span', { class: 'row-text' }, el('span', { class: 'skill-name', lang: th(s.name) }, s.name), el('span', { class: 'row-sub', lang: th(s.description) }, s.description)))));
     if (!skills.length) listBox.append(row('No skills yet.', null));
   }
 

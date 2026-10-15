@@ -618,6 +618,7 @@ pre.diag { margin: 0; padding: 10px var(--sp-4); max-height: 260px; overflow: au
 .line-warnings { display: grid; gap: var(--sp-2); padding: 10px var(--sp-4); }
 .line-warnings:empty { display: none; }
 .people:empty { display: none; }
+.row-text .people { justify-content: flex-start; max-width: none; margin-top: var(--sp-1); }
 .row code.id { font-size: 12px; }
 
 /* Tools: add-ons, rules, hooks */

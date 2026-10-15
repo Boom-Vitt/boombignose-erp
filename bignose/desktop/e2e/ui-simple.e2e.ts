@@ -1,4 +1,4 @@
-// The simple UI (design-spec §12), scoped to the chat routes and the BigNose OS panel. Later streams add their own routes.
+// The simple UI (design-spec §12): the chat routes, the BigNose OS panel, the agents pages and the five Settings tabs.
 // Each test has its own daemon with a temp home and a scripted mock model; nothing touches ~/.bignose or 127.0.0.1:47821.
 // Set BIGNOSE_SHOTS=<dir> to also save chat-light.png and chat-dark.png (1280x800) for human review.
 import test from 'node:test';
@@ -7,7 +7,9 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'n
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
 import { startDaemon } from '../../core/src/app/daemon.ts';
+import { setSecret } from '../../core/src/config.ts';
 import { configured, mockOpenai, testHome, toolCall } from '../../core/test/e2e/helpers.ts';
 import { createApi } from '../src/api.ts';
 import { openUi, until } from './cdp.ts';
@@ -276,7 +278,7 @@ test('the OS panel at 420x640 has no horizontal overflow and keeps the composer 
   await fits('panel with an error card');
   assert.equal(await ui.cdp.evaluate(`document.querySelector('.alert').getBoundingClientRect().right <= innerWidth`), true);
   await shot(ui, 'panel-error.png');
-  for (const route of ['#/agents', '#/settings/general', '#/chat']) {
+  for (const route of ['#/agents', '#/settings/model', '#/chat']) {
     await ui.cdp.evaluate(`location.hash = ${JSON.stringify(route)}`);
     await ui.wait(`(document.querySelector('[aria-label="Settings"]:not([hidden]), [aria-label="Agents"]:not([hidden]), .chat:not([hidden])')?.textContent.length ?? 0) > 0`);
     assert.deepEqual(await overflow(ui, '.shell, .main, .nav'), { page: 0, wide: [] }, route);
@@ -533,6 +535,257 @@ test('the agents pages', { timeout: 300_000 }, async (t) => {
     await open(bot.id);
     assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.menu-item')].find(b => b.textContent === 'Delete…').disabled`), true);
     assert.equal(await ui.cdp.evaluate(`document.querySelector('.menu-note').textContent`), 'BigNose needs at least one agent.');
+  });
+
+  await t.test('no CSP violations and no console errors', async () => {
+    assert.deepEqual(await ui.cdp.evaluate(`window.__csp`), []);
+    assert.deepEqual(ui.cdp.errors, []);
+  });
+});
+
+/** A stand-in for Ollama: the model list and the loaded models, nothing else. */
+async function ollamaMock(t: test.TestContext) {
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/v1/models') res.end(JSON.stringify({ data: [{ id: 'qwen3:4b' }, { id: 'qwen3:8b' }] }));
+    else if (req.url === '/api/ps') res.end(JSON.stringify({ models: [] }));
+    else { res.writeHead(404); res.end('{}'); }
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections(); }));
+  return `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`;
+}
+
+test('the settings pages', { timeout: 300_000 }, async (t) => {
+  // Own daemon and temp home; Ollama is a local stand-in, LINE is on but never called (the Connect flow has its own e2e).
+  const home = testHome(t), work = join(home, 'work'), other = join(home, 'other');
+  mkdirSync(work); mkdirSync(other);
+  const base = await ollamaMock(t);
+  // a real, free port: the LINE form refuses the 0 ("any port") the other e2e homes store
+  const probe = createServer(); await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const linePort = (probe.address() as { port: number }).port; await new Promise<void>((resolve) => probe.close(() => resolve()));
+  configured(home, base, (c) => {
+    c.providers[0] = { id: 'ollama', kind: 'openai-compatible', baseUrl: base, apiKeyEnv: 'OLLAMA_API_KEY', contextWindow: 32768 };
+    c.providers.push({ id: 'remote', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1/v1', label: 'Remote', apiKeyEnv: 'REMOTE_API_KEY' });
+    c.active = { provider: 'ollama', model: 'qwen3:4b' };
+    c.agent.workspace = work;
+    c.line.enabled = true; c.line.allow = { users: ['U0123456789abcd'], groups: [], rooms: [] }; c.line.port = linePort; c.line.publicUrl = 'https://tunnel.example/base';
+  });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  const app = await startDaemon({ home }); t.after(() => app.close());
+  const api = createApi({ port: app.port, token: app.token });
+  const bot = (await api.listAgents()).agents[0]!;
+  const shop = await api.createAgent({ provider: 'ollama', model: 'qwen3:4b', name: 'ผู้ช่วยร้าน', icon: '🛍️', instructions: 'Answers shop questions.' });
+  await api.addMemory('user', 'ชอบคำตอบสั้นๆ');
+  await api.addSchedule({ cron: '0 9 * * 1-5', prompt: 'สรุปยอดขาย', delivery: { kind: 'desktop' }, agentId: shop.id });
+  const ui = await openUi(t, app, { viewport: SIZES[1]!, hash: '#/settings/model' });
+  const panel = `document.querySelector('#settings-panel')`;
+  const text = (selector: string) => ui.cdp.evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent`);
+  const go = async (tab: string) => {
+    await ui.cdp.evaluate(`location.hash = ${JSON.stringify(`#/settings/${tab}`)}`);
+    await ui.wait(`document.querySelector('.tab[aria-selected=true]')?.id === 'tab-${tab.split('?')[0]}' && document.querySelector('#settings-panel form, #settings-panel .tools-page, #settings-panel .page-stack')`, `the ${tab} tab`);
+  };
+  const choose = (label: string, value: string, scope = panel) => ui.cdp.evaluate(`(() => { const e = Array.from(${scope}.querySelectorAll('label')).find(l => l.querySelector('.field-label')?.textContent === ${JSON.stringify(label)}).querySelector('select'); e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const barText = () => text('.save-bar-text');
+  const barHidden = () => ui.cdp.evaluate(`document.querySelector('.save-bar')?.hidden`);
+  const accentRgb = () => ui.cdp.evaluate(`(() => { const hex = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(); return 'rgb(' + [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ') + ')'; })()`);
+  await go('model');
+
+  await t.test('settings tabs are Model, LINE, Tools, Memory and Schedules', async () => {
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.tab')].map(t => t.textContent)`), ['Model', 'LINE', 'Tools', 'Memory', 'Schedules']);
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.tab svg').length`), 0, 'plain text, no icons');
+    const accent = await accentRgb();
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.tab')].map(t => [t.getAttribute('aria-selected'), getComputedStyle(t).borderBottomColor === ${JSON.stringify(accent)}, t.tabIndex])`),
+      [['true', true, 0], ['false', false, -1], ['false', false, -1], ['false', false, -1], ['false', false, -1]]);
+    await ui.cdp.evaluate(`document.querySelector('.tabs').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
+    await ui.wait(`document.querySelector('.tab[aria-selected=true]').textContent === 'LINE' && location.hash === '#/settings/line'`, 'ArrowRight selects LINE');
+    for (const [old, tab] of [['messaging', 'line'], ['providers', 'model'], ['general', 'model'], ['connectors', 'tools'], ['hooks', 'tools'], ['skills', 'tools']]) {
+      await ui.cdp.evaluate(`location.hash = '#/settings/${old}'`);
+      await ui.wait(`document.querySelector('.tab[aria-selected=true]')?.id === 'tab-${tab}'`, `#/settings/${old} lands on ${tab}`);
+    }
+    // the header model link lands on the Model tab
+    await ui.cdp.evaluate(`location.hash = '#/chat'`);
+    await ui.wait(`document.querySelector('.model-link') && !document.querySelector('.chat').hidden`);
+    await ui.cdp.evaluate(`document.querySelector('.model-link').click()`);
+    await ui.wait(`location.hash === '#/settings/model' && document.querySelector('.tab[aria-selected=true]').id === 'tab-model'`, 'the model link opens the Model tab');
+    await go('model');
+  });
+
+  await t.test('every tab has at most one More options fold and no Advanced heading', async () => {
+    for (const tab of ['model', 'line', 'tools', 'memory', 'schedules']) {
+      await go(tab);
+      assert.equal(await ui.cdp.evaluate(`${panel}.querySelectorAll('details.disclosure').length <= 1`), true, tab);
+      assert.equal(await ui.cdp.evaluate(`[...document.querySelectorAll('.group-title')].some(g => /advanced/i.test(g.textContent))`), false, tab);
+    }
+    await go('model');
+  });
+
+  await t.test('Model: two Runs on cards; the save bar names the change and hides when the value is put back', async () => {
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.choice input[type=radio]').length`), 2);
+    assert.match(await text('.choice'), /This Mac.*Running/);
+    await ui.wait(`document.querySelector('.test-line')?.textContent.includes('Ollama is running · 2 models on this Mac')`, 'the test line');
+    assert.equal(await barHidden(), true);
+    await ui.field('Model', 'qwen3:8b', panel);
+    assert.match(await barText(), / changed from .+ to .+/);
+    assert.equal(await barText(), 'Model changed from qwen3:4b to qwen3:8b', 'the save bar names the change');
+    await ui.field('Model', 'qwen3:4b', panel);
+    assert.equal(await barHidden(), true, 'setting it back hides the bar');
+    // an API key: the bar says it was replaced and the page never shows it
+    await ui.field('API key (optional)', 'paste-me-123', panel);
+    assert.equal(await barText(), 'API key replaced');
+    assert.equal(await ui.cdp.evaluate(`document.body.textContent.includes('paste-me-123')`), false);
+    await ui.field('API key (optional)', '', panel);
+    assert.equal(await barHidden(), true);
+  });
+
+  await t.test('Model: Save writes the new default and moves the agent that followed the old one', async () => {
+    await ui.field('Model', 'qwen3:8b', panel);
+    await ui.click('Save', `document.querySelector('.save-bar')`);
+    await until(async () => (await api.getSettings()).config.active.model === 'qwen3:8b', 'config.active is saved');
+    await until(async () => (await api.getAgent(bot.id)).model === 'qwen3:8b', 'the default agent follows');
+    assert.equal((await api.getAgent(shop.id)).model, 'qwen3:8b', 'both agents were on the old default');
+    await ui.wait(`document.querySelector('.save-bar')?.hidden && document.querySelector('.test-line')?.textContent.includes('Ollama is running')`);
+  });
+
+  await t.test('Model: diagnostics do not pass while a warning is listed, and check the model the agent uses', async () => {
+    await api.patchAgent(bot.id, { model: 'ghost:1' });
+    await go('line'); await go('model');
+    await ui.cdp.evaluate(`${panel}.querySelector('details').open = true`);
+    await ui.click('Run diagnostics', panel);
+    await ui.wait(`document.querySelector('.diag')`, 'the diagnostics output');
+    assert.equal(await text('.result'), 'Some checks need attention');
+    assert.match(await text('.diag'), /warn Ollama does not have ghost:1/);
+    assert.equal(await ui.cdp.evaluate(`getComputedStyle(document.querySelector('.diag')).whiteSpace`), 'pre-wrap');
+    await api.patchAgent(bot.id, { model: 'qwen3:8b' });
+    await ui.click('Run diagnostics', panel);
+    await ui.wait(`document.querySelector('.result')?.textContent === 'All checks passed'`, 'a clean run passes');
+  });
+
+  await t.test('LINE: the setup steps, Answered by lists every agent and saves the choice', async () => {
+    await go('line');
+    assert.equal(await ui.cdp.evaluate(`!!document.querySelector('.line-connect-result') && !!document.querySelector('.line-test-result')`), true);
+    assert.match(await text('#settings-panel'), /Answer LINE messagesConnected/);
+    assert.match(await text('#settings-panel'), /Paste the channel token and secret.*Both saved\./);
+    assert.deepEqual(await ui.cdp.evaluate(`[...Array.from(${panel}.querySelectorAll('label')).find(l => l.querySelector('.field-label')?.textContent === 'Answered by').querySelectorAll('option')].map(o => o.textContent)`), [bot.name, 'ผู้ช่วยร้าน']);
+    await choose('Answered by', shop.id);
+    assert.equal(await barText(), 'Answered by changed from BigNose to ผู้ช่วยร้าน');
+    await ui.click('Save', `document.querySelector('.save-bar')`);
+    await until(async () => (await api.getSettings()).config.line.agentId === shop.id, 'the LINE agent is saved');
+    await ui.wait(`document.querySelector('.save-bar')?.hidden`);
+    assert.equal(await ui.cdp.evaluate(`Array.from(${panel}.querySelectorAll('label')).find(l => l.querySelector('.field-label')?.textContent === 'Answered by').querySelector('select').value`), shop.id);
+    // a LINE field that restarts the gateway says so
+    await ui.field('Local port', '47900', panel);
+    assert.match(await barText(), /Local port changed from \d+ to 47900 · LINE will reconnect/);
+    await ui.field('Local port', String((await api.getSettings()).config.line.port), panel);
+    assert.equal(await barHidden(), true);
+  });
+
+  await t.test('Tools: four groups, the workspace folder is checked, a relative one is refused', async () => {
+    await go('tools');
+    assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.seg')].map(s => [s.getAttribute('aria-label'), [...s.querySelectorAll('button')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.textContent).join()])`),
+      [['Read files', 'Allow'], ['Change files', 'Ask'], ['Run commands', 'Ask'], ['Open web pages', 'Ask']]);
+    await ui.cdp.evaluate(`[...document.querySelectorAll('.seg')].find(s => s.getAttribute('aria-label') === 'Run commands').querySelectorAll('button')[2].click()`);
+    assert.equal(await barText(), 'Run commands changed from Ask to Never');
+    await ui.click('Save', `document.querySelector('.save-bar')`);
+    await until(async () => (await api.getSettings()).config.permissions.shell === 'deny', 'the group is saved');
+    await ui.wait(`document.querySelector('.save-bar')?.hidden`);
+    for (const [bad, message] of [['relative/dir', /full path/], [join(home, 'missing'), /does not exist/]] as const) {
+      await ui.field('Folder BigNose works in', bad, panel);
+      await ui.click('Save', `document.querySelector('.save-bar')`);
+      await ui.wait(`document.querySelector('#toasts .toast.error')`, 'an error toast');
+      assert.match(await text('#toasts .toast.error'), message);
+      assert.equal((await api.getSettings()).config.agent.workspace, work, 'nothing was saved');
+      await ui.cdp.evaluate(`document.querySelectorAll('#toasts .toast').forEach(n => n.remove())`);
+    }
+    await ui.field('Folder BigNose works in', other, panel);
+    await ui.click('Save', `document.querySelector('.save-bar')`);
+    await until(async () => (await api.getSettings()).config.agent.workspace === other, 'a real folder is saved');
+    await ui.wait(`document.querySelector('.connector[data-name=rea]')`, 'the built-in connector row');
+    assert.equal(await ui.cdp.evaluate(`!!document.querySelector('.connector[data-name=rea]')`), true, 'the built-in connector is a row');
+    await ui.cdp.evaluate(`${panel}.querySelector('details').open = true`);
+    assert.equal(await ui.cdp.evaluate(`!!${panel}.querySelector('.connector-form')`), true, 'the add form is behind More options');
+  });
+
+  await t.test('Memory: a note is a row with a ⋯ menu; Delete… asks first', async () => {
+    await go('memory');
+    await ui.wait(`document.querySelectorAll('.note').length === 1`);
+    assert.equal(await text('.note-text'), 'ชอบคำตอบสั้นๆ');
+    await ui.click('Add note', panel); await ui.field('Note', 'Prefers metric units', panel);
+    await ui.click('Add note', `document.querySelector('.page-stack form')`);
+    await ui.wait(`document.querySelectorAll('.note').length === 2`);
+    assert.equal(await ui.cdp.evaluate(`document.querySelector('.toolbar').hidden`), true, 'two notes need no filters');
+    await ui.cdp.evaluate(`document.querySelectorAll('.note')[1].querySelector('[aria-haspopup=menu]').click()`);
+    await ui.click('Delete…', `document.querySelectorAll('.note')[1]`);
+    await ui.wait(`document.querySelector('dialog[open]')`);
+    assert.equal(await ui.cdp.evaluate(`document.activeElement.textContent`), 'Cancel');
+    await ui.click('Delete', `document.querySelector('dialog[open]')`);
+    await until(async () => (await api.listMemory()).notes.length === 1, 'the note is deleted');
+    await ui.wait(`document.querySelectorAll('.note').length === 1`);
+  });
+
+  await t.test('Schedules: Weekdays + 09:00 posts 0 9 * * 1-5 and Every day + 07:30 posts 30 7 * * *', async () => {
+    await go('schedules');
+    await ui.wait(`document.querySelectorAll('.schedules .row').length === 1`);
+    assert.match(await text('.schedules .row-sub'), /^Weekdays at 09:00 · ผู้ช่วยร้าน/);
+    const add = async (when: string, time: string, prompt: string) => {
+      await ui.click('Add schedule', panel);
+      await ui.field('What to do', prompt, panel); await choose('When', when);
+      await ui.cdp.evaluate(`(() => { const t = document.querySelector('.when input[type=time]'); t.value = ${JSON.stringify(time)}; t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await ui.click('Add schedule', `document.querySelector('.save-bar')`);
+    };
+    await add('weekdays', '09:00', 'Morning');
+    await until(async () => (await api.listSchedules()).jobs.some((j) => j.prompt === 'Morning' && j.cron === '0 9 * * 1-5'), 'weekdays posts 0 9 * * 1-5');
+    await ui.wait(`document.querySelectorAll('.schedules .row').length === 2`);
+    await add('day', '07:30', 'Evening');
+    await until(async () => (await api.listSchedules()).jobs.some((j) => j.prompt === 'Evening' && j.cron === '30 7 * * *'), 'every day posts 30 7 * * *');
+    await ui.wait(`document.querySelectorAll('.schedules .row').length === 3`);
+  });
+
+  await t.test('Schedules honours the "N schedules" link from the agents page', async () => {
+    await ui.cdp.evaluate(`location.hash = '#/agents'`);
+    await ui.wait(`document.querySelector('[data-agent-id="${shop.id}"] .agent-meta a')`);
+    await ui.cdp.evaluate(`document.querySelector('[data-agent-id="${shop.id}"] .agent-meta a').click()`);
+    await ui.wait(`document.querySelector('.tab[aria-selected=true]')?.id === 'tab-schedules' && document.querySelector('.filter-note')`, 'the filter is on');
+    assert.equal(await text('.filter-note'), 'Showing schedules for ผู้ช่วยร้าน.Show all');
+    assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.schedules .row').length`), 1, 'only that agent\'s schedules');
+    await ui.click('Show all', panel);
+    await ui.wait(`location.hash === '#/settings/schedules' && !document.querySelector('.filter-note') && document.querySelectorAll('.schedules .row').length === 3`);
+  });
+
+  await t.test('no sideways scroll, no stray accent, no CSP violation on any tab, light and dark, at 820x540 and 1280x800', async () => {
+    const parts = '.shell, .main, .settings, .card, .row, .save-bar';
+    for (const tab of ['model', 'line', 'tools', 'memory', 'schedules']) {
+      await go(tab);
+      await ui.cdp.evaluate(`${panel}.querySelectorAll('details').forEach(d => { d.open = true; })`);
+      for (const size of SIZES) {
+        await resize(ui, size); await ui.wait(`innerWidth === ${size.width}`);
+        assert.deepEqual(await overflow(ui, parts), { page: 0, wide: [] }, `${tab} at ${size.width}x${size.height}`);
+      }
+      for (const mode of ['light', 'dark'] as const) {
+        await scheme(ui, mode);
+        assert.deepEqual((await strayAccent(ui)).stray, [], `${tab} ${mode}`);
+        if (tab === 'model') await shot(ui, `settings-${mode}.png`);
+      }
+      await scheme(ui, 'light');
+      if (tab === 'line') await shot(ui, 'settings-line-light.png');
+      if (tab === 'schedules') await shot(ui, 'settings-schedules-light.png');
+    }
+    await resize(ui, SIZES[1]!); await ui.wait(`innerWidth === ${SIZES[1]!.width}`);
+    assert.equal(await ui.cdp.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true);
+  });
+
+  await t.test('Thai is tagged on every tab and clipped lines keep room', async () => {
+    for (const tab of ['model', 'line', 'tools', 'memory', 'schedules']) {
+      await go(tab);
+      assert.deepEqual(await ui.cdp.evaluate(`(() => {
+        const walk = document.createTreeWalker(document.getElementById('app'), NodeFilter.SHOW_TEXT);
+        const bare = [];
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) if (/[฀-๿]/.test(n.textContent) && !n.parentElement.closest('[lang="th"]')) bare.push(n.textContent);
+        return bare;
+      })()`), [], tab);
+      assert.deepEqual(await ui.cdp.evaluate(`[...document.querySelectorAll('.save-bar-text, .tool-name')]
+        .filter(e => e.getClientRects().length).filter(e => parseFloat(getComputedStyle(e).lineHeight) / parseFloat(getComputedStyle(e).fontSize) < 1.74).map(e => e.className)`), [], tab);
+    }
   });
 
   await t.test('no CSP violations and no console errors', async () => {

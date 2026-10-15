@@ -15,23 +15,27 @@ async function daemon(t: test.TestContext) {
   return app;
 }
 
-test('settings scroll inside the window and Save is reachable', { timeout: 120_000 }, async t => {
+test('settings scroll inside the window and the save bar stays reachable', { timeout: 120_000 }, async t => {
   const app = await daemon(t);
-  const ui = await openUi(t, app, { viewport: { width: 1000, height: 480 }, hash: '#/settings/messaging' });
-  await ui.wait(`document.querySelector('[aria-label="Settings"] form button[type=submit]')`);
+  const ui = await openUi(t, app, { viewport: { width: 1000, height: 480 }, hash: '#/settings/line' });
+  const save = `document.querySelector('[aria-label="Settings"] form button[type=submit]')`;
+  await ui.wait(save);
+  // the bar shows only once something differs; change a field that sits inside the (closed) More options fold
+  assert.equal(await ui.cdp.evaluate(`${save}.closest('.save-bar').hidden`), true, 'nothing changed, no bar');
+  await ui.field('Public address', 'https://tunnel.example', `document.querySelector('[aria-label="Settings"]')`);
+  await ui.wait(`!${save}.closest('.save-bar').hidden`);
   const geometry = await ui.cdp.evaluate(`(() => {
-    const settings = document.querySelector('[aria-label="Settings"]'), save = document.querySelector('[aria-label="Settings"] form button[type=submit]');
-    const page = document.scrollingElement;
+    const settings = document.querySelector('[aria-label="Settings"]'), page = document.scrollingElement, r = ${save}.getBoundingClientRect();
     return { shell: document.querySelector('.shell').getBoundingClientRect().height, vh: innerHeight, pageScroll: page.scrollHeight - page.clientHeight,
-      paneScroll: settings.scrollHeight - settings.clientHeight, saveBottomBefore: save.getBoundingClientRect().bottom };
+      paneScroll: settings.scrollHeight - settings.clientHeight, top: r.top, bottom: r.bottom };
   })()`);
   assert.ok(geometry.shell <= geometry.vh, `the shell fits the window: ${JSON.stringify(geometry)}`);
   assert.equal(geometry.pageScroll, 0, 'the page itself does not scroll');
   assert.ok(geometry.paneScroll > 0, 'the settings pane is taller than the window, so it scrolls inside');
-  assert.ok(geometry.saveBottomBefore > geometry.vh, 'Save starts below the fold on this short window');
+  assert.ok(geometry.top >= 0 && geometry.bottom <= geometry.vh, `the bar sticks to the bottom of the window before any scrolling: ${JSON.stringify(geometry)}`);
   await ui.cdp.evaluate(`document.querySelector('[aria-label="Settings"]').scrollTop = 1e6`);
-  const save = await ui.cdp.evaluate(`(() => { const r = document.querySelector('[aria-label="Settings"] form button[type=submit]').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight }; })()`);
-  assert.ok(save.top >= 0 && save.bottom <= save.vh, `Save is on screen after scrolling the pane: ${JSON.stringify(save)}`);
+  const after = await ui.cdp.evaluate(`(() => { const r = ${save}.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight }; })()`);
+  assert.ok(after.top >= 0 && after.bottom <= after.vh, `Save is on screen after scrolling the pane: ${JSON.stringify(after)}`);
   assert.deepEqual(ui.cdp.errors, []);
 });
 
@@ -49,7 +53,7 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
   })()`);
   // the chat list is a strip under the top bar and scrolls sideways inside itself by design
   assert.equal(await ui.cdp.evaluate(`getComputedStyle(document.querySelector('.sessions')).overflowX`), 'auto');
-  const routes = ['#/chat', '#/agents', ...['general', 'providers', 'connectors', 'messaging', 'hooks', 'skills', 'memory', 'schedules'].map(s => `#/settings/${s}`)];
+  const routes = ['#/chat', '#/agents', ...['model', 'line', 'tools', 'memory', 'schedules'].map(s => `#/settings/${s}`)];
   for (const route of routes) {
     await ui.cdp.evaluate(`location.hash = ${JSON.stringify(route)}`);
     await ui.wait(`(document.querySelector('[aria-label="Settings"]:not([hidden]), [aria-label="Agents"]:not([hidden]), .chat:not([hidden])')?.textContent.length ?? 0) > 0`);
@@ -58,7 +62,7 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
     assert.equal(f.pageScroll, 0, `the page does not scroll on ${route}`);
   }
   // a long page scrolls inside the pane, not the page
-  await ui.cdp.evaluate(`location.hash = '#/settings/messaging'`);
+  await ui.cdp.evaluate(`location.hash = '#/settings/line'`);
   await ui.wait(`document.querySelector('[aria-label="Settings"]:not([hidden]) form button[type=submit]')`);
   assert.ok(await ui.cdp.evaluate(`(() => { const s = document.querySelector('[aria-label="Settings"]'); return s.scrollHeight > s.clientHeight && getComputedStyle(s).overflowY === 'auto'; })()`));
   // the visible toggle button asks the Rust side to slide the panel

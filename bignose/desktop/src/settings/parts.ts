@@ -1,6 +1,6 @@
 // Pieces the Settings tabs share: the save bar, a switch, a row, the Allow / Ask / Never control and the ⋯ menu.
 import type { Agent } from '../types.ts';
-import { btn, el, icon, th } from '../dom.ts';
+import { btn, el, icon, setLang, th } from '../dom.ts';
 import { changeText } from './forms.ts';
 import type { Change } from './forms.ts';
 
@@ -22,8 +22,8 @@ export function saveBar(discard: () => void, o: { action?: string; cancel?: stri
   const root = el('div', { class: 'save-bar', role: 'region', 'aria-label': 'Unsaved changes', hidden: true }, text, btn(o.cancel ?? 'Discard', discard, 'quiet'), submit);
   return {
     root, submit,
-    set(changes, note) { root.hidden = changes.length === 0; text.replaceChildren(...(changes.length ? changeText(changes, note) : [])); },
-    show(...words) { root.hidden = false; text.replaceChildren(...words); },
+    set(changes, note) { root.hidden = changes.length === 0; text.replaceChildren(...(changes.length ? changeText(changes, note) : [])); setLang(text, text.textContent); },
+    show(...words) { root.hidden = false; text.replaceChildren(...words); setLang(text, text.textContent); },
   };
 }
 

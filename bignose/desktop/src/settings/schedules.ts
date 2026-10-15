@@ -1,7 +1,7 @@
 // Settings › Schedules: prompts BigNose runs on a timetable, one row each, and the plain "When" form for a new one.
 import type { Api } from '../api.ts';
 import type { Agent, Delivery, Job, Settings } from '../types.ts';
-import { btn, confirmDialog, el, errMsg, field, formatTime, guarded, load, select, th, toast } from '../dom.ts';
+import { btn, confirmDialog, el, errMsg, field, formatTime, guarded, load, select, setLang, th, toast } from '../dom.ts';
 import { cronFor, describeCron } from './forms.ts';
 import type { When } from './forms.ts';
 import { agentSelect, menuHost, moreMenu, saveBar, shortId, sw } from './parts.ts';
@@ -49,6 +49,7 @@ export function mountSchedules(pane: HTMLElement, api: Api, agent?: string): voi
       if (j.lastStatus?.startsWith('error')) parts.push(el('span', { class: 'status bad' }, 'Last run failed'));
       const sub = el('div', { class: 'row-sub' });
       parts.forEach((p, i) => { if (i) sub.append(' · '); sub.append(p); });
+      setLang(sub, sub.textContent); // the agent's name may be Thai
       return el('div', { class: 'row' },
         el('div', { class: 'row-text' }, el('div', { class: 'note-text', lang: th(j.prompt) }, j.prompt), sub),
         toggle,
