@@ -34,6 +34,7 @@ export interface MediaOptions {
 }
 
 const MAX_BYTES = 300 * 1024 * 1024; // LINE caps files at 300 MB
+const STALL_MS = 120_000;             // no response or no new bytes for this long = give up
 const SAFE_ID = /^[A-Za-z0-9]{1,64}$/;  // message, user, group and room IDs are alphanumeric
 const EXT: Record<string, string> = {
   'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp',
@@ -93,16 +94,21 @@ function extFor(ev: MediaEvent, contentType: string | undefined): string {
  * Always resolves with the record (failures land in `error`) so a bad message never loses the event.
  */
 export async function ingestMedia(
-  ev: MediaEvent, o: MediaOptions & { accessToken: string; fetchImpl?: typeof fetch; signal?: AbortSignal; now?: () => number },
+  ev: MediaEvent, o: MediaOptions & { accessToken: string; fetchImpl?: typeof fetch; signal?: AbortSignal; now?: () => number; stallMs?: number },
 ): Promise<MediaRecord> {
   const record: MediaRecord = { ...ev, receivedAt: (o.now ?? Date.now)() };
+  // A stall limit, not a total one: a 300 MB video on a slow link may take minutes but keeps sending bytes.
+  const stall = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const kick = () => { clearTimeout(timer); timer = setTimeout(() => stall.abort(new Error('content download stalled')), o.stallMs ?? STALL_MS); };
   try {
     // trust boundary: these IDs come from the webhook body and become path segments
     if (!SAFE_ID.test(ev.messageId) || !SAFE_ID.test(ev.sourceId) || !['user', 'group', 'room'].includes(ev.sourceType)) throw new Error('invalid media event ids');
     const base = (o.dataApiBase ?? 'https://api-data.line.me').replace(/\/+$/, '');
+    kick();
     const res = await (o.fetchImpl ?? fetch)(`${base}/v2/bot/message/${ev.messageId}/content`, {
       headers: { Authorization: `Bearer ${o.accessToken}` }, redirect: 'error',
-      signal: o.signal ? AbortSignal.any([o.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
+      signal: o.signal ? AbortSignal.any([o.signal, stall.signal]) : stall.signal,
     });
     // shortcut: a 202 (video/audio still transcoding at LINE) is recorded as an error, not retried; poll /content/transcoding if it shows up.
     if (res.status !== 200 || !res.body) throw new Error(`content download failed: ${res.status}`);
@@ -118,7 +124,7 @@ export async function ingestMedia(
     const part = `${path}.${randomBytes(4).toString('hex')}.part`;
     let bytes = 0;
     const limit = new Transform({
-      transform(chunk: Buffer, _enc, cb) { bytes += chunk.length; cb(bytes > max ? new Error('content too large') : null, chunk); },
+      transform(chunk: Buffer, _enc, cb) { kick(); bytes += chunk.length; cb(bytes > max ? new Error('content too large') : null, chunk); },
     });
     try {
       await pipeline(Readable.fromWeb(res.body as import('node:stream/web').ReadableStream), limit, createWriteStream(part, { mode: 0o600 }));
@@ -126,7 +132,7 @@ export async function ingestMedia(
       // a connection closed early ends the stream cleanly; only a decoded (content-encoded) body may differ in size
       if (Number.isInteger(declared) && !res.headers.get('content-encoding') && bytes !== declared) throw new Error('content truncated');
       renameSync(part, path);
-    } catch (e) { rmSync(part, { force: true }); throw e; }
+    } catch (e) { rmSync(part, { force: true }); throw e; } finally { clearTimeout(timer); }
     Object.assign(record, { path, contentType, bytes });
 
     const x = { ...defaultExtractors, ...o.extract };
@@ -134,6 +140,7 @@ export async function ingestMedia(
     else if (ev.kind === 'video') Object.assign(record, await x.video(path, join(dir, stem)));
     else if (ev.kind === 'audio') Object.assign(record, await x.audio(path));
   } catch (e) {
+    clearTimeout(timer);
     record.error = (e instanceof Error ? e.message : String(e)).replaceAll(o.accessToken, '***').slice(0, 300);
   }
   try {

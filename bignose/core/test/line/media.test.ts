@@ -281,6 +281,25 @@ test('abort: the caller signal and a timeout guard the request; aborting mid-str
   assert.equal(noSignal.inits[0]!.url, 'http://data.test/v2/bot/message/1001/content');
 });
 
+test('stall: a slow download that keeps sending is kept; one that stops sending is cut and leaves no file', async (t) => {
+  const dir = tmp(t), sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const drip = (chunks: number, gapMs: number) => contentFetch((init) => new Response(new ReadableStream<Uint8Array>({
+    async start(c) {
+      init.signal!.addEventListener('abort', () => c.error(init.signal!.reason));
+      for (let i = 0; i < chunks && !init.signal!.aborted; i++) { await sleep(gapMs); c.enqueue(new TextEncoder().encode('x')); }
+      if (!init.signal!.aborted) c.close();
+    },
+  })));
+  const opts = { dir, accessToken: TOKEN, stallMs: 60, extract: { image: async () => undefined } };
+  const slow = await ingestMedia(imageEvent, { ...opts, fetchImpl: drip(6, 20).fetchImpl }); // 120 ms in total, never 60 ms idle
+  assert.equal(slow.error, undefined);
+  assert.equal(slow.bytes, 6);
+
+  const stalled = await ingestMedia({ ...imageEvent, messageId: '1002' }, { ...opts, fetchImpl: drip(1, 150).fetchImpl });
+  assert.equal(stalled.error, 'content download stalled');
+  assert.deepEqual(leftovers(dir), ['1700000000000-1001.jpg'], 'only the completed download is on disk');
+});
+
 test('extraction: a failing extractor keeps the stored file and records the error; files run no extractor', async (t) => {
   const dir = tmp(t);
   const boom = async (): Promise<never> => { throw new Error(`ocr crashed ${TOKEN}`); };
