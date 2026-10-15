@@ -37,8 +37,9 @@ const FormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   categoryId: z.string(),
   description: z.string(),
-  internalValueBaht: z.coerce.number().min(0, "Must be 0 or more"),
-  priceBaht: z.coerce.number().min(0, "Must be 0 or more"),
+  // "" first: coercion would turn a blank field into 0 and save ฿0 instead of no price.
+  internalValueBaht: z.union([z.literal(""), z.coerce.number().min(0, "Must be 0 or more")]),
+  priceBaht: z.union([z.literal(""), z.coerce.number().min(0, "Must be 0 or more")]),
   reusableNotes: z.string(),
   checklist: z.array(z.object({ value: z.string() })),
   tags: z.string(),
@@ -85,8 +86,8 @@ export function TemplateForm({
       name: defaults?.name ?? "",
       categoryId: defaults?.categoryId ?? NONE,
       description: defaults?.description ?? "",
-      internalValueBaht: defaults?.internalValueBaht ?? 0,
-      priceBaht: defaults?.priceBaht ?? 0,
+      internalValueBaht: defaults?.internalValueBaht ?? "",
+      priceBaht: defaults?.priceBaht ?? "",
       reusableNotes: defaults?.reusableNotes ?? "",
       checklist:
         defaults?.checklist && defaults.checklist.length > 0
@@ -106,8 +107,8 @@ export function TemplateForm({
       name: values.name.trim(),
       categoryId: values.categoryId === NONE ? null : values.categoryId,
       description: values.description.trim() || null,
-      internalValueBaht: values.internalValueBaht,
-      priceBaht: values.priceBaht,
+      internalValueBaht: values.internalValueBaht === "" ? null : values.internalValueBaht,
+      priceBaht: values.priceBaht === "" ? null : values.priceBaht,
       reusableNotes: values.reusableNotes.trim() || null,
       implementationChecklist: values.checklist
         .map((s) => s.value.trim())
