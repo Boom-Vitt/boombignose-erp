@@ -53,6 +53,13 @@ export async function setActiveOrg(
   redirect("/dashboard")
 }
 
+/** Our triggers raise P0001 with user-facing text; anything else is internal (RLS, constraints). */
+function invitationError(error: { code?: string; message: string }, fallback: string): string {
+  if (error.code === "P0001") return error.message
+  console.error("invitation write failed", error)
+  return fallback
+}
+
 // ── Invite a teammate ───────────────────────────────────────────────────────
 const InviteMember = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email"),
@@ -92,7 +99,7 @@ export async function inviteMember(
       { onConflict: "org_id,email" }
     )
 
-  if (error) return { error: error.message }
+  if (error) return { error: invitationError(error, "Could not create the invitation. Please try again.") }
 
   await writeAudit(ctx, {
     entity: "invitation",
@@ -124,7 +131,7 @@ export async function revokeInvitation(
     .eq("org_id", ctx.orgId)
     .eq("status", "pending")
 
-  if (error) return { error: error.message }
+  if (error) return { error: invitationError(error, "Could not revoke the invitation. Please try again.") }
 
   await writeAudit(ctx, {
     entity: "invitation",

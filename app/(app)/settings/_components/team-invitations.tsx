@@ -22,6 +22,8 @@ export type PendingInvite = {
   email: string
   role: string
   token: string
+  /** Past expires_at: the link no longer works; inviting the email again refreshes it. */
+  expired: boolean
 }
 
 /**
@@ -41,7 +43,8 @@ export function TeamInvitations({
   const [pending, startTransition] = useTransition()
 
   function inviteLink(token: string): string {
-    const base = appUrl.replace(/\/$/, "")
+    // Unset in some local setups; a relative link is useless once pasted into chat.
+    const base = (appUrl || window.location.origin).replace(/\/$/, "")
     return `${base}/invite/${token}`
   }
 
@@ -122,7 +125,9 @@ export function TeamInvitations({
             <li key={inv.id} className="flex items-center gap-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{inv.email}</p>
-                <p className="text-muted-foreground text-xs">Pending</p>
+                <p className="text-muted-foreground text-xs">
+                  {inv.expired ? "Expired — invite again for a new link" : "Pending"}
+                </p>
               </div>
               <Badge variant="outline" className="shrink-0 capitalize">
                 {inv.role}
@@ -132,7 +137,7 @@ export function TeamInvitations({
                 size="icon-sm"
                 aria-label="Copy invite link"
                 onClick={() => copy(inv.token)}
-                disabled={pending}
+                disabled={pending || inv.expired}
               >
                 <Copy />
               </Button>

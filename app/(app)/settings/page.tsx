@@ -74,13 +74,14 @@ export default async function SettingsPage() {
   const { data: pendingInvites } = canEdit
     ? await supabase
         .from("invitations")
-        .select("id, email, role, token")
+        .select("id, email, role, token, expires_at")
         .eq("org_id", ctx.orgId)
         .eq("status", "pending")
         .order("created_at", { ascending: false })
-    : { data: [] as { id: string; email: string; role: string; token: string }[] }
+    : { data: [] as { id: string; email: string; role: string; token: string; expires_at: string | null }[] }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
+  const now = new Date()
 
   const team = (members ?? []).map((m) => ({
     userId: m.user_id,
@@ -236,6 +237,7 @@ export default async function SettingsPage() {
                 email: i.email,
                 role: i.role,
                 token: i.token,
+                expired: i.expires_at !== null && new Date(i.expires_at) <= now,
               }))}
               appUrl={appUrl}
             />
