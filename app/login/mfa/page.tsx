@@ -37,11 +37,15 @@ function MfaChallengeForm() {
     const supabase = createClient()
     const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
     const factor = factors?.totp[0]
-    if (listError || !factor) {
+    if (listError) {
       setLoading(false)
-      toast.error("Verification failed", {
-        description: listError?.message ?? "No authenticator is set up. Sign in again.",
-      })
+      toast.error("Verification failed", { description: listError.message })
+      return
+    }
+    // Turned off elsewhere (e.g. Settings in another tab): nothing left to challenge.
+    if (!factor) {
+      router.push(redirectTo)
+      router.refresh()
       return
     }
     const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code })
