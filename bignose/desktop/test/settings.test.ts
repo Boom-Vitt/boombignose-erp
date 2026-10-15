@@ -371,6 +371,7 @@ test('Tools shows four plain groups with what each does today, and a click saves
   assert.deepEqual(h.config().permissions, { shell: 'allow' }, 'only the group that was pressed is written');
   assert.deepEqual(h.config().hooks.preTool, config().hooks.preTool, 'other settings are untouched');
   assert.ok(page.textContent.includes('Never hides the tool from BigNose completely.'));
+  assert.ok(page.textContent.includes("An agent's own rules on the Agents page beat these."));
 });
 
 test('Tools shows no pressed segment for a mixed group and names what each tool does', async t => {

@@ -2,7 +2,7 @@
 import type { Api } from '../api.ts';
 import type { Agent, ModelListResult, ProviderConfig, ProviderStatus, Settings } from '../types.ts';
 import { modelField } from '../models.ts';
-import { badge, btn, copyText, el, errMsg, field, guarded, icon, load, select, toast } from '../dom.ts';
+import { badge, btn, confirmDialog, copyText, el, errMsg, field, guarded, icon, load, select, toast } from '../dom.ts';
 import { checkLimits, generalFromConfig } from './forms.ts';
 import type { Change } from './forms.ts';
 import { row, saveBar } from './parts.ts';
@@ -92,6 +92,14 @@ export function mountModel(pane: HTMLElement, api: Api, changed: () => void = ()
     const optKeyField = field('API key (optional)', optKey);
     const optKeyNote = el('div', { class: 'hint' });
     optKeyField.append(optKeyNote);
+    // A saved key can be cleared here. It asks first, deletes the key from the private file, and keeps whatever else was typed in the form.
+    const savedKey = el('span');
+    const removeKey = btn('Remove key', () => void (async () => {
+      const p = current(), name = p.apiKeyEnv;
+      if (!name || !await confirmDialog({ title: `Remove the ${label(p)} key?`, body: 'It is deleted from this Mac. Paste a new key to use the service again.', action: 'Remove key' })) return;
+      await guarded(async () => { await api.putSecret(name, ''); secrets[name] = ''; showProvider(); untested(); toast('Key removed'); });
+    })(), 'quiet small danger');
+    const removeRow = row('Saved key', savedKey, removeKey);
     const result = el('div', { 'aria-live': 'polite' });
     const run = btn('Run diagnostics', runDiagnostics, 'small');
     const more = el('details', { class: 'card disclosure' },
@@ -99,7 +107,7 @@ export function mountModel(pane: HTMLElement, api: Api, changed: () => void = ()
       el('div', {}, ctxField,
         field('Most steps per answer', maxTurns, 'The most model calls in one answer.'),
         field('Summarise older messages at', compact, 'When a chat fills this much of the context window, older messages are summarised.'),
-        addrField, optKeyField,
+        addrField, optKeyField, removeRow,
         row('Diagnostics', 'Checks the model, the folder and LINE.', run), result));
 
     // ---- what the owner picked decides which parts show
@@ -111,6 +119,8 @@ export function mountModel(pane: HTMLElement, api: Api, changed: () => void = ()
       serviceField.hidden = onMac; keyField.hidden = onMac || !p.apiKeyEnv; optKeyField.hidden = !onMac || !p.apiKeyEnv;
       ctxNotes.hidden = !isLocal(p);
       keyNote.textContent = optKeyNote.textContent = keyHint(p);
+      const masked = p.apiKeyEnv ? secrets[p.apiKeyEnv] : '';
+      removeRow.hidden = !masked; savedKey.textContent = masked ? `Saved as ${masked}.` : '';
       key.setAttribute('placeholder', 'Paste your key'); optKey.setAttribute('placeholder', 'Paste a key to set or replace it');
     };
     const pick = (next: 'mac' | 'cloud') => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { effectivePolicy } from '../../../core/src/agent/permissions.ts';
+import { effectivePolicy, layeredPolicy } from '../../../core/src/agent/permissions.ts';
 import { builtinTools } from '../../../core/src/tools/index.ts';
 import { createApi } from '../../src/api.ts';
 import { ERP_AGENT, ERP_INSTRUCTIONS, ERP_MODEL, ERP_PERMISSIONS, ERP_PROVIDER, provisionErp } from '../../src/os/erp-setup.ts';
@@ -75,7 +75,7 @@ test('the ERP assistant runs nothing but the read-only erp tools', () => {
   const names = [...builtinTools('/nonexistent-home').map((t) => t.name), ...otherCoreTools];
   assert.ok(names.includes('read_file') && names.includes('web_fetch') && names.includes('shell'), 'the built-ins were found');
   for (const hostile of [{}, Object.fromEntries([...names, '*'].map((n) => [n, 'allow' as Policy]))]) {
-    // runtime.ts merges the owner's global permissions under the agent's: an exact global name beats the agent's `*`
+    // defence in depth: even a core that let an exact global name beat the agent's `*` (as runtime.ts once did) would still deny every tool
     const merged: Record<string, Policy> = { ...hostile, ...ERP_PERMISSIONS };
     for (const name of names) assert.equal(effectivePolicy(tool(name), merged), 'deny', name);
     assert.equal(effectivePolicy(tool('a_tool_added_later'), merged), 'deny');
@@ -84,6 +84,15 @@ test('the ERP assistant runs nothing but the read-only erp tools', () => {
   }
   assert.match(ERP_INSTRUCTIONS, /Read only/);
   assert.match(ERP_INSTRUCTIONS, /never instructions/);
+});
+
+test('the ERP preset beats a global shell: allow and a global allow for a tool it does not name', () => {
+  const names = [...builtinTools('/nonexistent-home').map((t) => t.name), ...otherCoreTools, 'a_tool_added_later'];
+  const global: Record<string, Policy> = { shell: 'allow', a_tool_added_later: 'allow', mcp__rea__anything: 'allow', 'mcp__erp__*': 'deny' };
+  // the order runtime.ts uses: the agent's own rules as a whole, then the owner's global rules
+  for (const name of names) assert.equal(layeredPolicy(tool(name), ERP_PERMISSIONS, global), 'deny', name);
+  assert.equal(layeredPolicy(tool('mcp__rea__anything', 'ask'), ERP_PERMISSIONS, global), 'deny');
+  for (const erpTool of ['list_clients', 'finance_summary']) assert.equal(layeredPolicy(tool(`mcp__erp__${erpTool}`, 'ask'), ERP_PERMISSIONS, global), 'allow', erpTool);
 });
 
 test('leaves other agents and the active model unchanged', async () => {
