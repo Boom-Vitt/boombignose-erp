@@ -19,6 +19,9 @@ import type { LineGateway } from '../line/index.ts';
 import type { Agent, AgentEvent, ApprovalRequest, Approver, Config, HooksConfig, Message, Origin, Policy, ProviderConfig, Tool } from '../types.ts';
 import { createCleaner, safeValue } from './settings.ts';
 
+// A run waits this long for connectors that are still starting before it takes the tools that are ready.
+const MCP_STARTUP_WAIT_MS = 5000;
+
 export type ApiEvent = (AgentEvent & { sessionId: string; runId: string; seq?: number /* text_delta, tool_start, tool_end: 1, 2, 3 ... per run */ })
   | { type: 'run_start'; sessionId: string; runId: string }
   | { type: 'session_updated'; sessionId: string }
@@ -212,10 +215,11 @@ export class Runtime {
           });
           modelInput = [...bodies, slash.prompt].join('\n\n');
         }
+        const connectors = Object.entries(config.mcp.servers).filter(([name, server]) => server.enabled && (agent.connectors === null || agent.connectors.includes(name))).map(([name]) => name);
+        await this.opts.mcp.settle(connectors, MCP_STARTUP_WAIT_MS, controller.signal); // connectors still starting get a moment to bring their tools
         const allTools = [...builtinTools(this.opts.home), ...memoryTools(this.store, agent.id), sessionSearchTool(this.store, agent.id),
           ...skillTools(paths(this.opts.home).skills, agent.skills), ...scheduleTools(this.opts.scheduler, agent.id),
-          ...this.opts.mcp.tools().filter(t => Object.entries(config.mcp.servers).some(([name, server]) => server.enabled &&
-            (agent.connectors === null || agent.connectors.includes(name)) && t.name.startsWith(`mcp__${name}__`)))];
+          ...this.opts.mcp.tools().filter(t => connectors.some(name => t.name.startsWith(`mcp__${name}__`)))];
         const permissions = { ...profile.permissions };
         // A denied tool is not offered at all: calling it could only fail, and each wasted call costs a turn. Delegates inherit this list.
         const tools = (profile.toolFilter ? allTools.filter(profile.toolFilter) : allTools).filter(tool => effectivePolicy(tool, permissions) !== 'deny');

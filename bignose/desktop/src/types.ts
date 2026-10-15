@@ -82,7 +82,7 @@ export interface LiveTurn { runId: string; seq?: number /* of the last numbered 
 export interface SessionDetail { id: string; agentId: string; title: string; messages: Message[]; notices?: Notice[]; live?: LiveTurn | null }
 export interface Settings { config: Config; secrets: Record<string, string> }
 export interface McpServerInfo {
-  name: string; transport: 'stdio' | 'http'; enabled: boolean; connected: boolean; error?: string;
+  name: string; transport: 'stdio' | 'http'; enabled: boolean; connected: boolean; starting?: boolean; error?: string;
   tools?: { name: string; selected: boolean }[];
 }
 export interface McpToolInfo { name: string; description?: string; selected: boolean }
