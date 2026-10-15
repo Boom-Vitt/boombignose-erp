@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { subscriptionMrr } from "@/lib/metrics/finance"
 import { createFakeDataLayer, formatTHB } from "./data.mjs"
 import { createErpMcpServer, createSecretRedactor } from "./erp-server.mjs"
@@ -306,6 +306,24 @@ describe("JSON-RPC boundary", () => {
     })
     expect(res?.error).toBeUndefined()
     expect(res?.result).toEqual({ content: [{ type: "text", text: "limit must be a positive integer" }], isError: true })
+  })
+})
+
+describe("env secret scan", () => {
+  it("a numeric setting under a secret-looking name never corrupts amounts", async () => {
+    vi.stubEnv("TEST_MAX_OUTPUT_TOKENS", "128000")
+    vi.stubEnv("TEST_API_KEY", "real-secret-value")
+    try {
+      const deals = [{ id: "d1", org_id: ORG_A, title: "real-secret-value", stage: "lead", value_satang: 128000 }]
+      const s = createErpMcpServer({ dataLayer: createFakeDataLayer({ organizations: orgs, deals }), erpOrgId: ORG_A, now: NOW })
+      const res = (await s.handleMessage({ jsonrpc: "2.0", id: 128000, method: "tools/call", params: { name: "list_deals", arguments: {} } })) as {
+        result: { content: Array<{ text: string }> }
+      }
+      const text = res.result.content[0]!.text
+      expect(JSON.parse(text).items[0]).toMatchObject({ value_satang: 128000, title: "[REDACTED]" })
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 
