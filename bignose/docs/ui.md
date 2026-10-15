@@ -97,7 +97,7 @@ gone from `style.css`.
   adds " · LINE will reconnect" for fields that restart the gateway.
 - **Model.** Two "Runs on" cards (This Mac / A cloud service), the Model field with the provider's models as suggestions, and a test
   line. The line only checks that the server answers and lists the model: core has no test-message route, so it never sends a
-  prompt. It tests the saved address and key, so with an unsaved one it says "Save to test the new address". One More options fold: Context window, Most steps, Summarise at 60/80/90%, address, API key, Run diagnostics. The
+  prompt. It tests the saved address and key, so with an unsaved one it says "Save to test the new address". One More options fold: Context window, Most steps, Summarise at 60/80/90%, address, API key, Saved key (Remove key), Run diagnostics. **Remove key** shows only while the chosen provider has a saved key, asks first ("Remove the Remote key?"), then deletes it with `putSecret(name, '')` and says "Key removed"; the form keeps whatever else was typed and the test line goes back to "Not tested yet.". The
   diagnostics verdict is "All checks passed" only when nothing is `warn` or `fail`; a `note` does not count. Saving a new default
   also moves every agent that followed the old default (same provider and model) so "Every agent uses this model unless you pick
   another" stays true; an agent with its own model is left alone. "Other server…" is not offered.
@@ -106,6 +106,7 @@ gone from `style.css`.
   reach you" appears only when the status carries `blocked`, which core does not report yet (a marked shortcut).
 - **Tools.** Allow / Ask / Never for four groups (Read files, Change files, Run commands, Open web pages). A group shows what the
   core would do: the tool's own rule, else the longest `prefix*` rule, else the default; a mixed group lists each tool's policy.
+  A foot line says that an agent's own rules on the Agents page beat these (core asks the agent's rules first, see design §13).
   Pressing a segment writes one exact rule per tool, so it always needs Save. Then the workspace folder,
   connectors as rows with a switch (a connector that is starting stays "Starting…"; the tool selection is hidden unless it is
   connected), Skills behind Manage. More options: single-tool rules, the add-connector form, hooks.

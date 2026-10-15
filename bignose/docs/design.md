@@ -206,8 +206,10 @@ export interface Config {
     triggers a compaction and one more try (section 15).
   - Delegate: when `depth < 1`, `ctx.delegate(task)` runs a nested `runAgent` with fresh context `[task]`, the same
     tools minus `delegate`, no `onEvent` text streaming, and returns its final text.
-- `agent/permissions.ts`: effective policy = `permissions[name]` ?? longest matching `prefix*` key ??
-  `tool.defaultPolicy`. `deny` → error result `denied by policy`; `ask` → `approve(req)`; no approver or `false` →
+- `agent/permissions.ts`: `layeredPolicy(tool, ...layers)`: the first layer with a rule for the tool decides, as a whole (inside a
+  layer: `layer[name]` ?? longest matching `prefix*` key); no layer has one → `tool.defaultPolicy`. `effectivePolicy(tool, permissions)`
+  is the one-layer case, which the loop uses on the exact rules runtime.ts hands it (§13).
+  `deny` → error result `denied by policy`; `ask` → `approve(req)`; no approver or `false` →
   error result `denied by user`.
 - `agent/hooks.ts`: run each matching hook with `/bin/sh -c command`, JSON on stdin (`{event, sessionId, tool?,
   input?, output?, isError?, status?}`), env `BIGNOSE_HOOK_EVENT`, timeout `timeoutMs` (default 10000).
@@ -573,7 +575,7 @@ export interface Agent {
   icon: string;                            // short text, usually one emoji; 1..16 UTF-16 units; default '🤖'
   instructions: string;                    // the agent's system prompt; '' = the built-in default prompt
   provider: string; model: string;         // a ProviderConfig.id and a model name
-  permissions: Record<string, Policy>;     // over config.permissions (agent entries win), same key rules
+  permissions: Record<string, Policy>;     // the agent's own rules: they win over config.permissions as a whole (§13), same key rules
   connectors: string[] | null;             // MCP server names the agent uses; null = every enabled server
   skills: string[] | null;                 // skill names the agent sees; null = every skill
   createdAt: number; updatedAt: number;    // epoch ms
@@ -598,7 +600,11 @@ export interface Agent {
   user notes + this agent's notes + the index of the agent's skills + today's date; tools = builtin + memory tools and
   `session_search` scoped to the agent + skill tools limited to the agent's skills + schedule tools (new jobs get the
   agent's id) + MCP tools of servers that are enabled and in `agent.connectors` (null = all enabled); permissions =
-  `{...config.permissions, ...agent.permissions}` (then the LINE non-owner raise to `ask`). A tool whose effective policy
+  one `layeredPolicy` per offered tool, in this order: the agent's exact rule, the agent's longest `prefix*` rule, the global exact
+  rule, the global longest `prefix*` rule, the tool's default (an agent's own `*: deny` therefore beats a global `shell: allow` that
+  Settings › Tools wrote). `RunProfile` carries the two maps apart (`permissions` global, `agentPermissions` the agent's); the same
+  helper filters the tool list and builds the run's rules: one exact rule per offered tool, which the loop check and the delegates
+  reuse (then the LINE non-owner raise of `allow` to `ask`; hooks run after the permission check). A tool whose effective policy
   is `deny` (exact name or `prefix*`, from the agent or the global permissions, MCP tools included) is not in the list the
   model is offered, so it cannot waste a turn; the nested delegate run inherits that list and `read_file` and the rest stay. LINE messages go to
   `line.agentId` (fallback: first agent). A cron job runs with its own agent. Unknown connector or skill names in an
@@ -969,6 +975,10 @@ isolated `BIGNOSE_HOME`; none may reach the owner's Ollama (127.0.0.1:11434), LI
   (stdio: the process exits; any transport: the client loses the connection), the manager keeps an error for it:
   `connector <name> exited (<code or signal>)` for a stdio exit, `connector <name> closed` otherwise, plus the redacted
   stderr tail when there is one. Secrets stay masked by the client's existing redaction.
+- A server that exits at once breaks its stdin pipe before its exit event is delivered (the first write fails with EPIPE on a
+  loaded machine). A stdio write or stdin error therefore waits up to 2 s for the child's exit and reports the exit
+  (`MCP server exited (2)`), so the user sees why the connector stopped, not `write EPIPE`; if the child is still running after
+  that, the pipe error itself is reported. The first error wins: an exit that arrives in time replaces the pipe error.
 - `waitFor` rejects at once with that error (no 180 s poll, no AbortError). A `tools/call` that is pending when the server
   goes away, and any later call through a tool handed out before, fails at once (no 60 s request timeout) with a message
   that names the connector and says it exited or closed. `status()` reports `connected: false` with the error, so
