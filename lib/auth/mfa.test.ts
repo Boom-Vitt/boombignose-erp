@@ -16,6 +16,11 @@ describe("tokenAal", () => {
     expect(tokenAal(token({ aal: "aal2", sub: "ü-user?>" }))).toBe("aal2")
   })
 
+  it("reads the claim when user metadata in the token holds a Thai name", () => {
+    const body = Buffer.from(JSON.stringify({ aal: "aal2", user_metadata: { full_name: "สมชาย ใจดี" } })).toString("base64url")
+    expect(tokenAal(`header.${body}.signature`)).toBe("aal2")
+  })
+
   it.each([undefined, null, "", "not-a-jwt", "a.%%%.c", token({})])("returns null for %s", (value) => {
     expect(tokenAal(value)).toBeNull()
   })
