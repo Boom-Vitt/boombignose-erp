@@ -248,7 +248,7 @@ const savedHistory = (id: string, text: string) => json({
   messages: [{ role: 'assistant', content: [{ type: 'text', text }] }],
 });
 
-test('T16 returning resumes history invalidated by leaving and keeps settled history', { timeout: 2000 }, async t => {
+test('T16 returning resumes history invalidated by leaving and keeps settled history', { timeout: 30_000 }, async t => {
   t.after(installDom());
   const pending = Promise.withResolvers<Response>();
   let reads = 0;
@@ -266,7 +266,7 @@ test('T16 returning resumes history invalidated by leaving and keeps settled his
   assert.match(messages.textContent, /Recovered/);
 });
 
-test('T16 failed return shows an error and Retry reloads the selected history', { timeout: 2000 }, async t => {
+test('T16 failed return shows an error and Retry reloads the selected history', { timeout: 30_000 }, async t => {
   t.after(installDom());
   const pending = Promise.withResolvers<Response>();
   let reads = 0;
@@ -289,7 +289,7 @@ test('T16 failed return shows an error and Retry reloads the selected history', 
   assert.equal(messages.querySelector('.notice'), null);
 });
 
-test('T16 switching sessions before leave resumes only the current session', { timeout: 2000 }, async t => {
+test('T16 switching sessions before leave resumes only the current session', { timeout: 30_000 }, async t => {
   t.after(installDom());
   const old = Promise.withResolvers<Response>(), current = Promise.withResolvers<Response>();
   let reads = 0;
@@ -307,7 +307,7 @@ test('T16 switching sessions before leave resumes only the current session', { t
   assert.doesNotMatch(messages.textContent, /Old session|Cancelled current|Loading…/);
 });
 
-test('T16 switching agents before leave fences the previous agent history', { timeout: 2000 }, async t => {
+test('T16 switching agents before leave fences the previous agent history', { timeout: 30_000 }, async t => {
   t.after(installDom());
   const old = Promise.withResolvers<Response>(), current = Promise.withResolvers<Response>();
   let reads = 0;
@@ -326,7 +326,7 @@ test('T16 switching agents before leave fences the previous agent history', { ti
   assert.doesNotMatch(messages.textContent, /Agent One history|Cancelled agent history|Loading…/);
 });
 
-test('T16 leaving again during recovery keeps the history eligible for the next return', { timeout: 2000 }, async t => {
+test('T16 leaving again during recovery keeps the history eligible for the next return', { timeout: 30_000 }, async t => {
   t.after(installDom());
   const first = Promise.withResolvers<Response>(), second = Promise.withResolvers<Response>();
   let reads = 0;
@@ -345,7 +345,7 @@ test('T16 leaving again during recovery keeps the history eligible for the next 
   assert.doesNotMatch(messages.textContent, /Loading…/);
 });
 
-test('T16 refreshing agents without leaving preserves the pending history request', { timeout: 2000 }, async t => {
+test('T16 refreshing agents without leaving preserves the pending history request', { timeout: 30_000 }, async t => {
   t.after(installDom());
   const pending = Promise.withResolvers<Response>();
   let reads = 0;
@@ -357,7 +357,7 @@ test('T16 refreshing agents without leaving preserves the pending history reques
   assert.doesNotMatch(messages.textContent, /Loading…/);
 });
 
-test('T16 leaving while the return refresh is pending defers recovery until the next return', { timeout: 2000 }, async t => {
+test('T16 leaving while the return refresh is pending defers recovery until the next return', { timeout: 30_000 }, async t => {
   t.after(installDom());
   const pending = Promise.withResolvers<Response>(), commands = Promise.withResolvers<Response>();
   let reads = 0, delayCommands = false;

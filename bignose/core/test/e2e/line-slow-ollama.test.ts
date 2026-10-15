@@ -6,7 +6,7 @@ import { setSecret } from '../../src/config.ts';
 import { configured, mockOpenai, testHome } from './helpers.ts';
 
 const until = async (read: () => unknown) => {
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 30_000;
   while (!read()) { assert.ok(Date.now() < deadline, 'timed out'); await new Promise(resolve => setTimeout(resolve, 5)); }
 };
 

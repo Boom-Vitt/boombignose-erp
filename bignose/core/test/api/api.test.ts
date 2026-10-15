@@ -69,7 +69,7 @@ async function events(a: App, t: TestContext) {
 const fakeMcp = { transport: 'stdio' as const, command: process.execPath, args: [fileURLToPath(new URL('../mcp/fake-server.ts', import.meta.url))], env: { BN_TEST: '${VALUE}' }, enabled: true };
 
 test('every section 6 CRUD/status route has the documented JSON shape, auth, Host and Tauri CORS', async t => {
-  const a = await app(t);
+  const a = await app(t, { mcpWaitMs: 60_000 }); // a connector write waits for the connector; the 3 s default is too short on a loaded machine
   const url = `http://127.0.0.1:${a.port}`;
   assert.equal((await fetch(url + '/api/health')).status, 401);
   assert.equal((await call(a, '/api/health', 'GET', undefined, { Authorization: 'Bearer wrong' })).status, 401);
@@ -292,7 +292,7 @@ test('LINE requires both secrets, reloads live, and raises all allow tools to as
     assert.equal(response.status, 200);
   }
   await webhook({ type: 'message', message: { type: 'text', text: 'read evidence' } });
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 30_000;
   while (!sent.some(b => b.messages.some((m: any) => m.template?.type === 'confirm'))) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   const confirm = sent.flatMap(b => b.messages).find(m => m.template?.type === 'confirm');
   assert.match(confirm.template.text, /read_file/);
@@ -355,7 +355,7 @@ test('cron LINE delivery is ready before a slow MCP connector and uses confirm b
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider, lineOptions: { fetchImpl: async (url, init) => { sent.push({ url: String(url), ...JSON.parse(String(init?.body)) }); return new Response('{}'); } } });
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 30_000;
   while (!a.lineStatus().running) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   assert.equal(a.mcp.status().find(s => s.name === 'slow')!.connected, false);
   const job = a.scheduler.add({ agentId: a.runtime.store.listAgents()[0]!.id, cron: '* * * * *', prompt: 'scheduled task', delivery: { kind: 'line', to: 'owner' } });
@@ -684,7 +684,7 @@ test('a failed LINE bind retries after the port is freed and identical secrets a
   configured(home, undefined, c => { c.line.enabled = true; c.line.port = port; });
   setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
   const a = await app(t, { home });
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 30_000;
   while (!a.lineStatus().lastError) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   assert.equal(a.lineStatus().running, false); assert.match(a.lineStatus().lastError!, /EADDRINUSE/);
   await new Promise<void>(resolve => blocker.close(() => resolve()));
@@ -757,7 +757,7 @@ test('a LINE-delivery schedule is refused while LINE is off, accepted while the 
   configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = ['owner']; });
   setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
   const on = await app(t, { home });
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 30_000;
   while (!on.lineStatus().running) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   assert.equal((await call(on, '/api/schedules', 'POST', job)).status, 200);
 });

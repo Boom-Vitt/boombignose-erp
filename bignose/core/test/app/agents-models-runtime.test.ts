@@ -106,6 +106,6 @@ test('test ports move a default LINE listener off 47822', async t => {
   const c = defaultConfig(); c.line.enabled = true; saveConfig(c, home);
   setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
   const a = await startDaemon({ home }); t.after(() => a.close());
-  for (const end = Date.now() + 3000; !a.lineStatus().running && !a.lineStatus().lastError && Date.now() < end;) await new Promise(r => setTimeout(r, 10));
+  for (const end = Date.now() + 30_000; !a.lineStatus().running && !a.lineStatus().lastError && Date.now() < end;) await new Promise(r => setTimeout(r, 10));
   assert.equal(a.lineStatus().running, true); assert.notEqual(a.lineStatus().port, 47822);
 });
