@@ -42,6 +42,7 @@ export async function GET(request: Request) {
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId),
   ])
 
+  if (dealsRes.error || clientsRes.error) return new Response("Deal export unavailable", { status: 503 })
   const deals = dealsRes.data ?? []
   const clientName = new Map((clientsRes.data ?? []).map((c) => [c.id, c.name]))
 

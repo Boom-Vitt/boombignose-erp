@@ -127,3 +127,13 @@ it('deal exports contain only the active workspace and its client names',async()
  const b=await (await exportDeals(new Request('https://app.example.test/deals/export'))).text()
  expect(b).toContain('DEAL_B');expect(b).toContain('CLIENT_B');expect(b).not.toContain('DEAL_A')
 })
+it.each(['deals','clients'])('a failed %s read fails the deal export instead of downloading a blank file', async table => {
+ const client = state.client as ReturnType<typeof databaseFixture>
+ state.client = {from: (t:string) => {
+  const q = client.from(t)
+  if (t === table) q.then = (resolve, reject) => Promise.resolve({data:null,error:{message:'Unavailable'}}).then(resolve, reject)
+  return q
+ }}
+ const res = await exportDeals(new Request('https://app.example.test/deals/export'))
+ expect(res.status).toBe(503)
+})
