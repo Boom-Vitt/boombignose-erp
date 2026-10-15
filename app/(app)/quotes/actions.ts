@@ -159,7 +159,7 @@ export async function updateQuote(
       issue_date: d.issue_date ?? undefined,
       valid_until: d.valid_until,
       discount_satang: serviceAmountSatang(d.discountBaht),
-      notes: d.notes,
+      notes: d.notes ?? null,
     })
     .eq("id", d.id)
     .eq("org_id", ctx.orgId)

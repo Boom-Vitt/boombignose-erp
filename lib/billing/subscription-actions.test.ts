@@ -54,6 +54,11 @@ describe("subscription action boundaries", () => {
     expect(await createSubscription({ ...input, start_date: "2026-02-30" })).toEqual({ error: "Invalid input" })
     expect(state.calls).toEqual([])
   })
+  it("clearing notes on update writes null instead of leaving the old notes", async () => {
+    await updateSubscription({ ...input, notes: "" })
+    expect(state.calls).toHaveLength(1)
+    expect((state.calls[0] as { body: { notes: unknown } }).body.notes).toBeNull()
+  })
   it("rejects unsafe money before a subscription write", async () => {
     expect(await updateSubscription({ ...input, amountBaht: Number.MAX_SAFE_INTEGER })).toEqual({ error: "Invalid input" })
     expect(state.calls).toEqual([])

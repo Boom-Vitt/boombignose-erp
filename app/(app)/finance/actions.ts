@@ -168,7 +168,7 @@ export async function updateInvoice(
       amount_satang: moneyInput(d.amountBaht),
       is_recurring: d.is_recurring,
       recurring_interval: d.is_recurring ? (d.recurring_interval ?? null) : null,
-      notes: d.notes,
+      notes: d.notes ?? null,
     })
     .eq("id", d.id)
     .eq("org_id", ctx.orgId)

@@ -136,7 +136,7 @@ export async function updateSubscription(
       amount_satang: bahtToSatang(d.amountBaht),
       interval: d.interval,
       start_date: d.start_date ?? undefined,
-      notes: d.notes,
+      notes: d.notes ?? null,
     })
     .eq("id", d.id)
     .eq("org_id", ctx.orgId)
