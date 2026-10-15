@@ -62,6 +62,7 @@ export default async function CalendarPage({
       .from("activities")
       .select("id, type, due_date, client_id, clients(name)")
       .eq("org_id", ctx.orgId)
+      .eq("done", false)
       .not("due_date", "is", null)
       .gte("due_date", rangeStart)
       .lte("due_date", rangeEnd),
@@ -69,6 +70,8 @@ export default async function CalendarPage({
       .from("invoices")
       .select("id, number, due_date")
       .eq("org_id", ctx.orgId)
+      // Settled or voided invoices are no longer "due".
+      .not("status", "in", "(paid,cancelled)")
       .not("due_date", "is", null)
       .gte("due_date", rangeStart)
       .lte("due_date", rangeEnd),
