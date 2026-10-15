@@ -131,12 +131,13 @@ export async function updateSubscription(
   // so a new start would leave every scheduled run rejected by generate_subscription_occurrence.
   // shortcut: refuses the edit, upgrade to re-anchoring next_run_date in guard_subscription_schedule (migration) if users need it.
   if (d.start_date) {
-    const { data: current } = await supabase
+    const { data: current, error: readError } = await supabase
       .from("subscriptions")
       .select("start_date")
       .eq("id", d.id)
       .eq("org_id", ctx.orgId)
       .maybeSingle()
+    if (readError) return { error: readError.message }
     if (current && current.start_date !== d.start_date) {
       return { error: "The start date can't be changed. Create a new subscription for a different start date." }
     }

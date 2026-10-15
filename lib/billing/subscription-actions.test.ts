@@ -63,4 +63,27 @@ describe("subscription action boundaries", () => {
     expect(await updateSubscription({ ...input, amountBaht: Number.MAX_SAFE_INTEGER })).toEqual({ error: "Invalid input" })
     expect(state.calls).toEqual([])
   })
+  it("refuses a start-date change that would leave the schedule on the old anchor", async () => {
+    const reads: string[] = []
+    state.client = createClient<Database>("http://127.0.0.1:55501", "test-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (url, init) => {
+        if ((init?.method ?? "GET") !== "GET") return Response.json({ message: "Unexpected write" }, { status: 400 })
+        reads.push(String(url))
+        return Response.json([{ start_date: "2026-07-01" }])
+      } },
+    })
+    expect((await updateSubscription({ ...input, start_date: "2026-08-01" })).error).toContain("start date can't be changed")
+    expect(reads[0]).toContain("org_id=eq.22222222-2222-4222-8222-222222222222")
+  })
+  it("does not update when the current start date cannot be read", async () => {
+    state.client = createClient<Database>("http://127.0.0.1:55501", "test-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (_url, init) => {
+        if ((init?.method ?? "GET") !== "GET") throw new Error("Unexpected write")
+        return Response.json({ message: "read failed" }, { status: 500 })
+      } },
+    })
+    expect(await updateSubscription({ ...input, start_date: "2026-08-01" })).toEqual({ error: "read failed" })
+  })
 })
