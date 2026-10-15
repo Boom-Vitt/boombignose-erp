@@ -269,6 +269,13 @@ describe("JSON-RPC boundary", () => {
     expect(res?.result?.protocolVersion).toBe("2025-06-18")
   })
 
+  it("never agrees to 2025-03-26, whose batches it would refuse", async () => {
+    const res = await call({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } })
+    expect(res?.result?.protocolVersion).toBe("2025-06-18")
+    const batch = await call([{ jsonrpc: "2.0", id: 2, method: "ping" }])
+    expect(batch?.error).toMatchObject({ code: -32600 })
+  })
+
   it("validates tools/list and tools/call params", async () => {
     const bad = [
       [{ method: "tools/list", params: [] }, "Invalid params"],
