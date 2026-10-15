@@ -20,6 +20,22 @@ export const PASSWORD_MIN_LENGTH = 10
 export const EXPIRED_RESET_MESSAGE =
   "This reset link has expired or was already used. Request a new one below, and open it in this browser."
 
+/**
+ * `?error=` codes the sign-in pages show. Pages render only this text, never the
+ * query itself, so a crafted link cannot put its own words in the alert.
+ */
+const AUTH_LINK_ERRORS = {
+  reset_expired: EXPIRED_RESET_MESSAGE,
+  link_invalid: "This email link is invalid or has expired. Sign in below, or request a new link.",
+} as const
+
+export type AuthLinkError = keyof typeof AUTH_LINK_ERRORS
+
+/** Text for a known `?error=` code; null for anything else. */
+export function authLinkErrorMessage(code: string | null | undefined): string | null {
+  return code && Object.hasOwn(AUTH_LINK_ERRORS, code) ? AUTH_LINK_ERRORS[code as AuthLinkError] : null
+}
+
 /** True when a password update failed because the recovery session is gone, not the password. */
 export function isDeadSessionError(error: { name?: string; code?: string }): boolean {
   return (

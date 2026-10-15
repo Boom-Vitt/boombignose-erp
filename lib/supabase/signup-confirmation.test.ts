@@ -22,7 +22,7 @@ it('a repeated confirmation link keeps an existing verified session usable',asyn
 it('a confirmation error without a session remains a sign-in error',async()=>{
  state.verifyOtp.mockResolvedValue({error:{message:'Expired token'}})
  const response=await GET(new NextRequest('https://app.example.test/auth/confirm?token_hash=expired&type=signup'))
- expect(response.headers.get('location')).toBe('https://app.example.test/login?error=Expired+token')
+ expect(response.headers.get('location')).toBe('https://app.example.test/login?error=link_invalid')
 })
 it('a password recovery link lands on the reset form',async()=>{
  state.exchange.mockResolvedValue({error:null})
@@ -46,7 +46,7 @@ it('an expired recovery code sends the user to request a new link',async()=>{
  const response=await GET(new NextRequest('https://app.example.test/auth/confirm?next=/reset-password&code=pkce'))
  const location=new URL(response.headers.get('location')!)
  expect(location.pathname).toBe('/forgot-password')
- expect(location.searchParams.get('error')).toMatch(/expired or was already used/)
+ expect(location.searchParams.get('error')).toBe('reset_expired')
 })
 it('an expired recovery token hash also offers a new link',async()=>{
  state.verifyOtp.mockResolvedValue({error:{message:'Email link is invalid or has expired'}})
@@ -60,7 +60,7 @@ it('a recovery link Supabase already rejected lands on forgot-password',async()=
 })
 it('a rejected signup link shows the Supabase reason on sign-in',async()=>{
  const response=await GET(new NextRequest('https://app.example.test/auth/confirm?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired'))
- expect(response.headers.get('location')).toBe('https://app.example.test/login?error=Email+link+is+invalid+or+has+expired')
+ expect(response.headers.get('location')).toBe('https://app.example.test/login?error=link_invalid')
 })
 it('signup rejects a weak password before calling Supabase',async()=>{
  expect(await signUp({email:'fixture-user@example.test',password:'short'})).toMatchObject({ok:false})

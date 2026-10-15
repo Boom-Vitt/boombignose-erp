@@ -1,12 +1,11 @@
 "use client"
 
-import { Suspense, useState } from "react"
+import { Suspense, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
-import { toast } from "sonner"
-
 import { mfaPath, needsMfa } from "@/lib/auth/mfa"
+import { authLinkErrorMessage } from "@/lib/auth/password"
 import { createClient } from "@/lib/supabase/client"
 import { safeReturnPath, withReturnPath } from "@/lib/supabase/redirect"
 import { AuthShell } from "@/components/auth-shell"
@@ -34,16 +33,23 @@ function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const passwordInput = useRef<HTMLInputElement>(null)
+  const linkError = authLinkErrorMessage(params.get("error"))
 
   async function signIn(em: string, pw: string) {
     setLoading(true)
+    setError(null)
     const supabase = createClient()
     const { data, error } = await supabase.auth.signInWithPassword({ email: em, password: pw })
-    setLoading(false)
     if (error) {
-      toast.error("Sign in failed", { description: error.message })
+      setLoading(false)
+      setError(error.message)
+      // The disabled submit button drops focus; put it back for the retry.
+      requestAnimationFrame(() => passwordInput.current?.focus())
       return
     }
+    // Stay disabled through navigation so a second click cannot sign in twice.
     router.push(needsMfa(data.user.factors, data.session.access_token) ? mfaPath(redirectTo) : redirectTo)
     router.refresh()
   }
@@ -53,7 +59,7 @@ function LoginForm() {
       <CardHeader>
         <CardTitle className="text-xl">BoomBigNose Company OS</CardTitle>
         <CardDescription>Sign in to your workspace.</CardDescription>
-        {params.get("error") ? <p role="alert" className="text-destructive pt-1 text-sm">{params.get("error")}</p> : null}
+        {linkError ? <p role="alert" className="text-destructive pt-1 text-sm">{linkError}</p> : null}
       </CardHeader>
       <form
         onSubmit={(e) => {
@@ -83,12 +89,20 @@ function LoginForm() {
             </div>
             <Input
               id="password"
+              ref={passwordInput}
               type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={error !== null}
+              aria-describedby={error ? "signin-error" : undefined}
               required
             />
+            {error ? (
+              <p id="signin-error" role="alert" className="text-destructive text-xs">
+                {error}
+              </p>
+            ) : null}
           </div>
         </CardContent>
         <CardFooter className="mt-2 flex-col gap-3">

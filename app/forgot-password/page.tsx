@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation"
 import { Loader2, MailCheck } from "lucide-react"
 import { toast } from "sonner"
 
+import { authLinkErrorMessage } from "@/lib/auth/password"
 import { createClient } from "@/lib/supabase/client"
 import { AuthShell } from "@/components/auth-shell"
 import { Button } from "@/components/ui/button"
@@ -21,7 +22,7 @@ import {
 
 function ForgotPasswordForm() {
   // Set by /auth/confirm when a reset link was expired, reused or opened in another browser.
-  const linkError = useSearchParams().get("error")
+  const linkError = authLinkErrorMessage(useSearchParams().get("error"))
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)

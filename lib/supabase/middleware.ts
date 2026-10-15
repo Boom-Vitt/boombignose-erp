@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { MFA_PATH, mfaPath, needsMfa } from "@/lib/auth/mfa"
-import { EXPIRED_RESET_MESSAGE } from "@/lib/auth/password"
+import type { AuthLinkError } from "@/lib/auth/password"
 import { safeReturnPath } from "@/lib/supabase/redirect"
 
 import type { Database } from "@/lib/types/database"
@@ -67,7 +67,7 @@ export async function updateSession(request: NextRequest) {
   // Without its recovery session the reset form cannot work; offer a new link instead of sign-in.
   if (!user && pathname === "/reset-password") {
     const url = new URL("/forgot-password", request.url)
-    url.searchParams.set("error", EXPIRED_RESET_MESSAGE)
+    url.searchParams.set("error", "reset_expired" satisfies AuthLinkError)
     return redirectWithSession(url)
   }
 

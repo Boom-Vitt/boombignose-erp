@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { isDeadSessionError, validatePassword, PASSWORD_MIN_LENGTH } from "@/lib/auth/password"
+import { authLinkErrorMessage, EXPIRED_RESET_MESSAGE, isDeadSessionError, validatePassword, PASSWORD_MIN_LENGTH } from "@/lib/auth/password"
 
 describe("validatePassword", () => {
   it("accepts a strong password", () => {
@@ -89,5 +89,18 @@ describe("isDeadSessionError", () => {
   it("leaves password problems to the form", () => {
     expect(isDeadSessionError({ name: "AuthApiError", code: "same_password" })).toBe(false)
     expect(isDeadSessionError({ name: "AuthWeakPasswordError", code: "weak_password" })).toBe(false)
+  })
+})
+
+describe("authLinkErrorMessage", () => {
+  it("maps known codes to our own wording", () => {
+    expect(authLinkErrorMessage("reset_expired")).toBe(EXPIRED_RESET_MESSAGE)
+    expect(authLinkErrorMessage("link_invalid")).toMatch(/invalid or has expired/)
+  })
+
+  it("never echoes arbitrary query text onto the page", () => {
+    expect(authLinkErrorMessage("Account locked, call +66 000 0000")).toBeNull()
+    expect(authLinkErrorMessage("toString")).toBeNull()
+    expect(authLinkErrorMessage(null)).toBeNull()
   })
 })

@@ -2,7 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
-import { EXPIRED_RESET_MESSAGE } from "@/lib/auth/password"
+import type { AuthLinkError } from "@/lib/auth/password"
 import { safeReturnPath } from "@/lib/supabase/redirect"
 
 /**
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         status: 303,
       })
     }
-    return failureOrExistingSession(request, error.message, next, type)
+    return failureOrExistingSession(request, next, type)
   }
 
   // OTP flow: verify the email token hash.
@@ -52,18 +52,16 @@ export async function GET(request: NextRequest) {
         status: 303,
       })
     }
-    return failureOrExistingSession(request, error.message, next, type)
+    return failureOrExistingSession(request, next, type)
   }
 
   // Supabase rejected the link before redirecting here (e.g. error_code=otp_expired).
-  const message = searchParams.get("error_description") ?? "Invalid or expired confirmation link."
-  return failureOrExistingSession(request, message, next, type)
+  return failureOrExistingSession(request, next, type)
 }
 
 /** Reusing a consumed link must not discard an already authenticated session. */
 async function failureOrExistingSession(
   request: NextRequest,
-  message: string,
   next: string,
   type: EmailOtpType | null
 ) {
@@ -71,12 +69,12 @@ async function failureOrExistingSession(
   const { data: { user } } = await supabase.auth.getUser()
   if (user) return NextResponse.redirect(new URL(next, request.url), { status: 303 })
   const recovery = type === "recovery" || next === "/reset-password"
-  return recovery ? failure(request, "/forgot-password", EXPIRED_RESET_MESSAGE) : failure(request, "/login", message)
+  return recovery ? failure(request, "/forgot-password", "reset_expired") : failure(request, "/login", "link_invalid")
 }
 
-/** Redirect to an auth page with a human-readable error message in the query. */
-function failure(request: NextRequest, pathname: string, message: string) {
+/** Redirect to an auth page with an error code; the page owns the wording. */
+function failure(request: NextRequest, pathname: string, code: AuthLinkError) {
   const url = new URL(pathname, request.url)
-  url.searchParams.set("error", message)
+  url.searchParams.set("error", code)
   return NextResponse.redirect(url, { status: 303 })
 }

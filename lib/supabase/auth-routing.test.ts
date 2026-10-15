@@ -78,7 +78,7 @@ it('signed-out reset form offers a new reset link instead of sign-in', async () 
  state.user=null
  const location=new URL((await updateSession(new NextRequest('https://app.example.test/reset-password'))).headers.get('location')!)
  expect(location.pathname).toBe('/forgot-password')
- expect(location.searchParams.get('error')).toMatch(/expired/)
+ expect(location.searchParams.get('error')).toBe('reset_expired')
 })
 it('signed-out authenticator setup asks for sign-in first', async () => {
  state.user=null
