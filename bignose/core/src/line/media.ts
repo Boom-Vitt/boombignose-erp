@@ -136,7 +136,11 @@ export async function ingestMedia(
   } catch (e) {
     record.error = (e instanceof Error ? e.message : String(e)).replaceAll(o.accessToken, '***').slice(0, 300);
   }
-  mkdirSync(o.dir, { recursive: true, mode: 0o700 });
-  appendFileSync(join(o.dir, 'records.jsonl'), JSON.stringify(record) + '\n', { mode: 0o600 });
+  try {
+    mkdirSync(o.dir, { recursive: true, mode: 0o700 });
+    appendFileSync(join(o.dir, 'records.jsonl'), JSON.stringify(record) + '\n', { mode: 0o600 });
+  } catch (e) { // keep the always-resolves contract: the caller still gets the event, and no "saved" ack goes out
+    record.error ??= `record not saved: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300);
+  }
   return record;
 }

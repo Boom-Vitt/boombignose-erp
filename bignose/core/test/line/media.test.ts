@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLineGateway } from '../../src/line/index.ts';
@@ -347,4 +347,93 @@ test('gateway: closing aborts an in-flight download and leaves no partial file',
   await s.waitFor(() => s.got.length === 1);
   assert.match(s.got[0]!.error!, /abort/i);
   assert.deepEqual(readdirSync(join(s.dir, 'group', GROUP)), []);
+});
+
+test('declared length: a content-encoded body may differ in size; a plain body longer than declared is refused', async (t) => {
+  const dir = tmp(t);
+  const ingest = (messageId: string, headers: Record<string, string>) => ingestMedia({ ...imageEvent, messageId },
+    { dir, accessToken: TOKEN, fetchImpl: contentFetch(() => bytesResponse(headers)).fetchImpl, extract: { image: async () => undefined } });
+
+  const encoded = await ingest('81', { 'content-length': '2', 'content-encoding': 'gzip' });
+  assert.equal(encoded.error, undefined);
+  assert.equal(encoded.bytes, 4);
+  const long = await ingest('82', { 'content-length': '2' });
+  assert.equal(long.error, 'content truncated');
+  assert.equal(long.path, undefined);
+  assert.deepEqual(leftovers(dir), ['1700000000000-81.jpg']);
+});
+
+test('audio: metadata comes from the extractor; a non-Error throw is still recorded as text', async (t) => {
+  const dir = tmp(t), fetchImpl = contentFetch(() => bytesResponse({ 'content-type': 'audio/x-m4a' })).fetchImpl;
+  const a = await ingestMedia({ ...imageEvent, messageId: '91', kind: 'audio' }, { dir, accessToken: TOKEN, fetchImpl, extract: { audio: async () => ({ metadata: { duration: 2 } }) } });
+  assert.ok(a.path!.endsWith('-91.m4a'));
+  assert.deepEqual(a.metadata, { duration: 2 });
+  const odd = await ingestMedia({ ...imageEvent, messageId: '92' }, { dir, accessToken: TOKEN, fetchImpl, extract: { image: () => Promise.reject('ocr gone') } });
+  assert.equal(odd.error, 'ocr gone');
+});
+
+test('concurrent: the same message twice and several others at once share one folder and never clash on temp files', async (t) => {
+  const dir = tmp(t), fetchImpl = contentFetch(() => bytesResponse({ 'content-type': 'image/png' })).fetchImpl;
+  const ids = ['71', '71', '72', '73', '74'];
+  const rs = await Promise.all(ids.map((messageId) =>
+    ingestMedia({ ...imageEvent, messageId }, { dir, accessToken: TOKEN, fetchImpl, extract: { image: async () => undefined } })));
+  assert.deepEqual(rs.map((r) => r.error), ids.map(() => undefined));
+  assert.equal(rs[0]!.path, rs[1]!.path, 'a redelivered message lands on the same file');
+  assert.deepEqual(leftovers(dir).sort(), ['71', '72', '73', '74'].map((id) => `1700000000000-${id}.png`), 'no .part file left');
+  assert.equal(records(dir).length, ids.length);
+});
+
+test('record store unwritable: ingest still resolves with the record and an error instead of rejecting', async (t) => {
+  const root = tmp(t), fetchImpl = contentFetch(() => bytesResponse({ 'content-type': 'image/png' })).fetchImpl;
+  const notDir = join(root, 'not-a-dir');
+  writeFileSync(notDir, 'x');
+  const blocked = await ingestMedia(imageEvent, { dir: notDir, accessToken: TOKEN, fetchImpl });
+  assert.match(blocked.error!, /ENOTDIR/, 'the first failure is the one kept');
+
+  const dir = join(root, 'media');
+  mkdirSync(join(dir, 'records.jsonl'), { recursive: true }); // the append target is a folder
+  const stored = await ingestMedia(imageEvent, { dir, accessToken: TOKEN, fetchImpl, extract: { image: async () => 'ocr' } });
+  assert.match(stored.error!, /^record not saved: EISDIR/);
+  assert.ok(existsSync(stored.path!), 'the downloaded file is kept');
+});
+
+test('gateway: media downloads run side by side; a stalled file holds up neither another image nor a text run', async (t) => {
+  let release!: () => void;
+  const stalled = new Promise<void>((r) => { release = r; });
+  const sent: string[] = [];
+  const fetchImpl = (async (url: string, init: RequestInit = {}) => {
+    if (url.includes('/801/content')) { await stalled; return new Response('pdf', { headers: { 'content-type': 'application/pdf' } }); }
+    if (url.includes('/content')) return new Response('img', { headers: { 'content-type': 'image/png' } });
+    sent.push(String(init.body));
+    return new Response('{}');
+  }) as unknown as typeof fetch;
+  const s = await gateway(t, true, { fetchImpl });
+  await s.post([
+    { ...groupImage('801'), message: { type: 'file', id: '801', fileName: 'quote.pdf' } }, groupImage('802'),
+    { ...groupImage('803'), message: { type: 'text', id: '803', text: 'hi' } },
+  ]);
+  await s.waitFor(() => s.got.length === 1 && sent.length === 2);
+  assert.equal(s.got[0]!.messageId, '802');
+  assert.ok(sent.some((b) => b.includes('รับรูปแล้ว')), 'image acknowledged while the file is still downloading');
+
+  release();
+  await s.waitFor(() => s.got.length === 2 && sent.length === 3);
+  assert.equal(s.got[1]!.fileName, 'quote.pdf');
+  assert.ok(s.got[1]!.path!.endsWith('-801.pdf'));
+  assert.ok(sent[2]!.includes('รับไฟล์แล้ว'));
+});
+
+test('gateway: with LINE enabled a failed download is never acknowledged as saved', async (t) => {
+  const sent: string[] = [];
+  const fetchImpl = (async (url: string) => {
+    if (url.includes('/content')) return new Response('oops', { status: 500 });
+    sent.push(url);
+    return new Response('{}');
+  }) as unknown as typeof fetch;
+  const s = await gateway(t, true, { fetchImpl });
+  await s.post([groupImage('811')]);
+  await s.waitFor(() => s.got.length === 1);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(s.got[0]!.error, 'content download failed: 500');
+  assert.deepEqual(sent, []);
 });
