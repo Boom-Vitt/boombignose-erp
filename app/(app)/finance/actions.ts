@@ -107,7 +107,8 @@ export async function createInvoice(
       project_id: d.project_id,
       number,
       status: d.status,
-      issue_date: d.issue_date ?? undefined,
+      // Column defaults use the database's UTC day; before 07:00 Bangkok that is yesterday.
+      issue_date: d.issue_date ?? todayISO(),
       due_date: d.due_date,
       amount_satang: moneyInput(d.amountBaht),
       is_recurring: d.is_recurring,
@@ -158,6 +159,18 @@ export async function updateInvoice(
   if (d.due_date && d.issue_date && d.due_date < d.issue_date) return { error: "Due date cannot be before the issue date" }
 
   const supabase = await createSupabaseClient()
+  // A blank issue date keeps the stored one, so that is the date the due date must follow.
+  if (d.due_date && !d.issue_date) {
+    const { data: current, error: readError } = await supabase
+      .from("invoices")
+      .select("issue_date")
+      .eq("id", d.id)
+      .eq("org_id", ctx.orgId)
+      .maybeSingle()
+    if (readError) return { error: "Unable to check the issue date. Please try again." }
+    if (current && d.due_date < current.issue_date) return { error: "Due date cannot be before the issue date" }
+  }
+
   const { error } = await supabase
     .from("invoices")
     .update({
@@ -296,7 +309,8 @@ export async function createCost(
       org_id: ctx.orgId,
       category: d.category,
       amount_satang: moneyInput(d.amountBaht),
-      incurred_on: d.incurred_on ?? undefined,
+      // Column defaults use the database's UTC day; before 07:00 Bangkok that is yesterday.
+      incurred_on: d.incurred_on ?? todayISO(),
       vendor: d.vendor,
       project_id: d.project_id,
       notes: d.notes,

@@ -96,7 +96,8 @@ export async function createQuote(
       project_id: d.project_id,
       number,
       status: "draft",
-      issue_date: d.issue_date ?? undefined,
+      // Column defaults use the database's UTC day; before 07:00 Bangkok that is yesterday.
+      issue_date: d.issue_date ?? todayISO(),
       valid_until: d.valid_until,
       discount_satang: serviceAmountSatang(d.discountBaht),
       subtotal_satang: 0,
@@ -144,13 +145,15 @@ export async function updateQuote(
   const supabase = await createSupabaseClient()
   const { data: current, error: readError } = await supabase
     .from("quotes")
-    .select("status")
+    .select("status, issue_date")
     .eq("id", d.id)
     .eq("org_id", ctx.orgId)
     .maybeSingle()
   if (readError) return { error: readError.message }
   if (!current) return { error: "Quote not found" }
   if (!quoteIsEditable(current.status)) return { error: "This quote is locked" }
+  // A blank issue date keeps the stored one, so that is the date to compare against.
+  if (d.valid_until && !d.issue_date && d.valid_until < current.issue_date) return { error: "Valid until cannot be before the issue date" }
 
   const { error } = await supabase
     .from("quotes")

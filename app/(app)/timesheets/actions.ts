@@ -8,6 +8,7 @@ import { requireOrgContext } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
 import { minutesToHours } from "@/lib/metrics/timesheets"
 import { writeAudit } from "@/lib/audit"
+import { todayISO } from "@/lib/dates"
 
 /** Optional id select: "" (none) → null. */
 const optionalId = z
@@ -67,7 +68,8 @@ export async function logTime(
       project_id: d.project_id,
       task_id: d.task_id,
       user_id: ctx.userId,
-      work_date: d.work_date ?? undefined,
+      // Column defaults use the database's UTC day; before 07:00 Bangkok that is yesterday.
+      work_date: d.work_date ?? todayISO(),
       minutes,
       billable: d.billable,
       rate_satang,

@@ -47,3 +47,20 @@ it("checks a new document without an issue date against today in Bangkok", async
     vi.useRealTimers()
   }
 })
+
+it("compares against the stored issue date when the field is cleared on edit", async () => {
+  const { createClient } = await import("@supabase/supabase-js")
+  const writes: string[] = []
+  client.mockResolvedValue(createClient("http://127.0.0.1:55501", "test-key", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: async (url, init) => {
+      if ((init?.method ?? "GET") !== "GET") { writes.push(String(url)); return Response.json({}) }
+      return Response.json({ status: "draft", issue_date: "2026-10-10" })
+    } },
+  }))
+  expect(await updateInvoice({ id, client_id, amountBaht: "100", status: "draft", is_recurring: false, issue_date: "", due_date: "2026-10-09" }))
+    .toEqual({ error: "Due date cannot be before the issue date" })
+  expect(await updateQuote({ id, client_id, discountBaht: 0, issue_date: "", valid_until: "2026-10-09" }))
+    .toEqual({ error: "Valid until cannot be before the issue date" })
+  expect(writes).toEqual([])
+})
