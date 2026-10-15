@@ -85,7 +85,7 @@ const defaultExtractors: Required<MediaExtractors> = {
 function extFor(ev: MediaEvent, contentType: string | undefined): string {
   const fromName = ev.fileName ? extname(ev.fileName).toLowerCase() : '';
   if (/^\.[a-z0-9]{1,8}$/.test(fromName)) return fromName;
-  return EXT[contentType?.split(';')[0]!.trim() ?? ''] ?? DEFAULT_EXT[ev.kind];
+  return EXT[contentType?.split(';')[0]!.trim().toLowerCase() ?? ''] ?? DEFAULT_EXT[ev.kind]; // media types are case-insensitive
 }
 
 /**
@@ -107,7 +107,8 @@ export async function ingestMedia(
     // shortcut: a 202 (video/audio still transcoding at LINE) is recorded as an error, not retried; poll /content/transcoding if it shows up.
     if (res.status !== 200 || !res.body) throw new Error(`content download failed: ${res.status}`);
     const max = o.maxBytes ?? MAX_BYTES;
-    if (Number(res.headers.get('content-length') ?? 0) > max) throw new Error('content too large');
+    const declared = Number(res.headers.get('content-length') ?? NaN);
+    if (declared > max) throw new Error('content too large');
 
     const contentType = res.headers.get('content-type') ?? undefined;
     const dir = join(o.dir, ev.sourceType, ev.sourceId);
@@ -121,6 +122,9 @@ export async function ingestMedia(
     });
     try {
       await pipeline(Readable.fromWeb(res.body as import('node:stream/web').ReadableStream), limit, createWriteStream(part, { mode: 0o600 }));
+      if (bytes === 0) throw new Error('empty content'); // never store or acknowledge a 0-byte message
+      // a connection closed early ends the stream cleanly; only a decoded (content-encoded) body may differ in size
+      if (Number.isInteger(declared) && !res.headers.get('content-encoding') && bytes !== declared) throw new Error('content truncated');
       renameSync(part, path);
     } catch (e) { rmSync(part, { force: true }); throw e; }
     Object.assign(record, { path, contentType, bytes });
