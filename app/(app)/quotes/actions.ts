@@ -81,6 +81,8 @@ export async function createQuote(
       .from("quotes")
       .select("number")
       .eq("org_id", ctx.orgId)
+      // Only this year's series: an unfiltered scan stops at the API's 1000-row cap.
+      .like("number", `QUO-${year}-%`)
     number = nextDocumentNumber(
       "QUO",
       (existing ?? []).map((r) => r.number),

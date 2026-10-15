@@ -81,12 +81,15 @@ export function InvoiceForm({
   defaultValues,
   submitLabel,
   action,
+  amountFromItems = false,
 }: {
   clients: Option[]
   projects: Option[]
   defaultValues: InvoiceFormValues
   submitLabel: string
   action: (values: Values) => Promise<{ error?: string } | void>
+  /** The database recomputes the amount from line items, so an edit here would be silently undone. */
+  amountFromItems?: boolean
 }) {
   const router = useRouter()
   const form = useForm<z.input<typeof Schema>, unknown, Values>({
@@ -200,9 +203,12 @@ export function InvoiceForm({
                     onBlur={field.onBlur}
                     value={(field.value ?? "") as number | string}
                     onChange={field.onChange}
+                    readOnly={amountFromItems}
                   />
                 </FormControl>
-                <FormDescription>Entered in baht.</FormDescription>
+                <FormDescription>
+                  {amountFromItems ? "Calculated from the line items." : "Entered in baht."}
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}

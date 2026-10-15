@@ -386,6 +386,7 @@ export default async function InvoiceDetailPage({
             defaultValues={defaultValues}
             submitLabel="Save changes"
             action={saveInvoice}
+            amountFromItems={itemRows.length > 0}
           />
         </CardContent>
       </Card> : null}

@@ -92,6 +92,8 @@ export async function createInvoice(
       .from("invoices")
       .select("number")
       .eq("org_id", ctx.orgId)
+      // Only this year's series: an unfiltered scan stops at the API's 1000-row cap.
+      .like("number", `INV-${year}-%`)
     number = nextDocumentNumber(
       "INV",
       (existing ?? []).map((r) => r.number),
