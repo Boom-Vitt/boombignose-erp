@@ -81,6 +81,17 @@ describe("organization resolution", () => {
     await expect(resolveOrg({}, layer([]))).rejects.toThrow("No organizations found in ERP")
   })
 
+  it("a non-string org_id is refused, never replaced by ERP_ORG_ID or the sole org", async () => {
+    for (const org_id of [123, [ORG_B], { id: ORG_B }, true]) {
+      await expect(resolveOrg({ org_id }, layer(), { erpOrgId: ORG_A })).rejects.toThrow("org_id must be a string")
+      await expect(resolveOrg({ org_id }, layer([orgs[0]]))).rejects.toThrow("org_id must be a string")
+    }
+    const clients = [{ id: "c1", org_id: ORG_A, name: "A" }]
+    const { dataLayer, result } = run("list_clients", { org_id: 7 }, { clients })
+    await expect(result).rejects.toThrow("org_id must be a string")
+    expect(dataLayer.queries).toEqual([])
+  })
+
   it("an unknown tool fails after the org check, with no tenant query", async () => {
     const { dataLayer, result } = run("drop_tables", { org_id: ORG_A }, {})
     await expect(result).rejects.toThrow("Unknown tool: drop_tables")
@@ -120,6 +131,24 @@ describe("list tools", () => {
     await expect(run("list_deals", { org_id: ORG_A }, { deals }).result).rejects.toThrow(
       "Money value outside safe satang bounds"
     )
+  })
+})
+
+describe("invoice money", () => {
+  it("an overpaid invoice is paid with nothing outstanding, and adds nothing unpaid", async () => {
+    const store = {
+      invoices: [
+        { id: "i1", org_id: ORG_A, status: "sent", amount_satang: baht(1_000), due_date: "2026-01-01", created_at: "2026-01-01" },
+      ],
+      payments: [
+        { id: "p1", org_id: ORG_A, invoice_id: "i1", amount_satang: baht(700), verification_state: "verified" },
+        { id: "p2", org_id: ORG_A, invoice_id: "i1", amount_satang: baht(500), verification_state: "verified" },
+      ],
+    }
+    const listed = (await run("list_invoices", { org_id: ORG_A }, store).result).items[0]
+    expect(listed).toMatchObject({ status: "paid", paid_satang: baht(1_200), outstanding_satang: 0, outstanding_thb: "฿0.00" })
+    const summary = await run("finance_summary", { org_id: ORG_A }, store).result
+    expect(summary).toMatchObject({ unpaid_satang: 0, unpaid_invoice_count: 0, verified_paid_satang: baht(1_200) })
   })
 })
 
@@ -202,6 +231,37 @@ describe("JSON-RPC boundary", () => {
   it("answers nothing to a notification, even one naming a tool", async () => {
     expect(await call({ jsonrpc: "2.0", method: "tools/call", params: { name: "finance_summary" } })).toBeNull()
     expect(await call({ jsonrpc: "2.0", id: 1, method: "notifications/cancelled" })).toBeNull()
+  })
+
+  it("refuses a request whose id is not a string, number or null, without running it", async () => {
+    const dataLayer = createFakeDataLayer({ organizations: orgs })
+    const s = createErpMcpServer({ dataLayer, erpOrgId: ORG_A, now: NOW })
+    for (const id of [{}, [1], true]) {
+      expect(
+        await s.handleMessage({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "finance_summary" } })
+      ).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } })
+    }
+    expect(dataLayer.queries).toEqual([])
+    expect(await s.handleMessage({ jsonrpc: "2.0", id: null, method: "ping" })).toEqual({ jsonrpc: "2.0", id: null, result: {} })
+  })
+
+  it("a failed data layer start is a tool error, and the next call retries", async () => {
+    let attempts = 0
+    const s = createErpMcpServer({
+      erpOrgId: ORG_A,
+      createDataLayer: () => {
+        attempts += 1
+        if (attempts === 1) throw new Error("supabase not running")
+        return createFakeDataLayer({ organizations: orgs })
+      },
+    })
+    const msg = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_clients" } }
+    expect((await s.handleMessage(msg))?.result).toEqual({
+      content: [{ type: "text", text: "supabase not running" }],
+      isError: true,
+    })
+    expect((await s.handleMessage(msg))?.result).not.toHaveProperty("isError")
+    expect(attempts).toBe(2)
   })
 
   it("falls back to a supported protocol version", async () => {
