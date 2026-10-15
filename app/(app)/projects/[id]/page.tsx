@@ -87,14 +87,7 @@ export default async function ProjectDetailPage({
     client: { name: string } | null
   }
 
-  const [
-    { data: tasksData },
-    { data: milestonesData },
-    { data: invoicesData },
-    { data: costsData },
-    { data: timeData },
-    { data: sourceQuotes },
-  ] = await Promise.all([
+  const results = await Promise.all([
     supabase
       .from("project_tasks")
       .select("id, title, status, assignee, due_date, done")
@@ -129,6 +122,16 @@ export default async function ProjectDetailPage({
       .eq("project_id", id)
       .order("created_at", { ascending: true }),
   ])
+  // A failed read would show ฿0 revenue or missing costs as if they were real.
+  if (results.some((r) => r.error)) throw new Error("Project data unavailable. Reload before relying on totals.")
+  const [
+    { data: tasksData },
+    { data: milestonesData },
+    { data: invoicesData },
+    { data: costsData },
+    { data: timeData },
+    { data: sourceQuotes },
+  ] = results
 
   const tasks = (tasksData ?? []) as Array<{
     id: string

@@ -167,12 +167,13 @@ export async function deleteDeal(id: string): Promise<{ error?: string }> {
     .eq("org_id", ctx.orgId)
     .maybeSingle()
 
-  // Detach activities so the deal can be removed without FK errors.
-  await supabase
+  // Detach activities first: the FK cascades, so a failed detach would delete their history.
+  const { error: detachError } = await supabase
     .from("activities")
     .update({ deal_id: null })
     .eq("deal_id", id)
     .eq("org_id", ctx.orgId)
+  if (detachError) return { error: "Could not keep the deal's activities. The deal was not deleted." }
   const { error } = await supabase
     .from("deals")
     .delete()
