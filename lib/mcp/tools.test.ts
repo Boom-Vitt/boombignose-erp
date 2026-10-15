@@ -101,6 +101,24 @@ describe("organization resolution", () => {
     expect((await run("list_clients", { org_id: ORG_A, limit: 5 }, { clients }).result).items).toHaveLength(1)
   })
 
+  it("a filter value the schema cannot hold is refused, never dropped or sent to the database", async () => {
+    const deals = [{ id: "d1", org_id: ORG_A, title: "Big", stage: "lead", value_satang: 1, client_id: "x" }]
+    for (const [args, message] of [
+      [{ client_id: 123 }, "client_id must be a string"],
+      [{ client_id: ["c1"] }, "client_id must be a string"],
+      [{ stage: "closed" }, "stage must be one of: lead, contacted"],
+      [{ stage: ["lead"] }, "stage must be one of"],
+    ] as const) {
+      const { dataLayer, result } = run("list_deals", { org_id: ORG_A, ...args }, { deals })
+      await expect(result).rejects.toThrow(message)
+      expect(dataLayer.queries).toEqual([])
+    }
+    await expect(run("list_invoices", { org_id: ORG_A, status: "unpaid" }, {}).result).rejects.toThrow("status must be one of")
+    await expect(run("list_payment_claims", { org_id: ORG_A, invoice_id: 7 }, {}).result).rejects.toThrow("invoice_id must be a string")
+    // an empty filter still means "no filter", as before
+    expect((await run("list_deals", { org_id: ORG_A, stage: "", client_id: "" }, { deals }).result).items).toHaveLength(1)
+  })
+
   it("an unknown tool fails after the org check, with no tenant query", async () => {
     const { dataLayer, result } = run("drop_tables", { org_id: ORG_A }, {})
     await expect(result).rejects.toThrow("Unknown tool: drop_tables")
