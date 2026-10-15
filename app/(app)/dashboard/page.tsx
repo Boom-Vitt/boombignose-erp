@@ -42,7 +42,7 @@ export default async function DashboardPage() {
         description="Cash, pipeline, delivery, and what needs attention today."
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="erp-3d-grid grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Cash on hand"
           value={formatTHBWhole(d.cashSatang)}

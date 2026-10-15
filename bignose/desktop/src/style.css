@@ -649,3 +649,121 @@ pre.diag { margin: 0; padding: 10px var(--sp-4); max-height: 260px; overflow: au
 .toolbar .field > label { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .note { min-width: 0; }
 .note > .field { padding-bottom: 0; }
+
+
+/* === 3D motion UI layer (CSS 3D depth; keeps native-simple rules: no inline styles, orange only on accents) === */
+:root {
+  --depth-near: 24px;
+  --depth-mid: 12px;
+  --depth-far: 4px;
+  --tilt: 6deg;
+  --motion-3d: 280ms;
+  --ease-3d: cubic-bezier(.22, 1, .36, 1);
+  --shadow-3d: 0 10px 28px rgb(40 30 20 / .14), 0 2px 6px rgb(40 30 20 / .08);
+  --shadow-3d-hover: 0 18px 40px rgb(40 30 20 / .18), 0 4px 10px rgb(40 30 20 / .1);
+}
+
+html { perspective: 1400px; }
+body {
+  transform-style: preserve-3d;
+  background:
+    radial-gradient(1200px 700px at 12% -10%, rgb(181 80 27 / .08), transparent 55%),
+    radial-gradient(900px 600px at 100% 0%, rgb(28 25 31 / .04), transparent 50%),
+    var(--bg);
+}
+
+#app {
+  min-height: 100%;
+  transform-style: preserve-3d;
+}
+
+.shell {
+  transform-style: preserve-3d;
+  animation: bn-shell-in var(--motion-3d) var(--ease-3d) both;
+}
+
+.nav {
+  transform: translateZ(var(--depth-mid));
+  box-shadow: 8px 0 24px rgb(40 30 20 / .04);
+  transition: transform var(--motion-3d) var(--ease-3d), box-shadow var(--motion-3d) var(--ease-3d);
+}
+
+.main, .chat, .settings {
+  transform-style: preserve-3d;
+}
+
+.splash {
+  transform-style: preserve-3d;
+  perspective: 900px;
+}
+.splash img, .splash .app-icon, .splash svg.app-icon {
+  transform: translateZ(var(--depth-near)) rotateX(8deg) rotateY(-8deg);
+  animation: bn-float 4.8s var(--ease-3d) infinite;
+  box-shadow: var(--shadow-3d);
+}
+.splash p, .splash h1 {
+  transform: translateZ(var(--depth-far));
+  animation: bn-rise var(--motion-3d) var(--ease-3d) both;
+}
+
+.card, .composer-box, .approval, .choice, .menu, .save-bar, dialog.confirm {
+  transform-style: preserve-3d;
+  transition: transform var(--motion-3d) var(--ease-3d), box-shadow var(--motion-3d) var(--ease-3d), border-color var(--dur) var(--ease);
+}
+.card:hover, .choice:hover {
+  transform: translateY(-2px) translateZ(var(--depth-far)) rotateX(1.2deg);
+  box-shadow: var(--shadow-3d);
+}
+.composer-box {
+  transform: translateZ(var(--depth-far));
+  box-shadow: var(--shadow-md), 0 8px 24px rgb(40 30 20 / .06);
+}
+.msg.user {
+  transform: translateZ(6px);
+  box-shadow: var(--shadow-sm), 0 8px 20px rgb(40 30 20 / .06);
+  transition: transform var(--motion-3d) var(--ease-3d), box-shadow var(--motion-3d) var(--ease-3d);
+}
+.msg.assistant {
+  transform: translateZ(2px);
+}
+.agent-row {
+  transition: transform var(--motion-3d) var(--ease-3d), background var(--dur) var(--ease);
+}
+.agent-row:hover {
+  transform: translateX(2px) translateZ(4px);
+}
+.btn.primary, .send {
+  transition: transform var(--motion-3d) var(--ease-3d), background var(--dur) var(--ease), box-shadow var(--motion-3d) var(--ease-3d);
+}
+.btn.primary:hover, .send:hover:not(:disabled) {
+  transform: translateY(-1px) translateZ(8px);
+  box-shadow: 0 8px 18px rgb(181 80 27 / .28);
+}
+.os-panel .shell {
+  animation: bn-panel-in var(--motion-3d) var(--ease-3d) both;
+}
+
+@keyframes bn-shell-in {
+  from { opacity: 0; transform: translateY(10px) translateZ(-24px) rotateX(4deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes bn-panel-in {
+  from { opacity: 0; transform: translateX(16px) translateZ(-12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes bn-rise {
+  from { opacity: 0; transform: translateY(8px) translateZ(-8px); }
+  to { opacity: 1; transform: translateZ(var(--depth-far)); }
+}
+@keyframes bn-float {
+  0%, 100% { transform: translateZ(var(--depth-near)) rotateX(8deg) rotateY(-8deg) translateY(0); }
+  50% { transform: translateZ(calc(var(--depth-near) + 6px)) rotateX(6deg) rotateY(-6deg) translateY(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell, .os-panel .shell, .splash img, .splash .app-icon, .splash p, .splash h1 { animation: none !important; }
+  .card:hover, .choice:hover, .agent-row:hover, .btn.primary:hover, .send:hover:not(:disabled), .msg.user {
+    transform: none !important;
+  }
+  .nav, .composer-box, .msg.user, .msg.assistant { transform: none; }
+}

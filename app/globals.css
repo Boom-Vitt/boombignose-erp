@@ -128,3 +128,32 @@
     @apply font-sans;
   }
 }
+
+
+/* === ERP 3D motion layer === */
+:root {
+  --erp-depth: 1200px;
+  --erp-shadow-3d: 0 12px 32px rgb(15 23 42 / .08), 0 2px 6px rgb(15 23 42 / .04);
+  --erp-shadow-3d-hover: 0 20px 44px rgb(15 23 42 / .12), 0 6px 14px rgb(15 23 42 / .06);
+}
+.erp-3d-stage {
+  perspective: var(--erp-depth);
+  transform-style: preserve-3d;
+}
+.erp-3d-card {
+  transform-style: preserve-3d;
+  transition: transform 280ms cubic-bezier(.22, 1, .36, 1), box-shadow 280ms cubic-bezier(.22, 1, .36, 1);
+  box-shadow: var(--erp-shadow-3d);
+  will-change: transform;
+}
+.erp-3d-card:hover {
+  transform: translateY(-4px) rotateX(2deg) rotateY(-1.5deg) translateZ(8px);
+  box-shadow: var(--erp-shadow-3d-hover);
+}
+.erp-3d-grid {
+  perspective: var(--erp-depth);
+  transform-style: preserve-3d;
+}
+@media (prefers-reduced-motion: reduce) {
+  .erp-3d-card, .erp-3d-card:hover { transition: none; transform: none; }
+}

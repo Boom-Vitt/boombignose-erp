@@ -28,7 +28,7 @@ export function StatCard({
   className,
 }: StatCardProps) {
   return (
-    <Card className={cn("gap-0", className)}>
+    <Card className={cn("erp-3d-card gap-0", className)}>
       <CardContent className="flex flex-col gap-1 p-5">
         <div className="text-muted-foreground flex items-center justify-between text-sm font-medium">
           <span>{label}</span>

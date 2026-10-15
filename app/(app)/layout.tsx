@@ -29,7 +29,7 @@ export default async function AppLayout({
           <Separator orientation="vertical" className="mr-1 h-5" />
           <span className="text-sm font-medium">{ctx.orgName}</span>
         </header>
-        <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">{children}</div>
+        <div className="erp-3d-stage flex flex-1 flex-col gap-6 p-4 md:p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   )
