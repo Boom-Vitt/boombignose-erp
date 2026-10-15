@@ -3,20 +3,13 @@
  * Dates are stored as YYYY-MM-DD (date columns) with no time component.
  */
 
+import { daysUntil, todayISO } from "@/lib/dates"
+
 const fmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "short",
   year: "numeric",
 })
-
-/** Whole-day difference (target - today). Negative = past. */
-function daysUntil(date: string): number {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const target = new Date(`${date}T00:00:00`)
-  target.setHours(0, 0, 0, 0)
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000)
-}
 
 export type DeadlineMeta = {
   label: string
@@ -33,7 +26,8 @@ export type DeadlineMeta = {
 export function deadlineMeta(date: string | null): DeadlineMeta | null {
   if (!date) return null
   const label = fmt.format(new Date(`${date}T00:00:00`))
-  const diff = daysUntil(date)
+  // "Today" is the Bangkok calendar day; the server's own clock is UTC.
+  const diff = daysUntil(date, todayISO())
 
   if (diff < 0) {
     const d = Math.abs(diff)
