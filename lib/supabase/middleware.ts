@@ -51,7 +51,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
+  const { pathname, search } = request.nextUrl
   // Factors come from the verified user above; the cookie session only supplies its own aal claim.
   const mfaPending = user
     ? needsMfa(user.factors, (await supabase.auth.getSession()).data.session?.access_token)
@@ -74,14 +74,14 @@ export async function updateSession(request: NextRequest) {
   if (!user && (!isPublic(pathname) || pathname === MFA_PATH)) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
-    // The challenge page already carries the original destination.
-    if (pathname !== MFA_PATH) url.searchParams.set("redirect", pathname)
+    // The challenge page already carries the original destination; elsewhere the query is part of it.
+    if (pathname !== MFA_PATH) url.search = `?redirect=${encodeURIComponent(pathname + search)}`
     return redirectWithSession(url)
   }
 
   // A password-only session must pass its TOTP challenge before reaching the app.
   if (mfaPending && !isPublic(pathname)) {
-    return redirectWithSession(new URL(mfaPath(pathname), request.url))
+    return redirectWithSession(new URL(mfaPath(pathname + search), request.url))
   }
 
   // Enrollment is a one-time step; a second factor would only confuse the challenge page.

@@ -108,3 +108,20 @@ it('an enrolled user leaves setup for the carried invitation destination', async
  const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa?redirect=%2Finvite%2Fvalid-token'))
  expect(res.headers.get('location')).toBe('https://app.example.test/invite/valid-token')
 })
+it('signed-out setup keeps its invitation destination through sign-in', async () => {
+ state.user=null
+ const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa?redirect=%2Finvite%2Fvalid-token'))
+ const location=new URL(res.headers.get('location')!)
+ expect(location.pathname).toBe('/login')
+ expect(location.searchParams.get('redirect')).toBe('/setup-2fa?redirect=%2Finvite%2Fvalid-token')
+})
+it('signed-out deep links keep their query through sign-in', async () => {
+ state.user=null
+ const res=await updateSession(new NextRequest('https://app.example.test/finance?tab=invoices'))
+ expect(new URL(res.headers.get('location')!).searchParams.get('redirect')).toBe('/finance?tab=invoices')
+})
+it('a pending challenge keeps the query of the page it interrupted', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa?redirect=%2Finvite%2Fvalid-token'))
+ expect(new URL(res.headers.get('location')!).searchParams.get('redirect')).toBe('/setup-2fa?redirect=%2Finvite%2Fvalid-token')
+})
