@@ -12,6 +12,7 @@ import {
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { currentMonthKey, todayISO } from "@/lib/dates"
 import { formatTHB, sumSatang } from "@/lib/money"
 import {
@@ -180,9 +181,11 @@ export default async function FinancePage({
         <Button variant="outline" render={<Link href="/finance/costs/new" />}>
           <Coins /> New cost
         </Button>
-        <Button render={<Link href="/finance/invoices/new" />}>
-          <FilePlus2 /> New invoice
-        </Button>
+        {ctx.role !== "member" ? (
+          <Button render={<Link href="/finance/invoices/new" />}>
+            <FilePlus2 /> New invoice
+          </Button>
+        ) : null}
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -239,9 +242,11 @@ export default async function FinancePage({
                   title="No invoices yet"
                   description="Create your first invoice to start tracking what clients owe."
                   action={
-                    <Button render={<Link href="/finance/invoices/new" />}>
-                      <FilePlus2 /> New invoice
-                    </Button>
+                    ctx.role !== "member" ? (
+                      <Button render={<Link href="/finance/invoices/new" />}>
+                        <FilePlus2 /> New invoice
+                      </Button>
+                    ) : undefined
                   }
                   className="border-0"
                 />
@@ -350,10 +355,12 @@ export default async function FinancePage({
                         <TableCell>{c.vendor ?? "—"}</TableCell>
                         <TableCell>{c.projects?.name ?? "—"}</TableCell>
                         <TableCell className="text-right">
-                          <DeleteCostButton
-                            id={c.id}
-                            label={`${COST_CATEGORY_LABEL[c.category]} cost`}
-                          />
+                          {can(ctx.role, "cost:delete") ? (
+                            <DeleteCostButton
+                              id={c.id}
+                              label={`${COST_CATEGORY_LABEL[c.category]} cost`}
+                            />
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     ))}

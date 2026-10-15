@@ -93,7 +93,7 @@ export default async function ClientDetailPage({
           <Pencil />
           Edit
         </Button>
-        <DeleteClientButton id={client.id} name={client.name} />
+        {can(ctx.role, "client:delete") ? <DeleteClientButton id={client.id} name={client.name} /> : null}
       </PageHeader>
 
       {/* Overview */}
@@ -188,10 +188,12 @@ export default async function ClientDetailPage({
                       ) : null}
                     </div>
                   </div>
-                  <DeleteContactButton
-                    contactId={person.id}
-                    clientId={client.id}
-                  />
+                  {can(ctx.role, "client:delete") ? (
+                    <DeleteContactButton
+                      contactId={person.id}
+                      clientId={client.id}
+                    />
+                  ) : null}
                 </li>
               ))}
             </ul>

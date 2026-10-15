@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { satangToBaht } from "@/lib/money"
 import { PageHeader } from "@/components/page-header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -53,7 +54,7 @@ export default async function EditDealPage({
   return (
     <div className="space-y-6">
       <PageHeader title="Edit deal" description={deal.title}>
-        <DeleteDealButton dealId={deal.id} />
+        {can(ctx.role, "deal:delete") ? <DeleteDealButton dealId={deal.id} /> : null}
       </PageHeader>
       <Card className="max-w-2xl">
         <CardContent>

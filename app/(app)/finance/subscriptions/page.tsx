@@ -3,6 +3,7 @@ import { ArrowLeft, Repeat, Plus } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { formatTHB } from "@/lib/money"
 import type { Enums } from "@/lib/types/database"
 
@@ -53,9 +54,11 @@ export default async function SubscriptionsPage() {
         <Button variant="outline" render={<Link href="/finance" />}>
           <ArrowLeft /> Back
         </Button>
-        <Button render={<Link href="/finance/subscriptions/new" />}>
-          <Plus /> New subscription
-        </Button>
+        {can(ctx.role, "subscription:manage") ? (
+          <Button render={<Link href="/finance/subscriptions/new" />}>
+            <Plus /> New subscription
+          </Button>
+        ) : null}
       </PageHeader>
 
       <Card>
@@ -72,9 +75,11 @@ export default async function SubscriptionsPage() {
               title="No subscriptions yet"
               description="Create a subscription to bill a client automatically on a recurring schedule."
               action={
-                <Button render={<Link href="/finance/subscriptions/new" />}>
-                  <Plus /> New subscription
-                </Button>
+                can(ctx.role, "subscription:manage") ? (
+                  <Button render={<Link href="/finance/subscriptions/new" />}>
+                    <Plus /> New subscription
+                  </Button>
+                ) : undefined
               }
               className="border-0"
             />
