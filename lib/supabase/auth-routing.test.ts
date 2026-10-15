@@ -93,6 +93,11 @@ it('an abandoned unverified factor neither challenges nor blocks setup', async (
  expect((await updateSession(new NextRequest('https://app.example.test/dashboard'))).headers.get('location')).toBeNull()
  expect((await updateSession(new NextRequest('https://app.example.test/setup-2fa'))).headers.get('location')).toBeNull()
 })
+it.each([[undefined],[[{status:'unverified'}]]])('an unenrolled user on the challenge page goes on to the destination (factors %j)', async factors => {
+ state.user={id:'actor',factors}
+ const res=await updateSession(new NextRequest('https://app.example.test/login/mfa?redirect=%2Fclients%3Fq%3D1'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/clients?q=1')
+})
 it('an enrolled user is not offered a second authenticator', async () => {
  mfaUser('aal2')
  const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa'))
