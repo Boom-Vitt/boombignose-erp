@@ -202,6 +202,17 @@ test('file names only lend a short alphanumeric extension; traversal in the name
   assert.equal(readdirSync(src).length, 5);
 });
 
+test('a Thai file name keeps its extension and is recorded as sent; no timestamp falls back to the receive time', async (t) => {
+  const dir = tmp(t), { fetchImpl } = fakeFetch({ type: 'application/pdf' });
+  const file = await ingestMedia({ ...imageEvent, kind: 'file', messageId: '26', fileName: 'รายงาน.PDF' }, { dir, accessToken: TOKEN, fetchImpl });
+  assert.equal(file.path, join(dir, 'user', OWNER, '1700000000000-26.pdf'));
+  assert.equal(file.fileName, 'รายงาน.PDF');
+
+  const untimed = await ingestMedia({ ...imageEvent, timestamp: undefined }, { dir, accessToken: TOKEN, fetchImpl, now: () => 42, extract: { image: async () => undefined } });
+  assert.equal(untimed.path, join(dir, 'user', OWNER, '42-1001.jpg'), 'image kind default for a non-image type');
+  assert.equal(untimed.receivedAt, 42);
+});
+
 test('odd ids and source types are refused before any request or folder is made', async (t) => {
   const dir = tmp(t), { fetchImpl, inits } = contentFetch(() => bytesResponse());
   const cases: Partial<MediaEvent>[] = [
