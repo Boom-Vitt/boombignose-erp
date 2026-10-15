@@ -30,4 +30,25 @@ describe("campus zone → 2D route", () => {
       expect(existsSync(join(process.cwd(), "app/(app)", href, "page.tsx")), href).toBe(true)
     }
   })
+
+  it("gives every zone a unique id and a link, which the 3D scene relies on", () => {
+    expect(new Set(ZONES.map((z) => z.id)).size).toBe(ZONES.length)
+    for (const z of ZONES) expect(z.links.length, z.id).toBeGreaterThan(0)
+  })
+
+  it("lays floors out as non-overlapping rectangles so a click picks one zone", () => {
+    for (const { id, rect: [x0, z0, x1, z1] } of ZONES) {
+      expect(x0 < x1 && z0 < z1, id).toBe(true)
+    }
+    for (const [i, a] of ZONES.entries()) {
+      for (const b of ZONES.slice(i + 1)) {
+        const overlap = a.rect[0] < b.rect[2] && b.rect[0] < a.rect[2] && a.rect[1] < b.rect[3] && b.rect[1] < a.rect[3]
+        expect(overlap, `${a.id} overlaps ${b.id}`).toBe(false)
+      }
+    }
+  })
+
+  it("uses hex floor colors three.js can parse", () => {
+    for (const z of ZONES) expect(z.color, z.id).toMatch(/^#[0-9a-f]{6}$/i)
+  })
 })
