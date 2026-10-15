@@ -1,15 +1,18 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
-const state = vi.hoisted(() => ({ user: {id:'actor'} as {id:string}|null, setAll: undefined as undefined|((cookies:{name:string,value:string,options:object}[])=>void) }))
+type TestUser = {id:string,factors?:{status:string}[]}
+const state = vi.hoisted(() => ({ user: {id:'actor'} as TestUser|null, accessToken: undefined as string|undefined, setAll: undefined as undefined|((cookies:{name:string,value:string,options:object}[])=>void) }))
 vi.mock('@supabase/ssr', () => ({createServerClient: (_url: unknown,_key:unknown,options:{cookies:{setAll:typeof state.setAll}}) => {
  state.setAll = options.cookies.setAll
  return {auth:{getUser:async()=>{
   state.setAll?.([{name:'refreshed-session',value:'valid-session',options:{httpOnly:true,path:'/'}}])
   return {data:{user:state.user},error:null}
- }}}
+ },getSession:async()=>({data:{session:state.accessToken?{access_token:state.accessToken}:null},error:null})}}
 }}))
 import { updateSession } from './middleware'
-beforeEach(()=>{state.user={id:'actor'}})
+const jwt=(aal:string)=>`h.${btoa(JSON.stringify({aal})).replace(/=+$/,'')}.s`
+const mfaUser=(aal:string)=>{state.user={id:'actor',factors:[{status:'verified'}]};state.accessToken=jwt(aal)}
+beforeEach(()=>{state.user={id:'actor'};state.accessToken=jwt('aal1')})
 it('already signed-in login preserves a local invitation destination', async () => {
  const res=await updateSession(new NextRequest('https://app.example.test/login?redirect=%2Finvite%2Fvalid-token'))
  expect(res.headers.get('location')).toBe('https://app.example.test/invite/valid-token')
@@ -26,4 +29,53 @@ it('signed-out onboarding reaches login with its destination', async () => {
  state.user=null
  const res=await updateSession(new NextRequest('https://app.example.test/onboarding'))
  expect(res.headers.get('location')).toBe('https://app.example.test/login?redirect=%2Fonboarding')
+})
+it('a password-only session with a verified factor is sent to the TOTP challenge', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest('https://app.example.test/dashboard'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login/mfa?redirect=%2Fdashboard')
+})
+it('password recovery waits for the TOTP challenge before the reset form', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest('https://app.example.test/reset-password'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login/mfa?redirect=%2Freset-password')
+})
+it('a pending challenge keeps the sign-in destination', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest('https://app.example.test/login?redirect=%2Finvite%2Fvalid-token'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login/mfa?redirect=%2Finvite%2Fvalid-token')
+})
+it('the challenge page stays reachable while the challenge is pending', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest('https://app.example.test/login/mfa?redirect=%2Fdashboard'))
+ expect(res.headers.get('location')).toBeNull()
+})
+it('the sign-out route stays reachable while the challenge is pending', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest('https://app.example.test/auth/signout'))
+ expect(res.headers.get('location')).toBeNull()
+})
+it('a verified session reaches the app and skips the challenge page', async () => {
+ mfaUser('aal2')
+ expect((await updateSession(new NextRequest('https://app.example.test/dashboard'))).headers.get('location')).toBeNull()
+ const res=await updateSession(new NextRequest('https://app.example.test/login/mfa?redirect=%2Fclients'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/clients')
+})
+it('users without a factor are not challenged', async () => {
+ const res=await updateSession(new NextRequest('https://app.example.test/dashboard'))
+ expect(res.headers.get('location')).toBeNull()
+})
+it('signed-out challenge page returns to sign-in with the original destination', async () => {
+ state.user=null
+ const res=await updateSession(new NextRequest('https://app.example.test/login/mfa?redirect=%2Finvite%2Fvalid-token'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login?redirect=%2Finvite%2Fvalid-token')
+})
+it('signed-out forgot-password is public', async () => {
+ state.user=null
+ expect((await updateSession(new NextRequest('https://app.example.test/forgot-password'))).headers.get('location')).toBeNull()
+})
+it('signed-out reset form requires the recovery session', async () => {
+ state.user=null
+ const res=await updateSession(new NextRequest('https://app.example.test/reset-password'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login?redirect=%2Freset-password')
 })
