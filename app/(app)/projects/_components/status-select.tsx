@@ -54,7 +54,7 @@ export function StatusSelect({
         })
       }}
     >
-      <SelectTrigger size="sm">
+      <SelectTrigger size="sm" aria-label="Project status">
         <SelectValue>{(v: ProjectStatus) => STATUS_LABEL[v]}</SelectValue>
       </SelectTrigger>
       <SelectContent>

@@ -37,6 +37,7 @@ export function ClientsToolbar({ q }: { q: string }) {
         <Input
           value={search}
           placeholder="Search clients…"
+          aria-label="Search clients"
           className="h-8 pl-8"
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => {

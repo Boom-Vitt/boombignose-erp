@@ -90,7 +90,7 @@ export function DealsToolbar({
         value={stage || "all"}
         onValueChange={(v) => onStageChange(String(v))}
       >
-        <SelectTrigger size="sm" className="w-36">
+        <SelectTrigger size="sm" className="w-36" aria-label="Filter by stage">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -107,6 +107,7 @@ export function DealsToolbar({
         <Input
           value={search}
           placeholder="Search deals…"
+          aria-label="Search deals"
           className="h-7 pl-8 text-sm"
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => {

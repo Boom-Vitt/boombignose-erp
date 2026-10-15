@@ -85,6 +85,7 @@ export function TeamInvitations({
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           type="email"
+          aria-label="Invitee email"
           placeholder="teammate@company.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -95,7 +96,7 @@ export function TeamInvitations({
           value={role}
           onValueChange={(v) => setRole(v as "member" | "admin")}
         >
-          <SelectTrigger className="sm:w-32">
+          <SelectTrigger className="sm:w-32" aria-label="Invitee role">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
