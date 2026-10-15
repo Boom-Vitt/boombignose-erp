@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  deleteSkill, listSkills, loadSkill, parseSkillFile, saveSkill, scanSkills, skillsIndex, skillTools,
+  deleteSkill, listSkills, loadSkill, parseSkillFile, saveSkill, scanSkills, SkillExistsError, skillsIndex, skillTools,
 } from '../../src/skills/index.ts';
 import type { ToolContext } from '../../src/types.ts';
 
@@ -246,4 +246,52 @@ test('invalid same-named user skill falls back to the bundled skill for listing 
   write(dir, `${name}/SKILL.md`, skillMd(name, 'User override', 'User procedure'));
   assert.equal(loadSkill(dir, name)!.body, 'User procedure');
   assert.equal(listSkills(dir).find(s => s.name === name)?.bundled, undefined);
+});
+
+test('saving a skill keeps its other frontmatter keys, however they are written', async (t) => {
+  const dir = tmpSkills(t);
+  const file = path.join(dir, 'imported', 'SKILL.md');
+  write(dir, 'imported/SKILL.md', [
+    '---', 'name: imported', 'description: >', '  An imported', '  skill.', 'license: Apache-2.0', 'allowed-tools: Bash(git:*) Read',
+    'metadata:', '  author: someone', '  version: "1"', '', '# a comment', 'compatibility: node 24', '---', '', 'Old body.', '',
+  ].join('\n'));
+  saveSkill(dir, { name: 'imported', description: 'New description', body: 'New body.' });
+  const kept = ['license: Apache-2.0', 'allowed-tools: Bash(git:*) Read', 'metadata:\n  author: someone\n  version: "1"', '# a comment', 'compatibility: node 24'];
+  const text = fs.readFileSync(file, 'utf8');
+  for (const line of kept) assert.ok(text.includes(line), `kept: ${line}`);
+  assert.ok(!text.includes('An imported'), 'the old description, with its continuation lines, is replaced');
+  assert.equal(text.match(/^name:/gm)?.length, 1);
+  assert.equal(text.match(/^description:/gm)?.length, 1);
+  const parsed = parseSkillFile(text)!;
+  assert.deepEqual([parsed.meta.name, parsed.meta.description, parsed.meta.license, parsed.meta['allowed-tools'], parsed.meta.compatibility, parsed.body],
+    ['imported', 'New description', 'Apache-2.0', 'Bash(git:*) Read', 'node 24', 'New body.']);
+  saveSkill(dir, { name: 'imported', description: 'New description', body: 'New body.' });
+  assert.equal(fs.readFileSync(file, 'utf8'), text, 'saving again changes nothing');
+  // the agent's skill_save writes through the same function
+  const save = skillTools(dir)[1]!;
+  assert.equal((await save.run({ name: 'imported', description: 'Via the tool', body: 'Tool body.' }, ctx)).isError, undefined);
+  const viaTool = fs.readFileSync(file, 'utf8');
+  for (const line of kept) assert.ok(viaTool.includes(line), `kept by skill_save: ${line}`);
+  assert.equal(loadSkill(dir, 'imported')!.description, 'Via the tool');
+
+  // a symlinked SKILL.md is replaced and never read through, so keys of its target are not copied
+  const outside = path.join(path.dirname(dir), 'elsewhere.md');
+  fs.writeFileSync(outside, '---\nname: linked\ndescription: x\nextra-key: do-not-copy\n---\n\nbody\n');
+  fs.mkdirSync(path.join(dir, 'linked'), { recursive: true });
+  fs.symlinkSync(outside, path.join(dir, 'linked', 'SKILL.md'));
+  saveSkill(dir, { name: 'linked', description: 'Mine', body: 'Mine.' });
+  assert.ok(!fs.readFileSync(path.join(dir, 'linked', 'SKILL.md'), 'utf8').includes('do-not-copy'));
+  assert.ok(fs.readFileSync(outside, 'utf8').includes('do-not-copy'), 'the target is untouched');
+});
+
+test('creating a skill with an existing name is refused; saving without create still replaces', (t) => {
+  const dir = tmpSkills(t);
+  saveSkill(dir, { name: 'taxes', description: 'File taxes', body: 'Original steps.' }, true);
+  assert.equal(loadSkill(dir, 'taxes')!.body, 'Original steps.');
+  assert.throws(() => saveSkill(dir, { name: 'taxes', description: 'Scratch', body: 'Scratch.' }, true), SkillExistsError);
+  assert.deepEqual([loadSkill(dir, 'taxes')!.description, loadSkill(dir, 'taxes')!.body], ['File taxes', 'Original steps.'], 'nothing was overwritten');
+  fs.mkdirSync(path.join(dir, 'half-made'));
+  assert.throws(() => saveSkill(dir, { name: 'half-made', description: 'x', body: 'y' }, true), SkillExistsError, 'a folder that is already there counts as taken');
+  saveSkill(dir, { name: 'taxes', description: 'Edited', body: 'Edited steps.' });
+  assert.equal(loadSkill(dir, 'taxes')!.body, 'Edited steps.');
 });

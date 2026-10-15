@@ -28,7 +28,7 @@ export function mountSkills(pane: HTMLElement, api: Api): void {
         const n = name.value.trim();
         if (!NAME_RE.test(n)) throw new Error('Name: lowercase letters, digits and "-", starting with a letter or digit');
         if (!description.value.trim()) throw new Error('Enter a description');
-        await api.putSkill(n, { description: description.value.trim(), body: body.value });
+        await api.putSkill(n, { description: description.value.trim(), body: body.value }, !skill); // New skill: a taken name is refused, not replaced
         toast('Saved');
         const list = await api.listSkills();
         renderList(list.skills);

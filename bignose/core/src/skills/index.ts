@@ -5,6 +5,9 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Tool, ToolResult } from '../types.ts';
 
+/** Thrown by saveSkill in create mode when a folder with that name is already there. */
+export class SkillExistsError extends Error {}
+
 export interface SkillInfo { name: string; description: string; bundled?: boolean }
 export interface LoadedSkill extends SkillInfo { body: string; folder: string; files: string[] }
 
@@ -116,7 +119,27 @@ export function loadSkill(dir: string, name: string): LoadedSkill | undefined {
   return { name, description: r.description, body: r.body, folder, files };
 }
 
-export function saveSkill(dir: string, skill: { name: string; description: string; body: string }): void {
+// The frontmatter lines of an existing SKILL.md other than name and description (license, allowed-tools, metadata, ...), verbatim.
+function otherFrontmatter(file: string): string[] {
+  let text: string;
+  try {
+    if (!lstatSync(file).isFile()) return []; // a symlinked SKILL.md is replaced, never read through
+    text = readFileSync(file, 'utf8');
+  } catch { return []; }
+  const kept: string[] = [];
+  let skipping = false;
+  for (const line of (FRONTMATTER_RE.exec(text)?.[1] ?? '').split(/\r?\n/)) {
+    const key = /^([A-Za-z0-9_-]+)[ \t]*:/.exec(line)?.[1];
+    if (key) skipping = key === 'name' || key === 'description';
+    else if (line.trim() && !/^[ \t]/.test(line)) skipping = false; // indented and blank lines belong to the key above
+    if (!skipping) kept.push(line);
+  }
+  while (kept.length && !kept.at(-1)!.trim()) kept.pop();
+  return kept;
+}
+
+/** Writes the skill, keeping the other frontmatter keys of an existing one. With `create`, a name that is already taken throws SkillExistsError. */
+export function saveSkill(dir: string, skill: { name: string; description: string; body: string }, create = false): void {
   const folder = folderOf(dir, skill.name);
   if (folderExists(folderOf(bundledDir, skill.name))) throw new Error('built-in skill');
   const description = skill.description.replace(/\s+/g, ' ').trim();
@@ -126,9 +149,16 @@ export function saveSkill(dir: string, skill: { name: string; description: strin
   if (!body) throw new Error('body is required');
   if (body.length > MAX_BODY) throw new Error(`body is over ${MAX_BODY} characters`);
   folderExists(folder); // refuses existing symlinks before mkdir can follow them
-  mkdirSync(folder, { recursive: true });
+  if (create) { // mkdir without `recursive` fails when the folder exists, so two creates cannot both win
+    mkdirSync(dir, { recursive: true });
+    try { mkdirSync(folder); } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new SkillExistsError(`A skill named "${skill.name}" already exists. Open it from the list to edit it, or pick another name.`);
+      throw e;
+    }
+  } else mkdirSync(folder, { recursive: true });
   const file = join(folder, 'SKILL.md'), tmp = `${file}.${randomUUID()}.tmp`;
-  writeFileSync(tmp, `---\nname: ${skill.name}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`, { flag: 'wx' });
+  const extra = otherFrontmatter(file).map(line => `${line}\n`).join('');
+  writeFileSync(tmp, `---\nname: ${skill.name}\ndescription: ${JSON.stringify(description)}\n${extra}---\n\n${body}\n`, { flag: 'wx' });
   try { renameSync(tmp, file); } finally { rmSync(tmp, { force: true }); } // replaces a symlinked SKILL.md instead of writing through it
 }
 

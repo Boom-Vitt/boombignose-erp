@@ -281,3 +281,49 @@ test('a failed step save does not stop the run or leave an unanswered tool call 
   assert.deepEqual(shape(h.store.getMessages(session.id)), expected); // the run end wrote what the failed save missed, once
   assert.deepEqual(shape(h.store.getSession(session.id)!.context), expected);
 });
+
+test('a failed scheduled run emits a failure notification', async t => {
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream() { throw new Error('provider down'); } }));
+  const events: { type: string; title?: string; body?: string; sessionId?: string }[] = [];
+  h.runtime.subscribe(e => { events.push(e); });
+  const job = h.scheduler.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'morning   brief', delivery: { kind: 'desktop' } });
+  await assert.rejects(h.runtime.fireJob(job), /provider down/);
+  const notices = events.filter(e => e.type === 'notification');
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0]!.title, 'Scheduled task failed');
+  assert.equal(notices[0]!.body, 'morning brief: provider down');
+  assert.equal(notices[0]!.sessionId, undefined, 'a notification without a session is a toast, whichever chat is open');
+});
+
+test('a LINE-delivery schedule is refused while LINE is off: fireJob stops before the model runs and says so', async t => {
+  let calls = 0;
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream() { calls++; yield { type: 'text_delta', text: 'never delivered' }; yield done; } }));
+  const events: { type: string; title?: string; body?: string }[] = [];
+  h.runtime.subscribe(e => { events.push(e); });
+  const job = h.scheduler.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'to LINE', delivery: { kind: 'line', to: 'Cabc' } });
+  await assert.rejects(h.runtime.fireJob(job), /LINE is off/);
+  assert.equal(calls, 0, 'no model call for an answer with nowhere to go');
+  assert.equal(h.store.listSessions().length, 0);
+  assert.match(events.find(e => e.type === 'notification')!.body ?? '', /LINE is off/);
+});
+
+test('denied tools are not offered to the model, nested delegates included; the rest stay', async t => {
+  const requests: ProviderRequest[] = [];
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream(req) {
+    requests.push(req);
+    if (req.messages.length === 1 && req.system.includes('You are BigNose')) yield { type: 'tool_call', id: 'd1', name: 'delegate', input: { task: 'look around' } };
+    else yield { type: 'text_delta', text: 'ok' };
+    yield done;
+  } }), c => { c.mcp.servers.alpha = fakeMcp; c.permissions.edit_file = 'deny'; });
+  const agent = h.store.listAgents()[0]!;
+  h.store.updateAgent(agent.id, { permissions: { shell: 'deny', web_fetch: 'deny', 'mcp__*': 'deny' }, connectors: ['alpha'] });
+  const session = h.store.createSession({ origin: { kind: 'desktop' }, agentId: agent.id });
+  assert.equal((await h.runtime.start(session.id, 'work').result).status, 'done');
+  assert.ok(requests.length >= 3, 'the parent run, the delegate run and the parent again');
+  for (const req of requests) {
+    const names = req.tools.map(tool => tool.name);
+    for (const denied of ['shell', 'web_fetch', 'edit_file', 'mcp__alpha__echo']) assert.ok(!names.includes(denied), `${denied} is not offered`);
+    for (const kept of ['read_file', 'write_file', 'memory_read']) assert.ok(names.includes(kept), `${kept} is still offered`);
+  }
+  assert.ok(requests.some(req => req.tools.some(tool => tool.name === 'delegate')), 'the parent keeps delegate');
+});

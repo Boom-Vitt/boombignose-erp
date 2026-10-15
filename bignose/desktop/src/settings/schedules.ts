@@ -61,6 +61,7 @@ export function mountSchedules(pane: HTMLElement, api: Api): void {
       let d: Delivery = { kind: 'desktop' };
       if (delivery.value === 'line') {
         if (!to.value.trim()) throw new Error('Enter the LINE chat ID');
+        if (!(await api.lineStatus()).running) throw new Error('LINE is off. Turn it on under Settings > Messaging before you schedule a LINE delivery.');
         d = { kind: 'line', to: to.value.trim() };
       }
       await api.addSchedule({ cron: expr, prompt: prompt.value.trim(), delivery: d, agentId: newAgent.value });

@@ -120,7 +120,8 @@ export function createApi(opts: ApiOptions) {
 
     listSkills: () => get<{ skills: SkillSummary[] }>('/api/skills'),
     getSkill: (name: string) => get<Skill>(`/api/skills/${enc(name)}`),
-    putSkill: (name: string, skill: { description: string; body: string }) => put<unknown>(`/api/skills/${enc(name)}`, skill),
+    /** `create` makes the daemon answer 409 for a name that is taken, instead of replacing that skill. */
+    putSkill: (name: string, skill: { description: string; body: string }, create = false) => put<unknown>(`/api/skills/${enc(name)}`, create ? { ...skill, create } : skill),
     deleteSkill: (name: string) => del(`/api/skills/${enc(name)}`),
 
     listMemory: (kind?: MemoryKind, q?: string, agent?: string) => get<{ notes: MemoryNote[] }>('/api/memory', { kind, q, agent }),

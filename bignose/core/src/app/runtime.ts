@@ -216,8 +216,9 @@ export class Runtime {
           ...skillTools(paths(this.opts.home).skills, agent.skills), ...scheduleTools(this.opts.scheduler, agent.id),
           ...this.opts.mcp.tools().filter(t => Object.entries(config.mcp.servers).some(([name, server]) => server.enabled &&
             (agent.connectors === null || agent.connectors.includes(name)) && t.name.startsWith(`mcp__${name}__`)))];
-        const tools = profile.toolFilter ? allTools.filter(profile.toolFilter) : allTools;
         const permissions = { ...profile.permissions };
+        // A denied tool is not offered at all: calling it could only fail, and each wasted call costs a turn. Delegates inherit this list.
+        const tools = (profile.toolFilter ? allTools.filter(profile.toolFilter) : allTools).filter(tool => effectivePolicy(tool, permissions) !== 'deny');
         if (nonOwner) for (const tool of tools) if (effectivePolicy(tool, permissions) === 'allow') permissions[tool.name] = 'ask';
         const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
         raw = await runAgent({ ...profile, system: [profile.system, nonOwner ? '' : profile.memory,
@@ -309,6 +310,8 @@ export class Runtime {
   }
   async fireJob(job: Job): Promise<void> {
     try {
+      // Checked before the model runs: an answer that cannot be delivered would cost tokens and then be thrown away.
+      if (job.delivery.kind === 'line' && !this.opts.line()) throw new Error('LINE is off, so this schedule was not run');
       const origin: Origin = { kind: 'cron', jobId: job.id };
       const session = this.store.createSession({ origin, agentId: job.agentId, title: `Scheduled: ${this.clean(job.prompt).replace(/\s+/g, ' ').slice(0, 60)}` });
       const result = await this.start(session.id, job.prompt, { origin }).result;
@@ -318,7 +321,12 @@ export class Runtime {
         if (!gateway) throw new Error('LINE gateway is unavailable');
         await gateway.push(job.delivery.to, result.text);
       } else this.emit({ type: 'notification', title: 'Scheduled task', body: result.text, sessionId: session.id });
-    } catch (e) { throw new Error(this.clean(e instanceof Error ? e.message : String(e))); }
+    } catch (e) {
+      const message = this.clean(e instanceof Error ? e.message : String(e));
+      // No sessionId: the desktop shows a notification without one as a toast, wherever the owner is.
+      this.emit({ type: 'notification', title: 'Scheduled task failed', body: `${this.clean(job.prompt).replace(/\s+/g, ' ').slice(0, 40)}: ${message}` });
+      throw new Error(message);
+    }
   }
   async deleteAgent(agentId: string): Promise<boolean> {
     this.deletingAgents.add(agentId);
