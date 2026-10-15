@@ -6,7 +6,7 @@ import { VERSION, paths, maskSecret, setSecret, getApiKey } from '../config.ts';
 import { deleteSkill, listSkills, loadSkill, saveSkill, SkillExistsError } from '../skills/index.ts';
 import { CommandError, listCommands } from '../commands/index.ts';
 import { doctor } from '../app/doctor.ts';
-import { isObject, restoreMaskedConfig, safeValue, settingsResponse, validateAgent, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
+import { isObject, resolveWorkspace, restoreMaskedConfig, safeValue, settingsResponse, validateAgent, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
 import type { AgentInput } from '../store/index.ts';
 import type { Runtime } from '../app/runtime.ts';
 import type { Config, Delivery } from '../types.ts';
@@ -61,6 +61,8 @@ const positiveId = (s: string) => { check(/^\d+$/.test(s) && Number.isSafeIntege
 
 export function createApiServer(opts: ApiOptions) {
   const { runtime, mcp, scheduler } = opts, store = runtime.store;
+  // The agent LINE and new work fall back to: Diagnostics and /api/status report what it uses, not the Settings seed in config.active.
+  const activeAgent = () => runtime.lineAgent();
   let port = 0;
   const streams = new Set<ServerResponse>();
   const send = (res: ServerResponse, value: unknown, status = 200) => {
@@ -107,11 +109,11 @@ export function createApiServer(opts: ApiOptions) {
       if (area === 'health' && !id && method === 'GET') return send(res, { ok: true, version: VERSION, pid: process.pid });
       if (area === 'doctor' && !id && method === 'POST') {
         await body(req);
-        return send(res, await doctor(opts.home, opts.fetchImpl));
+        return send(res, await doctor(opts.home, opts.fetchImpl, activeAgent()));
       }
       if (area === 'status' && !id && method === 'GET') {
-        const c = opts.config(), p = c.providers.find(p => p.id === c.active.provider)!, l = opts.lineStatus();
-        return send(res, { version: VERSION, provider: { id: p.id, kind: p.kind, model: c.active.model },
+        const c = opts.config(), a = activeAgent(), p = c.providers.find(p => p.id === a.provider) ?? c.providers.find(p => p.id === c.active.provider)!, l = opts.lineStatus();
+        return send(res, { version: VERSION, provider: { id: p.id, kind: p.kind, model: a.model },
           line: { enabled: l.enabled, running: l.running, webhookUrl: l.webhookUrl },
           mcp: mcp.status().map(s => ({ name: s.name, enabled: s.enabled, connected: s.connected, tools: s.tools.length })), schedules: scheduler.list().length });
       }
@@ -190,6 +192,7 @@ export function createApiServer(opts: ApiOptions) {
             const next = restoreMaskedConfig(b.config as Config, c, runtime.cleaner());
             if (typeof next.line?.publicUrl === 'string') next.line.publicUrl = next.line.publicUrl.trim();
             validateConfig(next);
+            if (next.agent.workspace !== c.agent.workspace) next.agent.workspace = resolveWorkspace(next.agent.workspace);
             if (next.line.publicUrl && next.line.publicUrl !== c.line.publicUrl?.trim()) check(!publicUrlProblem(next.line.publicUrl), publicUrlProblem(next.line.publicUrl) ?? '');
             if (next.line.agentId !== undefined) agentId(next.line.agentId);
             return next;
