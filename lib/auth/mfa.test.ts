@@ -42,6 +42,12 @@ describe("needsMfa", () => {
   })
 })
 
+describe("needsMfa with a malformed aal claim", () => {
+  it.each([["aal2"], { level: "aal2" }, 2, "AAL2"])("keeps the challenge for aal %j", (aal) => {
+    expect(needsMfa(verified, token({ aal }))).toBe(true)
+  })
+})
+
 describe("mfaPath", () => {
   it("carries the encoded return destination", () => {
     expect(mfaPath("/invite/abc?x=1")).toBe(`${MFA_PATH}?redirect=%2Finvite%2Fabc%3Fx%3D1`)
