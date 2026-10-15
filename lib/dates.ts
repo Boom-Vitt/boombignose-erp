@@ -31,3 +31,11 @@ export function daysUntil(dateISO: string, todayISOStr: string): number {
   const target = Date.parse(`${dateISO}T00:00:00Z`)
   return Math.round((target - today) / 86_400_000)
 }
+
+/** First day (YYYY-MM-DD) of the month after the given 'YYYY-MM' key. */
+export function nextMonthStart(month: string): string {
+  const [year, mon] = month.split("-").map(Number)
+  const nextYear = mon === 12 ? year + 1 : year
+  const nextMon = mon === 12 ? 1 : mon + 1
+  return `${nextYear}-${String(nextMon).padStart(2, "0")}-01`
+}

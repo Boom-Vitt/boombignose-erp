@@ -2,7 +2,7 @@ import { Clock, Timer, Coins, Gauge } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { currentMonthKey, monthKey, todayISO } from "@/lib/dates"
+import { currentMonthKey, nextMonthStart, todayISO } from "@/lib/dates"
 import { formatTHB } from "@/lib/money"
 import {
   totalMinutes,
@@ -58,7 +58,7 @@ export default async function TimesheetsPage() {
   const month = currentMonthKey()
   const today = todayISO()
 
-  const [entriesRes, projectsRes] = await Promise.all([
+  const [entriesRes, monthRes, projectsRes] = await Promise.all([
     supabase
       .from("time_entries")
       .select(
@@ -68,6 +68,13 @@ export default async function TimesheetsPage() {
       .order("work_date", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(100),
+    // Tiles total the whole month, not just the rows the table shows.
+    supabase
+      .from("time_entries")
+      .select("project_id, minutes, billable, rate_satang")
+      .eq("org_id", ctx.orgId)
+      .gte("work_date", `${month}-01`)
+      .lt("work_date", nextMonthStart(month)),
     supabase
       .from("projects")
       .select("id, name")
@@ -100,7 +107,7 @@ export default async function TimesheetsPage() {
   }
 
   // This-month metrics.
-  const monthEntries = entries.filter((e) => monthKey(e.work_date) === month)
+  const monthEntries = monthRes.data ?? []
   const monthMinutes = totalMinutes(monthEntries)
   const monthBillable = billableValueSatang(monthEntries)
   const monthUtil = utilization(monthEntries)

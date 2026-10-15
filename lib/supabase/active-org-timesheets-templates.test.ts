@@ -47,3 +47,17 @@ it.each([
 ])('another workspace template %s returns not found', async (_name, render) => {
   await expect(render({ params: Promise.resolve({ id: 'tpl-B' }) })).rejects.toThrow('NOT_FOUND')
 })
+
+it('month tiles total every entry this month, not just the 100 rows in the table', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-10-16T05:00:00Z'))
+  state.client = databaseFixture({
+    time_entries: Array.from({ length: 120 }, (_, i) => ({ id: `e${i}`, org_id: 'A', work_date: '2026-10-05', minutes: 60, billable: false, rate_satang: null, project_id: 'project-A', user_id: null, projects: { name: 'P' } })),
+    projects: [],
+  })
+  try {
+    expect(pageContent(await TimesheetsPage())).toContain('120.0h')
+  } finally {
+    vi.useRealTimers()
+  }
+})

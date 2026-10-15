@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { currentMonthKey, todayISO, isPastDue } from "@/lib/dates"
+import { currentMonthKey, todayISO, isPastDue, nextMonthStart } from "@/lib/dates"
 import {
   revenueForMonth,
   costsForMonth,
@@ -202,14 +202,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     followUpsDueToday,
     overdueFollowUps,
   }
-}
-
-/** First day (YYYY-MM-DD) of the month after the given 'YYYY-MM' key. */
-function nextMonthStart(month: string): string {
-  const [year, mon] = month.split("-").map(Number)
-  const nextYear = mon === 12 ? year + 1 : year
-  const nextMon = mon === 12 ? 1 : mon + 1
-  return `${nextYear}-${String(nextMon).padStart(2, "0")}-01`
 }
 
 function toFollowUp(a: {
