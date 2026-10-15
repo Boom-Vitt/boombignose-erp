@@ -78,7 +78,7 @@ export function AppSidebar({
           </Avatar>
           <div className="grid flex-1 leading-tight group-data-[collapsible=icon]:hidden">
             <span className="truncate text-xs font-medium">{email ?? "—"}</span>
-            <span className="text-muted-foreground text-[10px] tracking-wide uppercase">
+            <span className="text-sidebar-foreground/85 text-[10px] tracking-wide uppercase">
               {role}
             </span>
           </div>

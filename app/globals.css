@@ -49,77 +49,78 @@
 }
 
 :root {
-  /* BoomBigNose "Night Workshop" — light = cream paper */
+  /* BoomBigNose FB cover — light = warm cream page, navy ink, teal rail */
   color-scheme: light;
-  --background: #f5f1e6;
-  --foreground: #161823;
-  --card: #fbf8f0;
-  --card-foreground: #161823;
-  --popover: #fbf8f0;
-  --popover-foreground: #161823;
-  --primary: #c93820;
-  --primary-foreground: #f5f1e6;
-  --secondary: #ebe5d5;
-  --secondary-foreground: #161823;
-  --muted: #ebe5d5;
-  --muted-foreground: #5c5a4d;
-  --accent: #ebe5d5;
-  --accent-foreground: #161823;
+  --background: #f3efe4;
+  --foreground: #0b1e3a;
+  --card: #faf7ef;
+  --card-foreground: #0b1e3a;
+  --popover: #faf7ef;
+  --popover-foreground: #0b1e3a;
+  --primary: #f07a1a;
+  --primary-foreground: #0b1e3a;
+  --secondary: #1f5a7a;
+  --secondary-foreground: #f5f1e6;
+  --muted: #e9e3d3;
+  --muted-foreground: #4d5566;
+  --accent: #e4ddca;
+  --accent-foreground: #0b1e3a;
   --destructive: #c42b4b;
-  --border: rgb(11 12 16 / 0.12);
-  --input: rgb(11 12 16 / 0.16);
-  --ring: #c93820;
-  --chart-1: #c93820;
-  --chart-2: #d99a1e;
-  --chart-3: #ff5a45;
-  --chart-4: #5c5a4d;
-  --chart-5: #1d2030;
+  --border: rgb(11 30 58 / 0.12);
+  --input: rgb(11 30 58 / 0.16);
+  --ring: #f07a1a;
+  --chart-1: #f07a1a;
+  --chart-2: #1f5a7a;
+  --chart-3: #ffb35c;
+  --chart-4: #0b1e3a;
+  --chart-5: #4d5566;
   --radius: 0.625rem;
-  --sidebar: #efe9db;
-  --sidebar-foreground: #161823;
-  --sidebar-primary: #c93820;
-  --sidebar-primary-foreground: #f5f1e6;
-  --sidebar-accent: #e4ddca;
-  --sidebar-accent-foreground: #161823;
-  --sidebar-border: rgb(11 12 16 / 0.1);
-  --sidebar-ring: #c93820;
+  --sidebar: #1f5a7a;
+  --sidebar-foreground: #ece7d6;
+  --sidebar-primary: #f07a1a;
+  --sidebar-primary-foreground: #0b1e3a;
+  --sidebar-accent: #164866;
+  --sidebar-accent-foreground: #ece7d6;
+  --sidebar-border: rgb(236 231 214 / 0.12);
+  /* amber, not orange: orange is <3:1 on the teal rail */
+  --sidebar-ring: #ffb35c;
 }
 
-/* Default app look (html.dark in app/layout.tsx) */
+/* Default app look (html.dark in app/layout.tsx) — FB cover navy/teal/orange */
 .dark {
   color-scheme: dark;
-  --background: #0b0c10;
+  --background: #0b1e3a;
   --foreground: #ece7d6;
-  --card: #161823;
+  --card: #12294b;
   --card-foreground: #ece7d6;
-  --popover: #1d2030;
+  --popover: #163257;
   --popover-foreground: #ece7d6;
-  --primary: #ff5a45;
-  --primary-foreground: #0b0c10;
-  --secondary: #1d2030;
+  --primary: #f07a1a;
+  --primary-foreground: #0b1e3a;
+  --secondary: #1f5a7a;
   --secondary-foreground: #ece7d6;
-  --muted: #1d2030;
-  /* #b9b4a4, not #82806f: keeps 4.5:1 on card/muted surfaces */
+  --muted: #183559;
+  /* #b9b4a4 keeps >=6:1 on navy card/muted; never use it on the teal rail (3.6:1) */
   --muted-foreground: #b9b4a4;
-  --accent: #1d2030;
+  --accent: #1d4669;
   --accent-foreground: #ece7d6;
-  --destructive: #f0506e;
-  --border: rgb(231 226 211 / 0.12);
-  --input: rgb(231 226 211 / 0.18);
-  --ring: #ff5a45;
-  --chart-1: #ff5a45;
-  --chart-2: #f5c45e;
-  --chart-3: #ff8169;
-  --chart-4: #c93820;
-  --chart-5: #82806f;
-  --sidebar: #101218;
+  --destructive: #ff5a45;
+  --border: rgb(236 231 214 / 0.12);
+  --input: rgb(236 231 214 / 0.18);
+  --ring: #f07a1a;
+  --chart-1: #f07a1a;
+  --chart-2: #ffb35c;
+  --chart-3: #5ba8cc;
+  --chart-4: #ff5a45;
+  --chart-5: #b9b4a4;
+  --sidebar: #1f5a7a;
   --sidebar-foreground: #ece7d6;
-  --sidebar-primary: #ff5a45;
-  --sidebar-primary-foreground: #0b0c10;
-  --sidebar-accent: #1d2030;
+  --sidebar-primary: #f07a1a;
+  --sidebar-primary-foreground: #0b1e3a;
+  --sidebar-accent: #164866;
   --sidebar-accent-foreground: #ece7d6;
-  --sidebar-border: rgb(231 226 211 / 0.08);
-  --sidebar-ring: #ff5a45;
+  --sidebar-border: rgb(236 231 214 / 0.12);
+  --sidebar-ring: #ffb35c;
 }
 
 @layer base {
@@ -138,13 +139,13 @@
 /* === ERP 3D motion layer === */
 :root {
   --erp-depth: 1200px;
-  --erp-shadow-3d: 0 12px 32px rgb(15 23 42 / .08), 0 2px 6px rgb(15 23 42 / .04);
-  --erp-shadow-3d-hover: 0 20px 44px rgb(15 23 42 / .12), 0 6px 14px rgb(15 23 42 / .06);
-  --erp-shadow-nav: 10px 0 28px rgb(15 23 42 / .05);
+  --erp-shadow-3d: 0 12px 32px rgb(11 30 58 / .08), 0 2px 6px rgb(11 30 58 / .04);
+  --erp-shadow-3d-hover: 0 20px 44px rgb(11 30 58 / .12), 0 6px 14px rgb(11 30 58 / .06);
+  --erp-shadow-nav: 10px 0 28px rgb(11 30 58 / .08);
 }
 .dark {
   --erp-shadow-3d: 0 12px 32px rgb(0 0 0 / .45), 0 2px 6px rgb(0 0 0 / .3);
-  --erp-shadow-3d-hover: 0 22px 48px rgb(0 0 0 / .55), 0 0 0 1px rgb(255 90 69 / .22), 0 8px 28px rgb(255 90 69 / .08);
+  --erp-shadow-3d-hover: 0 22px 48px rgb(0 0 0 / .55), 0 0 0 1px rgb(240 122 26 / .22), 0 8px 28px rgb(255 179 92 / .08);
   --erp-shadow-nav: 10px 0 32px rgb(0 0 0 / .4);
 }
 .erp-3d-stage {
@@ -186,22 +187,23 @@
 }
 
 
-/* === Auth screens: same 3D depth, coral key-light + amber fill (Night Workshop) === */
+/* === Auth screens: same 3D depth, orange key-light + amber fill (FB cover) === */
 :root {
-  --erp-accent: #c93820;
-  --erp-accent-2: #d99a1e;
-  --erp-accent-text: #c93820;
-  --erp-glow: rgb(201 56 32 / .1);
-  --erp-glow-2: rgb(217 154 30 / .08);
-  --erp-grid: rgb(11 12 16 / .05);
+  --erp-accent: #f07a1a;
+  --erp-accent-2: #ffb35c;
+  /* darker orange: #f07a1a is 2.5:1 on cream, this is ~5:1 */
+  --erp-accent-text: #a84e0a;
+  --erp-glow: rgb(240 122 26 / .1);
+  --erp-glow-2: rgb(255 179 92 / .1);
+  --erp-grid: rgb(11 30 58 / .05);
 }
 .dark {
-  --erp-accent: #ff5a45;
-  --erp-accent-2: #f5c45e;
-  --erp-accent-text: #ff8169;
-  --erp-glow: rgb(255 90 69 / .16);
-  --erp-glow-2: rgb(245 196 94 / .07);
-  --erp-grid: rgb(231 226 211 / .04);
+  --erp-accent: #f07a1a;
+  --erp-accent-2: #ffb35c;
+  --erp-accent-text: #f07a1a;
+  --erp-glow: rgb(240 122 26 / .16);
+  --erp-glow-2: rgb(255 179 92 / .08);
+  --erp-grid: rgb(236 231 214 / .04);
 }
 .erp-auth-stage {
   display: flex;
