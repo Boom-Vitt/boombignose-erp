@@ -137,6 +137,15 @@ test('gateway: an allowed group image is stored with source type, user and OCR t
   assert.equal(records(s.dir).length, 1);
 });
 
+test('gateway: three photos in one webhook are each acknowledged with their own free reply, never a push', async (t) => {
+  const s = await gateway(t, true);
+  await s.post([groupImage('601'), groupImage('602'), groupImage('603')]);
+  const sends = () => s.reqs.filter((r) => r.url.endsWith('/message/reply') || r.url.endsWith('/message/push'));
+  await s.waitFor(() => sends().length === 3);
+  assert.equal(s.reqs.filter((r) => r.url.endsWith('/message/push')).length, 0);
+  assert.equal(new Set(sends().map((r) => JSON.parse(r.body!).replyToken)).size, 3, 'each event spends its own token');
+});
+
 test('gateway: with LINE disabled media is still stored but nothing is replied or pushed; strangers are ignored', async (t) => {
   const s = await gateway(t, false);
   await s.post([groupImage('777'), { ...groupImage('888'), source: { type: 'group', groupId: 'C9999999999999999999999999999999', userId: OWNER } }]);

@@ -45,7 +45,7 @@ interface LineEvent {
   type?: string; webhookEventId?: unknown; replyToken?: unknown; source?: Source; timestamp?: unknown;
   message?: { type?: string; text?: unknown; id?: unknown; fileName?: unknown }; postback?: { data?: unknown };
 }
-interface Chat { token?: { value: string; at: number }; queue: (() => Promise<void>)[]; busy: boolean }
+interface Chat { tokens: { value: string; at: number }[]; queue: (() => Promise<void>)[]; busy: boolean }
 interface Pending { id: string; to: string; state: PendingState; text?: string; delivered: number; sending?: boolean }
 
 function chunkText(text: string): string[] {
@@ -84,7 +84,7 @@ export function createLineGateway(options: LineGatewayOptions) {
 
   const chatOf = (to: string): Chat => {
     let c = chats.get(to);
-    if (!c) chats.set(to, (c = { queue: [], busy: false }));
+    if (!c) chats.set(to, (c = { tokens: [], queue: [], busy: false }));
     return c;
   };
   // The live allow list, for work that was queued before a settings save: a chat removed since then gets no run and no answer.
@@ -123,11 +123,18 @@ export function createLineGateway(options: LineGatewayOptions) {
     if (!res.ok) throw new Error(`LINE ${path} failed: ${res.status} ${mask(text).slice(0, 200)}`);
   }
 
-  /** The chat's latest reply token if it is still young; tokens are single use, so it is dropped either way. */
+  /**
+   * The chat's oldest reply token that is still young. Each webhook event brings its own single-use token, so a
+   * burst (three photos at once) can answer every event for free instead of pushing all but the last.
+   */
   function takeToken(to: string): string | undefined {
-    const chat = chatOf(to), t = chat.token;
-    chat.token = undefined;
-    return t && now() - t.at < TOKEN_TTL_MS ? t.value : undefined;
+    const chat = chatOf(to);
+    chat.tokens = chat.tokens.filter((t) => now() - t.at < TOKEN_TTL_MS);
+    return chat.tokens.shift()?.value;
+  }
+  function addToken(to: string, value: string): void {
+    const chat = chatOf(to); // dropping expired ones here too keeps a chat that is never answered (LINE disabled) bounded
+    chat.tokens = [...chat.tokens.filter((t) => now() - t.at < TOKEN_TTL_MS), { value, at: now() }];
   }
 
   // At most 5 messages per call. The first call tries the free reply token; if there is none, or LINE refuses it
@@ -311,7 +318,7 @@ export function createLineGateway(options: LineGatewayOptions) {
     const isMedia = msgType === 'image' || msgType === 'video' || msgType === 'audio' || msgType === 'file';
     const isTap = ev.type === 'postback' && typeof ev.postback?.data === 'string';
     if (!isText && !isMedia && !isTap) return;
-    if (typeof ev.replyToken === 'string') chatOf(chat.to).token = { value: ev.replyToken, at: now() };
+    if (typeof ev.replyToken === 'string') addToken(chat.to, ev.replyToken);
     if (isText) {
       const text = ev.message!.text as string;
       enqueue(chat.to, () => runMessage(chat.to, chat.userId, text));
@@ -419,7 +426,7 @@ export function createLineGateway(options: LineGatewayOptions) {
     /** Stops new work and sends, drops queued runs, stops timers and denies open approvals. */
     async close(): Promise<void> {
       closed = true; closing.abort();
-      for (const chat of chats.values()) { chat.queue.length = 0; chat.token = undefined; }
+      for (const chat of chats.values()) { chat.queue.length = 0; chat.tokens.length = 0; }
       for (const id of [...approvals.keys()]) settleApproval(id, false);
       for (const t of slowTimers) timers.clearTimeout(t);
       slowTimers.clear();
