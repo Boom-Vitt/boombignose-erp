@@ -35,7 +35,7 @@ export function AppSidebar({
   const pathname = usePathname()
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" className="erp-3d-nav">
       <SidebarHeader>
         <OrgSwitcher orgs={orgs} currentOrgId={currentOrgId} />
       </SidebarHeader>

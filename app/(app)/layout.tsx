@@ -24,7 +24,7 @@ export default async function AppLayout({
         currentOrgId={ctx.orgId}
       />
       <SidebarInset>
-        <header className="bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex h-14 items-center gap-2 border-b px-4 backdrop-blur">
+        <header className="erp-3d-toolbar bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex h-14 items-center gap-2 border-b px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-1 h-5" />
           <span className="text-sm font-medium">{ctx.orgName}</span>

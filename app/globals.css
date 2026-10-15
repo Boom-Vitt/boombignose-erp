@@ -157,3 +157,20 @@
 @media (prefers-reduced-motion: reduce) {
   .erp-3d-card, .erp-3d-card:hover { transition: none; transform: none; }
 }
+.erp-3d-nav {
+  transform: translateZ(10px);
+  box-shadow: 10px 0 28px rgb(15 23 42 / .05);
+}
+.erp-3d-toolbar {
+  transform: translateZ(6px);
+}
+.erp-3d-list > * {
+  transition: transform 220ms cubic-bezier(.22, 1, .36, 1), box-shadow 220ms cubic-bezier(.22, 1, .36, 1);
+}
+.erp-3d-list > *:hover {
+  transform: translateY(-2px) translateZ(4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .erp-3d-list > *, .erp-3d-list > *:hover { transition: none; transform: none; }
+}
+
