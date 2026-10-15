@@ -174,3 +174,58 @@
   .erp-3d-list > *, .erp-3d-list > *:hover { transition: none; transform: none; }
 }
 
+
+/* === Auth screens: same 3D depth, one orange accent (BoomBigNose key-light) === */
+:root {
+  --erp-accent: #b5501b;
+  --erp-accent-text: #a04414;
+}
+.dark {
+  --erp-accent-text: #f0a070;
+}
+.erp-auth-stage {
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  perspective: var(--erp-depth);
+  background: radial-gradient(48rem 24rem at 50% -8%, rgb(181 80 27 / .09), transparent 70%);
+}
+.erp-auth-card {
+  position: relative;
+  width: 100%;
+  max-width: 24rem;
+}
+.erp-auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--erp-accent);
+}
+.erp-auth-link {
+  color: var(--erp-accent-text);
+  font-weight: 500;
+  text-underline-offset: 4px;
+}
+.erp-auth-link:hover,
+.erp-auth-link:focus-visible {
+  text-decoration: underline;
+}
+.erp-auth-icon {
+  color: var(--erp-accent);
+}
+.erp-auth-code {
+  text-align: center;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 1.25rem;
+  letter-spacing: .4em;
+}
+.erp-auth-qr {
+  width: 11rem;
+  height: 11rem;
+  border-radius: var(--radius);
+  background: #fff;
+  padding: .5rem;
+}

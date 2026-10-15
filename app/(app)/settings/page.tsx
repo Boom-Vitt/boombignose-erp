@@ -2,7 +2,7 @@ import Link from "next/link"
 import { Wallet, Flame, Users, Lock, PlugZap, ChevronRight } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
-import { requireOrgContext } from "@/lib/auth"
+import { getAuthenticatedUser, requireOrgContext } from "@/lib/auth"
 import { formatTHB, satangToBaht } from "@/lib/money"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { SettingsForm } from "./_components/settings-form"
 import { TeamInvitations } from "./_components/team-invitations"
+import { TwoFactorSettings } from "./_components/two-factor-settings"
 import { updateOrgSettings } from "./actions"
 
 export const dynamic = "force-dynamic"
@@ -35,6 +36,9 @@ export default async function SettingsPage() {
   const ctx = await requireOrgContext()
   const supabase = await createClient()
   const canEdit = ctx.role === "owner" || ctx.role === "admin"
+  const totpFactor = (await getAuthenticatedUser())?.factors?.find(
+    (f) => f.factor_type === "totp" && f.status === "verified"
+  )
 
   // org_settings is a single row per org (org_id unique). May not exist yet.
   const { data: settings } = await supabase
@@ -238,6 +242,18 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Two-factor authentication</CardTitle>
+          <CardDescription>
+            Protect your account with a code from an authenticator app at sign-in.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TwoFactorSettings factorId={totpFactor?.id ?? null} />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
