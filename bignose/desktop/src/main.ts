@@ -1,7 +1,7 @@
 // App shell: asks the Rust side for the daemon, then wires Chat, Settings and the event stream.
 import { createApi } from './api.ts';
 import type { Api } from './api.ts';
-import { mountAgents } from './agents.ts';
+import { mountAgentForm, mountAgents } from './agents.ts';
 import { createChat } from './chat.ts';
 import { appIcon, btn, el, errMsg, icon, toast } from './dom.ts';
 import { provisionErp } from './os/erp-setup.ts';
@@ -159,16 +159,21 @@ function shell(api: Api, erpAgent?: string): void {
   function route(): void {
     const asked = /^#\/settings\/(\w+)/.exec(location.hash)?.[1];
     const section = SECTIONS.find((s) => s.id === (asked && ALIASES[asked] || asked));
-    const isAgents = location.hash === '#/agents';
+    const agentRoute = /^#\/agents(?:\/([^/?]+))?$/.exec(location.hash);
+    const isAgents = agentRoute !== null;
     view = section ? 'settings' : isAgents ? 'agents' : 'chat';
     chat.root.hidden = view !== 'chat';
     agents.hidden = !isAgents;
     settings.hidden = !section;
     if (chat.root.hidden) chat.leave();
     nav();
-    if (isAgents) mountAgents(agents, api, id => {
-      void chat.refreshAgents().then(() => { if (id) return chat.selectAgent(id); });
-    });
+    if (agentRoute) {
+      const changed = (id?: string) => { void chat.refreshAgents().then(() => { if (id) return chat.selectAgent(id); }); };
+      const form = agentRoute[1];
+      if (form === undefined) mountAgents(agents, api, changed);
+      else mountAgentForm(agents, api, form === 'new' ? undefined : decodeURIComponent(form), changed);
+    }
+    if (isAgents) agents.scrollTop = 0;
     if (section) {
       for (const t of tabs) { const on = t.id === `tab-${section.id}`; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; }
       const host = el('div', { id: 'settings-panel', role: 'tabpanel', 'aria-labelledby': `tab-${section.id}` });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApi } from '../src/api.ts';
-import { mountAgents } from '../src/agents.ts';
+import { mountAgentForm, mountAgents } from '../src/agents.ts';
 import { createChat } from '../src/chat.ts';
 import { agent, config } from './agent-fixture.ts';
 import { TestNode, installDom, json, flush } from './dom-fixture.ts';
@@ -27,6 +27,7 @@ function harness(models: (id: string) => Response | Promise<Response> = () => js
     if (path === '/api/settings') return json({ config: stored, secrets: {} });
     if (path === '/api/mcp') return json({ servers: [] });
     if (path === '/api/skills') return json({ skills: [] });
+    if (path === '/api/schedules') return json({ jobs: [] });
     if (path.startsWith('/api/providers/')) return models(decodeURIComponent(path.split('/')[3]!));
     if (path === '/api/agents' && method === 'GET') return json({ agents });
     if ((path === '/api/agents' && method === 'POST') || method === 'PATCH') {
@@ -40,10 +41,11 @@ function harness(models: (id: string) => Response | Promise<Response> = () => js
 }
 
 async function edit(h: ReturnType<typeof harness>, create = false) {
-  mountAgents(h.pane as unknown as HTMLElement, h.api, () => {}); await flush();
-  button(h.pane, create ? 'Create agent' : 'Edit').fire('click');
+  mountAgentForm(h.pane as unknown as HTMLElement, h.api, create ? undefined : agent.id, () => {}); await flush();
   return h.pane.querySelector('form')!;
 }
+/** Picks an option of the Model select the way a click on it does. */
+const choose = (form: TestNode, value: string) => { const s = control(form, 'Model'); s.value = value; s.fire('change'); };
 
 test('model suggestions reload for the selected provider without choosing or overwriting a typed model', async t => {
   t.after(installDom());
@@ -51,7 +53,7 @@ test('model suggestions reload for the selected provider without choosing or ove
   const h = harness(id => id === 'local' ? local.promise : json({ ok: true, models: [{ id: 'remote-model', label: 'Remote model' }] }));
   const form = await edit(h);
   assert.ok(h.requests.includes('/api/providers/local/models'));
-  const model = control(form, 'Model'); model.value = 'my/custom-model';
+  const model = control(form, 'Model name'); model.value = 'my/custom-model';
   const provider = control(form, 'Provider'); provider.value = 'remote'; provider.fire('change'); await flush();
   assert.ok(h.requests.includes('/api/providers/remote/models'));
   assert.equal(model.value, 'my/custom-model');
@@ -84,27 +86,28 @@ for (const failure of ['provider', 'http', 'network']) test(`a ${failure} model-
   const form = await edit(h); await flush();
   const hint = form.querySelectorAll('.muted').find(n => n.textContent.includes("Couldn't load the model list:"));
   assert.ok(hint); assert.match(hint.textContent, /You can still type a model id\./);
-  control(form, 'Model').value = 'any/model'; form.fire('submit'); await flush();
+  control(form, 'Model name').value = 'any/model'; form.fire('submit'); await flush();
   assert.equal(h.writes[0]!.body.model, 'any/model');
 });
 
-test('old agents show blank tokens without effort, and the max-token help text is visible', async t => {
+test('old agents show a blank longest answer without effort, and its help text is visible', async t => {
   t.after(installDom());
   const h = harness(undefined, { ...agent, provider: 'remote' });
   const form = await edit(h);
   assert.ok(!form.querySelectorAll('.field-label').some(n => n.textContent === 'Effort'));
-  assert.equal(control(form, 'Max tokens').value, '');
-  assert.ok(form.textContent.includes("Blank uses the provider's setting. Thinking models (for example qwen3 or deepseek-r1) spend tokens on thinking first, so leave it blank unless you need a limit."));
+  assert.equal(control(form, 'Longest answer').value, '');
+  assert.ok(form.textContent.includes('Tokens. Leave blank: thinking models like qwen3 need room to think first.'));
   form.fire('submit'); await flush();
   assert.ok(!Object.hasOwn(h.writes[0]!.body, 'effort')); assert.equal(h.writes[0]!.body.maxTokens, null);
 });
 
-test('tokens persist on edit across provider changes and cards show provider and model', async t => {
+test('tokens persist on edit across provider changes and the roster shows provider and model', async t => {
   t.after(installDom());
   const h = harness(undefined, { ...agent, provider: 'remote', maxTokens: 9000 });
   const form = await edit(h);
-  assert.match(h.pane.querySelector('.agent-card')!.textContent, /remote · one-model/);
-  assert.equal(control(form, 'Max tokens').value, '9000');
+  const roster = new TestNode('div'); mountAgents(roster as unknown as HTMLElement, h.api, () => {}); await flush();
+  assert.match(roster.querySelector('.agent-row')!.querySelector('.agent-meta')!.textContent, /remote · one-model/);
+  assert.equal(control(form, 'Longest answer').value, '9000');
   const provider = control(form, 'Provider'); provider.value = 'local'; provider.fire('change');
   form.fire('submit'); await flush();
   assert.equal(h.writes[0]!.body.maxTokens, 9000);
@@ -115,10 +118,13 @@ test('new agents save max tokens through POST', async t => {
   t.after(installDom());
   const h = harness(); const form = await edit(h, true);
   control(form, 'Name').value = 'New';
+  choose(form, 'other');
   const provider = control(form, 'Provider'); provider.value = 'remote'; provider.fire('change');
-  control(form, 'Max tokens').value = '1000000';
+  control(form, 'Model name').value = 'typed/model';
+  control(form, 'Longest answer').value = '1000000';
   form.fire('submit'); await flush();
   assert.equal(h.writes[0]!.method, 'POST');
+  assert.equal(h.writes[0]!.body.provider, 'remote'); assert.equal(h.writes[0]!.body.model, 'typed/model');
   assert.ok(!Object.hasOwn(h.writes[0]!.body, 'effort')); assert.equal(h.writes[0]!.body.maxTokens, 1000000);
 });
 
@@ -126,17 +132,17 @@ test('clearing stored tokens sends null, and model suggestions leave an empty in
   t.after(installDom());
   const pending = Promise.withResolvers<Response>();
   const h = harness(() => pending.promise, { ...agent, provider: 'remote', maxTokens: 10 });
-  const form = await edit(h); control(form, 'Model').value = '';
+  const form = await edit(h); control(form, 'Model name').value = '';
   pending.resolve(json({ ok: true, models: [{ id: 'suggested' }] })); await flush();
-  assert.equal(control(form, 'Model').value, '');
-  control(form, 'Model').value = 'typed'; control(form, 'Max tokens').value = '';
+  assert.equal(control(form, 'Model name').value, '');
+  control(form, 'Model name').value = 'typed'; control(form, 'Longest answer').value = '';
   form.fire('submit'); await flush();
   assert.ok(!Object.hasOwn(h.writes[0]!.body, 'effort')); assert.equal(h.writes[0]!.body.maxTokens, null);
 });
 
 test('invalid native number input is blocked inline even when the browser exposes an empty value', async t => {
   t.after(installDom());
-  const h = harness(); const form = await edit(h); const tokens = control(form, 'Max tokens');
+  const h = harness(); const form = await edit(h); const tokens = control(form, 'Longest answer');
   tokens.value = ''; tokens.validity.badInput = true; tokens.fire('invalid'); form.fire('submit'); await flush();
   assert.equal(h.writes.length, 0);
   assert.equal(tokens.attrs['aria-invalid'], 'true');
@@ -149,7 +155,7 @@ test('max tokens accepts both bounds and blank, and blocks invalid values with a
   t.after(installDom());
   for (const value of ['0', '-1', '1.5', '1000001', 'invalid', '1', '1000000', '']) {
     const h = harness(); const form = await edit(h);
-    const tokens = control(form, 'Max tokens'); tokens.value = value; tokens.fire('input');
+    const tokens = control(form, 'Longest answer'); tokens.value = value; tokens.fire('input');
     form.fire('submit'); await flush();
     if (['1', '1000000', ''].includes(value)) {
       assert.equal(h.writes[0]!.body.maxTokens, value === '' ? null : Number(value));
@@ -159,6 +165,36 @@ test('max tokens accepts both bounds and blank, and blocks invalid values with a
       assert.equal(tokens.attrs['aria-invalid'], 'true');
     }
   }
+});
+
+const hidden = (form: TestNode, label: string) => form.querySelectorAll('.field').find(f => f.querySelector('.field-label')?.textContent === label)!.hidden;
+const twoModels = () => json({ ok: true, models: [{ id: 'listed-a' }, { id: 'listed-b', label: 'Listed B' }] });
+
+test('a new agent runs on the Settings model by default, or on a model the provider lists', async t => {
+  t.after(installDom());
+  const h = harness(twoModels); const form = await edit(h, true); await flush();
+  const model = control(form, 'Model');
+  assert.deepEqual(model.querySelectorAll('option').map(o => o.value), ['same', 'm:listed-a', 'm:listed-b', 'other']);
+  assert.equal(model.querySelector('option')!.textContent, 'Same as Settings (seed-only)');
+  assert.ok(hidden(form, 'Provider') && hidden(form, 'Model name'), 'the typed fields stay out of the way');
+  control(form, 'Name').value = 'Same'; form.fire('submit'); await flush();
+  assert.equal(h.writes[0]!.body.provider, 'local'); assert.equal(h.writes[0]!.body.model, 'seed-only');
+  choose(form, 'm:listed-b'); form.fire('submit'); await flush();
+  assert.equal(h.writes[1]!.body.provider, 'local'); assert.equal(h.writes[1]!.body.model, 'listed-b');
+  choose(form, 'other');
+  assert.ok(!hidden(form, 'Provider') && !hidden(form, 'Model name'), 'Other… shows the provider and the typed name');
+});
+
+test('editing shows an agent on a listed model as that model, and one on the Settings model as Same as Settings', async t => {
+  t.after(installDom());
+  const listed = harness(twoModels, { ...agent, model: 'listed-a' }); const form = await edit(listed); await flush();
+  assert.equal(control(form, 'Model').value, 'm:listed-a'); assert.ok(hidden(form, 'Model name'));
+  form.fire('submit'); await flush();
+  assert.equal(listed.writes[0]!.body.provider, 'local'); assert.equal(listed.writes[0]!.body.model, 'listed-a');
+  const same = harness(twoModels, { ...agent, model: 'seed-only' }); const sameForm = await edit(same); await flush();
+  assert.equal(control(sameForm, 'Model').value, 'same');
+  const typed = harness(twoModels, { ...agent, model: 'not-listed' }); const typedForm = await edit(typed); await flush();
+  assert.equal(control(typedForm, 'Model').value, 'other'); assert.equal(control(typedForm, 'Model name').value, 'not-listed');
 });
 
 test('transcript finishes tool rows only for actual results and reloads after an error', async t => {

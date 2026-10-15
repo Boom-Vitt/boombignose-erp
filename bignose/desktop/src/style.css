@@ -495,6 +495,16 @@ pre.code code { display: block; padding: var(--sp-3); overflow-x: auto; white-sp
 .menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
 .avatar-field { display: flex; align-items: center; gap: var(--sp-2); }
 .avatar-field input { width: 72px; text-align: center; font-size: 16px; }
+.menu-note { padding: 2px 10px 4px; font-size: var(--fs-xs); color: var(--muted); }
+.page-head > div { flex: 1; min-width: 0; }
+/* agent form: the rows that sit inside More options. Own rules, so removing the phase1 bridge does not touch them. */
+.agent-form fieldset { min-width: 0; margin: 0; padding: 10px var(--sp-4); border: 0; border-radius: 0; }
+.agent-form legend { padding: 0; font-weight: var(--fw-medium); }
+.agent-form .check { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
+.agent-form input[type=checkbox] { width: auto; min-height: 0; accent-color: var(--accent); }
+.agent-picks { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-2); }
+.agent-rules { display: grid; gap: 6px; padding: 10px var(--sp-4); }
+.agent-form .kv { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; }
 
 /* schedules */
 .when { display: flex; gap: var(--sp-2); }
@@ -610,7 +620,6 @@ input[type=checkbox]:not(.switch) { width: auto; min-height: 0; accent-color: va
 .tool-pick .hint { grid-column: 2; }
 .tool-pick-name { font: 12px var(--font-mono); }
 fieldset { margin: var(--sp-2) 0; padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); }
-.agent-picks { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-2); }
 .pad { padding: 10px var(--sp-3); }
 .card + .card, .card + form.card, form.card + .card { margin-top: var(--sp-4); }
 .card > .check { display: flex; }
