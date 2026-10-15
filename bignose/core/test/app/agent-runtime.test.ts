@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Runtime } from '../../src/app/runtime.ts';
@@ -305,6 +305,34 @@ test('a LINE-delivery schedule is refused while LINE is off: fireJob stops befor
   assert.equal(calls, 0, 'no model call for an answer with nowhere to go');
   assert.equal(h.store.listSessions().length, 0);
   assert.match(events.find(e => e.type === 'notification')!.body ?? '', /LINE is off/);
+});
+
+test("an agent's own prefix rule beats a global rule for one tool", async t => {
+  const requests: ProviderRequest[] = [];
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream(req) {
+    requests.push(req);
+    if (req.messages.length === 1) {
+      yield { type: 'tool_call', id: 'write', name: 'write_file', input: { path: 'own.txt', content: 'written' } };
+      yield { type: 'tool_call', id: 'echo', name: 'mcp__alpha__echo', input: { text: 'hi' } };
+    } else yield { type: 'text_delta', text: 'ok' };
+    yield done;
+  } }), c => {
+    c.mcp.servers.alpha = fakeMcp;
+    Object.assign(c.permissions, { shell: 'allow', read_file: 'allow', write_file: 'deny', mcp__alpha__echo: 'allow' }); // what Settings > Tools writes: one exact rule per tool
+  });
+  const agent = h.store.listAgents()[0]!;
+  h.store.updateAgent(agent.id, { permissions: { '*': 'deny', 'write_*': 'allow', 'mcp__*': 'ask' }, connectors: ['alpha'] });
+  for (const explicit of [false, true]) { // the run builds its own profile, or takes one made by runtime.profile()
+    requests.length = 0; rmSync(join(h.home, 'own.txt'), { force: true });
+    const session = h.store.createSession({ origin: { kind: 'cli' }, agentId: agent.id });
+    const profile = explicit ? h.runtime.profile(h.config, true, h.store.getAgent(agent.id)!) : undefined;
+    assert.equal((await h.runtime.start(session.id, 'work', { profile }).result).status, 'done');
+    const offered = requests[0]!.tools.map(tool => tool.name).filter(name => ['shell', 'read_file', 'write_file', 'mcp__alpha__echo'].includes(name)).sort();
+    assert.deepEqual(offered, ['mcp__alpha__echo', 'write_file'], 'the agent\'s * rule hides shell and read_file although the global rules allow them');
+    const output = results(requests.at(-1)!), byId = (id: string) => output.find(r => r.toolUseId === id)!;
+    assert.equal(byId('write').isError, false); assert.equal(readFileSync(join(h.home, 'own.txt'), 'utf8'), 'written'); // the agent's write_* allow beat the global write_file deny
+    assert.match(byId('echo').content, /denied by user/); // the agent's mcp__* ask beat the global exact allow (nobody answers a CLI approval here)
+  }
 });
 
 test('denied tools are not offered to the model, nested delegates included; the rest stay', async t => {

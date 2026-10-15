@@ -106,7 +106,7 @@ export function mountTools(pane: HTMLElement, api: Api): void {
     const root = el('div', { class: 'tools-page' },
       el('h2', { class: 'group-title' }, 'What BigNose may do'),
       el('div', { class: 'card' }, ...groupRows),
-      el('p', { class: 'group-foot' }, 'Never hides the tool from BigNose completely. Ask shows a question each time.'),
+      el('p', { class: 'group-foot' }, "Never hides the tool from BigNose completely. Ask shows a question each time. An agent's own rules on the Agents page beat these."),
       el('h2', { class: 'group-title' }, 'Workspace folder'),
       el('div', { class: 'card' }, field('Folder BigNose works in', workspace, 'Used by the file and shell tools. Use a full path, or start with ~/.')),
       el('h2', { class: 'group-title' }, 'Add-ons'),

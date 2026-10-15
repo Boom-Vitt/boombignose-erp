@@ -114,7 +114,7 @@ test('delegate forwards to its separate context runner and errors when unavailab
 test('noisy shell output retains at most 100 kB of captured buffers', async t => {
   const { dir } = setup(t);
   await promisify(execFile)(process.execPath, ['--expose-gc', fileURLToPath(new URL('process-memory.ts', import.meta.url)), dir], {
-    timeout: 10_000, env: { ...process.env, BIGNOSE_HOME: dir },
+    timeout: 90_000, env: { ...process.env, BIGNOSE_HOME: dir }, // the fixture's own bounds sum to 60 s
   });
 });
 

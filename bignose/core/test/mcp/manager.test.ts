@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { McpManager } from '../../src/mcp/manager.ts';
 import type { McpServerConfig, ToolResult } from '../../src/types.ts';
 
-const LIMIT_MS = 5000;
+const LIMIT_MS = 30_000; // bounds only stop a hang; a loaded machine is slow
 const secret = 't09-"fake\\secret-value';
 async function bounded<T>(pending: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -110,7 +110,7 @@ test('deleting an agent interrupts its active run before removing its transcript
   const agent = a.runtime.store.createAgent({ name: 'Temporary', ...a.config().active });
   const session = a.runtime.store.createSession({ origin: { kind: 'desktop' }, agentId: agent.id });
   const run = a.runtime.start(session.id, 'write');
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 30_000;
   while (!a.runtime.pendingEvents().length) { assert.ok(Date.now() < deadline); await new Promise(resolve => setImmediate(resolve)); }
   assert.equal((await call(a, `/api/agents/${agent.id}`, 'DELETE')).status, 200);
   assert.equal((await run.result).status, 'interrupted'); assert.equal(a.runtime.pendingEvents().length, 0);

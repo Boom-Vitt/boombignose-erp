@@ -14,8 +14,9 @@ export interface OsInfo { node: string; erpDir: string; mcpServer: string }
 
 // ERP text can carry a prompt injection, so the assistant gets an allow-list: everything is denied except the read-only
 // erp tools. The built-ins read local files (read_file, list_files, search_files) and web_fetch sends data out, so none may run.
-// `*` also covers tools added later. Every core tool is named too, because an exact name in the owner's global permissions
-// beats the agent's `*` when core/src/app/runtime.ts merges the two. MCP tools are mcp__<server>__<tool> and ask by default,
+// `*` also covers tools added later. An agent's own rules decide as a whole: core/src/app/runtime.ts asks them first (exact name, then
+// longest prefix) and the owner's global permissions only for what they leave open, so a global `shell: allow` cannot lift them. Every core
+// tool is still named, as defence in depth should that order ever change. MCP tools are mcp__<server>__<tool> and ask by default,
 // so the erp tools are allowed to keep a read from becoming an approval card.
 const NEVER = [
   'shell', 'read_file', 'write_file', 'edit_file', 'list_files', 'search_files', 'web_fetch', 'delegate', // core/src/tools/index.ts

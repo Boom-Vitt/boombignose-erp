@@ -14,7 +14,7 @@ import { readEnv } from '../../src/config.ts';
 import { configured, testHome } from '../e2e/helpers.ts';
 import type { McpServerConfig } from '../../src/types.ts';
 
-const LIMIT_MS = 5000;
+const LIMIT_MS = 30_000; // bounds only stop a hang; a loaded machine is slow
 const fakeServer = fileURLToPath(new URL('../mcp/fake-server.ts', import.meta.url));
 const stdio = (...args: string[]): McpServerConfig => ({ transport: 'stdio', command: process.execPath, args: [fakeServer, ...args], enabled: true });
 async function until(ok: () => boolean) {

@@ -135,6 +135,32 @@ test('the cloud card shows the Service and the API key, and saving writes the ch
   assert.deepEqual(h.calls.find(c => c.path === '/api/secrets')!.body, { name: 'REMOTE_API_KEY', value: 'paste-me-456' });
 });
 
+test('a saved provider key can be removed from More options only after a confirm, and the rest of the form stays as typed', async t => {
+  t.after(installDom());
+  const dialogs: TestNode[] = [];
+  (document as any).body = { appendChild: (n: TestNode) => { dialogs.push(n); return n; } };
+  (TestNode.prototype as any).showModal = function () {};
+  t.after(() => { Reflect.deleteProperty(TestNode.prototype, 'showModal'); });
+  const answer = (dialog: TestNode, value: string) => { (dialog as any).returnValue = value; dialog.fire('close'); };
+  const h = harness(); const form = await open(h);
+  const removeRow = () => h.pane.querySelectorAll('.row').find(r => r.querySelector('.row-text')?.textContent.startsWith('Saved key'))!;
+  assert.equal(removeRow().hidden, true, 'This Mac has no saved key to remove');
+  const [mac, cloud] = radios(h.pane);
+  cloud!.checked = true; mac!.checked = false; cloud!.fire('change'); await flush();
+  assert.equal(removeRow().hidden, false); assert.ok(removeRow().textContent.includes('Saved as ••••1234.'));
+  type(form, control(form, 'Model'), 'claude-y');
+  button(h.pane, 'Remove key').fire('click'); await flush();
+  assert.equal(dialogs[0]!.querySelector('h2')!.textContent, 'Remove the Remote key?');
+  assert.deepEqual(dialogs[0]!.querySelectorAll('button').map(b => b.textContent), ['Cancel', 'Remove key']);
+  answer(dialogs[0]!, 'cancel'); await flush();
+  assert.ok(!h.calls.some(c => c.path === '/api/secrets'), 'Cancel removes nothing'); assert.equal(removeRow().hidden, false);
+  button(h.pane, 'Remove key').fire('click'); await flush();
+  answer(dialogs[1]!, 'ok'); await flush();
+  assert.deepEqual(h.calls.find(c => c.path === '/api/secrets')!.body, { name: 'REMOTE_API_KEY', value: '' });
+  assert.equal(removeRow().hidden, true); assert.ok(h.pane.textContent.includes('Not set yet.')); assert.ok(!h.pane.textContent.includes('Saved as ••••1234.'));
+  assert.equal(control(form, 'Model').value, 'claude-y', 'a typed model survives the removal'); assert.equal(barText(h.pane), 'Runs on and Model changed');
+});
+
 test('the test line says what it checked, and typing resets it to "Not tested yet." until Test is pressed', async t => {
   t.after(installDom());
   const h = harness(); const form = await open(h);

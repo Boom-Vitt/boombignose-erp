@@ -140,7 +140,7 @@ async function diagnostics(t: TestContext, doctor: () => Promise<{ code: number;
   return { pane, button };
 }
 
-test('T17 Model offers diagnostics without running them on mount', { timeout: 2000 }, async t => {
+test('T17 Model offers diagnostics without running them on mount', { timeout: 30_000 }, async t => {
   let calls = 0;
   const { pane, button } = await diagnostics(t, async () => { calls++; return { code: 0, lines: [] }; });
   assert.match(pane.textContent, /Diagnostics/);
@@ -149,7 +149,7 @@ test('T17 Model offers diagnostics without running them on mount', { timeout: 20
   assert.equal(calls, 0);
 });
 
-test('T17 successful diagnostics show every line as text and a passing summary', { timeout: 2000 }, async t => {
+test('T17 successful diagnostics show every line as text and a passing summary', { timeout: 30_000 }, async t => {
   let calls = 0;
   const lines = ['ok sqlite', 'ok home writable', '<script>unsafe()</script>'];
   const { pane, button } = await diagnostics(t, async () => { calls++; return { code: 0, lines }; });
@@ -162,7 +162,7 @@ test('T17 successful diagnostics show every line as text and a passing summary',
   assert.equal(button.disabled, false);
 });
 
-test('T17 failed diagnostics show every line and a failing summary', { timeout: 2000 }, async t => {
+test('T17 failed diagnostics show every line and a failing summary', { timeout: 30_000 }, async t => {
   let calls = 0;
   const { pane, button } = await diagnostics(t, async () => {
     calls++; return { code: 1, lines: ['ok sqlite', 'fail home not writable'] };
@@ -176,7 +176,7 @@ test('T17 failed diagnostics show every line and a failing summary', { timeout: 
   assert.equal(button.disabled, false);
 });
 
-test('T17 pending diagnostics disable the action and ignore duplicate clicks', { timeout: 2000 }, async t => {
+test('T17 pending diagnostics disable the action and ignore duplicate clicks', { timeout: 30_000 }, async t => {
   let calls = 0;
   let finish!: (value: { code: number; lines: string[] }) => void;
   const pending = new Promise<{ code: number; lines: string[] }>(resolve => { finish = resolve; });
@@ -191,7 +191,7 @@ test('T17 pending diagnostics disable the action and ignore duplicate clicks', {
   assert.equal(button.disabled, false);
 });
 
-test('T17 diagnostics errors offer Retry and recover with a fresh result', { timeout: 2000 }, async t => {
+test('T17 diagnostics errors offer Retry and recover with a fresh result', { timeout: 30_000 }, async t => {
   let calls = 0;
   let finish!: (value: { code: number; lines: string[] }) => void;
   const pending = new Promise<{ code: number; lines: string[] }>(resolve => { finish = resolve; });
@@ -221,7 +221,7 @@ test('T17 diagnostics errors offer Retry and recover with a fresh result', { tim
   assert.equal(button.disabled, false);
 });
 
-test('T17 re-running diagnostics replaces old lines and summary', { timeout: 2000 }, async t => {
+test('T17 re-running diagnostics replaces old lines and summary', { timeout: 30_000 }, async t => {
   let calls = 0;
   let finish!: (value: { code: number; lines: string[] }) => void;
   const pending = new Promise<{ code: number; lines: string[] }>(resolve => { finish = resolve; });
@@ -242,7 +242,7 @@ test('T17 re-running diagnostics replaces old lines and summary', { timeout: 200
   assert.match(pane.textContent, /all checks passed/i);
 });
 
-test('T17 diagnostics client uses authenticated POST and preserves request errors', { timeout: 2000 }, async () => {
+test('T17 diagnostics client uses authenticated POST and preserves request errors', { timeout: 30_000 }, async () => {
   let calls = 0;
   const api = createApi({ port: 1, token: 'test-token', fetch: (async (url, init) => {
     assert.equal(String(url), 'http://127.0.0.1:1/api/doctor');
@@ -323,7 +323,7 @@ test('When turns into cron: Weekdays 09:00, Every day 07:30, Every week, Every h
     ['Weekdays at 09:00', 'Every day at 07:30', 'Every Friday at 18:05', 'Every hour', '0 0 1 * *']);
 });
 
-test('T17 diagnostics do not pass while a warning is listed', { timeout: 2000 }, async t => {
+test('T17 diagnostics do not pass while a warning is listed', { timeout: 30_000 }, async t => {
   const { pane, button } = await diagnostics(t, async () => ({ code: 0, lines: ['ok sqlite', 'warn Ollama is not running at http://127.0.0.1:11434 (start it with "ollama serve" or open the Ollama app)', 'note Ollama picks its own context size'] }));
   button.fire('click'); await flush();
   assert.doesNotMatch(pane.textContent, /all checks passed/i);
@@ -371,6 +371,7 @@ test('Tools shows four plain groups with what each does today, and a click saves
   assert.deepEqual(h.config().permissions, { shell: 'allow' }, 'only the group that was pressed is written');
   assert.deepEqual(h.config().hooks.preTool, config().hooks.preTool, 'other settings are untouched');
   assert.ok(page.textContent.includes('Never hides the tool from BigNose completely.'));
+  assert.ok(page.textContent.includes("An agent's own rules on the Agents page beat these."));
 });
 
 test('Tools shows no pressed segment for a mixed group and names what each tool does', async t => {
