@@ -240,7 +240,8 @@ export interface Config {
   An HTTP client goes down (`connected` false, the reason kept for the card) when `fetch` fails (dead server) or the
   server answers 401/403; a timed-out or interrupted request does not take it down. On a 404 for a request that
   carried a session id (the server forgot the session) it re-initializes once with a new session and repeats the
-  request; calls that fail together share that one renewal, and a second 404 on the fresh session takes it down.
+  request; calls that fail together share that one renewal, a request that starts during a renewal waits for it
+  (so it never goes out without a session id), and a second 404 on the fresh session takes it down.
 - `mcp/manager.ts`: `McpManager(servers: Record<string, McpServerConfig>, env: Record<string,string>)`:
   `start()` connects enabled servers all at once (a slow one never delays the next; each failure stays on its own
   entry) and resolves when each is up or failed, `tools(): Tool[]` (selected tools only; name `mcp__<server>__<tool>`
@@ -252,7 +253,8 @@ export interface Config {
   reference a changed `${NAME}`; a connector that failed to start is not retried until its config or one of its
   variables changes, one that was up and exited is restarted by the next apply), `update(servers, env?)` (`apply`
   then wait for the starts), `settle(names, ms, signal)` (wait up to `ms` for those connectors that are still
-  starting; never throws), `waitFor(names, signal)` (wait for initialization and tool discovery, up to 180 s,
+  starting; never throws; a start that is replaced, disabled or stopped while it waits for the old client to close
+  never connects), `waitFor(names, signal)` (wait for initialization and tool discovery, up to 180 s,
   abortable, throws on startup failure), `stop()`.
   Provider and MCP HTTP requests reject redirects (`redirect: 'error'`), including MCP session cleanup, so
   authentication headers never follow a redirect to another origin.
@@ -519,8 +521,8 @@ export interface Config {
   result, collapsible), Allow/Deny cards for approvals, stop button. **Settings** — Providers & models (masked keys,
   set/replace key, base URL, model, active provider), Connectors (MCP list, enable toggle, per-tool selection, add
   stdio/http, test; REA card with one-click enable; the badge reads Off, Starting…, Connected or Error, and the card
-  polls while a connector is starting; the Tools panel of a connector that is not connected says to turn it on and has no
-  Save selection, and a connector that lists no tools has none either, so an empty selection is saved only by choosing
+  polls while a connector is starting; the Tools panel of a connector that is not connected says why (off: turn it on; starting: wait;
+  failed: fix the error, then turn it off and on to retry) and has no Save selection, and a connector that lists no tools has none either, so an empty selection is saved only by choosing
   None on a connected connector), Messaging (LINE: token, secret, allowlists, port, public URL,
   enable, status, webhook URL), Skills, Memory, Schedules.
 - Look: dark, modern, serious. No third-party product names in the app's own labels (names inside provider and

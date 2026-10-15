@@ -106,7 +106,13 @@ export class McpClient {
   }
   private async post(message: Rpc, signal?: AbortSignal, timeoutMs = 60_000, renewed = false): Promise<any> {
     if (this.config.transport !== 'http') throw new Error('Not an HTTP server');
-    const used = this.session, aborted = AbortSignal.any([this.controller.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
+    const handshake = message.method === 'initialize' || message.method === 'notifications/initialized';
+    const aborted = AbortSignal.any([this.controller.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
+    if (this.renewing && !handshake) { // a new session is being set up: a request sent now would carry no session id
+      await Promise.race([this.renewing.catch(() => {}), new Promise<never>((_, reject) => aborted.addEventListener('abort', () => reject(aborted.reason), { once: true }))]);
+      if (this.failure) throw this.failure;
+    }
+    const used = this.session;
     let response: Response;
     try {
       response = await fetch(this.config.url, {
@@ -122,7 +128,6 @@ export class McpClient {
     }
     if (!response.ok) {
       const error = this.safe(`MCP HTTP ${response.status}: ${await response.text()}`);
-      const handshake = message.method === 'initialize' || message.method === 'notifications/initialized';
       if (response.status === 404 && used && !renewed && !handshake) { await this.renew(used); return this.post(message, signal, timeoutMs, true); }
       if (response.status === 401 || response.status === 403 || response.status === 404) this.fail(error); // credentials refused, or a fresh session refused too
       throw error;

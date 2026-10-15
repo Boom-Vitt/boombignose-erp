@@ -52,8 +52,10 @@ export function mountConnectors(pane: HTMLElement, api: Api): void {
       panel.hidden = !panel.hidden;
       if (panel.hidden || loaded) return;
       loaded = true;
-      // a connector that is off or still starting lists no tools yet; offering to save then would store an empty selection
-      if (!s.connected) panel.replaceChildren(el('p', { class: 'muted' }, 'Turn this connector on and wait until it shows Connected to choose its tools.'));
+      // a connector that is off, starting or failed lists no tools; offering to save then would store an empty selection
+      if (!s.connected) panel.replaceChildren(el('p', { class: 'muted' }, !s.enabled ? 'Turn this connector on to choose its tools.'
+        : s.starting ? 'This connector is still starting. Choose its tools once it shows Connected.'
+        : 'This connector is not connected, so its tools cannot be listed. Fix the error above, then turn it off and on again to retry.'));
       else void load(panel, () => api.mcpTools(s.name), ({ tools }) => renderTools(panel, s.name, tools));
     });
 

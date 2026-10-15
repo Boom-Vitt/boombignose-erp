@@ -37,6 +37,7 @@ export class McpManager {
       entry.starting = (async () => {
         try {
           await previous?.client.close();
+          if (this.entries.get(name) !== entry) return; // stop() or apply() replaced us meanwhile: a client connected now would belong to nobody
           await entry.client.connect(); entry.specs = await entry.client.listTools();
         } catch (e) { entry.error = `connector ${name}: ${e instanceof Error ? e.message : String(e)}`; await entry.client.close(); }
         finally { entry.starting = undefined; }
@@ -114,11 +115,13 @@ export class McpManager {
   async apply(servers: Record<string, McpServerConfig>, env = this.env): Promise<string[]> {
     const generation = this.generation;
     const changed = new Set([...Object.keys(env), ...Object.keys(this.env)].filter(k => env[k] !== this.env[k]));
+    const stale: McpClient[] = [];
     for (const [name, entry] of this.entries) {
-      if (JSON.stringify(this.servers[name]) !== JSON.stringify(servers[name]) || refs(servers[name]).some(v => changed.has(v))) { this.entries.delete(name); await entry.client.close(); }
+      if (JSON.stringify(this.servers[name]) !== JSON.stringify(servers[name]) || refs(servers[name]).some(v => changed.has(v))) { this.entries.delete(name); stale.push(entry.client); }
     }
-    this.env = { ...env };
+    this.env = { ...env }; // set before any await, so a start() or a second apply() during the closes sees the new settings
     this.servers = structuredClone(servers);
+    await Promise.all(stale.map(client => client.close()));
     return generation === this.generation ? this.launch() : [];
   }
   async update(servers: Record<string, McpServerConfig>, env = this.env): Promise<void> { await this.apply(servers, env); await this.ready(); }

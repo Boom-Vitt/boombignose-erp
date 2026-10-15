@@ -190,14 +190,15 @@ function mcpPane(servers: { name: string; connected: boolean; enabled?: boolean;
 
 test('Save selection is hidden while the connector is not connected', async (t) => {
   t.after(installDom());
-  const h = mcpPane([{ name: 'off', connected: false, enabled: false }, { name: 'boot', connected: false, starting: true }, { name: 'live', connected: true }, { name: 'bare', connected: true }],
+  const h = mcpPane([{ name: 'off', connected: false, enabled: false }, { name: 'boot', connected: false, starting: true },
+    { name: 'bad', connected: false, error: 'connector bad: spawn x ENOENT' }, { name: 'live', connected: true }, { name: 'bare', connected: true }],
     { live: [{ name: 'echo', selected: true }, { name: 'add', selected: true }] });
   await flush();
-  for (const name of ['off', 'boot']) {
+  for (const [name, message] of [['off', /turn this connector on/i], ['boot', /still starting/i], ['bad', /not connected.*turn it off and on again to retry/i]] as const) {
     h.button(h.card(name), 'Tools')!.fire('click'); await flush();
     assert.equal(h.button(h.card(name), 'Save selection'), undefined, `${name}: no Save`);
     assert.equal(h.card(name).querySelector('.tool-picks'), null, `${name}: no empty picker`);
-    assert.match(h.card(name).querySelector('.tools-panel')!.textContent, /turn this connector on/i);
+    assert.match(h.card(name).querySelector('.tools-panel')!.textContent, message, `${name}: says what to do`);
   }
   h.button(h.card('bare'), 'Tools')!.fire('click'); await flush(); // connected but lists nothing: an empty save would hide every tool later
   assert.equal(h.button(h.card('bare'), 'Save selection'), undefined);

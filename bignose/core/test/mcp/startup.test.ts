@@ -21,6 +21,9 @@ async function bounded<T>(pending: Promise<T>): Promise<T> {
 }
 const ctx = { sessionId: 'test', origin: { kind: 'cli' as const }, cwd: '/', signal: new AbortController().signal, depth: 0 };
 const run = (tools: Tool[], name: string) => tools.find(tool => tool.name === name)!.run({ text: 'hi' }, ctx);
+async function until(ok: () => boolean) {
+  for (const stop = Date.now() + LIMIT_MS; !ok(); await new Promise(resolve => setTimeout(resolve, 10))) if (Date.now() > stop) assert.fail('timed out waiting');
+}
 const starts = (file: string) => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).length : 0;
 
 function stdioFixture(t: TestContext) {
@@ -92,9 +95,11 @@ test('a secret save restarts only the connectors that use it', async t => {
 
 // A fake streamable-HTTP MCP server whose sessions the test can expire, and which can answer 401.
 async function httpFixture(t: TestContext) {
-  const state = { initializes: 0, sessions: new Set<string>(), unauthorized: false, alwaysExpired: false };
+  // holdDelete / holdInitialize: promises a test sets to keep the server's DELETE / initialize reply waiting until it resolves them.
+  const state = { initializes: 0, deletes: 0, sessions: new Set<string>(), unauthorized: false, alwaysExpired: false,
+    holdDelete: undefined as Promise<void> | undefined, holdInitialize: undefined as Promise<void> | undefined };
   const server = http.createServer(async (req, res) => {
-    if (req.method === 'DELETE') { state.sessions.delete(String(req.headers['mcp-session-id'])); res.writeHead(200); res.end(); return; }
+    if (req.method === 'DELETE') { state.deletes++; await state.holdDelete; state.sessions.delete(String(req.headers['mcp-session-id'])); res.writeHead(200); res.end(); return; }
     let raw = ''; for await (const chunk of req) raw += chunk;
     const m = JSON.parse(raw), json = (body: unknown, headers: Record<string, string> = {}) => {
       res.writeHead(200, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify({ jsonrpc: '2.0', id: m.id, result: body }));
@@ -103,6 +108,7 @@ async function httpFixture(t: TestContext) {
     if (m.method === 'initialize') {
       state.initializes++;
       const session = `session-${state.initializes}`; state.sessions.add(session);
+      await state.holdInitialize;
       return json({ protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'http-fake', version: '1' } }, { 'Mcp-Session-Id': session });
     }
     const session = String(req.headers['mcp-session-id']);
@@ -155,4 +161,35 @@ test('an HTTP connector goes down on a dead server or 401, reports why, and an u
   assert.equal(dead.manager.status()[0]!.connected, false);
   assert.match(dead.manager.status()[0]!.error!, /connector h /);
   assert.deepEqual(dead.manager.tools(), []);
+});
+
+test('a restart that waits for the old client to close is dropped when the manager stops or the connector is disabled', async t => {
+  for (const how of ['stop', 'disable'] as const) {
+    const { state, config, manager, tools } = await httpFixture(t);
+    state.unauthorized = true;
+    assert.equal((await bounded(run(tools, 'mcp__h__echo'))).isError, true); // 401: down, its session still open on the server
+    state.unauthorized = false;
+    let release!: () => void; state.holdDelete = new Promise<void>(resolve => { release = resolve; });
+    const restarting = manager.start(); // the restart first closes the old client, whose session DELETE the server holds back
+    await until(() => state.deletes === 1);
+    if (how === 'stop') await bounded(manager.stop()); else await bounded(manager.apply({ h: { ...config, enabled: false } }));
+    release();
+    await bounded(restarting);
+    assert.equal(state.initializes, 1, `${how}: no new connection was opened`);
+    assert.equal(manager.status()[0]!.connected, false);
+    assert.deepEqual(manager.tools(), []);
+  }
+});
+
+test('a call that starts while the HTTP session is being renewed waits for the new session', async t => {
+  const { state, manager, tools } = await httpFixture(t);
+  state.sessions.clear();
+  let release!: () => void; state.holdInitialize = new Promise<void>(resolve => { release = resolve; });
+  const first = run(tools, 'mcp__h__echo'); // 404, then the renewal starts and its initialize reply is held back
+  await until(() => state.initializes === 2);
+  const second = run(tools, 'mcp__h__echo'); // starts during the renewal: it must not go out without a session
+  release();
+  assert.deepEqual((await bounded(Promise.all([first, second]))).map(r => r.content), ['answer from session-2', 'answer from session-2']);
+  assert.equal(state.initializes, 2, 'one renewal');
+  assert.equal(manager.status()[0]!.connected, true);
 });
