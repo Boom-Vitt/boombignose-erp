@@ -24,15 +24,15 @@ function setup(post: () => Promise<Response>) {
   const chat = createChat(api);
   const root = chat.root as unknown as TestNode;
   const input = root.querySelector('textarea')!;
-  const send = root.querySelectorAll('button').find((b) => b.textContent === 'Send')!;
-  const stop = root.querySelectorAll('button').find((b) => b.textContent === 'Stop')!;
-  return { chat, root, input, send, stop, delayHistory: (fn: () => Promise<Response>) => { history = fn; } };
+  const send = root.querySelector('.send')!; // one button: it reads "Send" when idle and "Stop" while a run is going
+  const state = () => send.textContent;
+  return { chat, root, input, send, state, delayHistory: (fn: () => Promise<Response>) => { history = fn; } };
 }
 
-test('run_end before the 202 leaves Send available and Stop hidden', async (t) => {
+test('run_end before the 202 leaves Send available', async (t) => {
   t.after(installDom());
   const response = Promise.withResolvers<Response>();
-  const { chat, input, send, stop } = setup(() => response.promise);
+  const { chat, input, send, state } = setup(() => response.promise);
   await flush();
   input.value = 'hello'; send.fire('click');
   await flush();
@@ -40,67 +40,66 @@ test('run_end before the 202 leaves Send available and Stop hidden', async (t) =
   chat.onEvent({ type: 'run_end', ...tag, status: 'error', text: '', error: 'No key' });
   response.resolve(json({ runId: 'r1' }, 202));
   await flush();
-  assert.equal(send.hidden, false);
-  assert.equal(stop.hidden, true);
+  assert.equal(state(), 'Send');
 });
 
 test('an accepted run keeps Stop until run_end', async (t) => {
   t.after(installDom());
-  const { chat, input, send, stop } = setup(async () => json({ runId: 'r1' }, 202));
+  const { chat, input, send, state } = setup(async () => json({ runId: 'r1' }, 202));
   await flush();
   input.value = 'hello'; send.fire('click');
   await flush();
-  assert.equal(stop.hidden, false);
+  assert.equal(state(), 'Stop');
+  assert.equal(send.className, 'send stop');
   chat.onEvent({ type: 'run_end', ...tag, status: 'done', text: '' });
-  assert.equal(send.hidden, false);
+  assert.equal(state(), 'Send');
+  assert.equal(send.className, 'send');
   await flush();
 });
 
 test('a rejected message restores the composer and draft', async (t) => {
   t.after(installDom());
-  const { input, send, stop } = setup(async () => json({ error: 'Failed' }, 500));
+  const { input, send, state } = setup(async () => json({ error: 'Failed' }, 500));
   await flush();
   input.value = 'hello'; send.fire('click');
   await flush();
-  assert.equal(send.hidden, false);
-  assert.equal(stop.hidden, true);
+  assert.equal(state(), 'Send');
   assert.equal(input.value, 'hello');
 });
 
 test('a 409 keeps Stop available for the run already active on the daemon', async (t) => {
   t.after(installDom());
-  const { input, send, stop } = setup(async () => json({ error: 'Already active' }, 409));
+  const { input, send, state } = setup(async () => json({ error: 'Already active' }, 409));
   await flush();
   input.value = 'hello'; send.fire('click');
   await flush();
-  assert.equal(stop.hidden, false);
-  assert.equal(send.hidden, true);
+  assert.equal(state(), 'Stop');
   assert.equal(input.value, 'hello');
 });
 
 test('stream reset removes stale approvals and a slow refresh preserves replayed state', async (t) => {
   t.after(installDom());
-  const { chat, root, input, send, stop, delayHistory } = setup(async () => json({ runId: 'r1' }, 202));
+  const { chat, root, input, send, state, delayHistory } = setup(async () => json({ runId: 'r1' }, 202));
   await flush();
   input.value = 'hello'; send.fire('click');
   await flush();
   chat.onEvent({ type: 'approval_request', ...tag, approvalId: 'old', tool: 'shell', input: {} });
   assert.equal(root.querySelectorAll('.approval').length, 1);
   chat.onStreamOpen();
-  assert.equal(stop.hidden, true);
+  assert.equal(state(), 'Send');
   assert.equal(root.querySelectorAll('.approval').length, 0);
   const history = Promise.withResolvers<Response>();
   delayHistory(() => history.promise);
   chat.refresh();
   chat.onEvent({ type: 'run_start', ...tag });
   chat.onEvent({ type: 'approval_request', ...tag, approvalId: 'new', tool: 'read_file', input: {} });
-  assert.equal(stop.hidden, false);
+  assert.equal(state(), 'Stop');
   history.resolve(json({ id: 's1', title: '', messages: [] }));
   await flush();
-  assert.equal(stop.hidden, false);
+  assert.equal(state(), 'Stop');
   assert.equal(root.querySelectorAll('.approval').length, 1);
   assert.match(root.querySelector('.approval')!.textContent, /read_file/);
-  assert.equal(root.querySelectorAll('button').filter((b) => ['Allow', 'Deny'].includes(b.textContent)).length, 2);
+  assert.deepEqual(root.querySelector('.approval-actions')!.querySelectorAll('button').map((b) => b.textContent), ['Deny', 'Allow once']);
 });
 
 test('connector 409 clears running state, asks before enabling, then resends the original message', async t => {
@@ -132,14 +131,16 @@ test('connector 409 clears running state, asks before enabling, then resends the
   await flush();
   const input = root.querySelector('textarea')!;
   const button = (name: string) => root.querySelectorAll('button').find(b => b.textContent === name)!;
-  input.value = '/rea /tmp/target'; button('Send').fire('click'); await flush();
-  assert.equal(button('Stop').hidden, true);
+  const sendBtn = root.querySelector('.send')!;
+  input.value = '/rea /tmp/target'; sendBtn.fire('click'); await flush();
+  assert.equal(sendBtn.textContent, 'Send');
   assert.match(root.querySelector('.connector-confirm')!.textContent, /Turn on rea for One/);
+  assert.deepEqual(root.querySelector('.connector-confirm')!.querySelectorAll('button').map(b => b.textContent), ['Not now', 'Turn on']);
   assert.ok(!calls.some(c => c.startsWith('PATCH')));
   button('Turn on').fire('click'); await flush();
   assert.deepEqual(saved.connectors, ['rea']);
   assert.equal(calls.filter(c => c === 'POST /api/sessions/s1/messages').length, 2);
-  assert.equal(button('Stop').hidden, false);
+  assert.equal(sendBtn.textContent, 'Stop');
 });
 
 test('pending createSession cannot select its chat after navigation', async t => {
@@ -159,12 +160,12 @@ test('pending createSession cannot select its chat after navigation', async t =>
   const chat = createChat(api), root = chat.root as unknown as TestNode;
   await flush();
   root.querySelector('textarea')!.value = 'hello';
-  root.querySelectorAll('button').find(b => b.textContent === 'Send')!.fire('click');
+  root.querySelector('.send')!.fire('click');
   await flush(); chat.leave();
   created.resolve(json({ id: 'late' })); await flush();
   assert.equal(sent, false);
   assert.equal(root.querySelectorAll('.msg').length, 0);
-  assert.equal(root.querySelectorAll('button').find(b => b.textContent === 'Stop')!.hidden, true);
+  assert.equal(root.querySelector('.send')!.textContent, 'Send');
 });
 
 test('slash picker supports filtering, arrows, Tab, Enter, Escape and mouse', async t => {
@@ -187,7 +188,7 @@ test('late completion does not append the old chat error after navigation', asyn
   await flush(); input.value = 'hello'; send.fire('click'); await flush();
   const history = Promise.withResolvers<Response>(); delayHistory(() => history.promise);
   chat.onEvent({ type: 'run_end', ...tag, status: 'error', text: '', error: 'old failure' });
-  root.querySelectorAll('button').find(b => b.textContent === 'New chat')!.fire('click');
+  chat.newChat();
   history.resolve(json({ id: 's1', title: '', messages: [] })); await flush();
   assert.ok(!root.textContent.includes('old failure'));
 });
@@ -210,12 +211,13 @@ test('switching agents scopes the session list, new chats and the chat model upd
   const chat = createChat(api), root = chat.root as unknown as TestNode;
   await flush(); await chat.selectAgent('a2');
   assert.equal(calls.filter(c => c.path === '/api/sessions').at(-1)!.agent, 'a2');
-  const model = root.querySelector('.chat-model')!.querySelector('input')!;
-  assert.equal(model.value, 'two-model'); model.value = 'edited';
-  root.querySelectorAll('button').find(b => b.textContent === 'Save model')!.fire('click'); await flush();
-  assert.equal(agents[1]!.model, 'edited'); assert.equal(config.active.model, 'seed-only');
+  const model = root.querySelector('.model-link')!; // the chat shows the agent's model and links to Settings; it no longer edits it
+  assert.equal(model.textContent, 'two-model');
+  assert.equal(model.attrs.href, '#/settings/model');
+  assert.equal(model.attrs['aria-label'], 'Model two-model. Change in Settings');
+  assert.equal(root.querySelectorAll('select').length + root.querySelectorAll('input').length, 0, 'the header has no controls');
   root.querySelector('textarea')!.value = 'hello';
-  root.querySelectorAll('button').find(b => b.textContent === 'Send')!.fire('click'); await flush();
+  root.querySelector('.send')!.fire('click'); await flush();
   assert.equal(calls.find(c => c.path === '/api/sessions' && c.body.agentId)!.body.agentId, 'a2');
 });
 
@@ -236,9 +238,9 @@ function historySetup(read: (id: string) => Promise<Response>, commands = async 
     if (id) return read(id);
     assert.fail(`Unexpected request: ${u.pathname}`);
   }) as typeof fetch });
-  const chat = createChat(api), root = chat.root as unknown as TestNode;
-  const open = (id: string) => root.querySelectorAll('.session').find(b => b.textContent.startsWith(`Saved ${id}`))!.fire('click');
-  return { chat, root, open, messages: root.querySelector('.messages')! };
+  const chat = createChat(api), root = chat.root as unknown as TestNode, sidebar = chat.sidebar as unknown as TestNode;
+  const open = (id: string) => sidebar.querySelectorAll('.session').find(b => b.textContent.startsWith(`Saved ${id}`))!.fire('click');
+  return { chat, root, sidebar, open, messages: root.querySelector('.messages')! };
 }
 
 const savedHistory = (id: string, text: string) => json({
@@ -291,14 +293,14 @@ test('T16 switching sessions before leave resumes only the current session', { t
   t.after(installDom());
   const old = Promise.withResolvers<Response>(), current = Promise.withResolvers<Response>();
   let reads = 0;
-  const { chat, root, open, messages } = historySetup(async id => {
+  const { chat, sidebar, open, messages } = historySetup(async id => {
     if (id === 's1') return old.promise;
     return ++reads === 1 ? current.promise : savedHistory(id, 'Current session');
   });
   await flush(); open('s1'); await flush(); open('s2'); await flush(); chat.leave();
   await chat.refreshAgents(); await flush();
   assert.match(messages.textContent, /Current session/);
-  assert.match(root.querySelector('.active')!.textContent, /Saved s2/);
+  assert.match(sidebar.querySelectorAll('.session').find(b => b.attrs['aria-current'] === 'true')!.textContent, /Saved s2/);
   old.resolve(savedHistory('s1', 'Old session')); current.resolve(savedHistory('s2', 'Cancelled current'));
   await flush();
   assert.match(messages.textContent, /Current session/);
@@ -395,7 +397,12 @@ test('run outcome note survives the session_updated reload', async t => {
     read.resolve(detail('s1', { messages: [said('user', 'hello?')], notices: [{ after: 1, level: 'error', text: 'Error: Provider HTTP 401: bad key', at: 2 }] }));
     await flush();
   }
-  assert.deepEqual(messages.querySelectorAll('.note').map(n => [n.className.trim(), n.textContent]), [['note error', 'Error: Provider HTTP 401: bad key']]);
+  // the failure is one error card (plain cause first, the raw error behind Show details), and it is still there after every reload
+  assert.equal(messages.querySelectorAll('.alert').length, 1);
+  assert.equal(messages.querySelectorAll('.note').length, 0);
+  assert.match(messages.querySelector('.alert-title')!.textContent, /^The model server refused the key$/);
+  assert.match(messages.querySelector('.alert')!.querySelector('pre')!.textContent, /Provider HTTP 401: bad key/);
+  assert.equal(messages.querySelector('.alert')!.attrs.role, 'alert');
 });
 
 test('stored notices render in order after reopen', async t => {
@@ -405,8 +412,9 @@ test('stored notices render in order after reopen', async t => {
     notices: [{ after: 2, level: 'info', text: 'Stopped.', at: 1 }, { after: 2, level: 'warn', text: 'Cut at max_tokens', at: 2 }, { after: 4, level: 'error', text: 'Error: later', at: 3 }],
   }));
   await flush(); open('s1'); await flush();
-  assert.deepEqual(kinds(messages), ['msg user', 'msg assistant', 'note', 'note warn', 'msg user', 'msg assistant', 'note error']);
-  assert.deepEqual(messages.querySelectorAll('.note').map(n => n.textContent), ['Stopped.', 'Cut at max_tokens', 'Error: later']);
+  assert.deepEqual(kinds(messages), ['msg user', 'msg assistant', 'note', 'note warn', 'msg user', 'msg assistant', 'alert']);
+  assert.deepEqual(messages.querySelectorAll('.note').map(n => n.textContent), ['Stopped.', 'Cut at max_tokens']);
+  assert.match(messages.querySelector('.alert')!.querySelector('pre')!.textContent, /later/);
 });
 
 test('switching chats keeps the live turn', async t => {
@@ -426,12 +434,12 @@ test('switching chats keeps the live turn', async t => {
   open('s1'); await flush();
   assert.match(messages.textContent, /MY QUESTION/);
   assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['half an answer']);
-  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['running', 'done']);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['Running', 'Done']);
   // Later events update the same bubble and the same row.
   chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', text: ' continues' });
   chat.onEvent({ type: 'tool_end', sessionId: 's1', runId: 'r1', callId: 'c1', name: 'read_file', isError: false, output: 'BBB' });
   assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['half an answer continues']);
-  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['done', 'done']);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['Done', 'Done']);
   assert.equal(messages.querySelectorAll('.tool').length, 2);
 });
 
@@ -451,7 +459,7 @@ test('stream reconnect keeps the live turn', async t => {
   for (let i = 0; i < 3; i++) await flush();
   assert.match(messages.textContent, /MY QUESTION/);
   assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['partial more and more']);
-  assert.equal(root.querySelectorAll('button').find(b => b.textContent === 'Stop')!.hidden, false);
+  assert.equal(root.querySelector('.send')!.textContent, 'Stop');
   chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', text: ' end' });
   assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['partial more and more end']);
 });
@@ -486,7 +494,7 @@ test('a restore in the middle of a batch does not add a second row for the next 
   chat.onEvent({ type: 'tool_start', sessionId: 's1', runId: 'r1', seq: 4, callId: 'c2', name: 'list_files', input: {} });
   end(5, 'c2');
   assert.equal(messages.querySelectorAll('.tool').length, 2);
-  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['done', 'done']);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['Done', 'Done']);
 });
 
 test('a tool call without a result is not shown as running when no run is going', async t => {
@@ -494,11 +502,11 @@ test('a tool call without a result is not shown as running when no run is going'
   let live: unknown = null;
   const { chat, open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'q'), usedTool('c1', 'write_file')], live }));
   await flush(); open('s1'); await flush(); // the daemon was killed mid-run: the call has no result and nothing is running
-  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => [s.className.trim(), s.textContent]), [['tool-status error', 'error']]);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => [s.className.trim(), s.textContent]), [['tool-status error', 'Failed']]);
   assert.match(messages.querySelector('.tool-out')!.textContent, /did not finish/);
   live = { runId: 'r1', seq: 1, text: '', tools: [] }; // while a run is going the same call really is running
   chat.refresh(); await flush();
-  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['running']);
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['Running']);
 });
 
 test('a run_end error is shown when the daemon could not store a note', async t => {
@@ -510,11 +518,12 @@ test('a run_end error is shown when the daemon could not store a note', async t 
   chat.onEvent({ type: 'run_end', sessionId: 's1', runId: 'r1', status: 'error', text: '', error: 'disk full' });
   chat.onEvent({ type: 'session_updated', sessionId: 's1' });
   for (const read of reads.slice(1)) { read.resolve(detail('s1', { messages: [said('user', 'hello?')], notices: [] })); await flush(); }
-  assert.deepEqual(messages.querySelectorAll('.note').map(n => [n.className.trim(), n.textContent]), [['note error', 'Error: disk full']]);
+  assert.equal(messages.querySelectorAll('.alert').length, 1);
+  assert.match(messages.querySelector('.alert')!.querySelector('pre')!.textContent, /disk full/);
   // The next run starts clean.
   chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r2' });
   chat.refresh(); await flush(); reads.at(-1)!.resolve(detail('s1', { messages: [said('user', 'again')], live: { runId: 'r2', seq: 0, text: '', tools: [] } })); await flush();
-  assert.equal(messages.querySelectorAll('.note').length, 0);
+  assert.equal(messages.querySelectorAll('.note').length + messages.querySelectorAll('.alert').length, 0);
 });
 
 test('a finished call id that comes back in a later turn gets its own row', async t => {
@@ -540,4 +549,405 @@ test('events held during a read that fails are still shown', async t => {
   reads[1]!.resolve(json({ error: 'database is locked' }, 500)); await flush(); await flush();
   delta(3, 'C');
   assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['ABC']);
+});
+
+// ---- the simple shell: one send button, plain tool rows, approval and error cards, sidebar
+type Call = { path: string; method?: string; body: any };
+function harness(sessions: unknown[] = [], extra: (path: string) => Response | Promise<Response> | undefined = () => undefined, world: { agent: typeof agent; config: typeof config } = { agent, config }) {
+  const calls: Call[] = [];
+  const api = createApi({ port: 1, token: 'test-token', fetch: (async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    calls.push({ path, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    const custom = extra(path);
+    if (custom) return custom;
+    if (path === '/api/agents') return json({ agents: [world.agent] });
+    if (path === '/api/settings') return json({ config: world.config, secrets: {} });
+    if (path === '/api/commands') return json({ commands: [] });
+    if (path === '/api/sessions' && init?.method === 'POST') return json({ id: 's1' });
+    if (path === '/api/sessions') return json({ sessions });
+    if (path === '/api/sessions/s1/messages') return json({ runId: 'r1' }, 202);
+    if (path.startsWith('/api/approvals/')) return json({ ok: true });
+    if (path === '/api/sessions/s1') return detail('s1', {});
+    assert.fail(`Unexpected request: ${path}`);
+  }) as typeof fetch });
+  const chat = createChat(api), root = chat.root as unknown as TestNode, sidebar = chat.sidebar as unknown as TestNode;
+  const messages = root.querySelector('.messages')!, input = root.querySelector('textarea')!, send = root.querySelector('.send')!;
+  const sent = (path: string) => calls.filter(c => c.path === path && c.method === 'POST');
+  return { chat, root, sidebar, messages, input, send, calls, sent };
+}
+async function started(h: ReturnType<typeof harness>) { // a chat with one user message and a run in progress
+  await flush(); h.input.value = 'build it'; h.send.fire('click'); await flush();
+  h.chat.onEvent({ type: 'run_start', ...tag, sessionId: 's1' });
+}
+const run = { sessionId: 's1', runId: 'r1' };
+const esc = () => ({ key: 'Escape', defaultPrevented: false, preventDefault() {} });
+
+test('a new chat streams while an older read is pending', async t => {
+  t.after(installDom());
+  const old = Promise.withResolvers<Response>();
+  const h = harness([{ id: 's2', agentId: 'a1', title: 'Saved s2', updatedAt: Date.now() }], path => path === '/api/sessions/s2' ? old.promise : undefined);
+  await flush();
+  h.sidebar.querySelector('.session')!.fire('click'); await flush(); // the read of s2 never answers
+  h.chat.newChat();
+  h.input.value = 'hello'; h.send.fire('click'); await flush(); // the daemon makes this new chat s1
+  assert.equal(h.messages.querySelectorAll('.msg').length, 1);
+  h.chat.onEvent({ type: 'run_start', sessionId: 's1', runId: 'r1' });
+  h.chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', seq: 1, text: 'streams' });
+  assert.deepEqual(bubbles(h.messages, 'assistant').map(b => b.textContent), ['streams']);
+  old.resolve(detail('s2', { messages: [said('assistant', 'the old read')] })); await flush();
+  assert.deepEqual(bubbles(h.messages, 'assistant').map(b => b.textContent), ['streams'], 'the late read of the older chat is ignored');
+});
+
+test('a failed open does not replay held events onto the Loading screen', async t => {
+  t.after(installDom());
+  const read = Promise.withResolvers<Response>();
+  const { chat, open, messages } = historySetup(() => read.promise);
+  await flush(); open('s1'); await flush();
+  chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', seq: 1, text: 'A' }); // held during the read
+  read.resolve(json({ error: 'database is locked' }, 500)); await flush(); await flush();
+  assert.match(messages.querySelector('.notice')!.textContent, /database is locked/);
+  chat.onEvent({ type: 'text_delta', sessionId: 's1', runId: 'r1', seq: 2, text: 'B' });
+  assert.deepEqual(bubbles(messages, 'assistant').map(b => b.textContent), ['B'], 'B is on screen, not in a bubble that was thrown away with the Loading screen');
+});
+
+test('a reused call id without a result is shown as interrupted, not as running', async t => {
+  t.after(installDom());
+  const result = { role: 'user', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'first' }] };
+  const { open, messages } = historySetup(async id => detail(id, { messages: [said('user', 'q'), usedTool('c1', 'read_file'), result, usedTool('c1', 'read_file')], live: null }));
+  await flush(); open('s1'); await flush();
+  assert.deepEqual(messages.querySelectorAll('.tool-status').map(s => s.textContent), ['Done', 'Failed']);
+});
+
+test('the send button is Send or Stop, disabled when blank, and the composer waits for the connection', async t => {
+  t.after(installDom());
+  const h = harness();
+  await flush();
+  assert.equal(h.send.textContent, 'Send'); assert.equal(h.send.disabled, true, 'blank');
+  h.input.value = 'hi'; h.input.fire('input'); assert.equal(h.send.disabled, false);
+  h.chat.setOnline(false); assert.equal(h.send.disabled, true, 'reconnecting');
+  h.chat.setOnline(true); assert.equal(h.send.disabled, false);
+  assert.equal(h.root.querySelectorAll('.send').length, 1);
+  h.input.value = ''; h.input.fire('input'); assert.equal(h.send.disabled, true);
+});
+
+test('the empty chat names the agent and model, and a starter fills the composer without sending', async t => {
+  t.after(installDom());
+  const h = harness();
+  await flush();
+  const empty = h.messages.querySelector('.empty')!;
+  assert.match(empty.querySelector('p')!.textContent, /You're chatting with One on one-model\. It asks before it runs commands or changes files\./);
+  assert.equal(empty.querySelector('img')!.attrs.src, 'icon-128.png');
+  const chips = empty.querySelectorAll('.chip');
+  assert.equal(chips.length, 3);
+  assert.equal(chips[0]!.attrs.lang, 'th'); assert.equal(chips[2]!.attrs.lang, undefined);
+  chips[2]!.fire('click');
+  assert.equal(h.input.value, 'Plan my week');
+  assert.equal(h.sent('/api/sessions/s1/messages').length, 0);
+  assert.equal(h.send.disabled, false);
+});
+
+test('a run shows a streaming bubble from run_start; it goes away empty at the first tool and loses its caret at the end', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  const streaming = () => h.messages.querySelectorAll('.msg').filter(m => m.className.split(' ').includes('streaming'));
+  assert.equal(streaming().length, 1);
+  assert.match(streaming()[0]!.textContent, /Thinking/);
+  h.chat.onEvent({ type: 'tool_start', ...run, callId: 'c1', name: 'list_files', input: { path: '/Users/me/shop-site' } });
+  assert.equal(streaming().length, 0); assert.equal(bubbles(h.messages, 'assistant').length, 0, 'no empty bubble is left behind');
+  h.chat.onEvent({ type: 'tool_end', ...run, callId: 'c1', name: 'list_files', isError: false, output: 'a\nb\nc' });
+  h.chat.onEvent({ type: 'text_delta', ...run, text: 'Done.' });
+  assert.equal(streaming().length, 1); assert.equal(streaming()[0]!.textContent, 'Done.');
+  h.chat.onEvent({ type: 'run_end', ...run, status: 'done', text: 'Done.' });
+  assert.equal(streaming().length, 0);
+  for (let i = 0; i < 3; i++) await flush();
+});
+
+test('a tool row is one plain sentence with an icon, a status word for screen readers, and opens itself on error', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  h.chat.onEvent({ type: 'tool_start', ...run, callId: 'c1', name: 'list_files', input: { path: '/Users/me/shop-site/' } });
+  assert.equal(h.messages.querySelector('.tool-name')!.textContent, 'Looking in shop-site…');
+  h.chat.onEvent({ type: 'tool_end', ...run, callId: 'c1', name: 'list_files', isError: false, output: 'src\ntest\npackage.json\n' });
+  assert.match(h.messages.querySelector('.tool-name')!.textContent, /^Looked at 3 items in shop-site$/);
+  assert.equal(h.messages.querySelector('.tool-status')!.textContent, 'Done');
+  assert.match(h.messages.querySelector('.tool-meta')!.textContent, /^\d+\.\d s$/);
+  h.chat.onEvent({ type: 'tool_start', ...run, callId: 'c2', name: 'read_file', input: { path: 'package.json' } });
+  h.chat.onEvent({ type: 'tool_end', ...run, callId: 'c2', name: 'read_file', isError: true, output: 'ENOENT' });
+  const rows = h.messages.querySelectorAll('.tool') as unknown as (TestNode & { open?: boolean })[];
+  assert.equal(rows[1]!.querySelector('.tool-name')!.textContent, "Couldn't read package.json");
+  assert.equal(rows[1]!.open, true); assert.equal(rows[0]!.open, undefined);
+  h.chat.onEvent({ type: 'tool_start', ...run, callId: 'c3', name: 'mcp__rea__open_binary', input: { path: '/tmp/target' } });
+  assert.equal(h.messages.querySelectorAll('.tool-name')[2]!.textContent, 'mcp__rea__open_binary', 'an unknown tool keeps its raw id');
+  assert.equal(h.messages.querySelector('.tool-arg')!.textContent, '/tmp/target');
+});
+
+test('an approval is Deny then Allow once; Esc denies; the running row hides while it waits; the receipt stays after the run', async t => {
+  t.after(installDom());
+  const h = harness([], path => path === '/api/sessions/s1' ? detail('s1', { messages: [said('user', 'build it'),
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'shell', input: { command: 'npm run build' } }] },
+    { role: 'user', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'ok' }] }] }) : undefined);
+  await started(h);
+  h.chat.onEvent({ type: 'tool_start', ...run, callId: 'c1', name: 'shell', input: { command: 'npm run build' } });
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a1', tool: 'shell', input: { command: 'npm run build' } });
+  const card = h.messages.querySelector('.approval')!;
+  const buttons = card.querySelector('.approval-actions')!.querySelectorAll('button');
+  assert.deepEqual(buttons.map(b => b.textContent), ['Deny', 'Allow once']);
+  assert.ok(buttons[0]!.className.includes('kbd-esc')); assert.equal(buttons[0]!.attrs['aria-keyshortcuts'], 'Escape');
+  assert.ok(buttons[1]!.className.includes('primary'));
+  assert.equal(card.querySelector('.approval-title')!.textContent, 'Run this command?');
+  assert.match(card.querySelector('.approval-desc')!.textContent, /^BigNose wants to run it in work\. It can change files in that folder\.$/);
+  assert.equal(card.querySelector('.approval-cmd')!.textContent, 'npm run build');
+  assert.ok(card.querySelector('.approval-cmd')!.className.includes('command'));
+  assert.doesNotMatch(card.textContent, /always allow/i); assert.equal(card.querySelector('.approval-icon'), null);
+  assert.equal(card.attrs['aria-labelledby'], card.querySelector('.approval-title')!.attrs.id);
+  const row = h.messages.querySelector('.tool')!;
+  assert.equal(row.hidden, true, 'the card is that tool');
+  h.chat.onKey(esc()); await flush();
+  assert.deepEqual(h.sent('/api/approvals/a1').map(c => c.body), [{ allow: false }]);
+  h.chat.onEvent({ type: 'approval_result', ...run, approvalId: 'a1', allowed: false });
+  assert.equal(card.className, 'approval denied'); assert.match(card.textContent, /^You denied: npm run build$/);
+  assert.equal(row.hidden, false);
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a2', tool: 'web_fetch', input: { url: 'https://example.com/a' } });
+  const second = h.messages.querySelectorAll('.approval')[1]!;
+  assert.equal(second.querySelector('.approval-title')!.textContent, 'Open this web page?');
+  second.querySelectorAll('button').find(b => b.textContent === 'Allow once')!.fire('click'); await flush();
+  assert.deepEqual(h.sent('/api/approvals/a2').map(c => c.body), [{ allow: true }]);
+  h.chat.onEvent({ type: 'approval_result', ...run, approvalId: 'a2', allowed: true });
+  assert.equal(second.className, 'approval allowed'); assert.match(second.textContent, /^You allowed once: https:\/\/example\.com\/a$/);
+  // the run ends and the chat is read again: both receipts are still there, and the first sits in front of the tool it was about
+  h.chat.onEvent({ type: 'run_end', ...run, status: 'done', text: '' });
+  for (let i = 0; i < 3; i++) await flush();
+  const receipts = h.messages.querySelectorAll('.approval');
+  assert.deepEqual(receipts.map(r => r.className), ['approval denied', 'approval allowed']);
+  const order = h.messages.children.map(c => c.className.split(' ')[0]);
+  assert.ok(order.indexOf('approval') < order.indexOf('tool'), 'the receipt reads before the result');
+});
+
+test('Esc leaves a card alone when the slash picker or another chat is in front, and never approves', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a1', tool: 'shell', input: { command: 'ls' } });
+  h.chat.onKey({ key: 'Enter', defaultPrevented: false, preventDefault() {} });
+  h.chat.onKey({ key: 'Escape', defaultPrevented: true, preventDefault() {} }); // something else already used this Esc
+  await flush();
+  assert.equal(h.sent('/api/approvals/a1').length, 0);
+  h.chat.onEvent({ type: 'approval_request', sessionId: 'other', runId: 'r2', approvalId: 'b1', tool: 'shell', input: { command: 'ls' } });
+  h.chat.onKey(esc()); await flush();
+  assert.deepEqual(h.calls.filter(c => c.path.startsWith('/api/approvals/')).map(c => c.path), ['/api/approvals/a1'], 'only this chat\'s card is denied');
+});
+
+test('an error card names the cause first, keeps the raw error behind Show details, and Try again only sits on the latest one', async t => {
+  t.after(installDom());
+  const notices = [
+    { after: 1, level: 'error', text: 'Error: Provider HTTP 500: model runner has unexpectedly stopped', at: 1 },
+    { after: 2, level: 'error', text: 'Error: connect ECONNREFUSED 127.0.0.1:11434', at: 2 },
+    { after: 3, level: 'error', text: 'Error: Provider HTTP 404: model not found', at: 3 },
+    { after: 4, level: 'error', text: 'Error: the disk is on fire\nsecond line', at: 4 },
+  ];
+  const h = harness([{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }],
+    path => path === '/api/sessions/s1' ? detail('s1', { messages: [said('user', 'q1'), said('user', 'q2'), said('user', 'q3'), said('user', 'q4')], notices }) : undefined);
+  await flush(); h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  const alerts = h.messages.querySelectorAll('.alert');
+  // the provider here is a local server that is not Ollama, so nothing says "Ollama"
+  assert.deepEqual(alerts.map(a => a.querySelector('.alert-title')!.textContent), ["The model didn't answer", "Couldn't reach the model server", "That model isn't available", 'Something went wrong']);
+  assert.match(alerts[0]!.querySelector('.alert-desc')!.textContent, /^The model server returned an error\. Make sure it is still running/);
+  assert.doesNotMatch(alerts.map(a => a.textContent).join(' '), /Ollama/);
+  assert.equal(alerts[3]!.querySelector('.alert-desc')!.textContent, 'the disk is on fire');
+  assert.deepEqual(alerts.map(a => a.querySelectorAll('button').some(b => b.textContent === 'Try again')), [false, false, false, true]);
+  const details = alerts[0]!.querySelector('.alert-more')!, toggle = alerts[0]!.querySelectorAll('button').find(b => b.textContent === 'Show details')!;
+  assert.equal(details.hidden, true); assert.equal(toggle.attrs['aria-expanded'], 'false');
+  toggle.fire('click');
+  assert.equal(details.hidden, false); assert.equal(toggle.attrs['aria-expanded'], 'true'); assert.equal(toggle.textContent, 'Hide details');
+  assert.match(details.querySelector('pre')!.textContent, /Provider HTTP 500: model runner has unexpectedly stopped\none-model · http:\/\/127\.0\.0\.1:1\/v1 · /);
+  alerts[3]!.querySelectorAll('button').find(b => b.textContent === 'Try again')!.fire('click'); await flush();
+  assert.deepEqual(h.sent('/api/sessions/s1/messages').map(c => c.body), [{ text: 'q4' }], 'it sends the last user message again');
+});
+
+test('the sidebar groups chats by day, shows Waiting and Running, and keeps search for long lists or Cmd+F', async t => {
+  t.after(installDom());
+  const day = 86_400_000, now = Date.now();
+  const list = [
+    { id: 's1', agentId: 'a1', title: 'Today chat', updatedAt: now },
+    { id: 's2', agentId: 'a1', title: 'เมื่อวานนี้', updatedAt: now - day },
+    { id: 's3', agentId: 'a1', title: 'Last month', updatedAt: now - 30 * day },
+  ];
+  const h = harness(list);
+  await flush();
+  assert.deepEqual(h.sidebar.querySelectorAll('.session-group').map(g => g.textContent), ['Today', 'Yesterday', 'Older']);
+  assert.deepEqual(h.sidebar.querySelectorAll('.session-title').map(g => g.attrs.lang), [undefined, 'th', undefined]);
+  const search = h.sidebar.querySelector('input')!;
+  assert.equal(search.hidden, true);
+  h.chat.focusSearch(); assert.equal(search.hidden, false);
+  h.chat.onEvent({ type: 'run_start', sessionId: 's3', runId: 'r3' });
+  h.chat.onEvent({ type: 'approval_request', sessionId: 's2', runId: 'r2', approvalId: 'b1', tool: 'shell', input: {} });
+  const rows = h.sidebar.querySelectorAll('.session-item');
+  assert.match(rows[2]!.textContent, /Last monthRunning/); assert.ok(rows[2]!.querySelector('.dot'));
+  assert.match(rows[1]!.textContent, /Waiting/); assert.ok(rows[1]!.querySelector('.badge'));
+  h.chat.onEvent({ type: 'run_start', sessionId: 's2', runId: 'r2' });
+  assert.equal(h.sidebar.querySelectorAll('.session-item')[1]!.querySelector('.dot'), null, 'Waiting replaces the running dot');
+  assert.equal(rows[0]!.querySelector('.badge'), null);
+  assert.equal(h.sidebar.querySelectorAll('.session').find(b => b.textContent.includes('Today chat'))!.attrs['aria-current'], undefined);
+  h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  assert.equal(h.sidebar.querySelector('.session')!.attrs['aria-current'], 'true');
+  assert.equal(h.chat.isEmpty(), false);
+  h.chat.newChat(); assert.equal(h.chat.isEmpty(), true);
+});
+
+test('with more than eight chats the search row shows by itself', async t => {
+  t.after(installDom());
+  const list = Array.from({ length: 9 }, (_, i) => ({ id: `s${i + 1}`, agentId: 'a1', title: `Chat ${i + 1}`, updatedAt: Date.now() }));
+  const h = harness(list);
+  await flush();
+  assert.equal(h.sidebar.querySelector('input')!.hidden, false);
+});
+
+async function causes(world: Parameters<typeof harness>[2], errors: string[]) {
+  const notices = errors.map((text, i) => ({ after: i + 1, level: 'error', text: `Error: ${text}`, at: i + 1 }));
+  const h = harness([{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }],
+    path => path === '/api/sessions/s1' ? detail('s1', { messages: errors.map((_, i) => said('user', `q${i}`)), notices }) : undefined, world);
+  await flush(); h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  return h.messages.querySelectorAll('.alert').map(a => [a.querySelector('.alert-title')!.textContent, a.querySelector('.alert-desc')!.textContent]);
+}
+
+test('only an Ollama provider is called Ollama, and a status comes only from the HTTP form', async t => {
+  t.after(installDom());
+  const ollama = { agent: { ...agent, provider: 'ollama' }, config: { ...config, providers: [{ id: 'ollama', kind: 'openai-compatible' as const, baseUrl: 'http://127.0.0.1:11434/v1' }] } };
+  assert.deepEqual(await causes(ollama, ['Provider HTTP 500: runner stopped', 'connect ECONNREFUSED 127.0.0.1:11434', 'Provider HTTP 404: model not found',
+    'Ollama is not running at http://127.0.0.1:11434 (start it with "ollama serve" or open the Ollama app)']), [
+    ["The model didn't answer", 'Ollama returned an error. Make sure it is still running, then try again.'],
+    ["Ollama isn't running", 'Open Ollama, then try again.'],
+    ["one-model isn't on this Mac", 'Run ollama pull one-model, or pick another model.'],
+    ["Ollama isn't running", 'Open Ollama, then try again.'], // the core's own wording for a refused connection
+  ]);
+  const cloud = { agent: { ...agent, provider: 'router' }, config: { ...config, providers: [{ id: 'router', kind: 'openai-compatible' as const, baseUrl: 'https://router.example/v1' }] } };
+  assert.deepEqual(await causes(cloud, ['Provider HTTP 401: bad key', 'fetch failed', 'Provider HTTP 503: busy']), [
+    ['The cloud service refused the key', 'Check the API key in Settings › Model.'],
+    ["Couldn't reach the model service", 'Check your internet connection, then try again.'],
+    ["The model didn't answer", 'The service returned an error. Try again in a moment.'],
+  ]);
+  // numbers that look like a status are not one: a port, a count
+  assert.deepEqual((await causes(undefined, ['connect ECONNREFUSED 127.0.0.1:5432', 'could not open port 5432 after 404 tries'])).map(c => c[0]),
+    ["Couldn't reach the model server", 'Something went wrong']);
+});
+
+test('a write_file or edit_file card shows what would change behind Show changes, and Deny is still first', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  const write = { path: '/Users/me/work/notes.md', content: 'สวัสดี\nsecond line' };
+  h.chat.onEvent({ type: 'tool_start', ...run, callId: 'c1', name: 'write_file', input: write });
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a1', tool: 'write_file', input: write });
+  const card = h.messages.querySelector('.approval')!;
+  assert.equal(card.querySelector('.approval-title')!.textContent, 'Change this file?');
+  assert.equal(card.querySelector('.approval-cmd')!.textContent, '/Users/me/work/notes.md');
+  const fold = card.querySelector('.approval-changes')! as TestNode & { open?: boolean };
+  assert.equal(fold.querySelector('summary')!.textContent, 'Show changes'); assert.notEqual(fold.open, true, 'collapsed');
+  assert.deepEqual(fold.querySelectorAll('.tool-label').map(l => l.textContent), ['New contents']);
+  assert.equal(fold.querySelector('.approval-change')!.textContent, 'สวัสดี\nsecond line');
+  assert.equal(fold.querySelector('.approval-change')!.attrs.lang, 'th');
+  assert.deepEqual(card.querySelector('.approval-actions')!.querySelectorAll('button').map(b => b.textContent), ['Deny', 'Allow once']);
+
+  const edit = { path: 'src/a.ts', oldText: 'const a = 1;', newText: 'const a = 2;', replaceAll: true };
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a2', tool: 'edit_file', input: edit });
+  const second = h.messages.querySelectorAll('.approval')[1]!;
+  assert.deepEqual(second.querySelectorAll('.tool-label').map(l => l.textContent), ['Replace', 'With', 'Scope']);
+  assert.deepEqual(second.querySelectorAll('.approval-change').map(p => p.textContent), ['const a = 1;', 'const a = 2;', 'Every match in the file']);
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a3', tool: 'edit_file', input: { ...edit, replaceAll: false } });
+  assert.deepEqual(h.messages.querySelectorAll('.approval')[2]!.querySelectorAll('.tool-label').map(l => l.textContent), ['Replace', 'With']);
+  // a command has nothing to unfold, and a settled card is one line again
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a4', tool: 'shell', input: { command: 'ls' } });
+  assert.equal(h.messages.querySelectorAll('.approval')[3]!.querySelector('.approval-changes'), null);
+  h.chat.onEvent({ type: 'approval_result', ...run, approvalId: 'a1', allowed: true });
+  assert.equal(card.querySelector('.approval-changes'), null);
+  assert.equal(card.textContent, 'You allowed once: /Users/me/work/notes.md');
+});
+
+test('a chat picked while Agents or Settings is showing brings the chat page forward', async t => {
+  t.after(installDom());
+  const h = harness([{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }]);
+  await flush();
+  const location = (globalThis.window as unknown as { location: { hash: string } }).location;
+  location.hash = '#/agents'; h.root.hidden = true; // main.ts hides the chat on that page
+  h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  assert.equal(location.hash, '#/chat');
+  assert.equal(h.chat.isEmpty(), false);
+  location.hash = '#/chat'; h.root.hidden = false;
+  h.chat.newChat(); h.chat.refresh(); await flush();
+  await h.chat.refreshAgents(); await flush();
+  assert.equal(location.hash, '#/chat', 'programmatic opens do not navigate');
+  location.hash = '#/settings/general'; h.root.hidden = true;
+  await h.chat.selectAgent('a1'); await h.chat.refreshAgents(); await flush();
+  assert.equal(location.hash, '#/settings/general', 'selecting or refreshing agents leaves the page alone');
+});
+
+test('a call the user denied does not open its row; a policy denial or a failure does', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  const rows = () => h.messages.querySelectorAll('.tool') as unknown as (TestNode & { open?: boolean })[];
+  const call = (callId: string, output: string) => {
+    h.chat.onEvent({ type: 'tool_start', ...run, callId, name: 'shell', input: { command: 'ls' } });
+    h.chat.onEvent({ type: 'tool_end', ...run, callId, name: 'shell', isError: true, output });
+  };
+  call('c1', 'denied by user'); call('c2', 'denied by policy'); call('c3', 'exit 1: no such file');
+  assert.deepEqual(rows().map(r => r.open === true), [false, true, true], 'a policy denial has no receipt line, so its row opens to say why');
+  assert.deepEqual(h.messages.querySelectorAll('.tool-status').map(s => s.className), ['tool-status error', 'tool-status error', 'tool-status error']);
+});
+
+const batch = { role: 'assistant', content: [
+  { type: 'tool_use', id: 'c1', name: 'shell', input: { command: 'echo one' } },
+  { type: 'tool_use', id: 'c2', name: 'shell', input: { command: 'echo two' } }] };
+const firstWord = (messages: TestNode) => messages.children.map(c => c.className.split(' ')[0]);
+
+test('a restored approval goes in front of the call that is running, not the newest call of that tool', async t => {
+  t.after(installDom());
+  const live = { runId: 'r1', seq: 1, text: '', tools: [{ callId: 'c1', name: 'shell', input: { command: 'echo one' }, done: false }] };
+  const h = harness([{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }],
+    path => path === '/api/sessions/s1' ? detail('s1', { messages: [said('user', 'run both'), batch], live }) : undefined);
+  await flush();
+  // the card arrived while no chat was open (the "waiting for you" toast); the history holds both calls, only c1 is running
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a1', tool: 'shell', input: { command: 'echo one' } });
+  h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  assert.deepEqual(firstWord(h.messages), ['msg', 'approval', 'tool', 'tool']);
+  const rows = h.messages.querySelectorAll('.tool');
+  assert.deepEqual(rows.map(r => r.hidden), [true, false], 'the card hides c1; c2 stays where it is');
+  h.chat.onEvent({ type: 'approval_result', ...run, approvalId: 'a1', allowed: true });
+  assert.deepEqual(rows.map(r => r.hidden), [false, false]);
+  assert.deepEqual(firstWord(h.messages), ['msg', 'approval', 'tool', 'tool'], 'the receipt is in front of c1');
+  assert.match(h.messages.querySelector('.approval')!.textContent, /^You allowed once: echo one$/);
+});
+
+test('in a batch of two calls each approval sits in front of its own call', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  const call = (callId: string, command: string) => h.chat.onEvent({ type: 'tool_start', ...run, callId, name: 'shell', input: { command } });
+  call('c1', 'echo one');
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a1', tool: 'shell', input: { command: 'echo one' } });
+  h.chat.onEvent({ type: 'approval_result', ...run, approvalId: 'a1', allowed: true });
+  h.chat.onEvent({ type: 'tool_end', ...run, callId: 'c1', name: 'shell', isError: false, output: 'one' });
+  call('c2', 'echo two');
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a2', tool: 'shell', input: { command: 'echo two' } });
+  assert.deepEqual(firstWord(h.messages), ['msg', 'approval', 'tool', 'approval', 'tool']);
+  assert.deepEqual(h.messages.querySelectorAll('.tool').map(r => r.hidden), [false, true], 'only the call waiting for an answer is hidden');
+});
+
+test('the header keeps the open chat\'s title when a search leaves it out of the list', async t => {
+  t.after(installDom());
+  const list = [{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }, { id: 's2', agentId: 'a1', title: 'Saved s2', updatedAt: Date.now() }];
+  const h = harness(list);
+  (globalThis.window as unknown as { setTimeout: (fn: () => void) => number }).setTimeout = fn => { fn(); return 1; }; // run the search debounce at once
+  await flush();
+  h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  const title = h.root.querySelector('.chat-title')!;
+  assert.equal(title.textContent, 'Saved s1');
+  list.splice(0, list.length, list[1]!); // the daemon's answer to the search: s2 only
+  const search = h.sidebar.querySelector('input')!;
+  search.value = 'two'; search.fire('input'); await flush();
+  assert.deepEqual(h.sidebar.querySelectorAll('.session-title').map(x => x.textContent), ['Saved s2']);
+  assert.equal(title.textContent, 'Saved s1', 'the chat on screen is still s1');
+  assert.equal(h.chat.isEmpty(), false);
 });

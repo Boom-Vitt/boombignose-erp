@@ -41,14 +41,14 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
   assert.ok(await ui.cdp.evaluate(`document.body.classList.contains('os-panel')`));
   // panel mode opens on the ERP assistant, set up through the local API
   await ui.wait(`document.querySelector('[aria-label="Chat agent"]')?.selectedOptions[0]?.textContent.includes('ERP assistant')`);
-  assert.equal(await ui.cdp.evaluate(`document.querySelector('[aria-label="Agent model"]').value`), 'google/gemini-4-argon');
+  assert.equal(await ui.cdp.evaluate(`document.querySelector('.model-link').textContent`), 'google/gemini-4-argon');
   const fits = (label: string) => ui.cdp.evaluate(`(() => {
     const page = document.scrollingElement, nodes = ['.shell', '.main', '.chat', '.settings:not([hidden])'].map(s => document.querySelector(s)).filter(Boolean);
     return { label: ${JSON.stringify(label)}, overflowX: Math.max(page.scrollWidth - page.clientWidth, ...nodes.map(n => n.scrollWidth - n.clientWidth).map(d => d === -Infinity ? 0 : d)),
       pageScroll: page.scrollHeight - page.clientHeight };
   })()`);
-  // the section links scroll sideways inside their own strip by design
-  assert.equal(await ui.cdp.evaluate(`getComputedStyle(document.querySelector('.nav')).overflowX`), 'auto');
+  // the chat list is a strip under the top bar and scrolls sideways inside itself by design
+  assert.equal(await ui.cdp.evaluate(`getComputedStyle(document.querySelector('.sessions')).overflowX`), 'auto');
   const routes = ['#/chat', '#/agents', ...['general', 'providers', 'connectors', 'messaging', 'hooks', 'skills', 'memory', 'schedules'].map(s => `#/settings/${s}`)];
   for (const route of routes) {
     await ui.cdp.evaluate(`location.hash = ${JSON.stringify(route)}`);
@@ -70,6 +70,30 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
   await ui.wait(`getComputedStyle(document.querySelector('.shell')).display === 'none'`);
   const rail = await ui.cdp.evaluate(`(() => { const r = document.querySelector('.panel-toggle').getBoundingClientRect(); const page = document.scrollingElement; return { w: r.width, h: r.height, x: page.scrollWidth - page.clientWidth }; })()`);
   assert.deepEqual(rail, { w: 40, h: 640, x: 0 });
+  assert.deepEqual(ui.cdp.errors, []);
+});
+
+test('when the ERP server stops the panel shows why with Retry, and the collapsed rail keeps its toggle', { timeout: 120_000 }, async t => {
+  const app = await daemon(t);
+  const ui = await openUi(t, app, { os: true, viewport: { width: 420, height: 640 }, commands: { os_status: ready, os_info: osInfo } });
+  await ui.wait(`document.querySelector('.shell') && document.querySelector('.panel-toggle')`);
+  // the launcher leaves ready: boot() replaces the panel with the startup screen, which says why
+  await ui.cdp.evaluate(`window.__answers.os_status = { phase: 'failed', title: 'The ERP server stopped', message: 'exit status 1' }`);
+  await ui.wait(`document.querySelector('.splash')?.textContent.includes('The ERP server stopped')`);
+  assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.panel-toggle').length`), 1, 'the toggle is not part of the replaced page');
+  // collapsed to the 40px rail, the toggle is all there is, and it still asks the Rust side to slide the panel back
+  await ui.cdp.call('Emulation.setDeviceMetricsOverride', { width: 40, height: 640, deviceScaleFactor: 1, mobile: false });
+  await ui.wait(`getComputedStyle(document.querySelector('.splash')).display === 'none'`);
+  const rail = await ui.cdp.evaluate(`(() => { const r = document.querySelector('.panel-toggle').getBoundingClientRect(); const page = document.scrollingElement; return { w: r.width, h: r.height, x: page.scrollWidth - page.clientWidth }; })()`);
+  assert.deepEqual(rail, { w: 40, h: 640, x: 0 });
+  await ui.cdp.evaluate(`window.__invokes.length = 0; document.querySelector('.panel-toggle').click()`);
+  assert.ok(await ui.cdp.evaluate(`window.__invokes.includes('os_toggle_panel')`));
+  // expanded again, Retry is there; once the server is back the panel returns with a single toggle
+  await ui.cdp.call('Emulation.setDeviceMetricsOverride', { width: 420, height: 640, deviceScaleFactor: 1, mobile: false });
+  await ui.click('Retry');
+  await ui.cdp.evaluate(`window.__answers.os_status = ${JSON.stringify(ready)}`);
+  await ui.wait(`document.querySelector('.shell') && !document.querySelector('.splash')`);
+  assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.panel-toggle').length`), 1);
   assert.deepEqual(ui.cdp.errors, []);
 });
 

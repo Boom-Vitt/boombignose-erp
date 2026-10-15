@@ -3,10 +3,10 @@ import { createApi } from './api.ts';
 import type { Api } from './api.ts';
 import { mountAgents } from './agents.ts';
 import { createChat } from './chat.ts';
-import { btn, el, errMsg, toast } from './dom.ts';
+import { appIcon, btn, el, errMsg, icon, toast } from './dom.ts';
 import { provisionErp } from './os/erp-setup.ts';
 import type { OsInfo } from './os/erp-setup.ts';
-import { waitForReady } from './os/startup.ts';
+import { waitForReady, waitForStop } from './os/startup.ts';
 import { streamEvents } from './sse.ts';
 import type { ApiEvent } from './types.ts';
 import { mountConnectors } from './settings/connectors.ts';
@@ -39,25 +39,29 @@ const SECTIONS: { id: string; label: string; mount: (pane: HTMLElement, api: Api
   { id: 'schedules', label: 'Schedules', mount: mountSchedules },
 ];
 
+// The header's model link points at #/settings/model; until Settings has a Model page it opens Providers & models.
+const ALIASES: Record<string, string> = { model: 'providers' };
+
 const app = document.getElementById('app') as HTMLElement;
 let events: AbortController | null = null;
-
-const logo = () => el('div', { class: 'logo', 'aria-hidden': 'true' }, 'B');
+let launcherWatch: AbortController | null = null;
 
 function splash(text: string): HTMLElement {
-  return el('div', { class: 'splash', role: 'status' }, logo(), el('p', {}, text));
+  return el('div', { class: 'splash', role: 'status' }, appIcon(), el('p', {}, text));
 }
 
 function failure(message: string): HTMLElement {
-  return el('div', { class: 'splash', role: 'alert' }, logo(),
-    el('h1', {}, 'BigNose could not start'), el('p', { class: 'error-text' }, message),
-    btn('Retry', () => void boot(), 'primary'),
-    el('p', { class: 'muted' }, 'The daemon log is in ~/.bignose/logs/daemon.log.'));
+  return el('div', { class: 'splash', role: 'alert' }, appIcon(),
+    el('h1', {}, "BigNose couldn't start"), el('p', { class: 'error-text' }, message),
+    btn('Try again', () => void boot(), 'primary'),
+    el('p', { class: 'muted' }, 'The log is in ~/.bignose/logs/daemon.log.'));
 }
 
 async function boot(): Promise<void> {
   events?.abort();
   events = null;
+  launcherWatch?.abort();
+  launcherWatch = null;
   app.replaceChildren(splash('Starting BigNose…'));
   let api: Api;
   let erpAgent: string | undefined;
@@ -75,6 +79,11 @@ async function boot(): Promise<void> {
     return;
   }
   shell(api, erpAgent);
+  if (OS) {
+    // the launcher is watched after Ready too: when the ERP server exits, boot() shows why with Retry and returns here once it is back
+    const invoke = window.__TAURI__!.core.invoke, watch = launcherWatch = new AbortController();
+    void waitForStop(invoke, watch.signal).then((status) => { if (status && launcherWatch === watch) void boot(); });
+  }
 }
 
 /** The panel still works without the ERP assistant, so a failed setup is a message, not a stop. */
@@ -95,51 +104,87 @@ function panelToggle(): HTMLElement {
 }
 
 function shell(api: Api, erpAgent?: string): void {
-  const model = el('div', { class: 'nav-model' });
-  const chat = createChat(api, agent => { model.textContent = `${agent.name} · ${agent.provider} · ${agent.model}`; });
+  let nav = () => {}; // set below; createChat reports its first view while it is still being built
+  const chat = createChat(api, undefined, () => nav());
   const agents = el('section', { class: 'settings', 'aria-label': 'Agents' });
   const settings = el('section', { class: 'settings', 'aria-label': 'Settings' });
-  const conn = el('div', { class: 'nav-conn' });
+  const conn = el('div', { class: 'nav-conn', role: 'status' });
   const banner = el('div', { class: 'banner', role: 'alert', hidden: true },
-    el('span', {}, 'Lost the connection to the BigNose daemon.'), btn('Retry', () => void boot(), 'small'));
+    el('span', {}, 'Lost the connection to BigNose. Trying again…'), btn('Retry now', () => void boot(), 'small'));
 
-  const link = (href: string, text: string) => el('a', { href, class: 'nav-link' }, text);
-  const agentsLink = link('#/agents', 'Agents');
-  const chatLink = link('#/chat', 'Chat');
-  const sectionLinks = SECTIONS.map((s) => ({ s, a: link(`#/settings/${s.id}`, s.label) }));
-  const nav = el('nav', { class: 'nav', 'aria-label': 'Main' },
-    el('div', { class: 'brand' }, logo(), el('span', {}, 'BigNose')),
-    chatLink, agentsLink, el('div', { class: 'nav-group' }, 'Settings'), ...sectionLinks.map((l) => l.a),
-    el('div', { class: 'nav-foot' }, model, conn));
+  const link = (href: string, text: string, name: string, kbd?: string) =>
+    el('a', { href, class: 'nav-link' }, icon(name), el('span', { class: 'nav-label' }, text), kbd && el('kbd', {}, kbd));
+  const newChatLink = link('#/chat', 'New chat', 'plus', '⌘N');
+  newChatLink.addEventListener('click', () => chat.newChat());
+  const agentsLink = link('#/agents', 'Agents', 'agents');
+  const settingsLink = link('#/settings/general', 'Settings', 'sliders');
 
-  app.replaceChildren(el('div', { class: 'shell' }, nav, el('main', { class: 'main' }, banner, chat.root, agents, settings)), ...(OS ? [panelToggle()] : []));
+  // Settings still has its eight pages; they sit behind this tab row (the sidebar keeps one Settings link).
+  const tabs = SECTIONS.map((s) => {
+    const t = el('button', { type: 'button', class: 'tab', role: 'tab', id: `tab-${s.id}`, 'aria-controls': 'settings-panel', 'aria-selected': 'false', tabindex: '-1' }, s.label);
+    t.addEventListener('click', () => { location.hash = `#/settings/${s.id}`; });
+    return t;
+  });
+  const tablist = el('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Settings sections' }, ...tabs);
+  tablist.addEventListener('keydown', (ev) => {
+    const at = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+    const to = ev.key === 'ArrowRight' ? at + 1 : ev.key === 'ArrowLeft' ? at - 1 : ev.key === 'Home' ? 0 : ev.key === 'End' ? tabs.length - 1 : null;
+    if (to === null) return;
+    ev.preventDefault();
+    const next = tabs[(to + tabs.length) % tabs.length]!;
+    location.hash = `#/settings/${next.id.slice(4)}`;
+    next.focus();
+  });
+  let panel = el('div', { id: 'settings-panel', role: 'tabpanel' });
+  settings.append(el('div', { class: 'page-head' }, el('h1', {}, 'Settings')), tablist, panel);
+
+  app.replaceChildren(el('div', { class: 'shell' },
+    el('nav', { class: 'nav', 'aria-label': 'Main' }, chat.agentSwitch, newChatLink, chat.sidebar, el('div', { class: 'nav-foot' }, agentsLink, settingsLink, conn)),
+    el('main', { class: 'main' }, banner, chat.root, agents, settings)));
+  // The toggle lives on <body>, not in #app: boot() replaces #app with the "ERP server stopped" screen, and a panel collapsed to
+  // its 40 px rail must still have a button that expands it. It appears with the first shell and stays.
+  if (OS && !document.querySelector('.panel-toggle')) document.body.append(panelToggle());
   document.body.classList.toggle('os-panel', OS);
   // panel mode opens on the ERP assistant; Agents and Settings stay one click away
   if (erpAgent) void chat.refreshAgents().then(() => chat.selectAgent(erpAgent));
 
+  let view: 'chat' | 'agents' | 'settings' = 'chat';
+  const current = (page: boolean) => (page ? 'page' : 'false');
+  nav = () => {
+    newChatLink.setAttribute('aria-current', current(view === 'chat' && chat.isEmpty()));
+    agentsLink.setAttribute('aria-current', current(view === 'agents'));
+    settingsLink.setAttribute('aria-current', current(view === 'settings'));
+  };
+
   function route(): void {
-    const id = /^#\/settings\/(\w+)/.exec(location.hash)?.[1];
-    const section = SECTIONS.find((s) => s.id === id);
+    const asked = /^#\/settings\/(\w+)/.exec(location.hash)?.[1];
+    const section = SECTIONS.find((s) => s.id === (asked && ALIASES[asked] || asked));
     const isAgents = location.hash === '#/agents';
-    chat.root.hidden = !!section || isAgents;
+    view = section ? 'settings' : isAgents ? 'agents' : 'chat';
+    chat.root.hidden = view !== 'chat';
     agents.hidden = !isAgents;
+    settings.hidden = !section;
     if (chat.root.hidden) chat.leave();
-    agentsLink.setAttribute('aria-current', isAgents ? 'page' : 'false');
+    nav();
     if (isAgents) mountAgents(agents, api, id => {
       void chat.refreshAgents().then(() => { if (id) return chat.selectAgent(id); });
     });
-    settings.hidden = !section;
-    chatLink.setAttribute('aria-current', section || isAgents ? 'false' : 'page');
-    for (const l of sectionLinks) l.a.setAttribute('aria-current', l.s === section ? 'page' : 'false');
     if (section) {
-      const host = el('div');
-      settings.replaceChildren(host); settings.scrollTop = 0;
+      for (const t of tabs) { const on = t.id === `tab-${section.id}`; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; }
+      const host = el('div', { id: 'settings-panel', role: 'tabpanel', 'aria-labelledby': `tab-${section.id}` });
+      panel.replaceWith(host); panel = host; settings.scrollTop = 0;
       if (section.id === 'providers') mountProviders(host, api, chat.agentId(), () => { void chat.refreshAgents(); });
       else section.mount(host, api);
     }
     else if (!isAgents) void chat.refreshAgents();
   }
   window.onhashchange = route;
+  document.onkeydown = (ev) => {
+    if (ev.metaKey && ev.key === 'n') { ev.preventDefault(); location.hash = '#/chat'; chat.newChat(); }
+    else if (ev.metaKey && ev.key === ',') { ev.preventDefault(); location.hash = '#/settings/general'; }
+    else if (ev.metaKey && ev.key === 'f' && !chat.root.hidden) { ev.preventDefault(); chat.focusSearch(); }
+    else chat.onKey(ev);
+  };
   route();
 
   events = new AbortController();
@@ -155,6 +200,7 @@ function shell(api: Api, erpAgent?: string): void {
     onState(connected) {
       conn.textContent = connected ? 'Connected' : 'Reconnecting…';
       conn.classList.toggle('down', !connected);
+      chat.setOnline(connected);
       if (connected) {
         chat.onStreamOpen();
         banner.hidden = true;
