@@ -5,6 +5,9 @@ import { createInterface } from 'node:readline';
 import { maskSecret, VERSION } from '../config.ts';
 import { readSse } from '../providers/sse.ts';
 
+// A server that exits at once breaks its stdin pipe before its exit event is delivered. A pipe error waits this long for that exit,
+// so the user is told why the connector stopped; a server that is still running gets the pipe error itself.
+const EXIT_REPORT_WAIT_MS = 2000;
 type Rpc = { jsonrpc: string; id?: string | number; method?: string; params?: unknown; result?: any; error?: { code: number; message: string } };
 export class McpClient {
   readonly config: McpServerConfig;
@@ -59,12 +62,15 @@ export class McpClient {
     try {
       if (this.config.transport === 'stdio') {
         const env = Object.fromEntries(Object.entries(this.config.env ?? {}).map(([k, v]) => [k, this.expand(v)]));
-        this.child = spawn(this.config.command, this.config.args ?? [], { env: { ...process.env, ...env }, stdio: 'pipe', detached: true });
-        this.child.stderr.on('data', (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString()).slice(-8000); });
-        this.child.stdin.on('error', e => this.fail(this.safe(e.message)));
-        this.child.on('error', e => this.fail(this.safe(e.message)));
-        this.child.on('exit', (code, signal) => this.fail(this.safe(`MCP server exited (${code ?? signal}): ${this.stderr}`)));
-        const lines = createInterface({ input: this.child.stdout });
+        const child = this.child = spawn(this.config.command, this.config.args ?? [], { env: { ...process.env, ...env }, stdio: 'pipe', detached: true });
+        child.stderr.on('data', (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString()).slice(-8000); });
+        child.stdin.on('error', e => {
+          const timer = setTimeout(() => this.fail(this.safe(e.message)), EXIT_REPORT_WAIT_MS).unref(); // fail() keeps the first error: an exit that came first wins
+          child.once('exit', () => clearTimeout(timer));
+        });
+        child.on('error', e => this.fail(this.safe(e.message)));
+        child.on('exit', (code, signal) => this.fail(this.safe(`MCP server exited (${code ?? signal}): ${this.stderr}`)));
+        const lines = createInterface({ input: child.stdout });
         lines.on('line', line => {
           try { void this.receive(JSON.parse(line)).catch(e => this.fail(this.safe(String(e)))); }
           catch { /* Ignore non-protocol stdout such as startup banners. */ }

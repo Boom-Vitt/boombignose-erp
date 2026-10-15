@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import { once } from 'node:events';
@@ -100,6 +102,26 @@ test('stdio pending calls interrupt promptly and startup stderr redacts expanded
   const broken = new McpClient({ ...stdio, args: ['-e', 'process.stderr.write(process.env.BN_TEST); process.exit(2)'] }, { VALUE: 'fake-value' });
   await assert.rejects(broken.connect(), e => e instanceof Error && e.message.includes('exited') && !e.message.includes('fake-value'));
   await broken.close();
+});
+
+test('a stdio connector that exits at once is reported as exited, not as a broken pipe', async () => {
+  // A loaded machine can stall the daemon between spawn and the first write. The test forces that stall: the first config read after
+  // the spawn holds the event loop until the child has exited, so the write meets a closed pipe while the exit event is undelivered.
+  const client = new McpClient({ transport: 'stdio', command: process.execPath, args: ['-e', 'process.exit(2)'], enabled: true });
+  const spawned = () => (client as unknown as { child?: ChildProcess }).child;
+  let held = false;
+  Object.defineProperty(client.config, 'transport', { get() {
+    const child = spawned();
+    if (!held && child) {
+      held = true;
+      // a zombie has exited and is not reaped yet: the loop that would reap it is held
+      for (const until = Date.now() + 20_000; Date.now() < until && !spawnSync('ps', ['-o', 'stat=', '-p', String(child.pid)]).stdout.toString().startsWith('Z');) { /* hold */ }
+    }
+    return 'stdio';
+  } });
+  await assert.rejects(client.connect(), /^Error: MCP server exited \(2\)/);
+  assert.equal(held, true);
+  await client.close();
 });
 
 test('MCP tool results redact raw and JSON-escaped expanded environment values without truncating findings', async t => {
