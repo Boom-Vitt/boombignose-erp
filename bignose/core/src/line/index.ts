@@ -43,7 +43,7 @@ type LineMessage = Record<string, unknown>;
 interface Source { type?: string; userId?: unknown; groupId?: unknown; roomId?: unknown }
 interface LineEvent {
   type?: string; webhookEventId?: unknown; replyToken?: unknown; source?: Source; timestamp?: unknown;
-  message?: { type?: string; text?: unknown; id?: unknown; fileName?: unknown }; postback?: { data?: unknown };
+  message?: { type?: string; text?: unknown; id?: unknown; fileName?: unknown; contentProvider?: { type?: unknown } }; postback?: { data?: unknown };
 }
 interface Chat { tokens: { value: string; at: number }[]; queue: (() => Promise<void>)[]; busy: boolean }
 interface Pending { id: string; to: string; state: PendingState; text?: string; delivered: number; sending?: boolean }
@@ -281,6 +281,10 @@ export function createLineGateway(options: LineGatewayOptions) {
   function takeMedia(chat: { to: string; userId: string; sourceType: SourceType }, ev: LineEvent, kind: MediaKind): void {
     const media = opts.media;
     if (!media || typeof ev.message?.id !== 'string') return;
+    // LIFF-sent media lives at a sender-chosen URL that LINE's content endpoint cannot serve; fetching that URL
+    // would let any allowed sender point the daemon at an arbitrary host.
+    // shortcut: such media is skipped without a record; store originalContentUrl (never fetched) if it is ever needed.
+    if (ev.message.contentProvider?.type === 'external') return;
     void ingestMedia({
       messageId: ev.message.id, kind, sourceType: chat.sourceType, sourceId: chat.to, userId: chat.userId,
       timestamp: typeof ev.timestamp === 'number' ? ev.timestamp : undefined,

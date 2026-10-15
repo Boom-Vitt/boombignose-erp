@@ -339,16 +339,18 @@ test('gateway: a failed download is reported to onMedia and status, without the 
   assert.equal(records(s.dir)[0]!.error, 'content download failed: 410');
 });
 
-test('gateway: stickers, locations, media without a string id, and media with no store configured download nothing', async (t) => {
+test('gateway: stickers, locations, media without a string id, externally hosted media, and media with no store configured download nothing', async (t) => {
   const s = await gateway(t, false);
   const ev = (id: string, message: Record<string, unknown>) => ({ ...groupImage(id), message });
   await s.post([
     ev('61', { type: 'sticker', id: '61', packageId: '1', stickerId: '1' }), ev('62', { type: 'location', id: '62' }),
     ev('63', { type: 'image', id: 63 }), ev('64', { type: 'image' }), groupImage('../65'),
+    ev('67', { type: 'image', id: '67', contentProvider: { type: 'external', originalContentUrl: 'https://evil.test/x.jpg' } }),
   ]);
   await s.waitFor(() => s.got.length === 1);
   await new Promise((r) => setTimeout(r, 30));
   assert.deepEqual(s.reqs, [], 'only the unsafe id reached ingest, and it was refused before any request');
+  assert.equal(s.got.length, 1, 'externally hosted media is neither fetched nor recorded');
   assert.equal(s.got[0]!.error, 'invalid media event ids');
 
   const off = await gateway(t, false, { noMedia: true });
