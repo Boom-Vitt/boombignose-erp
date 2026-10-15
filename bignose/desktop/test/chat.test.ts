@@ -815,10 +815,12 @@ async function causes(world: Parameters<typeof harness>[2], errors: string[]) {
 test('only an Ollama provider is called Ollama, and a status comes only from the HTTP form', async t => {
   t.after(installDom());
   const ollama = { agent: { ...agent, provider: 'ollama' }, config: { ...config, providers: [{ id: 'ollama', kind: 'openai-compatible' as const, baseUrl: 'http://127.0.0.1:11434/v1' }] } };
-  assert.deepEqual(await causes(ollama, ['Provider HTTP 500: runner stopped', 'connect ECONNREFUSED 127.0.0.1:11434', 'Provider HTTP 404: model not found']), [
+  assert.deepEqual(await causes(ollama, ['Provider HTTP 500: runner stopped', 'connect ECONNREFUSED 127.0.0.1:11434', 'Provider HTTP 404: model not found',
+    'Ollama is not running at http://127.0.0.1:11434 (start it with "ollama serve" or open the Ollama app)']), [
     ["The model didn't answer", 'Ollama returned an error. Make sure it is still running, then try again.'],
     ["Ollama isn't running", 'Open Ollama, then try again.'],
     ["one-model isn't on this Mac", 'Run ollama pull one-model, or pick another model.'],
+    ["Ollama isn't running", 'Open Ollama, then try again.'], // the core's own wording for a refused connection
   ]);
   const cloud = { agent: { ...agent, provider: 'router' }, config: { ...config, providers: [{ id: 'router', kind: 'openai-compatible' as const, baseUrl: 'https://router.example/v1' }] } };
   assert.deepEqual(await causes(cloud, ['Provider HTTP 401: bad key', 'fetch failed', 'Provider HTTP 503: busy']), [
@@ -881,7 +883,7 @@ test('a chat picked while Agents or Settings is showing brings the chat page for
   assert.equal(location.hash, '#/settings/general', 'selecting or refreshing agents leaves the page alone');
 });
 
-test('a denied call does not open its row, a failed one does', async t => {
+test('a call the user denied does not open its row; a policy denial or a failure does', async t => {
   t.after(installDom());
   const h = harness();
   await started(h);
@@ -891,6 +893,61 @@ test('a denied call does not open its row, a failed one does', async t => {
     h.chat.onEvent({ type: 'tool_end', ...run, callId, name: 'shell', isError: true, output });
   };
   call('c1', 'denied by user'); call('c2', 'denied by policy'); call('c3', 'exit 1: no such file');
-  assert.deepEqual(rows().map(r => r.open === true), [false, false, true]);
+  assert.deepEqual(rows().map(r => r.open === true), [false, true, true], 'a policy denial has no receipt line, so its row opens to say why');
   assert.deepEqual(h.messages.querySelectorAll('.tool-status').map(s => s.className), ['tool-status error', 'tool-status error', 'tool-status error']);
+});
+
+const batch = { role: 'assistant', content: [
+  { type: 'tool_use', id: 'c1', name: 'shell', input: { command: 'echo one' } },
+  { type: 'tool_use', id: 'c2', name: 'shell', input: { command: 'echo two' } }] };
+const firstWord = (messages: TestNode) => messages.children.map(c => c.className.split(' ')[0]);
+
+test('a restored approval goes in front of the call that is running, not the newest call of that tool', async t => {
+  t.after(installDom());
+  const live = { runId: 'r1', seq: 1, text: '', tools: [{ callId: 'c1', name: 'shell', input: { command: 'echo one' }, done: false }] };
+  const h = harness([{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }],
+    path => path === '/api/sessions/s1' ? detail('s1', { messages: [said('user', 'run both'), batch], live }) : undefined);
+  await flush();
+  // the card arrived while no chat was open (the "waiting for you" toast); the history holds both calls, only c1 is running
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a1', tool: 'shell', input: { command: 'echo one' } });
+  h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  assert.deepEqual(firstWord(h.messages), ['msg', 'approval', 'tool', 'tool']);
+  const rows = h.messages.querySelectorAll('.tool');
+  assert.deepEqual(rows.map(r => r.hidden), [true, false], 'the card hides c1; c2 stays where it is');
+  h.chat.onEvent({ type: 'approval_result', ...run, approvalId: 'a1', allowed: true });
+  assert.deepEqual(rows.map(r => r.hidden), [false, false]);
+  assert.deepEqual(firstWord(h.messages), ['msg', 'approval', 'tool', 'tool'], 'the receipt is in front of c1');
+  assert.match(h.messages.querySelector('.approval')!.textContent, /^You allowed once: echo one$/);
+});
+
+test('in a batch of two calls each approval sits in front of its own call', async t => {
+  t.after(installDom());
+  const h = harness();
+  await started(h);
+  const call = (callId: string, command: string) => h.chat.onEvent({ type: 'tool_start', ...run, callId, name: 'shell', input: { command } });
+  call('c1', 'echo one');
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a1', tool: 'shell', input: { command: 'echo one' } });
+  h.chat.onEvent({ type: 'approval_result', ...run, approvalId: 'a1', allowed: true });
+  h.chat.onEvent({ type: 'tool_end', ...run, callId: 'c1', name: 'shell', isError: false, output: 'one' });
+  call('c2', 'echo two');
+  h.chat.onEvent({ type: 'approval_request', ...run, approvalId: 'a2', tool: 'shell', input: { command: 'echo two' } });
+  assert.deepEqual(firstWord(h.messages), ['msg', 'approval', 'tool', 'approval', 'tool']);
+  assert.deepEqual(h.messages.querySelectorAll('.tool').map(r => r.hidden), [false, true], 'only the call waiting for an answer is hidden');
+});
+
+test('the header keeps the open chat\'s title when a search leaves it out of the list', async t => {
+  t.after(installDom());
+  const list = [{ id: 's1', agentId: 'a1', title: 'Saved s1', updatedAt: Date.now() }, { id: 's2', agentId: 'a1', title: 'Saved s2', updatedAt: Date.now() }];
+  const h = harness(list);
+  (globalThis.window as unknown as { setTimeout: (fn: () => void) => number }).setTimeout = fn => { fn(); return 1; }; // run the search debounce at once
+  await flush();
+  h.sidebar.querySelector('.session')!.fire('click'); await flush();
+  const title = h.root.querySelector('.chat-title')!;
+  assert.equal(title.textContent, 'Saved s1');
+  list.splice(0, list.length, list[1]!); // the daemon's answer to the search: s2 only
+  const search = h.sidebar.querySelector('input')!;
+  search.value = 'two'; search.fire('input'); await flush();
+  assert.deepEqual(h.sidebar.querySelectorAll('.session-title').map(x => x.textContent), ['Saved s2']);
+  assert.equal(title.textContent, 'Saved s1', 'the chat on screen is still s1');
+  assert.equal(h.chat.isEmpty(), false);
 });

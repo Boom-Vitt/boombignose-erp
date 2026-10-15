@@ -38,7 +38,7 @@ media block indented two spaces, `:root[data-theme="dark"] {`).
 | Composer: one `.send` button that swaps to Stop; Send is disabled when blank or while the stream is down; no hint line | `chat.ts` |
 | Empty chat: app icon, "How can I help?", agent and model, three starters that fill the composer without sending | `chat.ts` |
 
-Picking a chat in the sidebar while Agents or Settings is showing goes to `#/chat` (only that click navigates, not the programmatic opens). A denied tool call keeps its failed row closed; the receipt line already says it.
+Picking a chat in the sidebar while Agents or Settings is showing goes to `#/chat` (only that click navigates, not the programmatic opens). A tool call the user denied keeps its failed row closed (the receipt line says it); a policy denial opens, it has no receipt. A restored approval card goes in front of the call that is running (the live turn's, else the oldest running call of that tool), because `approval_request` has no call id. The header title is remembered per chat, so a search that leaves the open chat out of the list does not change it.
 
 Keyboard: **Esc** denies the newest pending approval of the open chat (not while the slash picker or a dialog is open; Enter
 never approves); a new card focuses **Deny** unless the user is typing; **⌘N** new chat, **⌘,** Settings, **⌘F** chat search.
@@ -56,7 +56,7 @@ pending read, so the new chat streams; a failed first open shows its error witho
 bar (switcher, then New chat, Agents and Settings as icons with screen-reader labels, then a dot for the connection), the chat
 list is a sideways strip under it, and the 40 px rail is only the toggle button. After Ready the launcher is still polled
 (`waitForStop`): when the ERP server exits, `boot()` shows the launcher's own "The ERP server stopped" screen with **Retry** and
-returns to the panel once the server is up.
+returns to the panel once the server is up. The toggle button is mounted on `<body>`, outside `#app`, so that screen keeps it: collapsed to the rail, the stopped screen is hidden and the toggle is the way back.
 
 ## Not finished here (next streams)
 

@@ -73,6 +73,30 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
   assert.deepEqual(ui.cdp.errors, []);
 });
 
+test('when the ERP server stops the panel shows why with Retry, and the collapsed rail keeps its toggle', { timeout: 120_000 }, async t => {
+  const app = await daemon(t);
+  const ui = await openUi(t, app, { os: true, viewport: { width: 420, height: 640 }, commands: { os_status: ready, os_info: osInfo } });
+  await ui.wait(`document.querySelector('.shell') && document.querySelector('.panel-toggle')`);
+  // the launcher leaves ready: boot() replaces the panel with the startup screen, which says why
+  await ui.cdp.evaluate(`window.__answers.os_status = { phase: 'failed', title: 'The ERP server stopped', message: 'exit status 1' }`);
+  await ui.wait(`document.querySelector('.splash')?.textContent.includes('The ERP server stopped')`);
+  assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.panel-toggle').length`), 1, 'the toggle is not part of the replaced page');
+  // collapsed to the 40px rail, the toggle is all there is, and it still asks the Rust side to slide the panel back
+  await ui.cdp.call('Emulation.setDeviceMetricsOverride', { width: 40, height: 640, deviceScaleFactor: 1, mobile: false });
+  await ui.wait(`getComputedStyle(document.querySelector('.splash')).display === 'none'`);
+  const rail = await ui.cdp.evaluate(`(() => { const r = document.querySelector('.panel-toggle').getBoundingClientRect(); const page = document.scrollingElement; return { w: r.width, h: r.height, x: page.scrollWidth - page.clientWidth }; })()`);
+  assert.deepEqual(rail, { w: 40, h: 640, x: 0 });
+  await ui.cdp.evaluate(`window.__invokes.length = 0; document.querySelector('.panel-toggle').click()`);
+  assert.ok(await ui.cdp.evaluate(`window.__invokes.includes('os_toggle_panel')`));
+  // expanded again, Retry is there; once the server is back the panel returns with a single toggle
+  await ui.cdp.call('Emulation.setDeviceMetricsOverride', { width: 420, height: 640, deviceScaleFactor: 1, mobile: false });
+  await ui.click('Retry');
+  await ui.cdp.evaluate(`window.__answers.os_status = ${JSON.stringify(ready)}`);
+  await ui.wait(`document.querySelector('.shell') && !document.querySelector('.splash')`);
+  assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.panel-toggle').length`), 1);
+  assert.deepEqual(ui.cdp.errors, []);
+});
+
 test('the window shows Open Docker and Retry while Docker is stopped', { timeout: 60_000 }, async t => {
   const app = await daemon(t);
   const ui = await openUi(t, app, { os: true, shell: false, viewport: { width: 1180, height: 780 }, commands: { os_status: { phase: 'docker-stopped', installed: true } } });

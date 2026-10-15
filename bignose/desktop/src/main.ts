@@ -140,7 +140,10 @@ function shell(api: Api, erpAgent?: string): void {
 
   app.replaceChildren(el('div', { class: 'shell' },
     el('nav', { class: 'nav', 'aria-label': 'Main' }, chat.agentSwitch, newChatLink, chat.sidebar, el('div', { class: 'nav-foot' }, agentsLink, settingsLink, conn)),
-    el('main', { class: 'main' }, banner, chat.root, agents, settings)), ...(OS ? [panelToggle()] : []));
+    el('main', { class: 'main' }, banner, chat.root, agents, settings)));
+  // The toggle lives on <body>, not in #app: boot() replaces #app with the "ERP server stopped" screen, and a panel collapsed to
+  // its 40 px rail must still have a button that expands it. It appears with the first shell and stays.
+  if (OS && !document.querySelector('.panel-toggle')) document.body.append(panelToggle());
   document.body.classList.toggle('os-panel', OS);
   // panel mode opens on the ERP assistant; Agents and Settings stay one click away
   if (erpAgent) void chat.refreshAgents().then(() => chat.selectAgent(erpAgent));

@@ -109,7 +109,7 @@ function explain(raw: string, model: string, kind: 'ollama' | 'local' | 'cloud')
   const status = Number(/\bHTTP (\d{3})\b/.exec(raw)?.[1]);
   const who = kind === 'cloud' ? 'The cloud service' : 'The model server';
   if (status === 401 || status === 403 || /invalid api key/i.test(raw)) return { title: `${who} refused the key`, desc: ['Check the API key in Settings › Model.'] };
-  if (!status && /ECONNREFUSED|connection refused|fetch failed|ENOTFOUND/i.test(raw)) {
+  if (!status && /ECONNREFUSED|connection refused|fetch failed|ENOTFOUND|is not running/i.test(raw)) { // "Ollama is not running at …" is the core's own text for a refused Ollama connection
     if (kind === 'ollama') return { title: "Ollama isn't running", desc: ['Open Ollama, then try again.'] };
     return kind === 'local' ? { title: "Couldn't reach the model server", desc: ['Make sure it is running, then try again.'] }
       : { title: "Couldn't reach the model service", desc: ['Check your internet connection, then try again.'] };
@@ -150,6 +150,8 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   const running = new Set<string>();
   const approvals = new Map<string, Approval>();
   const tools = new Map<string, ToolRow>();
+  const liveCalls = new Set<string>(); // calls of the open chat's live turn known to be running (restored snapshot or tool_start)
+  const titles = new Map<string, string>(); // chat titles seen so far: the header must not depend on the search-filtered list
   let sessions: SessionSummary[] = [];
 
   // ---- DOM
@@ -175,7 +177,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
   const isBusy = () => sending || (currentId !== null && running.has(currentId));
   const workspace = () => config?.agent.workspace ?? '';
   const agentOf = (id = selectedAgent) => agents.find((a) => a.id === id);
-  const titleOf = (id: string) => sessions.find((s) => s.id === id)?.title || 'another chat';
+  const titleOf = (id: string) => titles.get(id) || 'another chat';
 
   function updateComposer(): void {
     const busy = isBusy();
@@ -278,7 +280,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
         out.textContent = output || '(no output)';
         setLang(out, output);
         if (this.startedAt !== undefined) meta.textContent = `${((Date.now() - this.startedAt) / 1000).toFixed(1)} s`;
-        if (isError && !/^denied by (user|policy)$/.test(output.trim())) row.open = true; // a failure opens itself; a denial is the user's own decision, the receipt says it
+        if (isError && output.trim() !== 'denied by user') row.open = true; // a failure opens itself; a denial by the user does not, its receipt line says it (a policy denial has no receipt)
       },
     };
   }
@@ -291,7 +293,12 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     return row;
   }
 
-  const findRunning = (tool: string) => [...tools.values()].reverse().find((r) => r.name === tool && !r.done);
+  /** The call an approval is for. approval_request has no call id and calls run one at a time, so it is the live turn's running call, else the OLDEST running one of that tool that no other approval holds. */
+  function findRunning(tool: string, self: Approval): ToolRow | undefined {
+    const held = new Set([...approvals.values()].filter((x) => x !== self).map((x) => x.row));
+    const open = [...tools.values()].filter((r) => r.name === tool && !r.done && !held.has(r));
+    return open.find((r) => liveCalls.has(r.callId)) ?? open[0];
+  }
 
   /** What the card shows after a decision: one line that stays in the history. */
   function receipt(a: Approval, card: HTMLElement = el('div')): HTMLElement {
@@ -341,7 +348,8 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     let newest: Approval | undefined;
     for (const [id, a] of approvals) {
       if (a.sessionId !== currentId) continue;
-      a.row = (a.callId ? tools.get(a.callId) : undefined) ?? (a.state === 'pending' ? findRunning(a.tool) : undefined);
+      a.row = (a.callId ? tools.get(a.callId) : undefined) ?? (a.state === 'pending' ? findRunning(a.tool, a) : undefined);
+      if (a.row) a.callId = a.row.callId;
       if (a.state === 'pending') { if (a.row) a.row.root.hidden = true; a.card = approvalCard(id, a); newest = a; }
       else a.card = receipt(a);
       place(a.card, a.row);
@@ -353,6 +361,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     historyLoadSeq = 0;
     messages.replaceChildren();
     tools.clear();
+    liveCalls.clear();
     live = null;
     lastUser = '';
     if (!msgs.length) messages.appendChild(emptyState());
@@ -379,7 +388,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       if (turn.text || !turn.tools.length) setLive(bubble('assistant', turn.text, !turn.text));
       for (const t of turn.tools) {
         addToolRow(t.callId, t.name, t.input);
-        if (t.done) tools.get(t.callId)!.finish(!!t.isError, t.output ?? '');
+        if (t.done) tools.get(t.callId)!.finish(!!t.isError, t.output ?? ''); else liveCalls.add(t.callId);
       }
     } else if (turn === null) { // no run is going: a call without a result was cut short (a crash or kill), it is not still running
       for (const row of tools.values()) if (!row.done) row.finish(true, 'Interrupted: the run did not finish.');
@@ -397,7 +406,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
 
   // ---- sessions
   function showHeader(): void {
-    const t = (currentId && sessions.find((s) => s.id === currentId)?.title) || 'New chat';
+    const t = (currentId && titles.get(currentId)) || 'New chat';
     title.textContent = t;
     setLang(title, t);
     const a = agentOf();
@@ -446,6 +455,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       const found = (await api.listSessions(query || undefined, undefined, selectedAgent)).sessions;
       if (seq !== listSeq) return;
       sessions = found;
+      for (const s of found) titles.set(s.id, s.title);
       renderList();
     } catch (e) {
       if (seq !== listSeq) return;
@@ -497,6 +507,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
     try {
       const s = await api.getSession(id);
       if (!current()) return;
+      if (s.title) titles.set(id, s.title);
       renderHistory(s.messages, s.notices, s.live);
       rendered = true;
       showApprovals();
@@ -662,7 +673,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       const a: Approval = { sessionId: id, tool: e.tool, input: e.input, state: 'pending' };
       approvals.set(e.approvalId, a);
       if (id === currentId) {
-        a.row = findRunning(e.tool); // the card IS that tool: hide its running row until it is decided
+        a.row = findRunning(e.tool, a); // the card IS that tool: hide its running row until it is decided
         if (a.row) { a.row.root.hidden = true; a.callId = a.row.callId; }
         a.card = approvalCard(e.approvalId, a);
         place(a.card, a.row);
@@ -705,6 +716,7 @@ export function createChat(api: Api, agentChanged: (agent: Agent) => void = () =
       }
       case 'tool_start': {
         endLive();
+        liveCalls.add(e.callId);
         const row = addToolRow(e.callId, e.name, e.input);
         if (row) row.startedAt = Date.now();
         break;
