@@ -145,3 +145,12 @@ test('concurrent settings saves compose, and a failed save does not poison the q
   await api.updateSettings(c => { c.active.model = 'recovered'; });
   assert.equal(stored.active.model, 'recovered');
 });
+
+test('putSkill sends create only for a new skill, and a taken name reaches the caller as the daemon 409 message', async () => {
+  const { api, calls } = setup((c) => (JSON.parse(c.body!).create ? json({ error: 'A skill named "taxes" already exists.' }, 409) : json({ ok: true })));
+  await api.putSkill('taxes', { description: 'd', body: 'b' });
+  assert.deepEqual(JSON.parse(calls[0].body!), { description: 'd', body: 'b' });
+  await assert.rejects(api.putSkill('taxes', { description: 'd', body: 'b' }, true), { name: 'ApiError', status: 409, message: 'A skill named "taxes" already exists.' });
+  assert.equal(calls[1].method, 'PUT');
+  assert.deepEqual(JSON.parse(calls[1].body!), { description: 'd', body: 'b', create: true });
+});

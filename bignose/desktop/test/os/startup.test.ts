@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { startupView, waitForReady } from '../../src/os/startup.ts';
+import { startupView, waitForReady, waitForStop } from '../../src/os/startup.ts';
 import type { OsStatus, StartupActions } from '../../src/os/startup.ts';
 import { installDom } from '../dom-fixture.ts';
 import type { TestNode } from '../dom-fixture.ts';
@@ -63,5 +63,48 @@ test('waitForReady shows each change once, wires Retry to os_retry, and resolves
     buttons(shown[0]!).find((b) => b.textContent === 'Retry')!.fire('click');
     buttons(shown[0]!).find((b) => b.textContent === 'Open Docker')!.fire('click');
     assert.deepEqual(calls.slice(-2), ['os_retry', 'os_open_docker']);
+  } finally { restore(); }
+});
+
+test('an ERP server exit after Ready shows the error with Retry', async () => {
+  const restore = installDom();
+  try {
+    const ready: OsStatus = { phase: 'ready', url: 'http://127.0.0.1:3100' };
+    const failed: OsStatus = { phase: 'failed', title: 'The ERP server stopped', message: 'exit status 1' };
+    let script: (OsStatus | Error)[] = [ready, ready, new Error('bridge hiccup'), ready, failed];
+    const calls: string[] = [];
+    const invoke = (async (cmd: string) => {
+      calls.push(cmd);
+      if (cmd !== 'os_status') return undefined;
+      const next = script.shift() ?? failed;
+      if (next instanceof Error) throw next;
+      return next;
+    }) as Parameters<typeof waitForReady>[0];
+    // the panel keeps watching after Ready: a hiccup in the bridge is not a stop, the launcher leaving ready is
+    const stopped = await waitForStop(invoke, new AbortController().signal, 1);
+    assert.deepEqual(stopped, failed);
+    assert.equal(script.length, 0);
+    // boot() then runs the startup screen again: it shows why the server stopped, with Retry wired to os_retry
+    script = [failed, failed, { phase: 'starting', step: 'erp', detail: null }, ready];
+    const shown: TestNode[] = [];
+    assert.equal(await waitForReady(invoke, (v) => shown.push(v as unknown as TestNode), 1), 'http://127.0.0.1:3100');
+    assert.match(shown[0]!.textContent, /The ERP server stopped/);
+    assert.match(shown[0]!.textContent, /exit status 1/);
+    assert.equal(shown[0]!.attrs.role, 'alert');
+    assert.deepEqual(buttons(shown[0]!).map((b) => b.textContent), ['Retry']);
+    buttons(shown[0]!)[0]!.fire('click');
+    assert.equal(calls.at(-1), 'os_retry');
+    assert.match(shown[1]!.textContent, /Starting the ERP/);
+  } finally { restore(); }
+});
+
+test('waitForStop ends quietly when it is aborted', async () => {
+  const restore = installDom();
+  try {
+    const abort = new AbortController();
+    const invoke = (async () => ({ phase: 'ready', url: 'http://127.0.0.1:3100' })) as unknown as Parameters<typeof waitForReady>[0];
+    const waiting = waitForStop(invoke, abort.signal, 1);
+    abort.abort();
+    assert.equal(await waiting, null);
   } finally { restore(); }
 });

@@ -1,3 +1,6 @@
+import { statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import { defaultConfig, maskSecret, readEnv, redact } from '../config.ts';
 import type { AgentInput } from '../store/index.ts';
 import type { Config, McpServerConfig } from '../types.ts';
@@ -67,6 +70,21 @@ export function validateConfig(v: unknown): asserts v is Config {
   const allow = v.line.allow;
   requireValue(isObject(allow) && ['users', 'groups', 'rooms'].every(k => strings(allow[k])), 'invalid LINE allowlists');
   requireValue(isObject(v.api) && integer(v.api.port, 0, 65535), 'invalid API port');
+}
+
+/**
+ * The agent workspace folder as the runtime uses it: `~` expanded, absolute, an existing folder. Only a save that changes the
+ * workspace runs this (never validateConfig, which also loads a stored config), so a stale stored folder cannot stop the daemon.
+ */
+export function resolveWorkspace(input: string): string {
+  const text = input.trim();
+  const path = text === '~' ? homedir() : text.startsWith('~/') ? join(homedir(), text.slice(2)) : text;
+  requireValue(isAbsolute(path), 'Workspace folder must be a full path (like /Users/you/Projects) or start with ~/');
+  const full = resolve(path);
+  let stats;
+  try { stats = statSync(full); } catch { throw new Error(`Workspace folder does not exist: ${full}`); }
+  requireValue(stats.isDirectory(), `Workspace folder is not a folder: ${full}`);
+  return full;
 }
 
 export function restoreMaskedConfig(input: Config, stored: Config, clean: (text: string) => string): Config {

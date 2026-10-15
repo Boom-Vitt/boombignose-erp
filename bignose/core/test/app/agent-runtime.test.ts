@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Runtime } from '../../src/app/runtime.ts';
@@ -280,4 +280,78 @@ test('a failed step save does not stop the run or leave an unanswered tool call 
   const expected = ['user:text', 'assistant:tool_use', 'user:tool_result', 'assistant:text'];
   assert.deepEqual(shape(h.store.getMessages(session.id)), expected); // the run end wrote what the failed save missed, once
   assert.deepEqual(shape(h.store.getSession(session.id)!.context), expected);
+});
+
+test('a failed scheduled run emits a failure notification', async t => {
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream() { throw new Error('provider down'); } }));
+  const events: { type: string; title?: string; body?: string; sessionId?: string }[] = [];
+  h.runtime.subscribe(e => { events.push(e); });
+  const job = h.scheduler.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'morning   brief', delivery: { kind: 'desktop' } });
+  await assert.rejects(h.runtime.fireJob(job), /provider down/);
+  const notices = events.filter(e => e.type === 'notification');
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0]!.title, 'Scheduled task failed');
+  assert.equal(notices[0]!.body, 'morning brief: provider down');
+  assert.equal(notices[0]!.sessionId, undefined, 'a notification without a session is a toast, whichever chat is open');
+});
+
+test('a LINE-delivery schedule is refused while LINE is off: fireJob stops before the model runs and says so', async t => {
+  let calls = 0;
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream() { calls++; yield { type: 'text_delta', text: 'never delivered' }; yield done; } }));
+  const events: { type: string; title?: string; body?: string }[] = [];
+  h.runtime.subscribe(e => { events.push(e); });
+  const job = h.scheduler.add({ agentId: h.store.listAgents()[0]!.id, cron: '0 9 * * *', prompt: 'to LINE', delivery: { kind: 'line', to: 'Cabc' } });
+  await assert.rejects(h.runtime.fireJob(job), /LINE is off/);
+  assert.equal(calls, 0, 'no model call for an answer with nowhere to go');
+  assert.equal(h.store.listSessions().length, 0);
+  assert.match(events.find(e => e.type === 'notification')!.body ?? '', /LINE is off/);
+});
+
+test("an agent's own prefix rule beats a global rule for one tool", async t => {
+  const requests: ProviderRequest[] = [];
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream(req) {
+    requests.push(req);
+    if (req.messages.length === 1) {
+      yield { type: 'tool_call', id: 'write', name: 'write_file', input: { path: 'own.txt', content: 'written' } };
+      yield { type: 'tool_call', id: 'echo', name: 'mcp__alpha__echo', input: { text: 'hi' } };
+    } else yield { type: 'text_delta', text: 'ok' };
+    yield done;
+  } }), c => {
+    c.mcp.servers.alpha = fakeMcp;
+    Object.assign(c.permissions, { shell: 'allow', read_file: 'allow', write_file: 'deny', mcp__alpha__echo: 'allow' }); // what Settings > Tools writes: one exact rule per tool
+  });
+  const agent = h.store.listAgents()[0]!;
+  h.store.updateAgent(agent.id, { permissions: { '*': 'deny', 'write_*': 'allow', 'mcp__*': 'ask' }, connectors: ['alpha'] });
+  for (const explicit of [false, true]) { // the run builds its own profile, or takes one made by runtime.profile()
+    requests.length = 0; rmSync(join(h.home, 'own.txt'), { force: true });
+    const session = h.store.createSession({ origin: { kind: 'cli' }, agentId: agent.id });
+    const profile = explicit ? h.runtime.profile(h.config, true, h.store.getAgent(agent.id)!) : undefined;
+    assert.equal((await h.runtime.start(session.id, 'work', { profile }).result).status, 'done');
+    const offered = requests[0]!.tools.map(tool => tool.name).filter(name => ['shell', 'read_file', 'write_file', 'mcp__alpha__echo'].includes(name)).sort();
+    assert.deepEqual(offered, ['mcp__alpha__echo', 'write_file'], 'the agent\'s * rule hides shell and read_file although the global rules allow them');
+    const output = results(requests.at(-1)!), byId = (id: string) => output.find(r => r.toolUseId === id)!;
+    assert.equal(byId('write').isError, false); assert.equal(readFileSync(join(h.home, 'own.txt'), 'utf8'), 'written'); // the agent's write_* allow beat the global write_file deny
+    assert.match(byId('echo').content, /denied by user/); // the agent's mcp__* ask beat the global exact allow (nobody answers a CLI approval here)
+  }
+});
+
+test('denied tools are not offered to the model, nested delegates included; the rest stay', async t => {
+  const requests: ProviderRequest[] = [];
+  const h = await harness(t, () => ({ kind: 'openai-compatible', async *stream(req) {
+    requests.push(req);
+    if (req.messages.length === 1 && req.system.includes('You are BigNose')) yield { type: 'tool_call', id: 'd1', name: 'delegate', input: { task: 'look around' } };
+    else yield { type: 'text_delta', text: 'ok' };
+    yield done;
+  } }), c => { c.mcp.servers.alpha = fakeMcp; c.permissions.edit_file = 'deny'; });
+  const agent = h.store.listAgents()[0]!;
+  h.store.updateAgent(agent.id, { permissions: { shell: 'deny', web_fetch: 'deny', 'mcp__*': 'deny' }, connectors: ['alpha'] });
+  const session = h.store.createSession({ origin: { kind: 'desktop' }, agentId: agent.id });
+  assert.equal((await h.runtime.start(session.id, 'work').result).status, 'done');
+  assert.ok(requests.length >= 3, 'the parent run, the delegate run and the parent again');
+  for (const req of requests) {
+    const names = req.tools.map(tool => tool.name);
+    for (const denied of ['shell', 'web_fetch', 'edit_file', 'mcp__alpha__echo']) assert.ok(!names.includes(denied), `${denied} is not offered`);
+    for (const kept of ['read_file', 'write_file', 'memory_read']) assert.ok(names.includes(kept), `${kept} is still offered`);
+  }
+  assert.ok(requests.some(req => req.tools.some(tool => tool.name === 'delegate')), 'the parent keeps delegate');
 });

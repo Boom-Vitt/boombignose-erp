@@ -264,7 +264,7 @@ test('scheduler: disabled jobs do not fire; enabling and disabling takes effect 
 
   h.sched.setEnabled(a.id, false);
   h.sched.setEnabled(b.id, false);
-  assert.equal(h.live().length, 0, 'no enabled jobs: no timer');
+  assert.deepEqual(h.live().map((x) => x.ms), [60_000], 'no enabled jobs: the only timer is the minute check of the store for jobs another process adds');
   assert.equal(h.sched.list().every((j) => j.nextRunAt === undefined), true);
 
   // disabled before start: reload keeps it off
@@ -273,7 +273,9 @@ test('scheduler: disabled jobs do not fire; enabling and disabling takes effect 
   store.saveJob({ agentId: store.ensureDefaultAgent({ provider: 'mock', model: 'test' }).id, id: 'off', cron: '* * * * *', prompt: 'x', delivery: desktop, enabled: false });
   const h2 = harness(t, { store });
   h2.sched.start();
-  assert.equal(h2.live().length, 0);
+  assert.deepEqual(h2.live().map((x) => x.ms), [60_000], 'only the store check is armed');
+  await h2.advance(at(2026, 10, 13, 10, 3));
+  assert.equal(h2.fired.length, 0, 'the disabled job still does not fire');
 });
 
 test('scheduler: a failing onFire is recorded and does not stop the schedule', async (t) => {
@@ -303,6 +305,65 @@ test('scheduler: a job that is still running is not started twice, and a removed
   await flush();
   assert.deepEqual(h.store.listJobs(), [], 'finishing a removed job does not save it again');
   assert.equal(h.sched.remove(job.id), false);
+});
+
+// `bignose chat -q` runs its own Scheduler on the same database file but never starts it; only the daemon fires.
+test('a job added by another process fires in the running daemon, and its changes and removal follow', async (t) => {
+  const h = harness(t, { start: at(2026, 10, 13, 8) });
+  h.sched.start(); // the daemon, with no job yet
+  const cli = new Scheduler({ store: h.store, onFire: async () => {} });
+  const agentId = h.store.listAgents()[0]!.id;
+  const job = cli.add({ agentId, cron: '0 9 * * *', prompt: 'from the CLI', delivery: desktop });
+  await h.advance(at(2026, 10, 13, 8, 1)); // the daemon's minute check finds it
+  assert.equal(h.sched.list().find((j) => j.id === job.id)!.nextRunAt, at(2026, 10, 13, 9).getTime());
+  await h.advance(at(2026, 10, 13, 9));
+  assert.deepEqual(h.fired.map((j) => j.id), [job.id]);
+  assert.equal(h.store.listJobs()[0]!.lastStatus, 'ok');
+
+  cli.setEnabled(job.id, false); // switched off by the other process
+  await h.advance(at(2026, 10, 14, 9));
+  assert.equal(h.fired.length, 1, 'a job switched off elsewhere does not fire');
+  cli.setEnabled(job.id, true);
+  const other = cli.add({ agentId, cron: '0 10 * * *', prompt: 'second', delivery: desktop });
+  cli.remove(other.id); // added and removed between two checks: never planned
+  await h.advance(at(2026, 10, 14, 9, 30));
+  await h.advance(at(2026, 10, 15, 9));
+  assert.deepEqual(h.fired.map((j) => j.prompt), ['from the CLI', 'from the CLI'], 'switched on again, fired once more; the removed job never fired');
+});
+
+test('a job added by another process fires in the running daemon even when it came due between two checks', async (t) => {
+  const h = harness(t, { start: at(2026, 10, 13, 8) });
+  h.sched.start();
+  new Scheduler({ store: h.store, onFire: async () => {} }).add({ agentId: h.store.listAgents()[0]!.id, cron: '1 8 * * *', prompt: 'due at 08:01', delivery: desktop });
+  await h.advance(at(2026, 10, 13, 8, 2)); // the daemon looks after the minute has passed
+  assert.deepEqual(h.fired.map((j) => j.prompt), ['due at 08:01']);
+});
+
+test('a job added by another process fires in the running daemon after a daemon-local add, which never fires its own current minute', async (t) => {
+  const sec = (d: Date, n: number) => new Date(d.getTime() + n * 1000);
+  const h = harness(t, { start: sec(at(2026, 10, 13, 8), 30) });
+  const agentId = h.store.listAgents()[0]!.id;
+  h.sched.start(); // the daemon looks at 08:00:30
+  h.setClock(sec(at(2026, 10, 13, 8), 45));
+  const cliJob = new Scheduler({ store: h.store, onFire: async () => {} }).add({ agentId, cron: '1 8 * * *', prompt: 'from the CLI', delivery: desktop });
+  h.setClock(sec(at(2026, 10, 13, 8, 1), 10));
+  h.sched.add({ agentId, cron: '0 12 * * *', prompt: 'unrelated, added here', delivery: desktop }); // must not plan the CLI job past 08:01
+  await h.advance(sec(at(2026, 10, 13, 8, 1), 30));
+  assert.deepEqual(h.fired.map((j) => j.id), [cliJob.id], 'the CLI job fires once, at the first tick after its minute');
+  await h.advance(sec(at(2026, 10, 13, 8, 2), 30));
+  assert.equal(h.fired.length, 1);
+
+  // a job made or switched on in this process in the middle of its own matching minute waits for the next day
+  h.setClock(sec(at(2026, 10, 14, 9, 59), 30));
+  const toggled = h.sched.add({ agentId, cron: '0 10 * * *', prompt: 'switched on at 10:00:15', delivery: desktop });
+  h.sched.setEnabled(toggled.id, false);
+  await h.advance(sec(at(2026, 10, 14, 9, 59), 30)); // the last look before 10:00
+  h.setClock(sec(at(2026, 10, 14, 10), 15));
+  const added = h.sched.add({ agentId, cron: '0 10 * * *', prompt: 'added at 10:00:15', delivery: desktop });
+  h.sched.setEnabled(toggled.id, true);
+  await h.advance(sec(at(2026, 10, 14, 10), 45));
+  assert.deepEqual(h.fired.filter((j) => j.id === added.id || j.id === toggled.id), [], 'neither fires in minute 10:00');
+  for (const j of [added, toggled]) assert.equal(h.sched.list().find((x) => x.id === j.id)!.nextRunAt, at(2026, 10, 15, 10).getTime());
 });
 
 test('scheduler: every due job fires in one tick', async (t) => {

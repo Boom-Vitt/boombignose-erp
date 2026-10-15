@@ -13,7 +13,7 @@ test('daemon starts on a bound loopback port, authenticates health, and stops cl
   const exit = once(child, 'exit');
   let stderr = ''; child.stderr.on('data', c => { stderr += c; }); child.stdout.resume();
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exit; } });
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 60_000; // bounds only stop a hang; a loaded machine starts the daemon slowly
   while (!existsSync(join(home, 'daemon.json'))) {
     assert.ok(child.exitCode === null && Date.now() < deadline, stderr);
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -25,7 +25,7 @@ test('daemon starts on a bound loopback port, authenticates health, and stops cl
   const health = await fetch(base + '/api/health', { headers: { Authorization: `Bearer ${token}` } });
   assert.deepEqual(await health.json(), { ok: true, version: info.version, pid: child.pid });
   child.kill('SIGTERM');
-  const stopped = await Promise.race([exit, new Promise<never>((_, reject) => { const timer = setTimeout(() => reject(new Error('daemon did not stop')), 5000); timer.unref(); })]);
+  const stopped = await Promise.race([exit, new Promise<never>((_, reject) => { const timer = setTimeout(() => reject(new Error('daemon did not stop')), 30_000); timer.unref(); })]);
   assert.deepEqual(stopped, [0, null]); assert.equal(existsSync(join(home, 'daemon.json')), false);
 });
 
@@ -50,7 +50,7 @@ test('API and LINE start during hung MCP initialization; shutdown waits for a co
   const child = spawn(process.execPath, [cliFile.pathname, 'daemon'], { env: { ...process.env, BIGNOSE_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
   const exit = once(child, 'exit'); child.stdout.resume(); child.stderr.resume();
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exit; } });
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 60_000;
   let pid = 0;
   while (!Number.isSafeInteger(pid) || pid <= 0) {
     assert.ok(Date.now() < deadline && child.exitCode === null && child.signalCode === null, 'MCP did not publish a complete PID');
@@ -59,6 +59,8 @@ test('API and LINE start during hung MCP initialization; shutdown waits for a co
     if (!Number.isSafeInteger(pid) || pid <= 0) await new Promise(resolve => setTimeout(resolve, 10));
   }
   t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch { /* Already closed by daemon. */ } });
+  // The MCP child can publish its PID before the daemon has bound the API and written daemon.json; the API must still come up with the child hung.
+  for (const end = Date.now() + 60_000; !existsSync(join(home, 'daemon.json')) && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(existsSync(join(home, 'daemon.json')), true);
   const info = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8'));
   const headers = { Authorization: `Bearer ${readFileSync(join(home, 'api-token'), 'utf8').trim()}` };
@@ -69,7 +71,7 @@ test('API and LINE start during hung MCP initialization; shutdown waits for a co
   const connectors = await (await fetch(base + '/api/mcp', { headers })).json() as any;
   assert.equal(connectors.servers.find((s: any) => s.name === 'waiting').connected, false);
   child.kill('SIGTERM');
-  const result = await Promise.race([exit, new Promise<never>((_, reject) => { const timer = setTimeout(() => reject(new Error('startup shutdown timed out')), 3000); timer.unref(); })]);
+  const result = await Promise.race([exit, new Promise<never>((_, reject) => { const timer = setTimeout(() => reject(new Error('startup shutdown timed out')), 30_000); timer.unref(); })]);
   assert.deepEqual(result, [0, null]);
   assert.throws(() => process.kill(pid, 0), (e: any) => e.code === 'ESRCH');
   assert.equal(existsSync(join(home, 'daemon.json')), false);

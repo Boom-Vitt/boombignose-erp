@@ -24,7 +24,7 @@ core/                     @bignose/core — daemon + CLI, Node >= 24, ESM, zero 
   src/app/                runtime wiring, daemon, doctor                             (stream core-app)
   src/cli.ts              `bignose` entry                                            (stream core-app)
   test/<area>/*.test.ts   node:test suites, one folder per area
-desktop/                  package "desktop" — Tauri 2 app "BigNose"                  (stream desktop)
+desktop/                  package "desktop" — Tauri 2 app "BigNose OS"               (stream desktop)
   src/                    web UI: vanilla TypeScript, no framework, no bundler
   src-tauri/              Rust shell
 docs/                     requirements, this design, ADRs in docs/decisions/
@@ -146,8 +146,9 @@ export interface Config {
 
 - Home = `$BIGNOSE_HOME` or `~/.bignose` (created 0700). Files: `config.json`, `.env` (0600), `api-token` (0600),
   `bignose.db`, `skills/`, `daemon.json` (`{pid, port, version, startedAt}`), `logs/`.
-- Exports: `homeDir()`, `paths(home?)`, `defaultConfig()`, `loadConfig(home?)` (defaults deep-merged with the file;
-  missing file = defaults; invalid JSON = throw with the path), `saveConfig(cfg, home?)` (atomic write),
+- Exports: `homeDir()`, `paths(home?)`, `defaultConfig()`, `loadConfig(home?)` (defaults deep-merged with the file, then a saved
+  provider without `maxTokens` gets that provider's default cap (a malformed providers value is left for
+  `validateConfig` to report); missing file = defaults; invalid JSON = throw with the path), `saveConfig(cfg, home?)` (atomic write),
   `readEnv(home?)`, `setSecret(name, value | null, home?)` (rewrites `.env`, keeps mode 0600 even if it existed
   with other bits), `getApiKey(cfg, providerId, home?)`, `maskSecret(v)` (`''` stays `''`; else `'••••' + last 4`,
   and only `'••••'` when shorter than 12), `redact(text, secrets)`, `ensureApiToken(home?)` (32 random bytes hex,
@@ -205,8 +206,10 @@ export interface Config {
     triggers a compaction and one more try (section 15).
   - Delegate: when `depth < 1`, `ctx.delegate(task)` runs a nested `runAgent` with fresh context `[task]`, the same
     tools minus `delegate`, no `onEvent` text streaming, and returns its final text.
-- `agent/permissions.ts`: effective policy = `permissions[name]` ?? longest matching `prefix*` key ??
-  `tool.defaultPolicy`. `deny` → error result `denied by policy`; `ask` → `approve(req)`; no approver or `false` →
+- `agent/permissions.ts`: `layeredPolicy(tool, ...layers)`: the first layer with a rule for the tool decides, as a whole (inside a
+  layer: `layer[name]` ?? longest matching `prefix*` key); no layer has one → `tool.defaultPolicy`. `effectivePolicy(tool, permissions)`
+  is the one-layer case, which the loop uses on the exact rules runtime.ts hands it (§10).
+  `deny` → error result `denied by policy`; `ask` → `approve(req)`; no approver or `false` →
   error result `denied by user`.
 - `agent/hooks.ts`: run each matching hook with `/bin/sh -c command`, JSON on stdin (`{event, sessionId, tool?,
   input?, output?, isError?, status?}`), env `BIGNOSE_HOOK_EVENT`, timeout `timeoutMs` (default 10000).
@@ -236,12 +239,31 @@ export interface Config {
   `MCP-Protocol-Version` headers after init, 202 for notifications). Request timeout 60 s, except the first stdio
   `initialize` (180 s: a cold `npx` download is slow). Stdio servers get `process.env` overlaid with the configured
   `env` (after `${NAME}` expansion). Answer a server→client `ping`; ignore notifications and unknown messages.
+  An HTTP client goes down (`connected` false, the reason kept for the card) when `fetch` fails (dead server) or the
+  server answers 401/403; a timed-out or interrupted request does not take it down. On a 404 for a request that
+  carried a session id (the server forgot the session) it re-initializes once with a new session and repeats the
+  request; calls that fail together share that one renewal, a request that starts during a renewal waits for it
+  (so it never goes out without a session id; the cancel or timeout of that call ends its wait, the renewal carries
+  on for the others), and a second 404 on the fresh session takes it down. The handshake messages and the client's
+  replies to server requests (a ping can arrive inside the initialize reply) never wait for a renewal, and a reply
+  that the server rejects with 404 fails only the call whose stream carried it: it neither starts a renewal nor takes
+  the connector down. A reply body that is not JSON is reported as `Invalid MCP response`/`Invalid MCP event`, never
+  with the parser's own message, which quotes short bodies (a server may echo a header value).
 - `mcp/manager.ts`: `McpManager(servers: Record<string, McpServerConfig>, env: Record<string,string>)`:
-  `start()` connects enabled servers, `tools(): Tool[]` (selected tools only; name `mcp__<server>__<tool>`
+  `start()` connects enabled servers all at once (a slow one never delays the next; each failure stays on its own
+  entry) and resolves when each is up or failed, `tools(): Tool[]` (selected tools only; name `mcp__<server>__<tool>`
   sanitised to 64 chars; defaultPolicy `ask`), `test(name)` → `{ ok, tools: number, error? }` (works for disabled
-  servers too), `status()`, `listTools(name)` (cached descriptors, including descriptions),
-  `update(servers, env?)` (reconnect changed configs or secrets), `waitFor(names, signal)` (wait for initialization
-  and tool discovery, up to 180 s, abortable, throws on startup failure), `stop()`.
+  servers too), `status()` (`{name, transport, enabled, connected, starting, tools, error?}`; `starting` is a connector that is
+  initializing right now, exactly the set `settle` waits for), `listTools(name)` (cached descriptors, including descriptions),
+  `apply(servers, env?)` (close the connectors that were removed or disabled, restart the ones whose config changed or that
+  reference a changed variable and start the rest in the background, return the names it started; a restarting
+  connector has its new entry at once, which closes the old client first, so it shows as starting the whole time; a secret save restarts only connectors whose `env`/`headers`
+  reference a changed `${NAME}`; a connector that failed to start is not retried until its config or one of its
+  variables changes, one that was up and exited is restarted by the next apply), `update(servers, env?)` (`apply`
+  then wait for the starts), `settle(names, ms, signal)` (wait up to `ms` for those connectors that are still
+  starting; never throws; a start that is replaced, disabled or stopped while it waits for the old client to close
+  never connects), `waitFor(names, signal)` (wait for initialization and tool discovery, up to 180 s,
+  abortable, throws on startup failure), `stop()`.
   Provider and MCP HTTP requests reject redirects (`redirect: 'error'`), including MCP session cleanup, so
   authentication headers never follow a redirect to another origin.
 
@@ -262,7 +284,10 @@ export interface Config {
   `memoryPrompt(store, agentId?): string` (notes for the system prompt, capped at 4000 chars).
 - `skills/index.ts`: skills live in `<home>/skills/<name>/SKILL.md` (agentskills.io: YAML frontmatter `name`,
   `description`, then the body). `listSkills(dir)`, `loadSkill(dir, name)` (body + list of other files in the
-  folder), `saveSkill(dir, {name, description, body})` (name `^[a-z0-9][a-z0-9-]{0,63}$`), `deleteSkill(dir, name)`,
+  folder), `saveSkill(dir, {name, description, body}, create?)` (name `^[a-z0-9][a-z0-9-]{0,63}$`; saving over an existing
+  skill rewrites `name`, `description` (including a quoted value that runs over several lines) and the body and keeps
+  every other frontmatter key verbatim, such as `license`, `allowed-tools` and `metadata`; the old SKILL.md is opened
+  with `O_NOFOLLOW`, so a symlinked one is replaced and never read through; with `create`, a folder that already exists throws `SkillExistsError`), `deleteSkill(dir, name)`,
   `skillsIndex(dir, allowed?: string[] | null): string` (one line per skill for the system prompt), `skillTools(dir, allowed?: string[] | null): Tool[]` — `skill_load`
   (allow), `skill_save` (ask).
 - `cron/index.ts`: `parseCron(expr)` (5 fields: minute hour day-of-month month day-of-week; `*`, lists, ranges,
@@ -270,12 +295,20 @@ export interface Config {
   `nextRun(expr, after: Date): Date` (local time, strictly after), `Scheduler({ store, onFire: (job) => Promise<void>,
   now?, setTimer? })` with `start()`, `stop()`, `add({cron, prompt, delivery, agentId})`, `remove(id)`,
   `setEnabled(id, on)`, `list()`. Jobs persist in the store and reload on `start()` (survive restarts; runs missed
-  while stopped are skipped, not replayed). `scheduleTools(scheduler, agentId): Tool[]` — `schedule_create` (ask; delivery
+  while stopped are skipped, not replayed). The store is shared with other processes (`bignose chat -q` adds jobs
+  with its own, never started, Scheduler), so a started Scheduler re-reads it at least every minute: a job that is
+  new, switched on or off, or has a changed cron is planned from the previous look (so a run that came due since then
+  still fires, also when this process added or removed some other job in between), and a removed one is dropped. A job
+  that this process adds or switches on is planned from now, so it never fires in the minute it was made in. The
+  catch-up window is at most one check (about 60 s): a job another process creates during its own matching minute fires
+  once at the next check, which the Job record cannot tell apart from an older one. The Scheduler keeps a 60-second
+  timer even with no enabled job, for that check.
+  `scheduleTools(scheduler, agentId): Tool[]` — `schedule_create` (ask; delivery
   defaults to the caller's origin: line → that chat, everything else → desktop), `schedule_list` (allow),
   `schedule_delete` (allow).
-- `line/index.ts`: `createLineGateway(opts)` returning `{ handler(req, res), listen(port) , close(), push(to, text),
-  askApproval(to, text) => Promise<boolean>, status() }`, with `opts = { config: LineConfig, channelSecret,
-  accessToken, onMessage: ({to, userId, text}) => Promise<string>, fetchImpl?, apiBase? = 'https://api.line.me',
+- `line/index.ts`: `createLineGateway(opts)` returning `{ handler(req, res), listen(port) , reconfigure(next, port), close(),
+  push(to, text), askApproval(to, text) => Promise<boolean>, status() }`, with `opts = { config: LineConfig, channelSecret,
+  accessToken, onMessage: ({to, userId, text}, signal) => Promise<string> (`signal` aborts when the gateway closes), fetchImpl?, apiBase? = 'https://api.line.me',
   now?, timers? }`. Behaviour in section 7.
 
 ### core-app
@@ -290,12 +323,16 @@ export interface Config {
   messages (including intermediate text), tool blocks and internal compaction summaries are dropped. Owner runs
   keep full context; the messages table retains the full transcript when visitor context is saved.
 - `app/runtime.ts`: builds the provider (the session's agent provider + key), the tool list (builtin + memory + session_search +
-  skills + schedule + MCP), the system prompt (the agent's instructions or a short default, + shared user and own agent memory notes + its skills
+  skills + schedule + MCP; a run first waits up to 5 s for the agent's enabled connectors that are still starting, so a chat sent just after boot
+  or an enable gets their tools), the system prompt (the agent's instructions or a short default, + shared user and own agent memory notes + its skills
   index + today's date), runs `runAgent` per session (one run per session at a time), persists `added` and
   `context` in the store, sets a title from the first user message, routes approvals to the origin's channel
   (desktop → API event + `POST /api/approvals/:id`; cli = `chat -q` in-process → TTY prompt, denied without a TTY;
   line → LINE confirm buttons; cron → the job's delivery channel; 10 min timeout = deny), and delivers cron results
-  (desktop → `notification` event + session; line → push). Keeps one session per LINE chat per agent (`findSessionByOrigin`).
+  (desktop → `notification` event + session; line → push). A cron job that fails (provider error, push refused, no LINE
+  gateway) also emits `{type:'notification', title:'Scheduled task failed', body}` without a `sessionId`, which the desktop
+  shows as a toast; `lastStatus` still records it. `fireJob` checks the gateway before it runs the model for a LINE job,
+  so a LINE job fails with `LINE is off, so this schedule was not run` and costs no tokens. Keeps one session per LINE chat per agent (`findSessionByOrigin`).
   First-message and scheduled-session titles are redacted before whitespace normalization and truncation. A 2000-character tool preview omits a
   possible partial-secret suffix after redaction, so truncated credentials cannot reach API/CLI events.
   **LINE senders outside `allow.users`** (members of an allowlisted group or room) run with every `allow` policy
@@ -305,22 +342,33 @@ export interface Config {
   (when enabled and both secrets set), the API server; write `daemon.json` with the **bound** port (`api.port: 0` and
   `line.port: 0` mean ephemeral ports, used by tests; the test helper `testHome` sets `BIGNOSE_TEST_PORTS=0`, so the
   daemon binds the API on port 0, and LINE on port 0 when it is the default 47822, so first-run tests without a config
-  file never bind 47821/47822); apply settings changes live (LINE restart, MCP update); clean shutdown on
+  file never bind 47821/47822); apply settings changes live (LINE hot-apply, MCP update); clean shutdown on
   SIGINT/SIGTERM.
-  The API listens and `daemon.json` is written before connectors finish initializing. Initial connector startup
-  runs asynchronously in the same serialized queue as settings writes; pending connectors show `connected:false`.
+  Connectors start (`mcp.start()`, in the background) as soon as the daemon is built, before the API listens, so no
+  moment exists in which an enabled connector is neither up nor starting. The API listens and `daemon.json` is
+  written before connectors finish initializing. The serialized queue
+  only closes changed connectors and starts new ones (`mcp.apply`); initialization itself (up to the 180 s stdio
+  timeout) runs outside the queue, in parallel per connector, and pending connectors show `starting:true`
+  (`connected:false`). A settings or secrets write waits at most 3 s (`mcpWaitMs`), after leaving the queue, for the
+  connectors that write started, so a fast connector is `connected` when the write returns and a stuck one only
+  delays the write that started it; every other write, and turning the stuck connector off, returns at once.
   Shutdown cancels their initialization and waits for the queue before closing the store.
-  LINE starts before MCP initialization, and the scheduler starts after that LINE startup attempt, so slow
-  connectors cannot delay inbound LINE or cron LINE delivery. Settings writes wait behind an in-flight connector
-  initialization (up to the 180 s stdio initialize timeout).
+  Connector initialization never waits for LINE and LINE never waits for it; the scheduler starts after the LINE
+  startup attempt, so slow connectors cannot delay inbound LINE or cron LINE delivery.
   A failed LINE bind is retried on the next settings/secrets reload, even when those values are unchanged.
+  A LINE settings or secret save is applied to the running gateway (`reconfigure`), never by building a new one: chats
+  in flight, queued messages, open approvals and parked "Get answer" answers stay, and finish through the new
+  credentials (reply token if still young, else push). Only a change of `line.port` moves the listener: the new port is
+  bound first and the old one closed after, so a busy port leaves the old listener up with `lastError` set (retried on
+  the next reload; that bind error is shown ahead of an older send error). The new config and credentials apply even
+  when the port move fails: they are live on the old port. Turning LINE off, or removing a secret, closes the gateway and ends its in-flight work, as before.
   `line.agentId` is excluded from the LINE listener fingerprint: changing or deleting the chosen agent keeps the
   same webhook listener; the runtime resolves the current agent on each message.
 - `cli.ts` (`#!/usr/bin/env node`): `bignose daemon`, `bignose chat -q "<prompt>"` (headless single turn without a
   daemon: text to stdout, tool activity to stderr, `ask` tools prompt on a TTY and are denied otherwise; exit 0 when
   done, 1 otherwise), `bignose mcp add <name> (--url <url> | -- <command> [args…])`, `mcp list`, `mcp test <name>`
   (prints `ok <name> <n> tools`, exit 0; or `fail <name>: <error>`, exit 1), `mcp enable|disable <name>`,
-  `bignose doctor` (node version, sqlite + FTS5 trigram, home writable, config valid, active provider has a key,
+  `bignose doctor` (node version, sqlite + FTS5 trigram, home writable, config valid, the active agent's provider has a key (the daemon passes that agent; the CLI uses `config.active`),
   LINE settings when enabled; exit 1 only on hard failures: node < 24, sqlite/FTS5 trigram missing, home not
   writable, invalid config; a missing provider key or LINE secret is a warning and exits 0).
   Doctor creates a missing fresh-install home with mode 0700 before checking writability.
@@ -383,6 +431,8 @@ export interface Config {
     the masked form of its stored value preserves the original value. The same applies to any string leaf equal
     to the blanket-redacted form GET returned for that stored leaf, including workspace, prompts, hooks and URLs;
     restore these before validation. Explicit new values still apply (whole-config read-modify-write is safe).
+    When a save changes `agent.workspace`, the new folder must be absolute after `~` expansion, exist and be a directory, and the
+    expanded path is stored (`400` otherwise); an unchanged stored folder is never re-checked.
     Array elements with an `id` (providers) match by id first; otherwise elements match by redacted content,
     preferring the same index then the first unused match, before falling back to index.
     If any restored string still contains `••••`, PUT returns
@@ -392,7 +442,7 @@ export interface Config {
     API port changes apply on daemon restart.
     `PUT /api/secrets` `{name, value}` (`''` deletes)
     → `{name, masked}`.
-  - `GET /api/mcp` → `{ servers: [{name, transport, enabled, connected, error?, tools?: [{name, selected}]}] }`;
+  - `GET /api/mcp` → `{ servers: [{name, transport, enabled, connected, starting, error?, tools?: [{name, selected}]}] }`;
     `POST /api/mcp` `{name, config: McpServerConfig}`; `PATCH /api/mcp/:name` `{enabled?, tools?}`;
     `DELETE /api/mcp/:name`; `POST /api/mcp/:name/test` → `{ok, tools, error?}`; `GET /api/mcp/:name/tools` →
     `{tools: [{name, description, selected}]}`.
@@ -404,13 +454,15 @@ export interface Config {
     serialized settings queue, so concurrent mutations compose instead of overwriting one another.
   - `GET /api/commands?agent=<id>` → `{commands: [{name, description, usage, kind}]}`; commands use the agent's skills (no agent = first agent; unknown agent = 400). See section 11 for slash expansion and REA.
   - `GET /api/skills` → `{skills: [{name, description, bundled?}]}`; `GET /api/skills/:name` → `{name, description, body}`;
-    `PUT /api/skills/:name` `{description, body}`; `DELETE /api/skills/:name`. Bundled names refuse PUT/DELETE with `400 {error: 'built-in skill'}`; user folders with the same name take precedence when listing/loading.
+    `PUT /api/skills/:name` `{description, body, create?}` (`create: true`, which the Skills page sends for "New skill",
+    answers `409` and changes nothing when the name is taken; without it the PUT edits or replaces the skill and keeps its other frontmatter keys); `DELETE /api/skills/:name`. Bundled names refuse PUT/DELETE with `400 {error: 'built-in skill'}`; user folders with the same name take precedence when listing/loading.
   - `GET /api/memory?kind=&q=&agent=<id>` → `{notes: [{id, agentId, kind, text, updatedAt}]}`;
     `POST /api/memory` `{kind, text, agentId?}` (400 for agent-kind without a known agentId; user notes have
     `agentId:null`). Agent filters include shared user notes and only that agent's notes, subject to the kind filter;
     `PUT /api/memory/:id` `{text}`; `DELETE /api/memory/:id`.
   - `GET /api/schedules?agent=<id>` → `{jobs: [{id, agentId, cron, prompt, delivery, enabled, nextRunAt, lastRunAt?, lastStatus?}]}`;
-    `POST /api/schedules` `{cron, prompt, delivery, agentId?}` (default first agent; `400` on a bad cron/unknown agent); `PATCH /api/schedules/:id` `{enabled}`;
+    `POST /api/schedules` `{cron, prompt, delivery, agentId?}` (default first agent; `400` on a bad cron/unknown agent, and
+    on a `line` delivery while the LINE gateway is not running; the Schedules form checks `GET /api/line/status` first and shows the same message); `PATCH /api/schedules/:id` `{enabled}`;
     `DELETE /api/schedules/:id`.
   - `GET /api/line/status` → `{enabled, running, port, agentId, publicUrl?, webhookUrl?, tokenSet, secretSet, lastEventAt?,
     lastError?}`. LINE settings change through `/api/settings` (section `line`) and `/api/secrets`.
@@ -440,11 +492,28 @@ export interface Config {
   carries it). A tap while still PENDING replies "still working" with the button again.
 - Approvals: `askApproval(to, text)` sends a confirm template (Allow / Deny postbacks `approve:<id>` /
   `deny:<id>`), resolved by the first tap from an allowlisted user (timeout 10 min = deny).
-- One active run per chat; messages arriving meanwhile queue in order.
+- One active run per chat; messages arriving meanwhile queue in order. The desktop may be running the same session:
+  `Runtime.lineMessage` waits for that run to end and then answers from the context it left (never "Sorry, something went
+  wrong.", never dropped). A message that waits long enough gets the "Get answer" button like any slow answer. If the
+  gateway that asked closed during the wait (LINE turned off, a secret removed), or a save removed its chat from the
+  allow lists, the message is not run (the text never reaches the model).
+- Settings and secret saves do not reset any of this: `reconfigure` swaps the config (allow lists, slow time) and the
+  credentials in place, so a run in flight, a queued message, an open approval or a parked answer survives the save and is
+  delivered with the credentials current at that moment (section 5, core-app). A request masks both the credentials it
+  went out with and the current ones in its errors, a refused request and a rejected fetch alike, so a token rotated
+  mid-request never reaches `lastError`.
+- Revocation: every gateway answer and prompt re-checks the live `allow` lists after each await. A queued message checks
+  them when it is about to run (a message that waited on a desktop run checks again after the wait) and again before its
+  answer is sent. A delivery under way (reply, the fallback push after a refused reply, each further batch, a "Get answer"
+  tap, an approval prompt) stops at the next call once the chat is gone; a "Get answer" delivery that stopped early stays
+  READY and resumes at the remainder if the chat is allowed again. `askApproval` for a chat that is not allowed returns
+  `false` at once. A chat removed by a save meanwhile gets no run and no answer; a run already in flight finishes (its
+  text reached the model while the owner still allowed it), but its answer is not sent. Pushes by `push()` (cron
+  delivery) are not filtered by `allow`.
 
 ## 8. Desktop
 
-- Tauri 2, `productName` `BigNose`, identifier `com.boombignose.bignose`, own icon regenerated with
+- Tauri 2, `productName` `BigNose OS`, identifier `com.boombignose.bignose`, own icon regenerated with
   `pnpm --filter desktop tauri icon src-tauri/icons/source/boombignose-1024.png` from the committed source
   `desktop/src-tauri/icons/source/boombignose-1024.png`; macOS `app` bundle only. UI = vanilla TypeScript compiled by `tsc` to
   `desktop/dist` (+ copied `index.html`, `style.css`), `withGlobalTauri` for `invoke`; no framework, no bundler.
@@ -463,7 +532,10 @@ export interface Config {
 - Screens: **Chat** — session list with search, new chat, streaming answer, live tool activity (name, input,
   result, collapsible), Allow/Deny cards for approvals, stop button. **Settings** — Providers & models (masked keys,
   set/replace key, base URL, model, active provider), Connectors (MCP list, enable toggle, per-tool selection, add
-  stdio/http, test; REA card with one-click enable), Messaging (LINE: token, secret, allowlists, port, public URL,
+  stdio/http, test; REA card with one-click enable; the badge reads Off, Starting…, Connected or Error, and the card
+  polls while a connector is starting; the Tools panel of a connector that is not connected says why (off: turn it on; starting: wait;
+  failed: fix the error, then turn it off and on to retry) and has no Save selection, and a connector that lists no tools has none either, so an empty selection is saved only by choosing
+  None on a connected connector), Messaging (LINE: token, secret, allowlists, port, public URL,
   enable, status, webhook URL), Skills, Memory, Schedules.
 - Look: dark, modern, serious. No third-party product names in the app's own labels (names inside provider and
   connector pickers/cards are fine).
@@ -478,6 +550,8 @@ export interface Config {
 | both adapters parse streamed tool calls from recorded fixtures | `core/test/providers/*.test.ts` + `core/test/providers/fixtures/` |
 | MCP client vs fake stdio server (initialize, tools/list, tools/call, error path) | `core/test/mcp/client.test.ts` |
 | LINE: signature 200/401, allowlist, reply→push fallback, PENDING→READY→DELIVERED | `core/test/line/line.test.ts` |
+| LINE settings/secret save keeps in-flight answers, queued messages, approvals and parked answers; port move | `core/test/line/reload.test.ts` |
+| LINE message during a desktop run of the same session waits; Connect reports an inactive webhook or a stopped listener | `core/test/app/line-followups.test.ts`, `core/test/api/line-api.test.ts` |
 | cron parse and next-run | `core/test/cron/cron.test.ts` |
 | skills index and load | `core/test/skills/skills.test.ts` |
 | memory FTS5 search | `core/test/store/store.test.ts` |
@@ -486,7 +560,7 @@ export interface Config {
 | zero runtime deps / no SDKs | core-app acceptance: dependency + import guard |
 | `bignose chat -q` tool round trip vs a mock OpenAI-compatible server | `core/test/e2e/chat.test.ts` |
 | `bignose mcp test rea` lists ≥ 100 tools (skipped with `BIGNOSE_SKIP_NETWORK=1`) | `core/test/e2e/rea.test.ts` + acceptance |
-| `pnpm --filter desktop tauri build --bundles app` → `BigNose.app`, CFBundleName `BigNose` | desktop acceptance |
+| `pnpm --filter desktop tauri build --bundles app` → `BigNose OS.app`, CFBundleName `BigNose OS` | desktop acceptance |
 
 Note: the BBN harness runs checks with `CI=1`, which the Tauri CLI rejects (`--ci` wants true/false), so the build
 check sets `CI=true` itself.
@@ -501,7 +575,7 @@ export interface Agent {
   icon: string;                            // short text, usually one emoji; 1..16 UTF-16 units; default '🤖'
   instructions: string;                    // the agent's system prompt; '' = the built-in default prompt
   provider: string; model: string;         // a ProviderConfig.id and a model name
-  permissions: Record<string, Policy>;     // over config.permissions (agent entries win), same key rules
+  permissions: Record<string, Policy>;     // the agent's own rules: they win over config.permissions as a whole (§10), same key rules
   connectors: string[] | null;             // MCP server names the agent uses; null = every enabled server
   skills: string[] | null;                 // skill names the agent sees; null = every skill
   createdAt: number; updatedAt: number;    // epoch ms
@@ -526,7 +600,13 @@ export interface Agent {
   user notes + this agent's notes + the index of the agent's skills + today's date; tools = builtin + memory tools and
   `session_search` scoped to the agent + skill tools limited to the agent's skills + schedule tools (new jobs get the
   agent's id) + MCP tools of servers that are enabled and in `agent.connectors` (null = all enabled); permissions =
-  `{...config.permissions, ...agent.permissions}` (then the LINE non-owner raise to `ask`). LINE messages go to
+  one `layeredPolicy` per offered tool, in this order: the agent's exact rule, the agent's longest `prefix*` rule, the global exact
+  rule, the global longest `prefix*` rule, the tool's default (an agent's own `*: deny` therefore beats a global `shell: allow` that
+  Settings › Tools wrote). `RunProfile` carries the two maps apart (`permissions` global, `agentPermissions` the agent's); the same
+  helper filters the tool list and builds the run's rules: one exact rule per offered tool, which the loop check and the delegates
+  reuse (then the LINE non-owner raise of `allow` to `ask`; hooks run after the permission check). A tool whose effective policy
+  is `deny` (exact name or `prefix*`, from the agent or the global permissions, MCP tools included) is not in the list the
+  model is offered, so it cannot waste a turn; the nested delegate run inherits that list and `read_file` and the rest stay. LINE messages go to
   `line.agentId` (fallback: first agent). A cron job runs with its own agent. Unknown connector or skill names in an
   agent are ignored at run time.
 - **API** (§6 additions; every timestamp is epoch ms):
@@ -791,7 +871,12 @@ Local API (the daemon reads the token from `.env` and passes `lineOptions.fetchI
     `Connected to <displayName> (<basicId>)`; failure -> the masked error.
   - webhook: token step failed -> `Fix the token first.`; no public URL -> `Set a public HTTPS URL first.`;
     `publicUrlProblem` -> its text; else `setLineWebhook(webhookUrlFor(publicUrl))` -> ok with `Webhook set to <url>`;
-    failure -> the masked error. `ok` is true only when both steps are ok.
+    failure -> the masked error. After a successful PUT, `lineWebhookActive` reads GET `/v2/bot/channel/webhook/endpoint`
+    (field `active`; LINE answers 404 to that GET until an endpoint is set, which is why it comes second; a failed read
+    is ignored). When the PUT worked but the webhook cannot deliver, the step is `ok: false` and the detail is
+    `Webhook set to <url>.` followed by each problem: `The LINE listener is not running. Turn LINE on, save, then connect
+    again.` (local listener stopped) and `Turn on Use webhook in the LINE Developers console.` (`active` is `false`).
+    `ok` is true only when both steps are ok.
 - `POST /api/line/test` -> 200 `{ ok, running, statusCode?, reason?, detail }`: token, public URL and local listener are
   checked first (same texts as above; listener off -> `The LINE listener is not running. Turn LINE on, save, then test
   again.`), then `testLineWebhook(webhookUrlFor(publicUrl))`; `ok` = LINE's `success`; `detail` = LINE's detail or
@@ -872,7 +957,7 @@ it with the project's own Tauri CLI (`pnpm --filter desktop tauri icon src-tauri
 from the repo root; the path is relative to `desktop/`). Extra files the CLI writes (Windows, iOS, Android, Store logos)
 are not committed; the icon list in `tauri.conf.json` stays as v1. The v1 SVG drawing (`app-icon.svg` in `desktop/`) is
 deleted (not referenced anywhere). No other UI change. A release build (`tauri build --bundles app`) puts the regenerated `icon.icns`
-into `BigNose.app/Contents/Resources/` under the name in `CFBundleIconFile`.
+into `BigNose OS.app/Contents/Resources/` under the name in `CFBundleIconFile`.
 
 ### 13.12 Owner-run checks (manual, never in tests)
 A real chat with an agent on a local Ollama model (and the context warning when Ollama runs with a small context), and a
@@ -890,6 +975,10 @@ isolated `BIGNOSE_HOME`; none may reach the owner's Ollama (127.0.0.1:11434), LI
   (stdio: the process exits; any transport: the client loses the connection), the manager keeps an error for it:
   `connector <name> exited (<code or signal>)` for a stdio exit, `connector <name> closed` otherwise, plus the redacted
   stderr tail when there is one. Secrets stay masked by the client's existing redaction.
+- A server that exits at once breaks its stdin pipe before its exit event is delivered (the first write fails with EPIPE on a
+  loaded machine). A stdio write or stdin error therefore waits up to 2 s for the child's exit and reports the exit
+  (`MCP server exited (2)`), so the user sees why the connector stopped, not `write EPIPE`; if the child is still running after
+  that, the pipe error itself is reported. The first error wins: an exit that arrives in time replaces the pipe error.
 - `waitFor` rejects at once with that error (no 180 s poll, no AbortError). A `tools/call` that is pending when the server
   goes away, and any later call through a tool handed out before, fails at once (no 60 s request timeout) with a message
   that names the connector and says it exited or closed. `status()` reports `connected: false` with the error, so

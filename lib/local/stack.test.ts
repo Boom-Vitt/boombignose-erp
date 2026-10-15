@@ -312,6 +312,144 @@ describe("local stack manager", () => {
     ).rejects.toThrow(/forbidden/i)
   })
 
+  it("a partial stack is not running", async () => {
+    const erpDir = makeTempErpDir(true)
+    const calls: string[][] = []
+    let started = false
+    const runner = {
+      async exec(cmd: string, args: string[]) {
+        if (cmd === "docker" && args[0] === "info") {
+          return { code: 0, stdout: "ok", stderr: "" }
+        }
+        if (cmd === "docker" && args[0] === "ps") {
+          return {
+            code: 0,
+            stdout: [
+              "supabase_db_boombignose-erp\t\tUp 5 minutes",
+              "supabase_kong_boombignose-erp\t\tUp 5 minutes",
+              // a real start brings the other services up
+              ...(started
+                ? [
+                    "supabase_auth_boombignose-erp\t\tUp 5 seconds",
+                    "supabase_rest_boombignose-erp\t\tUp 5 seconds",
+                  ]
+                : []),
+              // another project's containers never count
+              "supabase_auth_boombignose-erp-2\t\tUp 5 minutes",
+              "supabase_rest_boombignose-erp-2\t\tUp 5 minutes",
+            ].join("\n"),
+            stderr: "",
+          }
+        }
+        if (args[0] === "start") started = true
+        calls.push(args)
+        if (args.includes("status")) {
+          // the CLI answers as soon as db is up, so status alone proves nothing
+          return {
+            code: 0,
+            stdout: 'API_URL="http://127.0.0.1:54421"\nANON_KEY="anon-short"\n',
+            stderr: "",
+          }
+        }
+        return { code: 0, stdout: "", stderr: "" }
+      },
+      spawn() {
+        throw new Error("unexpected spawn")
+      },
+    }
+
+    expect((await runDoctor({ erpDir, runner })).stack).toBe("stopped")
+    calls.length = 0
+    expect(await runUp({ erpDir, runner })).toBe(0)
+    expect(calls.some((a) => a[0] === "start")).toBe(true)
+    expect(
+      calls.some((a) => a.includes("reset") || a[0] === "stop")
+    ).toBe(false)
+  })
+
+  // `supabase start` exits 0 without starting anything when db is already up: db + kong run, `stopped` lists the rest.
+  function startNoopRunner(stopped: string[]) {
+    const running = [
+      "supabase_db_boombignose-erp",
+      "supabase_kong_boombignose-erp",
+    ]
+    const dockerStarts: string[] = []
+    const cliCalls: string[][] = []
+    const runner = {
+      async exec(cmd: string, args: string[]) {
+        if (cmd === "docker" && args[0] === "info") {
+          return { code: 0, stdout: "ok", stderr: "" }
+        }
+        if (cmd === "docker" && args[0] === "ps") {
+          const names = args.includes("-a")
+            ? [...running, ...stopped]
+            : [...running, ...dockerStarts]
+          return { code: 0, stdout: names.join("\n"), stderr: "" }
+        }
+        if (cmd === "docker" && args[0] === "start") {
+          dockerStarts.push(args[1])
+          return { code: 0, stdout: args[1], stderr: "" }
+        }
+        cliCalls.push(args)
+        if (args.includes("status")) {
+          return {
+            code: 0,
+            stdout: 'API_URL="http://127.0.0.1:54421"\nANON_KEY="anon-short"\n',
+            stderr: "",
+          }
+        }
+        return { code: 0, stdout: "", stderr: "" }
+      },
+      spawn() {
+        throw new Error("unexpected spawn")
+      },
+    }
+    return { runner, dockerStarts, cliCalls }
+  }
+  const noResetOrStop = (calls: string[][]) =>
+    !calls.some((a) => a.includes("reset") || a[0] === "stop")
+
+  it("up starts only the stopped required containers of this project when start does nothing", async () => {
+    const erpDir = makeTempErpDir(true)
+    const { runner, dockerStarts, cliCalls } = startNoopRunner([
+      "supabase_auth_boombignose-erp",
+      "supabase_rest_boombignose-erp",
+      "supabase_auth_boombignose-erp-2",
+      "supabase_rest_boombignose-erp-2",
+    ])
+
+    expect(await runUp({ erpDir, runner })).toBe(0)
+    expect(cliCalls.some((a) => a[0] === "start")).toBe(true)
+    expect(dockerStarts).toEqual([
+      "supabase_auth_boombignose-erp",
+      "supabase_rest_boombignose-erp",
+    ])
+    expect(cliCalls.some((a) => a[0] === "migration")).toBe(true)
+    expect(noResetOrStop(cliCalls)).toBe(true)
+  })
+
+  it("up fails before the migration when a required service stays down", async () => {
+    const erpDir = makeTempErpDir(true)
+    // only another project has auth and rest: nothing of ours can be started
+    const { runner, dockerStarts, cliCalls } = startNoopRunner([
+      "supabase_auth_boombignose-erp-2",
+      "supabase_rest_boombignose-erp-2",
+    ])
+    let errText = ""
+    const stderr = {
+      write(chunk: string) {
+        errText += chunk
+      },
+    }
+
+    expect(await runUp({ erpDir, runner, stderr })).not.toBe(0)
+    expect(errText).toContain("auth, rest")
+    expect(errText).toContain("pnpm local:stop")
+    expect(dockerStarts).toEqual([])
+    expect(cliCalls.some((a) => a[0] === "migration")).toBe(false)
+    expect(noResetOrStop(cliCalls)).toBe(true)
+  })
+
   it("doctor reports exposed when a stack port is bound to 0.0.0.0", async () => {
     const erpDir = makeTempErpDir(true)
     const runner = {
@@ -325,6 +463,8 @@ describe("local stack manager", () => {
             stdout: [
               "supabase_db_boombignose-erp\t0.0.0.0:54422->5432/tcp\tUp 5 minutes",
               "supabase_kong_boombignose-erp\t0.0.0.0:54421->8000/tcp\tUp 5 minutes",
+              "supabase_auth_boombignose-erp\t\tUp 5 minutes",
+              "supabase_rest_boombignose-erp\t\tUp 5 minutes",
             ].join("\n"),
             stderr: "",
           }

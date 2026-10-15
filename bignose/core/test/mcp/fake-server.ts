@@ -1,8 +1,8 @@
 import { createInterface } from 'node:readline';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 
 const write = (value: unknown) => process.stdout.write(JSON.stringify(value) + '\n');
-const lifecycle = process.argv.indexOf('--lifecycle');
+const lifecycle = process.argv.indexOf('--lifecycle'), gate = process.argv.indexOf('--gate');
 if (lifecycle !== -1) appendFileSync(process.argv[lifecycle + 1]!, 'started\n');
 if (process.argv.includes('--banner')) process.stdout.write('Fake MCP starting\n');
 let pinged = false, initialized = false;
@@ -14,6 +14,8 @@ for await (const line of createInterface({ input: process.stdin })) {
   const reply = (result: unknown) => write({ jsonrpc: '2.0', id: m.id, result });
   if (m.method === 'initialize') {
     if (process.argv.includes('--delay-init')) await new Promise(resolve => setTimeout(resolve, 300));
+    // --gate <file>: hold the initialize reply until a test creates the file, so a slow start needs no timing guess.
+    while (gate !== -1 && !existsSync(process.argv[gate + 1]!)) await new Promise(resolve => setTimeout(resolve, 20));
     if (m.params.protocolVersion !== '2025-11-25') process.exit(2);
     write({ jsonrpc: '2.0', id: 'server-ping', method: 'ping' });
     write({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' });

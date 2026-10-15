@@ -1,5 +1,5 @@
 // BigNose OS startup screen: what the ERP launcher is doing, or why it stopped, until the ERP answers.
-import { btn, el, errMsg, toast } from '../dom.ts';
+import { appIcon, btn, el, errMsg, toast } from '../dom.ts';
 
 /** Mirrors the Rust `Status` (src-tauri/src/launcher.rs). */
 export type OsStatus =
@@ -18,12 +18,10 @@ const STEP_TEXT = {
   erp: 'Starting the ERP. The first start builds it and can take a few minutes…',
 } as const;
 
-const logo = () => el('div', { class: 'logo', 'aria-hidden': 'true' }, 'B');
-
 export function startupView(status: OsStatus, actions: StartupActions): HTMLElement {
   switch (status.phase) {
     case 'docker-stopped':
-      return el('div', { class: 'splash', role: 'alert' }, logo(),
+      return el('div', { class: 'splash', role: 'alert' }, appIcon(),
         el('h1', {}, status.installed ? 'Docker is not running' : 'Docker is not installed'),
         el('p', { class: 'muted splash-text' }, status.installed
           ? 'BigNose OS keeps your ERP data in a local database that runs in Docker. Open Docker, wait until it says it is running, then press Retry.'
@@ -32,16 +30,16 @@ export function startupView(status: OsStatus, actions: StartupActions): HTMLElem
           status.installed ? btn('Open Docker', () => actions.openDocker(), 'primary') : null,
           btn('Retry', () => actions.retry(), status.installed ? '' : 'primary')));
     case 'failed':
-      return el('div', { class: 'splash', role: 'alert' }, logo(),
+      return el('div', { class: 'splash', role: 'alert' }, appIcon(),
         el('h1', {}, status.title),
         el('p', { class: 'error-text splash-text' }, status.message),
         btn('Retry', () => actions.retry(), 'primary'));
     case 'starting':
-      return el('div', { class: 'splash', role: 'status' }, logo(),
+      return el('div', { class: 'splash', role: 'status' }, appIcon(),
         el('p', {}, STEP_TEXT[status.step]),
         status.detail ? el('p', { class: 'muted mono splash-text' }, status.detail) : null);
     case 'ready':
-      return el('div', { class: 'splash', role: 'status' }, logo(), el('p', {}, 'Opening the ERP…'));
+      return el('div', { class: 'splash', role: 'status' }, appIcon(), el('p', {}, 'Opening the ERP…'));
   }
 }
 
@@ -58,5 +56,19 @@ export async function waitForReady(invoke: Invoke, show: (view: HTMLElement) => 
     const key = JSON.stringify(status);
     if (key !== shown) { shown = key; show(startupView(status, actions)); } // a re-render would drop the focused button
     await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
+/**
+ * Keeps watching the launcher after Ready. Resolves with its status as soon as it is no longer ready (the ERP server
+ * exited), or with null when aborted. The caller restarts the startup screen, which then shows why, with Retry.
+ */
+export async function waitForStop(invoke: Invoke, signal: AbortSignal, pollMs = 700): Promise<OsStatus | null> {
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    if (signal.aborted) return null;
+    const status = await invoke<OsStatus>('os_status').catch(() => null); // a hiccup in the bridge is not a stop
+    if (signal.aborted) return null;
+    if (status && status.phase !== 'ready') return status;
   }
 }

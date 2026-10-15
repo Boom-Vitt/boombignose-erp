@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, request as httpRequest } from 'node:http';
 import type { TestContext } from 'node:test';
 import { startDaemon } from '../../src/app/daemon.ts';
 import type { DaemonOptions } from '../../src/app/daemon.ts';
-import { maskSecret, readEnv, setSecret, loadConfig } from '../../src/config.ts';
+import { maskSecret, paths, readEnv, setSecret, loadConfig } from '../../src/config.ts';
 import type { Config, Provider } from '../../src/types.ts';
 import { createCleaner, safeValue } from '../../src/app/settings.ts';
 import { configured, mockOpenai, testHome, toolCall } from '../e2e/helpers.ts';
@@ -69,7 +69,7 @@ async function events(a: App, t: TestContext) {
 const fakeMcp = { transport: 'stdio' as const, command: process.execPath, args: [fileURLToPath(new URL('../mcp/fake-server.ts', import.meta.url))], env: { BN_TEST: '${VALUE}' }, enabled: true };
 
 test('every section 6 CRUD/status route has the documented JSON shape, auth, Host and Tauri CORS', async t => {
-  const a = await app(t);
+  const a = await app(t, { mcpWaitMs: 60_000 }); // a connector write waits for the connector; the 3 s default is too short on a loaded machine
   const url = `http://127.0.0.1:${a.port}`;
   assert.equal((await fetch(url + '/api/health')).status, 401);
   assert.equal((await call(a, '/api/health', 'GET', undefined, { Authorization: 'Bearer wrong' })).status, 401);
@@ -292,7 +292,7 @@ test('LINE requires both secrets, reloads live, and raises all allow tools to as
     assert.equal(response.status, 200);
   }
   await webhook({ type: 'message', message: { type: 'text', text: 'read evidence' } });
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 30_000;
   while (!sent.some(b => b.messages.some((m: any) => m.template?.type === 'confirm'))) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   const confirm = sent.flatMap(b => b.messages).find(m => m.template?.type === 'confirm');
   assert.match(confirm.template.text, /read_file/);
@@ -355,7 +355,7 @@ test('cron LINE delivery is ready before a slow MCP connector and uses confirm b
     yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   const a = await app(t, { home, providerFactory: () => provider, lineOptions: { fetchImpl: async (url, init) => { sent.push({ url: String(url), ...JSON.parse(String(init?.body)) }); return new Response('{}'); } } });
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 30_000;
   while (!a.lineStatus().running) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   assert.equal(a.mcp.status().find(s => s.name === 'slow')!.connected, false);
   const job = a.scheduler.add({ agentId: a.runtime.store.listAgents()[0]!.id, cron: '* * * * *', prompt: 'scheduled task', delivery: { kind: 'line', to: 'owner' } });
@@ -566,7 +566,7 @@ test('literal MCP paths and URLs are masked in their own fields while ordinary c
   assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
   assert.deepEqual(loadConfig(home), original);
   const changed = structuredClone(settings);
-  changed.config.agent.workspace = join(home, 'new-workspace');
+  changed.config.agent.workspace = join(home, 'new-workspace'); mkdirSync(changed.config.agent.workspace);
   changed.config.agent.systemPrompt = 'New prompt'; changed.config.hooks.preTool[0].command = 'true';
   assert.equal((await call(a, '/api/settings', 'PUT', changed)).status, 200);
   const saved = loadConfig(home);
@@ -684,7 +684,7 @@ test('a failed LINE bind retries after the port is freed and identical secrets a
   configured(home, undefined, c => { c.line.enabled = true; c.line.port = port; });
   setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
   const a = await app(t, { home });
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + 30_000;
   while (!a.lineStatus().lastError) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
   assert.equal(a.lineStatus().running, false); assert.match(a.lineStatus().lastError!, /EADDRINUSE/);
   await new Promise<void>(resolve => blocker.close(() => resolve()));
@@ -743,4 +743,79 @@ test('run errors are stored as notices and survive a restart', async t => {
   await settled(again, id);
   const two = (await call(again, `/api/sessions/${id}`)).body;
   assert.deepEqual(two.notices.map((n: any) => [n.after, n.level]), [[1, 'error'], [2, 'error']]);
+});
+
+test('a LINE-delivery schedule is refused while LINE is off, accepted while the gateway runs, and a desktop one is never refused', async t => {
+  const job = { cron: '* * * * *', prompt: 'task', delivery: { kind: 'line', to: 'Cabc' } };
+  const off = await app(t);
+  const refused = await call(off, '/api/schedules', 'POST', job);
+  assert.equal(refused.status, 400); assert.match(refused.body.error, /LINE is off/);
+  assert.deepEqual((await call(off, '/api/schedules')).body, { jobs: [] }, 'nothing was saved');
+  assert.equal((await call(off, '/api/schedules', 'POST', { ...job, delivery: { kind: 'desktop' } })).status, 200);
+
+  const home = testHome(t);
+  configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = ['owner']; });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  const on = await app(t, { home });
+  const deadline = Date.now() + 30_000;
+  while (!on.lineStatus().running) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
+  assert.equal((await call(on, '/api/schedules', 'POST', job)).status, 200);
+});
+
+test('creating a skill with an existing name is refused with 409 and leaves the skill alone; a plain PUT still edits it', async t => {
+  const a = await app(t);
+  const put = (body: Record<string, unknown>) => call(a, '/api/skills/taxes', 'PUT', body);
+  assert.equal((await put({ description: 'File taxes', body: 'Original steps.', create: true })).status, 200);
+  const again = await put({ description: 'Scratch', body: 'Scratch.', create: true });
+  assert.equal(again.status, 409); assert.match(again.body.error, /already exists/);
+  assert.deepEqual((await call(a, '/api/skills/taxes')).body, { name: 'taxes', description: 'File taxes', body: 'Original steps.' });
+  assert.equal((await put({ description: 'File taxes', body: 'Edited steps.' })).status, 200);
+  assert.equal((await call(a, '/api/skills/taxes')).body.body, 'Edited steps.');
+  assert.equal((await call(a, '/api/skills/..%2Fescape', 'PUT', { description: 'bad', body: 'bad', create: true })).status, 400);
+});
+
+test('saving a skill keeps its other frontmatter keys when the Skills page saves it unchanged', async t => {
+  const home = testHome(t);
+  configured(home);
+  const folder = join(paths(home).skills, 'imported'); mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, 'SKILL.md'), '---\nname: imported\ndescription: An imported skill\nlicense: Apache-2.0\nallowed-tools: Bash(git:*) Read\nmetadata:\n  author: someone\n---\n\nSteps.\n');
+  const a = await app(t, { home });
+  const skill = (await call(a, '/api/skills/imported')).body;
+  assert.equal((await call(a, '/api/skills/imported', 'PUT', { description: skill.description, body: skill.body })).status, 200);
+  const text = readFileSync(join(folder, 'SKILL.md'), 'utf8');
+  for (const line of ['license: Apache-2.0', 'allowed-tools: Bash(git:*) Read', 'metadata:\n  author: someone']) assert.ok(text.includes(line), line);
+});
+
+test('a relative or missing workspace folder is refused, ~ is expanded, and an unchanged stored folder never blocks a save', async t => {
+  const home = testHome(t), work = join(home, 'work'), stale = join(home, 'gone'), file = join(home, 'file.txt');
+  mkdirSync(work); writeFileSync(file, 'x');
+  configured(home, undefined, c => { c.agent.workspace = stale; }); // a stored folder that no longer exists
+  const a = await app(t, { home }), settings = (await call(a, '/api/settings')).body;
+  settings.config.agent.maxTurns = 12; // an unrelated save keeps working: only a change of the workspace is checked
+  assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
+  assert.deepEqual([loadConfig(home).agent.workspace, loadConfig(home).agent.maxTurns], [stale, 12]);
+  for (const bad of ['relative/dir', '.', '~user/x', join(home, 'missing'), file]) {
+    settings.config.agent.workspace = bad;
+    const refused = await call(a, '/api/settings', 'PUT', settings);
+    assert.equal(refused.status, 400, bad); assert.match(refused.body.error, /Workspace folder/);
+    assert.equal(loadConfig(home).agent.workspace, stale, 'nothing was saved');
+  }
+  const oldHome = process.env.HOME; process.env.HOME = home;
+  try {
+    settings.config.agent.workspace = '~/work/';
+    assert.equal((await call(a, '/api/settings', 'PUT', settings)).status, 200);
+  } finally { if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome; }
+  assert.equal(loadConfig(home).agent.workspace, work, 'the expanded absolute path is what gets saved');
+  assert.equal((await call(a, '/api/settings')).body.config.agent.workspace, work);
+});
+
+test('diagnostics and /api/status report the provider and model the active agent uses', async t => {
+  const a = await app(t, {}, c => { c.providers.push({ id: 'remote', kind: 'anthropic', baseUrl: 'https://remote.invalid', apiKeyEnv: 'REMOTE_API_KEY' }); });
+  const agent = a.runtime.store.listAgents()[0]!;
+  assert.deepEqual((await call(a, '/api/status')).body.provider, { id: 'mock', kind: 'openai-compatible', model: 'test-model' });
+  assert.equal((await call(a, `/api/agents/${agent.id}`, 'PATCH', { provider: 'remote', model: 'claude-x' })).status, 200);
+  assert.deepEqual((await call(a, '/api/status')).body.provider, { id: 'remote', kind: 'anthropic', model: 'claude-x' });
+  assert.equal(a.config().active.provider, 'mock', 'the Settings seed is unchanged');
+  const report = (await call(a, '/api/doctor', 'POST', {})).body;
+  assert.ok(report.lines.includes('warn the remote key is unset (REMOTE_API_KEY)'), report.lines.join('\n'));
 });

@@ -11,8 +11,12 @@ export interface RunOptions { provider: Provider; model: string; system: string;
 export interface RunResult { context: Message[]; added: Message[]; status: RunStatus; text: string; usage: Usage; error?: string; warning?: string }
 export async function runAgent(opts: RunOptions): Promise<RunResult> {
   let context = structuredClone(opts.context);
+  // Every text is redacted before it is cut anywhere in the loop (history, preview, prune head, tool names).
+  const clean = opts.redact ?? ((s: string) => s);
+  // A model-made name is redacted before safeName cuts it at 64, or a cut prefix of a secret would no longer match.
+  const nameOf = (name: string) => safeName(clean(name));
   // Sessions stored before names were checked may hold a name the provider rejects; fix it so the session works again.
-  for (const m of context) for (const b of m.content) if (b.type === 'tool_use') b.name = safeName(b.name);
+  for (const m of context) for (const b of m.content) if (b.type === 'tool_use') b.name = nameOf(b.name);
   const added: Message[] = [], usage: Usage = { inputTokens: 0, outputTokens: 0 };
   let status: RunStatus = 'max_turns', text = '', error: string | undefined, turns = 0, lastInput = 0, lastStop: StopReason | undefined;
   const depth = opts.depth ?? 0;
@@ -24,8 +28,6 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
   const size = () => Math.max(lastInput, JSON.stringify(context).length / 4 + fixed);
   const limit = Math.max(opts.contextWindow - opts.maxTokens, opts.contextWindow / 2) * opts.compactAt;
   const cap = resultCap(opts.contextWindow);
-  // Every text is redacted before it is cut anywhere in the loop (history, preview, prune head).
-  const clean = opts.redact ?? ((s: string) => s);
   let force = false, overflows = 0;
   const baseRequest = () => ({ model: opts.model, system: opts.system, messages: context, tools: opts.tools, maxTokens: opts.maxTokens, signal: opts.signal });
   try {
@@ -107,11 +109,11 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
       if (content.length) append({ role: 'assistant', content: content.map(b => {
         if (b.type !== 'tool_use') return b;
         const call = orderedCalls[callIndex++]!;
-        return { ...call, name: safeName(call.name) };
+        return { ...call, name: nameOf(call.name) };
       }) });
       const replies: ContentBlock[] = [];
       for (const call of orderedCalls) {
-        emit({ type: 'tool_start', callId: call.id, name: call.name, input: call.input });
+        emit({ type: 'tool_start', callId: call.id, name: clean(call.name), input: call.input });
         let result: ToolResult, input = call.input;
         try {
           opts.signal.throwIfAborted();
@@ -119,7 +121,7 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
           if (!complete.has(call.id)) throw new Error('Incomplete tool arguments');
           if (invalid.has(call.id)) throw new Error(invalid.get(call.id));
           const tool = opts.tools.find(t => t.name === call.name);
-          if (!tool) throw new Error(`Unknown tool: ${call.name.slice(0, 100)}`);
+          if (!tool) throw new Error(`Unknown tool: ${clean(call.name).slice(0, 100)}`);
           input = coerceArgs(call.input, tool.inputSchema); // once, so approval, hooks and the tool all see the same arguments
           const policy = effectivePolicy(tool, opts.permissions);
           const req = { id: randomUUID(), sessionId: opts.sessionId, origin: opts.origin, tool: call.name, input };
@@ -143,8 +145,8 @@ export async function runAgent(opts: RunOptions): Promise<RunResult> {
         } catch (e) { result = { content: opts.signal.aborted ? 'interrupted' : e instanceof Error ? e.message : String(e), isError: true }; }
         const output = await budgetResult(result.content, cap, opts.spillDir, opts.redact);
         replies.push({ type: 'tool_result', toolUseId: call.id, content: output, isError: result.isError ?? false });
-        emit({ type: 'tool_end', callId: call.id, name: call.name, isError: result.isError ?? false, output: output.slice(0, 2000) });
-        await runHooks(opts.hooks.postTool, { event: 'postTool', sessionId: opts.sessionId, tool: call.name, input, output, isError: result.isError ?? false });
+        emit({ type: 'tool_end', callId: call.id, name: clean(call.name), isError: result.isError ?? false, output: output.slice(0, 2000) });
+        await runHooks(opts.hooks.postTool, { event: 'postTool', sessionId: opts.sessionId, tool: clean(call.name), input, output, isError: result.isError ?? false });
       }
       if (replies.length) append({ role: 'user', content: replies });
       opts.signal.throwIfAborted();

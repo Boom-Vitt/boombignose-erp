@@ -31,6 +31,12 @@ export async function setLineWebhook(o: LineApiOptions, endpoint: string): Promi
   await request(o, '/v2/bot/channel/webhook/endpoint', 'PUT', { endpoint });
 }
 
+/** The "Use webhook" switch of the channel; undefined when LINE does not say. */
+export async function lineWebhookActive(o: LineApiOptions): Promise<boolean | undefined> {
+  const info = await request(o, '/v2/bot/channel/webhook/endpoint', 'GET') as Record<string, unknown>;
+  return typeof info?.active === 'boolean' ? info.active : undefined;
+}
+
 export async function testLineWebhook(o: LineApiOptions, endpoint: string): Promise<{
   success: boolean; statusCode?: number; reason?: string; detail?: string; timestamp?: string;
 }> {

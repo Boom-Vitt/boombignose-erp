@@ -3,16 +3,16 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { VERSION, paths, maskSecret, setSecret, getApiKey } from '../config.ts';
-import { deleteSkill, listSkills, loadSkill, saveSkill } from '../skills/index.ts';
+import { deleteSkill, listSkills, loadSkill, saveSkill, SkillExistsError } from '../skills/index.ts';
 import { CommandError, listCommands } from '../commands/index.ts';
 import { doctor } from '../app/doctor.ts';
-import { isObject, restoreMaskedConfig, safeValue, settingsResponse, validateAgent, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
+import { isObject, resolveWorkspace, restoreMaskedConfig, safeValue, settingsResponse, validateAgent, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
 import type { AgentInput } from '../store/index.ts';
 import type { Runtime } from '../app/runtime.ts';
 import type { Config, Delivery } from '../types.ts';
 import type { Scheduler } from '../cron/index.ts';
 import type { McpManager } from '../mcp/manager.ts';
-import { lineBotInfo, setLineWebhook, testLineWebhook, publicUrlProblem, webhookUrlFor } from '../line/index.ts';
+import { lineBotInfo, setLineWebhook, lineWebhookActive, testLineWebhook, publicUrlProblem, webhookUrlFor } from '../line/index.ts';
 import { listModels } from '../providers/models.ts';
 import { isOllama, OLLAMA_CONTEXT_NOTE, ollamaWarnings } from '../providers/ollama.ts';
 import type { LineApiOptions } from '../line/index.ts';
@@ -61,6 +61,8 @@ const positiveId = (s: string) => { check(/^\d+$/.test(s) && Number.isSafeIntege
 
 export function createApiServer(opts: ApiOptions) {
   const { runtime, mcp, scheduler } = opts, store = runtime.store;
+  // The agent LINE and new work fall back to: Diagnostics and /api/status report what it uses, not the Settings seed in config.active.
+  const activeAgent = () => runtime.lineAgent();
   let port = 0;
   const streams = new Set<ServerResponse>();
   const send = (res: ServerResponse, value: unknown, status = 200) => {
@@ -107,11 +109,11 @@ export function createApiServer(opts: ApiOptions) {
       if (area === 'health' && !id && method === 'GET') return send(res, { ok: true, version: VERSION, pid: process.pid });
       if (area === 'doctor' && !id && method === 'POST') {
         await body(req);
-        return send(res, await doctor(opts.home, opts.fetchImpl));
+        return send(res, await doctor(opts.home, opts.fetchImpl, activeAgent()));
       }
       if (area === 'status' && !id && method === 'GET') {
-        const c = opts.config(), p = c.providers.find(p => p.id === c.active.provider)!, l = opts.lineStatus();
-        return send(res, { version: VERSION, provider: { id: p.id, kind: p.kind, model: c.active.model },
+        const c = opts.config(), a = activeAgent(), p = c.providers.find(p => p.id === a.provider) ?? c.providers.find(p => p.id === c.active.provider)!, l = opts.lineStatus();
+        return send(res, { version: VERSION, provider: { id: p.id, kind: p.kind, model: a.model },
           line: { enabled: l.enabled, running: l.running, webhookUrl: l.webhookUrl },
           mcp: mcp.status().map(s => ({ name: s.name, enabled: s.enabled, connected: s.connected, tools: s.tools.length })), schedules: scheduler.list().length });
       }
@@ -190,6 +192,7 @@ export function createApiServer(opts: ApiOptions) {
             const next = restoreMaskedConfig(b.config as Config, c, runtime.cleaner());
             if (typeof next.line?.publicUrl === 'string') next.line.publicUrl = next.line.publicUrl.trim();
             validateConfig(next);
+            if (next.agent.workspace !== c.agent.workspace) next.agent.workspace = resolveWorkspace(next.agent.workspace);
             if (next.line.publicUrl && next.line.publicUrl !== c.line.publicUrl?.trim()) check(!publicUrlProblem(next.line.publicUrl), publicUrlProblem(next.line.publicUrl) ?? '');
             if (next.line.agentId !== undefined) agentId(next.line.agentId);
             return next;
@@ -248,7 +251,10 @@ export function createApiServer(opts: ApiOptions) {
         }
         if (id && method === 'PUT') {
           const b = await body(req); check(typeof b.description === 'string' && typeof b.body === 'string', 'description and body must be strings');
-          validate(() => saveSkill(dir, { name: id, description: b.description as string, body: b.body as string })); return send(res, { ok: true });
+          // create: true is the Skills page's "New skill": a name that is taken is a 409 instead of a silent overwrite.
+          try { saveSkill(dir, { name: id, description: b.description as string, body: b.body as string }, b.create === true); }
+          catch (e) { throw new HttpError(e instanceof SkillExistsError ? 409 : 400, e instanceof Error ? e.message : String(e)); }
+          return send(res, { ok: true });
         }
         if (id && method === 'DELETE') { if (!validate(() => deleteSkill(dir, id))) return missing(); return send(res, { ok: true }); }
       }
@@ -276,6 +282,8 @@ export function createApiServer(opts: ApiOptions) {
         }
         if (!id && method === 'POST') {
           const b = await body(req), cron = text(b.cron, 'cron'), prompt = text(b.prompt, 'prompt'), to = delivery(b.delivery);
+          // The same condition fireJob checks before it runs the model: an answer with nowhere to go is only wasted work.
+          check(to.kind !== 'line' || opts.lineStatus().running, 'LINE is off. Turn it on under Settings > Messaging before you schedule a LINE delivery.');
           return send(res, validate(() => scheduler.add({ cron, prompt, delivery: to, agentId: agentId(b.agentId, true) })));
         }
         if (id && method === 'PATCH') {
@@ -302,8 +310,14 @@ export function createApiServer(opts: ApiOptions) {
             }
             let webhookOk = false, webhookDetail = !bot ? 'Fix the token first.' : problem ?? '';
             if (bot && webhookUrl) {
-              try { await setLineWebhook(o, webhookUrl); webhookOk = true; webhookDetail = `Webhook set to ${webhookUrl}`; }
-              catch (e) { webhookDetail = clean(e instanceof Error ? e.message : String(e)); }
+              try {
+                await setLineWebhook(o, webhookUrl);
+                // After the PUT: LINE answers 404 to this GET until an endpoint is set. A failed read is not fatal.
+                const active = await lineWebhookActive(o).catch(() => undefined);
+                const notes = [...(opts.lineStatus().running ? [] : ['The LINE listener is not running. Turn LINE on, save, then connect again.']),
+                  ...(active === false ? ['Turn on Use webhook in the LINE Developers console.'] : [])];
+                webhookOk = !notes.length; webhookDetail = `Webhook set to ${webhookUrl}${notes.length ? '. ' + notes.join(' ') : ''}`;
+              } catch (e) { webhookDetail = clean(e instanceof Error ? e.message : String(e)); }
             }
             return send(res, safeValue({ ok: !!bot && webhookOk, ...(bot ? { bot } : {}), ...(webhookUrl ? { webhookUrl } : {}),
               steps: [{ name: 'token', ok: !!bot, detail: tokenDetail }, { name: 'webhook', ok: webhookOk, detail: webhookDetail }] }, clean));

@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { LineConfig } from '../types.ts';
-export { lineBotInfo, setLineWebhook, testLineWebhook, publicUrlProblem, webhookUrlFor } from './connect.ts';
+export { lineBotInfo, setLineWebhook, lineWebhookActive, testLineWebhook, publicUrlProblem, webhookUrlFor } from './connect.ts';
 export type { LineApiOptions } from './connect.ts';
 
 const MAX_BODY = 1024 * 1024;        // 1 MiB
@@ -21,7 +21,7 @@ const WORKING = 'Still working on it. Tap the button to get the answer when it i
 
 export interface LineGatewayOptions {
   config: LineConfig; channelSecret: string; accessToken: string;
-  onMessage: (m: { to: string; userId: string; text: string }) => Promise<string>;
+  onMessage: (m: { to: string; userId: string; text: string }, signal: AbortSignal) => Promise<string>; // signal: the gateway closed
   fetchImpl?: typeof fetch;
   apiBase?: string;
   seen?: Set<string>;
@@ -59,7 +59,8 @@ const textMessages = (text: string): LineMessage[] => chunkText(text || '(empty 
 
 const postback = (label: string, data: string) => ({ type: 'postback', label, data });
 
-export function createLineGateway(opts: LineGatewayOptions) {
+export function createLineGateway(options: LineGatewayOptions) {
+  const opts = { ...options }; // reconfigure() swaps config and credentials in place, so a settings save never rebuilds the gateway
   const fetchImpl = opts.fetchImpl ?? fetch;
   const apiBase = (opts.apiBase ?? 'https://api.line.me').replace(/\/+$/, '');
   const now = opts.now ?? Date.now;
@@ -71,7 +72,8 @@ export function createLineGateway(opts: LineGatewayOptions) {
   const approvals = new Map<string, { to: string; resolve: (ok: boolean) => void; timer: unknown }>();
   const slowTimers = new Set<unknown>();
   let closed = false;
-  let server: Server | undefined;
+  const closing = new AbortController();
+  let server: Server | undefined, listenPort: number | undefined; // listenPort: the port that was asked for (0 = ephemeral)
   let lastEventAt: number | undefined;
   let lastError: string | undefined;
 
@@ -80,6 +82,12 @@ export function createLineGateway(opts: LineGatewayOptions) {
     if (!c) chats.set(to, (c = { queue: [], busy: false }));
     return c;
   };
+  // The live allow list, for work that was queued before a settings save: a chat removed since then gets no run and no answer.
+  const stillAllowed = (to: string): boolean => {
+    const { users, groups, rooms } = opts.config.allow;
+    return users.includes(to) || groups.includes(to) || rooms.includes(to);
+  };
+
   // Keep the last error for status(); never let the channel credentials into it.
   const fail = (e: unknown) => {
     let msg = e instanceof Error ? e.message : String(e);
@@ -91,18 +99,23 @@ export function createLineGateway(opts: LineGatewayOptions) {
 
   async function call(path: string, body: unknown): Promise<void> {
     if (closed) return;
-    const res = await fetchImpl(`${apiBase}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opts.accessToken}` },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-      redirect: 'error',
-    });
-    let text = await res.text().catch(() => '');
-    if (!res.ok) {
-      for (const secret of [opts.accessToken, opts.channelSecret]) if (secret) text = text.replaceAll(secret, '***');
-      throw new Error(`LINE ${path} failed: ${res.status} ${text.slice(0, 200)}`);
-    }
+    const { accessToken, channelSecret } = opts; // reconfigure() may rotate these while the request is in flight
+    const mask = (text: string) => {
+      for (const secret of [accessToken, channelSecret, opts.accessToken, opts.channelSecret]) if (secret) text = text.replaceAll(secret, '***');
+      return text;
+    };
+    let res: Response;
+    try {
+      res = await fetchImpl(`${apiBase}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+        redirect: 'error',
+      });
+    } catch (e) { throw new Error(`LINE ${path} failed: ${mask(e instanceof Error ? e.message : String(e))}`); }
+    const text = await res.text().catch(() => '');
+    if (!res.ok) throw new Error(`LINE ${path} failed: ${res.status} ${mask(text).slice(0, 200)}`);
   }
 
   /** The chat's latest reply token if it is still young; tokens are single use, so it is dropped either way. */
@@ -114,10 +127,13 @@ export function createLineGateway(opts: LineGatewayOptions) {
 
   // At most 5 messages per call. The first call tries the free reply token; if there is none, or LINE refuses it
   // (expired, already used), it goes out as a metered push. Further calls are always pushes.
-  async function sendMessages(to: string, messages: LineMessage[], pending?: Pending): Promise<void> {
+  // onlyAllowed (every gateway answer and prompt; not push()): stop as soon as the chat leaves the allow list, before each call
+  // and before the fallback push. Resolves true when everything was sent, false when it stopped early.
+  async function sendMessages(to: string, messages: LineMessage[], pending?: Pending, onlyAllowed = false): Promise<boolean> {
     const start = pending?.delivered ?? 0;
+    const stopped = () => closed || (onlyAllowed && !stillAllowed(to));
     for (let i = start; i < messages.length; i += MAX_PER_CALL) {
-      if (closed) return;
+      if (stopped()) return false;
       const batch = messages.slice(i, i + MAX_PER_CALL);
       const token = i === start ? takeToken(to) : undefined;
       if (token) {
@@ -127,11 +143,14 @@ export function createLineGateway(opts: LineGatewayOptions) {
           continue;
         } catch (e) { fail(e); }
       }
+      if (stopped()) return false;
       await call('/v2/bot/message/push', { to, messages: batch });
       if (pending && !closed) pending.delivered = i + batch.length;
     }
+    return true;
   }
-  const send = (to: string, text: string) => sendMessages(to, textMessages(text));
+  const send = (to: string, text: string) => sendMessages(to, textMessages(text)).then(() => {}); // push(): cron delivery is not filtered by allow
+  const say = (to: string, text: string) => sendMessages(to, textMessages(text), undefined, true);
 
   const workingMessage = (p: Pending): LineMessage => ({
     type: 'template', altText: WORKING,
@@ -160,10 +179,10 @@ export function createLineGateway(opts: LineGatewayOptions) {
   }
 
   async function runMessage(to: string, userId: string, text: string): Promise<void> {
-    if (closed) return;
+    if (closed || !stillAllowed(to)) return;
     if (to.startsWith('U')) void call('/v2/bot/chat/loading/start', { chatId: to, loadingSeconds: 60 }).catch(fail);
     const answer = Promise.resolve()
-      .then(() => closed ? '' : opts.onMessage({ to, userId, text }))
+      .then(() => closed ? '' : opts.onMessage({ to, userId, text }, closing.signal))
       .catch((e) => { fail(e); return 'Sorry, something went wrong.'; });
     let timer: unknown;
     const slow = new Promise<null>((resolve) => {
@@ -173,19 +192,19 @@ export function createLineGateway(opts: LineGatewayOptions) {
     });
     const early = await Promise.race([answer, slow]);
     slowTimers.delete(timer);
-    if (closed) return;
+    if (early !== null) timers.clearTimeout(timer);
+    if (closed || !stillAllowed(to)) return;
     if (early !== null) {
-      timers.clearTimeout(timer);
-      await send(to, early);
+      await say(to, early);
       return;
     }
     // Too slow for the reply token: park the answer behind a "Get answer" button.
     const pending: Pending = { id: randomBytes(6).toString('hex'), to, state: 'PENDING', delivered: 0 };
     remember(pending);
-    try { await sendMessages(to, [workingMessage(pending)]); } catch (e) {
+    try { if (!await sendMessages(to, [workingMessage(pending)], undefined, true)) { pendings.delete(pending.id); return; } } catch (e) {
       fail(e);
       pendings.delete(pending.id);
-      await send(to, await answer);
+      await say(to, await answer);
       return;
     }
     pending.text = await answer;
@@ -203,7 +222,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
   }
 
   function askApproval(to: string, text: string): Promise<boolean> {
-    if (closed) return Promise.resolve(false);
+    if (closed || !stillAllowed(to)) return Promise.resolve(false); // nobody in a removed chat could answer, so do not show it the prompt
     const id = randomBytes(6).toString('hex');
     // The confirm template only fits 240 characters. Longer prompts go out in full first, so the owner always
     // sees the whole command before tapping Allow.
@@ -218,7 +237,7 @@ export function createLineGateway(opts: LineGatewayOptions) {
     ];
     return new Promise<boolean>((resolve) => {
       approvals.set(id, { to, resolve, timer: timers.setTimeout(() => settleApproval(id, false), APPROVAL_TIMEOUT_MS) });
-      sendMessages(to, messages).catch((e) => { fail(e); settleApproval(id, false); });
+      sendMessages(to, messages, undefined, true).then((sent) => { if (!sent) settleApproval(id, false); }, (e) => { fail(e); settleApproval(id, false); });
     });
   }
 
@@ -232,13 +251,13 @@ export function createLineGateway(opts: LineGatewayOptions) {
     }
     if (action !== 'get') return;
     const p = pendings.get(id);
-    if (!p || p.to !== to) { send(to, 'That answer is no longer available.').catch(fail); return; }
-    if (p.state === 'PENDING') { sendMessages(to, [workingMessage(p)]).catch(fail); return; }
-    if (p.state === 'DELIVERED') { send(to, 'That answer was already sent above.').catch(fail); return; }
+    if (!p || p.to !== to) { say(to, 'That answer is no longer available.').catch(fail); return; }
+    if (p.state === 'PENDING') { sendMessages(to, [workingMessage(p)], undefined, true).catch(fail); return; }
+    if (p.state === 'DELIVERED') { say(to, 'That answer was already sent above.').catch(fail); return; }
     if (p.sending) return;
     p.sending = true;
-    void sendMessages(to, textMessages(p.text ?? ''), p).then(
-      () => { if (!closed) { p.state = 'DELIVERED'; p.text = undefined; } },
+    void sendMessages(to, textMessages(p.text ?? ''), p, true).then(
+      (sent) => { if (sent && !closed) { p.state = 'DELIVERED'; p.text = undefined; } }, // stopped early: the next tap resumes at the remainder
       fail, // Keep the successfully delivered batches; the next tap resumes at the remainder.
     ).finally(() => { p.sending = false; });
   }
@@ -332,6 +351,18 @@ export function createLineGateway(opts: LineGatewayOptions) {
     }
   }
 
+  async function bind(port: number): Promise<Server> {
+    const s = createServer((req, res) => { void handler(req, res); });
+    s.requestTimeout = 30_000;
+    await new Promise<void>((resolve, reject) => {
+      s.once('error', reject);
+      s.listen(port, '127.0.0.1', () => { s.off('error', reject); resolve(); });
+    });
+    s.on('error', fail);
+    return s;
+  }
+  const shut = (s: Server) => new Promise<void>((resolve) => { s.close(() => resolve()); s.closeAllConnections(); });
+
   return {
     handler,
 
@@ -339,28 +370,35 @@ export function createLineGateway(opts: LineGatewayOptions) {
     async listen(port: number): Promise<number> {
       if (closed) throw new Error('LINE gateway is closed');
       if (server) throw new Error('LINE gateway is already listening');
-      const s = createServer((req, res) => { void handler(req, res); });
-      s.requestTimeout = 30_000;
-      await new Promise<void>((resolve, reject) => {
-        s.once('error', reject);
-        s.listen(port, '127.0.0.1', () => { s.off('error', reject); resolve(); });
-      });
-      s.on('error', fail);
-      server = s;
+      const s = await bind(port);
+      server = s; listenPort = port;
       return (s.address() as AddressInfo).port;
+    },
+
+    /**
+     * Applies new settings and credentials to the running gateway and moves the listener when the port changed.
+     * Queued messages, runs in flight, open approvals and parked "Get answer" answers stay, and finish through the new
+     * credentials. A failed bind throws and leaves the old listener up.
+     */
+    async reconfigure(next: Pick<LineGatewayOptions, 'config' | 'channelSecret' | 'accessToken'>, port: number): Promise<void> {
+      if (closed) throw new Error('LINE gateway is closed');
+      Object.assign(opts, next);
+      if (!server || port === listenPort) return;
+      const s = await bind(port), old = server;
+      server = s; listenPort = port;
+      await shut(old);
     },
 
     /** Stops new work and sends, drops queued runs, stops timers and denies open approvals. */
     async close(): Promise<void> {
-      closed = true;
+      closed = true; closing.abort();
       for (const chat of chats.values()) { chat.queue.length = 0; chat.token = undefined; }
       for (const id of [...approvals.keys()]) settleApproval(id, false);
       for (const t of slowTimers) timers.clearTimeout(t);
       slowTimers.clear();
       const s = server;
       server = undefined;
-      if (!s) return;
-      await new Promise<void>((resolve) => { s.close(() => resolve()); s.closeAllConnections(); });
+      if (s) await shut(s);
     },
 
     /** Sends text to a chat: free reply token when it is young, otherwise (or when LINE refuses it) a push. */

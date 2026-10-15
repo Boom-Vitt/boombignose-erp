@@ -19,6 +19,7 @@ export interface DaemonOptions {
   signal?: AbortSignal;
   lineOptions?: Pick<LineGatewayOptions, 'fetchImpl' | 'apiBase' | 'timers'>;
   schedulerOptions?: Pick<SchedulerOptions, 'now' | 'setTimer'>;
+  mcpWaitMs?: number; // how long a settings write waits for the connectors it started (default 3000)
 }
 export async function startDaemon(options: DaemonOptions = {}) {
   const home = options.home ?? homeDir();
@@ -48,27 +49,34 @@ export async function startDaemon(options: DaemonOptions = {}) {
   const apiPort = testPorts ? 0 : config.api.port;
   const linePort = () => testPorts && config.line.port === 47822 ? 0 : config.line.port;
   let operation: Promise<void> = Promise.resolve(), closed = false, closing: Promise<void> | undefined;
-  const serial = (fn: () => Promise<void>) => {
-    const next = operation.then(fn); operation = next.catch(() => {}); return next;
+  const serial = <T>(fn: () => Promise<T>) => {
+    const next = operation.then(fn); operation = next.then(() => {}, () => {}); return next;
   };
-  async function reload(): Promise<void> {
-    if (closed) return;
+  // The write waits a short, bounded time for the connectors it started, outside the queue: a stuck one never holds up other writes.
+  const settled = async (started: Promise<string[]>) => { await mcp.settle(await started, options.mcpWaitMs ?? 3000, new AbortController().signal); };
+  async function reload(): Promise<string[]> {
+    if (closed) return [];
     const env = readEnv(home);
     const { agentId: _agentId, ...listenerConfig } = config.line;
     const fingerprint = JSON.stringify([listenerConfig, env.LINE_CHANNEL_ACCESS_TOKEN, env.LINE_CHANNEL_SECRET]);
     if (fingerprint !== lineFingerprint) {
-      await line?.close(); line = undefined; lineError = undefined; lineFingerprint = fingerprint;
-      if (closed) return;
-      if (config.line.enabled && env.LINE_CHANNEL_ACCESS_TOKEN && env.LINE_CHANNEL_SECRET) {
-        const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret: env.LINE_CHANNEL_SECRET, accessToken: env.LINE_CHANNEL_ACCESS_TOKEN,
-          onMessage: m => runtime.lineMessage(m), seen, ...options.lineOptions });
+      lineError = undefined; lineFingerprint = fingerprint;
+      const accessToken = env.LINE_CHANNEL_ACCESS_TOKEN, channelSecret = env.LINE_CHANNEL_SECRET;
+      if (!config.line.enabled || !accessToken || !channelSecret) { await line?.close(); line = undefined; } // off or unusable: nothing to deliver with
+      else if (line) {
+        // Hot-apply: a rebuild would drop in-flight answers, queued messages, open approvals and parked "Get answer" answers.
+        try { await line.reconfigure({ config: structuredClone(config.line), channelSecret, accessToken }, linePort()); }
+        catch (e) { lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); } // the old listener stays up; retry on the next reload
+      } else {
+        const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret, accessToken,
+          onMessage: (m, signal) => runtime.lineMessage(m, signal), seen, ...options.lineOptions });
         try { await gateway.listen(linePort()); line = gateway; }
         catch (e) { await gateway.close(); lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); }
       }
     }
-    if (closed) return;
+    if (closed) return [];
     scheduler.start();
-    await mcp.update(config.mcp.servers, env);
+    return mcp.apply(config.mcp.servers, env); // connectors start in the background: a slow one must not hold up this queue
   }
   function lineStatus() {
     const env = readEnv(home), status = line?.status();
@@ -82,20 +90,20 @@ export async function startDaemon(options: DaemonOptions = {}) {
       agentId: runtime.lineAgent().id,
       publicUrl, webhookUrl, healthUrl: webhookUrl ? webhookUrl + '/health' : undefined, warnings,
       tokenSet: !!env.LINE_CHANNEL_ACCESS_TOKEN, secretSet: !!env.LINE_CHANNEL_SECRET,
-      lastEventAt: status?.lastEventAt, lastError: status?.lastError ?? lineError };
+      lastEventAt: status?.lastEventAt, lastError: lineError ?? status?.lastError }; // a bind failure is newer than an older send error
   }
   const api = createApiServer({ home, token, fetchImpl: options.fetchImpl, runtime, mcp, scheduler, config: () => config, lineStatus,
     lineApiOptions: () => {
       const env = readEnv(home);
       return { ...options.lineOptions, accessToken: env.LINE_CHANNEL_ACCESS_TOKEN ?? '', channelSecret: env.LINE_CHANNEL_SECRET };
     },
-    updateSettings: input => serial(async () => {
+    updateSettings: input => settled(serial(async () => {
       if (closed) throw new Error('daemon is closing');
       const value = typeof input === 'function' ? input(structuredClone(config)) : input;
       validateConfig(value);
-      saveConfig(value, home); config = value; await reload();
-    }),
-    reloadSecrets: () => serial(reload),
+      saveConfig(value, home); config = value; return reload();
+    })),
+    reloadSecrets: () => settled(serial(reload)),
   });
   function close(): Promise<void> {
     if (closing) return closing;
@@ -115,6 +123,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
   options.signal?.addEventListener('abort', abort, { once: true });
   try {
     options.signal?.throwIfAborted();
+    void mcp.start(); // connectors initialize in the background from the first moment, so a chat never finds one that is neither up nor starting
     const port = await api.listen(apiPort);
     options.signal?.throwIfAborted();
     const file = paths(home).daemon, tmp = `${file}.${process.pid}.tmp`;

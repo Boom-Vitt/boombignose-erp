@@ -5,7 +5,7 @@ import { CommandError, expandSlash } from '../commands/index.ts';
 import { runAgent } from '../agent/loop.ts';
 import type { RunResult } from '../agent/loop.ts';
 import { withAbort } from '../agent/abort.ts';
-import { effectivePolicy } from '../agent/permissions.ts';
+import { layeredPolicy } from '../agent/permissions.ts';
 import { paths, readEnv } from '../config.ts';
 import { createProvider } from '../providers/index.ts';
 import { builtinTools } from '../tools/index.ts';
@@ -19,12 +19,17 @@ import type { LineGateway } from '../line/index.ts';
 import type { Agent, AgentEvent, ApprovalRequest, Approver, Config, HooksConfig, Message, Origin, Policy, ProviderConfig, Tool } from '../types.ts';
 import { createCleaner, safeValue } from './settings.ts';
 
+// A run waits this long for connectors that are still starting before it takes the tools that are ready.
+const MCP_STARTUP_WAIT_MS = 5000;
+
 export type ApiEvent = (AgentEvent & { sessionId: string; runId: string; seq?: number /* text_delta, tool_start, tool_end: 1, 2, 3 ... per run */ })
   | { type: 'run_start'; sessionId: string; runId: string }
   | { type: 'session_updated'; sessionId: string }
   | { type: 'notification'; title: string; body: string; sessionId?: string };
 export interface RunProfile {
-  provider: ProviderConfig; model: string; system: string; permissions: Record<string, Policy>;
+  provider: ProviderConfig; model: string; system: string;
+  permissions: Record<string, Policy>; // the owner's global rules
+  agentPermissions?: Record<string, Policy>; // the agent's own rules: they decide as a whole, `permissions` only covers what they leave open
   hooks: HooksConfig; cwd: string; maxTurns: number; maxTokens: number; contextWindow: number; compactAt: number;
   toolFilter?: (tool: Tool) => boolean;
   memory?: string; // Kept separate so every profile can omit automatic notes for non-owner LINE runs.
@@ -117,7 +122,7 @@ export class Runtime {
       system: [(agent ? agent.instructions : c.agent.systemPrompt) || 'You are BigNose, a helpful personal assistant. Use tools carefully and ask when permission is needed.',
         skillsIndex(paths(this.opts.home).skills, agent?.skills), `Today: ${new Date().toLocaleDateString('sv-SE')}`].filter(Boolean).join('\n\n'),
       memory: includeMemory ? memoryPrompt(this.store, agent?.id ?? this.store.listAgents()[0]!.id) : '',
-      permissions: { ...c.permissions, ...agent?.permissions }, hooks: c.hooks, cwd: c.agent.workspace, maxTurns: c.agent.maxTurns,
+      permissions: c.permissions, agentPermissions: { ...agent?.permissions }, hooks: c.hooks, cwd: c.agent.workspace, maxTurns: c.agent.maxTurns,
       maxTokens: maxTokens ?? 8192, contextWindow: provider.contextWindow ?? 128000, compactAt: c.agent.compactAt,
     };
   }
@@ -171,7 +176,7 @@ export class Runtime {
       return content.length ? [{ ...m, content }] : [];
     }) : session.context;
     const suppliedProfile = options.profile ? { ...options.profile, provider: structuredClone(options.profile.provider),
-      permissions: { ...options.profile.permissions }, hooks: structuredClone(options.profile.hooks) } : undefined;
+      permissions: { ...options.profile.permissions }, agentPermissions: { ...options.profile.agentPermissions }, hooks: structuredClone(options.profile.hooks) } : undefined;
     const env = readEnv(this.opts.home);
     const controller = new AbortController(), runId = randomUUID();
     const redaction = this.cleaner();
@@ -212,13 +217,18 @@ export class Runtime {
           });
           modelInput = [...bodies, slash.prompt].join('\n\n');
         }
+        const connectors = Object.entries(config.mcp.servers).filter(([name, server]) => server.enabled && (agent.connectors === null || agent.connectors.includes(name))).map(([name]) => name);
+        await this.opts.mcp.settle(connectors, MCP_STARTUP_WAIT_MS, controller.signal); // connectors still starting get a moment to bring their tools
         const allTools = [...builtinTools(this.opts.home), ...memoryTools(this.store, agent.id), sessionSearchTool(this.store, agent.id),
           ...skillTools(paths(this.opts.home).skills, agent.skills), ...scheduleTools(this.opts.scheduler, agent.id),
-          ...this.opts.mcp.tools().filter(t => Object.entries(config.mcp.servers).some(([name, server]) => server.enabled &&
-            (agent.connectors === null || agent.connectors.includes(name)) && t.name.startsWith(`mcp__${name}__`)))];
-        const tools = profile.toolFilter ? allTools.filter(profile.toolFilter) : allTools;
-        const permissions = { ...profile.permissions };
-        if (nonOwner) for (const tool of tools) if (effectivePolicy(tool, permissions) === 'allow') permissions[tool.name] = 'ask';
+          ...this.opts.mcp.tools().filter(t => connectors.some(name => t.name.startsWith(`mcp__${name}__`)))];
+        // The agent's own rules decide as a whole (exact, then longest prefix); the owner's global rules fill in only what the agent leaves open.
+        const policyOf = (tool: Tool) => layeredPolicy(tool, profile.agentPermissions ?? {}, profile.permissions);
+        // A denied tool is not offered at all: calling it could only fail, and each wasted call costs a turn. Delegates inherit this list.
+        const tools = (profile.toolFilter ? allTools.filter(profile.toolFilter) : allTools).filter(tool => policyOf(tool) !== 'deny');
+        // The loop checks one exact rule per offered tool, so the order is settled here once and the delegates reuse it. Non-owner LINE runs ask instead of allow.
+        const permissions: Record<string, Policy> = {};
+        for (const tool of tools) { const policy = policyOf(tool); permissions[tool.name] = nonOwner && policy === 'allow' ? 'ask' : policy; }
         const provider = (this.opts.providerFactory ?? createProvider)(profile.provider, profile.provider.apiKeyEnv ? env[profile.provider.apiKeyEnv] || undefined : undefined);
         raw = await runAgent({ ...profile, system: [profile.system, nonOwner ? '' : profile.memory,
           origin.kind === 'line' ? 'You are replying in a LINE chat. Write plain text: short paragraphs, no Markdown headings, tables or bold markers, and put each URL on its own line. Keep answers brief unless the user asks for detail.' : ''].filter(Boolean).join('\n\n'), provider, tools, permissions, sessionId, origin, signal: controller.signal,
@@ -285,10 +295,19 @@ export class Runtime {
     if (r.warning) notes.push(['warn', r.warning]);
     return notes;
   }
-  async lineMessage(message: { to: string; userId: string; text: string }): Promise<string> {
+  async lineMessage(message: { to: string; userId: string; text: string }, signal?: AbortSignal): Promise<string> {
     const origin: Origin = { kind: 'line', to: message.to };
     const agentId = this.lineAgent().id;
     const session = this.store.findSessionByOrigin(origin, agentId) ?? this.store.createSession({ origin, agentId });
+    // The desktop may be running this very session: wait for that run instead of failing, then answer from the context it left.
+    // Nothing awaits between this loop and start(), so a run cannot slip in.
+    let waited = false;
+    while (this.runs.has(session.id)) { waited = true; await this.runs.get(session.id)!.result.catch(() => {}); }
+    signal?.throwIfAborted(); // the gateway that asked closed while this waited: its answer would be dropped, so do not run it
+    if (waited) { // a save may have removed the chat from the allow lists meanwhile: its text must not reach the model
+      const { users, groups, rooms } = this.opts.config().line.allow;
+      if (![...users, ...groups, ...rooms].includes(message.to)) return ''; // the gateway drops it: it checks the same lists
+    }
     let result: RunResult;
     try { result = await this.start(session.id, message.text, { origin, userId: message.userId }).result; }
     catch (e) {
@@ -300,6 +319,8 @@ export class Runtime {
   }
   async fireJob(job: Job): Promise<void> {
     try {
+      // Checked before the model runs: an answer that cannot be delivered would cost tokens and then be thrown away.
+      if (job.delivery.kind === 'line' && !this.opts.line()) throw new Error('LINE is off, so this schedule was not run');
       const origin: Origin = { kind: 'cron', jobId: job.id };
       const session = this.store.createSession({ origin, agentId: job.agentId, title: `Scheduled: ${this.clean(job.prompt).replace(/\s+/g, ' ').slice(0, 60)}` });
       const result = await this.start(session.id, job.prompt, { origin }).result;
@@ -309,7 +330,12 @@ export class Runtime {
         if (!gateway) throw new Error('LINE gateway is unavailable');
         await gateway.push(job.delivery.to, result.text);
       } else this.emit({ type: 'notification', title: 'Scheduled task', body: result.text, sessionId: session.id });
-    } catch (e) { throw new Error(this.clean(e instanceof Error ? e.message : String(e))); }
+    } catch (e) {
+      const message = this.clean(e instanceof Error ? e.message : String(e));
+      // No sessionId: the desktop shows a notification without one as a toast, wherever the owner is.
+      this.emit({ type: 'notification', title: 'Scheduled task failed', body: `${this.clean(job.prompt).replace(/\s+/g, ' ').slice(0, 40)}: ${message}` });
+      throw new Error(message);
+    }
   }
   async deleteAgent(agentId: string): Promise<boolean> {
     this.deletingAgents.add(agentId);

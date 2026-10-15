@@ -15,23 +15,27 @@ async function daemon(t: test.TestContext) {
   return app;
 }
 
-test('settings scroll inside the window and Save is reachable', { timeout: 120_000 }, async t => {
+test('settings scroll inside the window and the save bar stays reachable', { timeout: 120_000 }, async t => {
   const app = await daemon(t);
-  const ui = await openUi(t, app, { viewport: { width: 1000, height: 480 }, hash: '#/settings/messaging' });
-  await ui.wait(`document.querySelector('[aria-label="Settings"] form button[type=submit]')`);
+  const ui = await openUi(t, app, { viewport: { width: 1000, height: 480 }, hash: '#/settings/line' });
+  const save = `document.querySelector('[aria-label="Settings"] form button[type=submit]')`;
+  await ui.wait(save);
+  // the bar shows only once something differs; change a field that sits inside the (closed) More options fold
+  assert.equal(await ui.cdp.evaluate(`${save}.closest('.save-bar').hidden`), true, 'nothing changed, no bar');
+  await ui.field('Public address', 'https://tunnel.example', `document.querySelector('[aria-label="Settings"]')`);
+  await ui.wait(`!${save}.closest('.save-bar').hidden`);
   const geometry = await ui.cdp.evaluate(`(() => {
-    const settings = document.querySelector('[aria-label="Settings"]'), save = document.querySelector('[aria-label="Settings"] form button[type=submit]');
-    const page = document.scrollingElement;
+    const settings = document.querySelector('[aria-label="Settings"]'), page = document.scrollingElement, r = ${save}.getBoundingClientRect();
     return { shell: document.querySelector('.shell').getBoundingClientRect().height, vh: innerHeight, pageScroll: page.scrollHeight - page.clientHeight,
-      paneScroll: settings.scrollHeight - settings.clientHeight, saveBottomBefore: save.getBoundingClientRect().bottom };
+      paneScroll: settings.scrollHeight - settings.clientHeight, top: r.top, bottom: r.bottom };
   })()`);
   assert.ok(geometry.shell <= geometry.vh, `the shell fits the window: ${JSON.stringify(geometry)}`);
   assert.equal(geometry.pageScroll, 0, 'the page itself does not scroll');
   assert.ok(geometry.paneScroll > 0, 'the settings pane is taller than the window, so it scrolls inside');
-  assert.ok(geometry.saveBottomBefore > geometry.vh, 'Save starts below the fold on this short window');
+  assert.ok(geometry.top >= 0 && geometry.bottom <= geometry.vh, `the bar sticks to the bottom of the window before any scrolling: ${JSON.stringify(geometry)}`);
   await ui.cdp.evaluate(`document.querySelector('[aria-label="Settings"]').scrollTop = 1e6`);
-  const save = await ui.cdp.evaluate(`(() => { const r = document.querySelector('[aria-label="Settings"] form button[type=submit]').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight }; })()`);
-  assert.ok(save.top >= 0 && save.bottom <= save.vh, `Save is on screen after scrolling the pane: ${JSON.stringify(save)}`);
+  const after = await ui.cdp.evaluate(`(() => { const r = ${save}.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight }; })()`);
+  assert.ok(after.top >= 0 && after.bottom <= after.vh, `Save is on screen after scrolling the pane: ${JSON.stringify(after)}`);
   assert.deepEqual(ui.cdp.errors, []);
 });
 
@@ -41,15 +45,15 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
   assert.ok(await ui.cdp.evaluate(`document.body.classList.contains('os-panel')`));
   // panel mode opens on the ERP assistant, set up through the local API
   await ui.wait(`document.querySelector('[aria-label="Chat agent"]')?.selectedOptions[0]?.textContent.includes('ERP assistant')`);
-  assert.equal(await ui.cdp.evaluate(`document.querySelector('[aria-label="Agent model"]').value`), 'google/gemini-4-argon');
+  assert.equal(await ui.cdp.evaluate(`document.querySelector('.model-link').textContent`), 'google/gemini-4-argon');
   const fits = (label: string) => ui.cdp.evaluate(`(() => {
     const page = document.scrollingElement, nodes = ['.shell', '.main', '.chat', '.settings:not([hidden])'].map(s => document.querySelector(s)).filter(Boolean);
     return { label: ${JSON.stringify(label)}, overflowX: Math.max(page.scrollWidth - page.clientWidth, ...nodes.map(n => n.scrollWidth - n.clientWidth).map(d => d === -Infinity ? 0 : d)),
       pageScroll: page.scrollHeight - page.clientHeight };
   })()`);
-  // the section links scroll sideways inside their own strip by design
-  assert.equal(await ui.cdp.evaluate(`getComputedStyle(document.querySelector('.nav')).overflowX`), 'auto');
-  const routes = ['#/chat', '#/agents', ...['general', 'providers', 'connectors', 'messaging', 'hooks', 'skills', 'memory', 'schedules'].map(s => `#/settings/${s}`)];
+  // the chat list is a strip under the top bar and scrolls sideways inside itself by design
+  assert.equal(await ui.cdp.evaluate(`getComputedStyle(document.querySelector('.sessions')).overflowX`), 'auto');
+  const routes = ['#/chat', '#/agents', ...['model', 'line', 'tools', 'memory', 'schedules'].map(s => `#/settings/${s}`)];
   for (const route of routes) {
     await ui.cdp.evaluate(`location.hash = ${JSON.stringify(route)}`);
     await ui.wait(`(document.querySelector('[aria-label="Settings"]:not([hidden]), [aria-label="Agents"]:not([hidden]), .chat:not([hidden])')?.textContent.length ?? 0) > 0`);
@@ -58,7 +62,7 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
     assert.equal(f.pageScroll, 0, `the page does not scroll on ${route}`);
   }
   // a long page scrolls inside the pane, not the page
-  await ui.cdp.evaluate(`location.hash = '#/settings/messaging'`);
+  await ui.cdp.evaluate(`location.hash = '#/settings/line'`);
   await ui.wait(`document.querySelector('[aria-label="Settings"]:not([hidden]) form button[type=submit]')`);
   assert.ok(await ui.cdp.evaluate(`(() => { const s = document.querySelector('[aria-label="Settings"]'); return s.scrollHeight > s.clientHeight && getComputedStyle(s).overflowY === 'auto'; })()`));
   // the visible toggle button asks the Rust side to slide the panel
@@ -70,6 +74,30 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
   await ui.wait(`getComputedStyle(document.querySelector('.shell')).display === 'none'`);
   const rail = await ui.cdp.evaluate(`(() => { const r = document.querySelector('.panel-toggle').getBoundingClientRect(); const page = document.scrollingElement; return { w: r.width, h: r.height, x: page.scrollWidth - page.clientWidth }; })()`);
   assert.deepEqual(rail, { w: 40, h: 640, x: 0 });
+  assert.deepEqual(ui.cdp.errors, []);
+});
+
+test('when the ERP server stops the panel shows why with Retry, and the collapsed rail keeps its toggle', { timeout: 120_000 }, async t => {
+  const app = await daemon(t);
+  const ui = await openUi(t, app, { os: true, viewport: { width: 420, height: 640 }, commands: { os_status: ready, os_info: osInfo } });
+  await ui.wait(`document.querySelector('.shell') && document.querySelector('.panel-toggle')`);
+  // the launcher leaves ready: boot() replaces the panel with the startup screen, which says why
+  await ui.cdp.evaluate(`window.__answers.os_status = { phase: 'failed', title: 'The ERP server stopped', message: 'exit status 1' }`);
+  await ui.wait(`document.querySelector('.splash')?.textContent.includes('The ERP server stopped')`);
+  assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.panel-toggle').length`), 1, 'the toggle is not part of the replaced page');
+  // collapsed to the 40px rail, the toggle is all there is, and it still asks the Rust side to slide the panel back
+  await ui.cdp.call('Emulation.setDeviceMetricsOverride', { width: 40, height: 640, deviceScaleFactor: 1, mobile: false });
+  await ui.wait(`getComputedStyle(document.querySelector('.splash')).display === 'none'`);
+  const rail = await ui.cdp.evaluate(`(() => { const r = document.querySelector('.panel-toggle').getBoundingClientRect(); const page = document.scrollingElement; return { w: r.width, h: r.height, x: page.scrollWidth - page.clientWidth }; })()`);
+  assert.deepEqual(rail, { w: 40, h: 640, x: 0 });
+  await ui.cdp.evaluate(`window.__invokes.length = 0; document.querySelector('.panel-toggle').click()`);
+  assert.ok(await ui.cdp.evaluate(`window.__invokes.includes('os_toggle_panel')`));
+  // expanded again, Retry is there; once the server is back the panel returns with a single toggle
+  await ui.cdp.call('Emulation.setDeviceMetricsOverride', { width: 420, height: 640, deviceScaleFactor: 1, mobile: false });
+  await ui.click('Retry');
+  await ui.cdp.evaluate(`window.__answers.os_status = ${JSON.stringify(ready)}`);
+  await ui.wait(`document.querySelector('.shell') && !document.querySelector('.splash')`);
+  assert.equal(await ui.cdp.evaluate(`document.querySelectorAll('.panel-toggle').length`), 1);
   assert.deepEqual(ui.cdp.errors, []);
 });
 
