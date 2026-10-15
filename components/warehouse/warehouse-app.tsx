@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useEffect, useEffectEvent, useRef, useState } from "react"
 import {
   Bell,
   Box,
@@ -27,6 +28,7 @@ import {
   X,
 } from "lucide-react"
 
+import { zoneLink } from "@/lib/campus-zones"
 import { cn } from "@/lib/utils"
 import {
   createWarehouseScene,
@@ -56,7 +58,9 @@ const STATE_STYLE: Record<string, string> = {
   Available: "bg-slate-100 text-slate-500",
 }
 
-export function WarehouseApp() {
+/** `onOpenModule` switches the shell back to 2D when a zone or module link is opened. */
+export function WarehouseApp({ onOpenModule }: { onOpenModule: () => void }) {
+  const router = useRouter()
   const host = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<WarehouseScene | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -67,10 +71,18 @@ export function WarehouseApp() {
   const [miss, setMiss] = useState(false)
   const [tab, setTab] = useState<"docks" | "forklifts" | "trucks" | "team">("docks")
 
+  // Clicking an office zone in the scene opens its 2D module; anything else is inspected in place.
+  const onSceneSelect = useEffectEvent((id: string | null) => {
+    const link = zoneLink(id)
+    if (!link) return setSel((p) => ({ id, focus: false, n: p.n + 1 }))
+    router.push(link.href)
+    onOpenModule()
+  })
+
   useEffect(() => {
     const s = createWarehouseScene(host.current!, {
       onSnapshot: setSnap,
-      onSelect: (id) => setSel((p) => ({ id, focus: false, n: p.n + 1 })),
+      onSelect: (id) => onSceneSelect(id),
       reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     })
     sceneRef.current = s
@@ -258,7 +270,7 @@ export function WarehouseApp() {
               </dl>
               <div className="mt-3 flex gap-2">
                 {current.links.map(([label, href]) => (
-                  <Link key={href} href={href} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-blue-700">
+                  <Link key={href} href={href} onClick={onOpenModule} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-blue-700">
                     Open {label} →
                   </Link>
                 ))}

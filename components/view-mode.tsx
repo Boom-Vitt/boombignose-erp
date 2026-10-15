@@ -117,7 +117,7 @@ export function AppViewShell({
   toolbarLeft: ReactNode
   children: ReactNode
 }) {
-  const { mode, ready } = useViewMode()
+  const { mode, ready, setMode } = useViewMode()
 
   if (!ready) {
     return <div className="bg-background min-h-svh w-full" aria-hidden />
@@ -126,7 +126,7 @@ export function AppViewShell({
   if (mode === "3d") {
     return (
       <div className="relative h-svh w-full overflow-hidden">
-        <WarehouseApp />
+        <WarehouseApp onOpenModule={() => setMode("2d")} />
         <div className="pointer-events-none absolute inset-x-0 top-0 z-40 flex justify-end p-3 md:p-4">
           <div className="pointer-events-auto">
             <ViewModeToggle />

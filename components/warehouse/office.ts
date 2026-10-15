@@ -1,6 +1,8 @@
 import * as THREE from "three"
 import type { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js"
 
+import { ZONES, zoneLink, type ZoneDef } from "@/lib/campus-zones"
+
 import { block, canvasTex, chip, curve, cyl, dampAngle, flat, G, mat, rng, yawOf } from "./kit"
 
 export interface PersonInfo {
@@ -55,25 +57,6 @@ interface Spot {
   sit: boolean
 }
 
-interface ZoneDef {
-  id: string
-  name: string
-  sub: string
-  rect: [number, number, number, number]
-  color: string
-  links: [string, string][]
-}
-
-const ZONES: ZoneDef[] = [
-  { id: "sales", name: "Sales floor", sub: "Clients & Deals", rect: [44, -28, 60, -11], color: "#dbe7fb", links: [["Deals", "/deals"], ["Clients", "/clients"]] },
-  { id: "studio", name: "Project studio", sub: "Projects & Timesheets", rect: [60, -28, 76, -11], color: "#f3e8d8", links: [["Projects", "/projects"], ["Timesheets", "/timesheets"]] },
-  { id: "reception", name: "Reception", sub: "Client intake", rect: [44, -11, 50, -5], color: "#e3f3ea", links: [["Intake", "/intake"]] },
-  { id: "servers", name: "Server room", sub: "Automations", rect: [72, -11, 76, -5], color: "#e2e6ee", links: [["Automation", "/automation"]] },
-  { id: "meeting", name: "Meeting room", sub: "Calendar", rect: [44, -5, 54, 8], color: "#ead9c3", links: [["Calendar", "/calendar"]] },
-  { id: "founder", name: "Founder office", sub: "Dashboard & Reports", rect: [54, -5, 64, 8], color: "#e4d3bb", links: [["Dashboard", "/dashboard"], ["Reports", "/reports"]] },
-  { id: "finance", name: "Finance", sub: "Invoices & Quotes", rect: [64, -5, 76, 8], color: "#dcf2ea", links: [["Finance", "/finance"], ["Quotes", "/quotes"]] },
-]
-
 const thb = (v: number) => (v >= 1e6 ? `฿${(v / 1e6).toFixed(2)}M` : `฿${Math.round(v / 1000)}K`)
 const hhmm = (sec: number) => {
   const m = Math.floor(sec / 60) % 1440
@@ -116,16 +99,41 @@ export function buildOffice(ctx: OfficeCtx) {
 
   const zoneFloors = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>>()
   const zoneTags = new Map<string, HTMLElement>()
+  const zoneChips = new Map<string, HTMLElement>()
+  let lit: string | null = null
+  let hot: string | null = null
+  /** Floors: hovered zone glows FB orange (click target), selected zone blue. */
+  function paint() {
+    for (const [id, f] of zoneFloors) {
+      f.material.emissive.set(id === hot ? "#F07A1A" : id === lit ? "#2563eb" : "#000000")
+      f.material.emissiveIntensity = id === hot ? 0.3 : 0.15
+    }
+    for (const [id, el] of zoneChips) {
+      el.querySelector<HTMLElement>("[data-go]")!.hidden = id !== hot
+      el.style.boxShadow = id === hot ? "0 0 0 2px #F07A1A" : ""
+    }
+  }
+  function hover(id: string | null) {
+    const next = id && zoneFloors.has(id) ? id : null
+    if (next === hot) return
+    hot = next
+    paint()
+  }
   for (const z of ZONES) {
     const [x0, z0, x1, z1] = z.rect
     const f = block(g, x1 - x0, 0.02, z1 - z0, mat(z.color), (x0 + x1) / 2, 0.3, (z0 + z1) / 2) as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>
     f.castShadow = false
     zoneFloors.set(z.id, f)
     ctx.register(z.id, f, 0, 42)
-    const tag = chip(`<b class="text-slate-900">${z.name}</b> <span data-s class="text-slate-500"></span>`)
+    const tag = chip(
+      `<b class="text-slate-900">${z.name}</b> <span data-s class="text-slate-500"></span><span data-go hidden class="ml-1 font-semibold text-[#F07A1A]">· Open ${zoneLink(z.id)!.label} →</span>`,
+    )
     tag.el.style.pointerEvents = "auto"
     tag.el.style.cursor = "pointer"
     tag.el.addEventListener("click", () => ctx.onZoneClick(z.id))
+    tag.el.addEventListener("pointerenter", () => hover(z.id))
+    tag.el.addEventListener("pointerleave", () => hover(null))
+    zoneChips.set(z.id, tag.el)
     tag.obj.position.set((x0 + x1) / 2, 3.7, (z0 + z1) / 2)
     g.add(tag.obj)
     zoneTags.set(z.id, tag.el.querySelector<HTMLElement>("[data-s]")!)
@@ -742,18 +750,13 @@ export function buildOffice(ctx: OfficeCtx) {
     return { id: z.id, kind: "zone", name: z.name, sub: z.sub, status, stats: rows[z.id], links: z.links }
   }
 
-  let lit: string | null = null
   return {
     update,
     snapshot: () => ({ people: people.map((p) => ({ ...p.info })), zones: ZONES.map(zoneInfo) }),
     highlight(id: string | null) {
-      if (lit) zoneFloors.get(lit)!.material.emissive.setHex(0)
       lit = id && zoneFloors.has(id) ? id : null
-      if (lit) {
-        const m = zoneFloors.get(lit)!.material
-        m.emissive.set("#2563eb")
-        m.emissiveIntensity = 0.15
-      }
+      paint()
     },
+    hover,
   }
 }

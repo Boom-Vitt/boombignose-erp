@@ -134,7 +134,7 @@ export function createWarehouseScene(
   renderer.shadowMap.type = THREE.PCFShadowMap
   renderer.toneMapping = THREE.NeutralToneMapping
   renderer.domElement.style.display = "block"
-  renderer.domElement.setAttribute("aria-label", "Interactive 3D warehouse yard. Drag to orbit, scroll to zoom, click a vehicle to inspect it.")
+  renderer.domElement.setAttribute("aria-label", "Interactive 3D warehouse yard. Drag to orbit, scroll to zoom, click a vehicle to inspect it or an office zone to open its module.")
   host.appendChild(renderer.domElement)
 
   const labels = new CSS2DRenderer()
@@ -826,11 +826,15 @@ export function createWarehouseScene(
   }
   const onMove = (e: PointerEvent) => {
     if (e.buttons) return
-    renderer.domElement.style.cursor = pick(e) ? "pointer" : "grab"
+    const id = pick(e)
+    renderer.domElement.style.cursor = id ? "pointer" : "grab"
+    office.hover(id)
   }
+  const onLeave = () => office.hover(null)
   renderer.domElement.addEventListener("pointerdown", onDown)
   renderer.domElement.addEventListener("pointerup", onUp)
   renderer.domElement.addEventListener("pointermove", onMove)
+  renderer.domElement.addEventListener("pointerleave", onLeave)
 
   // ---------------------------------------------------------------- loop
 
@@ -925,6 +929,7 @@ export function createWarehouseScene(
       renderer.domElement.removeEventListener("pointerdown", onDown)
       renderer.domElement.removeEventListener("pointerup", onUp)
       renderer.domElement.removeEventListener("pointermove", onMove)
+      renderer.domElement.removeEventListener("pointerleave", onLeave)
       controls.dispose()
       const geos = new Set<THREE.BufferGeometry>()
       const mats = new Set<THREE.Material>()
