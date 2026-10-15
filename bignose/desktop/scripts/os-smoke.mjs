@@ -18,7 +18,7 @@ const repo = fileURLToPath(new URL('../../..', import.meta.url));
 const stack = join(repo, 'scripts/local/stack.mjs');
 const mcpServer = join(repo, 'lib/mcp/erp-server.mjs');
 const daemonCli = join(repo, 'bignose/core/src/cli.ts');
-const TOOLS = ['finance_summary', 'list_clients', 'list_deals', 'list_invoices', 'list_payment_claims', 'list_projects', 'list_quotes', 'list_workspaces'];
+const TOOLS = ['finance_summary', 'get_customer', 'get_invoice', 'get_order', 'get_product', 'list_clients', 'list_deals', 'list_invoices', 'list_payment_claims', 'list_projects', 'list_quotes', 'list_workspaces'];
 const BUILD_TIMEOUT_MS = 20 * 60_000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -29,6 +29,16 @@ import { resolveOrg, runTool, TOOLS } from "./tools.mjs"
 const ORG_A = "11111111-1111-4111-8111-111111111111"
 const ORG_B = "22222222-2222-4222-8222-222222222222"
 const ORG_UNKNOWN = "99999999-9999-4999-8999-999999999999"
+const CLIENT_A = "c1111111-1111-4111-8111-111111111111"
+const PRODUCT_A = "a1111111-1111-4111-8111-111111111111"
+
+// get_* tools need a record key; these point at ORG_A rows of buildTwoOrgFixture.
+const LOOKUP_ARGS: Record<string, Record<string, string>> = {
+  get_customer: { id: CLIENT_A },
+  get_product: { id: PRODUCT_A },
+  get_order: { number: "QUO-2026-001" },
+  get_invoice: { number: "INV-2026-000001" },
+}
 
 type ToolCallResponse = {
   jsonrpc: string
@@ -303,6 +313,64 @@ function buildTwoOrgFixture() {
         notes: "PRIVATE_COST_NOTE",
       },
     ],
+    automation_templates: [
+      {
+        id: PRODUCT_A,
+        org_id: ORG_A,
+        category_id: null,
+        name: "LINE Order Bot",
+        description: "Takes orders in LINE OA",
+        price_satang: 4500000,
+        internal_value_satang: 9000000,
+        reusable_notes: "PRIVATE_TEMPLATE_NOTE",
+        implementation_checklist: [],
+        tags: ["line", "orders"],
+        created_at: "2026-01-03T00:00:00Z",
+        updated_at: "2026-01-03T00:00:00Z",
+      },
+      {
+        id: "b2222222-2222-4222-8222-222222222222",
+        org_id: ORG_B,
+        name: "Beta Template",
+        price_satang: 100,
+        created_at: "2026-01-03T00:00:00Z",
+        updated_at: "2026-01-03T00:00:00Z",
+      },
+    ],
+    quote_items: [
+      {
+        id: "qi222222-1111-4111-8111-111111111111",
+        org_id: ORG_A,
+        quote_id: "q1111111-1111-4111-8111-111111111111",
+        description: "Training",
+        quantity: 2,
+        unit_price_satang: 500000,
+        amount_satang: 1000000,
+        position: 1,
+      },
+      {
+        id: "qi111111-1111-4111-8111-111111111111",
+        org_id: ORG_A,
+        quote_id: "q1111111-1111-4111-8111-111111111111",
+        description: "Setup",
+        quantity: 1,
+        unit_price_satang: 2000000,
+        amount_satang: 2000000,
+        position: 0,
+      },
+    ],
+    invoice_items: [
+      {
+        id: "ii111111-1111-4111-8111-111111111111",
+        org_id: ORG_A,
+        invoice_id: "i1111111-1111-4111-8111-111111111111",
+        description: "ERP Rollout",
+        quantity: 1,
+        unit_price_satang: 3000000,
+        amount_satang: 3000000,
+        position: 0,
+      },
+    ],
     subscriptions: [
       {
         id: "sub11111-1111-4111-8111-111111111111",
@@ -400,6 +468,10 @@ describe("ERP MCP server", () => {
       "list_invoices",
       "list_payment_claims",
       "finance_summary",
+      "get_customer",
+      "get_product",
+      "get_order",
+      "get_invoice",
     ])
   })
 
@@ -415,6 +487,10 @@ describe("ERP MCP server", () => {
       "list_invoices",
       "list_payment_claims",
       "finance_summary",
+      "get_customer",
+      "get_product",
+      "get_order",
+      "get_invoice",
     ]
 
     // When two organizations exist and ERP_ORG_ID is unset, omitting org_id fails.
@@ -436,7 +512,7 @@ describe("ERP MCP server", () => {
         jsonrpc: "2.0",
         id: 11,
         method: "tools/call",
-        params: { name: toolName, arguments: { org_id: ORG_A } },
+        params: { name: toolName, arguments: { org_id: ORG_A, ...LOOKUP_ARGS[toolName] } },
       })) as unknown as ToolCallResponse
 
       expect(res.result.isError).toBeUndefined()
@@ -576,7 +652,8 @@ describe("ERP MCP server", () => {
 
     const allTools = TOOLS.map((t) => t.name)
     for (const toolName of allTools) {
-      const args = toolName === "list_workspaces" ? {} : { org_id: ORG_A }
+      const args =
+        toolName === "list_workspaces" ? {} : { org_id: ORG_A, ...LOOKUP_ARGS[toolName] }
       const res = (await server.handleMessage({
         jsonrpc: "2.0",
         id: 40,
@@ -598,6 +675,7 @@ describe("ERP MCP server", () => {
       expect(rawText).not.toContain("PRIVATE_PAYMENT_NOTE")
       expect(rawText).not.toContain("PRIVATE_COST_NOTE")
       expect(rawText).not.toContain("PRIVATE_SUB_NOTE")
+      expect(rawText).not.toContain("PRIVATE_TEMPLATE_NOTE")
       expect(rawText).not.toContain("SLIP-BANK-9988776655")
       expect(rawText).not.toContain("BANK-STMT-REF-112233")
       expect(rawText).not.toContain("PRIVATE-BANK-EVIDENCE-REF")
@@ -1281,6 +1359,154 @@ describe("ERP MCP server", () => {
         "Unknown organization: not-a-uuid"
       )
       expect(called).toBe(false)
+    })
+  })
+
+  describe("record lookups", () => {
+    const fixture = buildTwoOrgFixture()
+    type Out = Record<string, unknown> & { items: Array<Record<string, unknown>> }
+    const run = (
+      name: string,
+      args: Record<string, unknown>,
+      store: Parameters<typeof createFakeDataLayer>[0] = fixture
+    ) =>
+      runTool(name, { org_id: ORG_A, ...args }, {
+        dataLayer: createFakeDataLayer(store),
+        now: new Date("2026-01-20T00:00:00Z"),
+      }) as Promise<Out>
+
+    it("get_customer returns business fields by id or exact name", async () => {
+      const byId = await run("get_customer", { id: CLIENT_A })
+      expect(byId).toEqual({
+        id: CLIENT_A,
+        org_id: ORG_A,
+        name: "Somchai Jaidee (Sole Proprietor)",
+        industry: "Consulting",
+        source: "Referral",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      })
+      await expect(run("get_customer", { name: " Somchai Jaidee (Sole Proprietor) " })).resolves.toEqual(byId)
+    })
+
+    it("get_product returns the price in satang and THB, and no internal fields", async () => {
+      const product = await run("get_product", { name: "LINE Order Bot" })
+      expect(product).toMatchObject({
+        id: PRODUCT_A,
+        name: "LINE Order Bot",
+        tags: ["line", "orders"],
+        price_satang: 4500000,
+        price_thb: formatTHB(4500000),
+      })
+      expect(product).not.toHaveProperty("internal_value_satang")
+      expect(product).not.toHaveProperty("reusable_notes")
+
+      const unpriced = {
+        ...fixture,
+        automation_templates: [{ ...fixture.automation_templates[0], price_satang: null }],
+      }
+      expect(await run("get_product", { id: PRODUCT_A }, unpriced)).toMatchObject({
+        price_satang: null,
+        price_thb: null,
+      })
+    })
+
+    it("get_order returns totals and line items in document order", async () => {
+      const order = await run("get_order", { number: "QUO-2026-001" })
+      expect(order).toMatchObject({
+        number: "QUO-2026-001",
+        status: "sent",
+        total_satang: 2500000,
+        total_thb: formatTHB(2500000),
+        discount_thb: formatTHB(500000),
+      })
+      expect(order.items).toEqual([
+        {
+          description: "Setup",
+          quantity: 1,
+          unit_price_satang: 2000000,
+          unit_price_thb: formatTHB(2000000),
+          amount_satang: 2000000,
+          amount_thb: formatTHB(2000000),
+        },
+        {
+          description: "Training",
+          quantity: 2,
+          unit_price_satang: 500000,
+          unit_price_thb: formatTHB(500000),
+          amount_satang: 1000000,
+          amount_thb: formatTHB(1000000),
+        },
+      ])
+    })
+
+    it("get_invoice matches list_invoices and adds line items", async () => {
+      const invoice = await run("get_invoice", { number: "INV-2026-000001" })
+      const listed = (await run("list_invoices", {})).items[0]
+      expect(invoice).toEqual({ ...listed, items: invoice.items })
+      expect(invoice).toMatchObject({
+        status: "partially_paid",
+        stored_status: "sent",
+        paid_satang: 500000,
+        outstanding_satang: 2000000,
+        outstanding_thb: formatTHB(2000000),
+      })
+      expect(invoice.items).toHaveLength(1)
+    })
+
+    it("a miss is a clear not-found error, including another org's record", async () => {
+      await expect(run("get_invoice", { number: "INV-404" })).rejects.toThrow(
+        'Invoice not found: number "INV-404"'
+      )
+      await expect(run("get_order", { number: "QUO-2026-999" })).rejects.toThrow(
+        'Sales order not found: number "QUO-2026-999"'
+      )
+      await expect(
+        run("get_customer", { id: "c2222222-2222-4222-8222-222222222222" })
+      ).rejects.toThrow("Customer not found: id c2222222-2222-4222-8222-222222222222")
+      await expect(run("get_product", { id: "not-a-uuid" })).rejects.toThrow(
+        "Product not found: id not-a-uuid is not a UUID"
+      )
+    })
+
+    it("needs exactly one key, and refuses an ambiguous name", async () => {
+      await expect(run("get_order", {})).rejects.toThrow("Pass exactly one of id or number")
+      await expect(
+        run("get_customer", { id: CLIENT_A, name: "Somchai Jaidee (Sole Proprietor)" })
+      ).rejects.toThrow("Pass exactly one of id or name")
+      const twins = {
+        ...fixture,
+        clients: [
+          fixture.clients[0],
+          { ...fixture.clients[0], id: "c3333333-3333-4333-8333-333333333333" },
+        ],
+      }
+      await expect(
+        run("get_customer", { name: "Somchai Jaidee (Sole Proprietor)" }, twins)
+      ).rejects.toThrow('2 customers have name "Somchai Jaidee (Sole Proprietor)"; pass id instead')
+    })
+
+    it("the Supabase layer scopes lookups to the org with explicit columns", async () => {
+      const eqCalls: Array<[string, string]> = []
+      let columns = ""
+      const builder: QueryBuilderMock = {
+        select(cols: string) {
+          columns = cols
+          return builder
+        },
+        eq(col: string, val: string) {
+          eqCalls.push([col, val])
+          return builder
+        },
+        order: () => builder,
+        range: () => builder,
+        then: (resolve) => resolve({ data: [], error: null, count: 0 }),
+      }
+      const layer = createSupabaseDataLayer({ from: () => builder })
+      await layer.findRows("quote_items", ORG_A, { quote_id: "q1" })
+      expect(eqCalls).toEqual([["org_id", ORG_A], ["quote_id", "q1"]])
+      expect(columns).not.toContain("*")
+      await expect(layer.findRows("profiles" as never, ORG_A, {})).rejects.toThrow("Unknown table: profiles")
     })
   })
 })
