@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { writeFileSync } from 'node:fs';
+import { setSecret } from '../../src/config.ts';
 import { startDaemon } from '../../src/app/daemon.ts';
-import type { Message, Provider, ProviderRequest } from '../../src/types.ts';
+import type { TestContext } from 'node:test';
+import type { Config, Message, Provider, ProviderRequest } from '../../src/types.ts';
 import { configured, testHome } from '../e2e/helpers.ts';
 
 const LINE_HINT = 'You are replying in a LINE chat. Write plain text: short paragraphs, no Markdown headings, tables or bold markers, and put each URL on its own line. Keep answers brief unless the user asks for detail.';
@@ -117,4 +120,90 @@ test('a non-owner error after a tool round stores no partial assistant answer in
   assert.equal(await app.runtime.lineMessage({ to: 'Cgroup', userId: 'Uguest', text: 'guest question' }), 'Error: mock failure');
   assert.equal(calls, 2);
   assert.deepEqual(app.runtime.store.getSession(session.id)!.context, [{ role: 'user', content: [{ type: 'text', text: 'guest question' }] }]);
+});
+
+test('a LINE message during a desktop run of the same session is answered after it', async t => {
+  const home = testHome(t); process.env.BIGNOSE_HOME = home; configured(home, undefined, c => { c.line.allow.users = ['Uowner']; });
+  const gate = Promise.withResolvers<void>(); t.after(() => gate.resolve());
+  const seen: string[][] = [];
+  const provider: Provider = { kind: 'openai-compatible', async *stream(req) {
+    seen.push(req.messages.flatMap(m => m.content.flatMap(b => b.type === 'text' ? [b.text] : [])));
+    if (seen.length === 2) await gate.promise; // the desktop follow-up
+    yield { type: 'text_delta', text: `answer ${seen.length}` };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await startDaemon({ home, providerFactory: () => provider }); t.after(() => a.close());
+  const ask = (text: string) => a.runtime.lineMessage({ to: 'Uowner', userId: 'Uowner', text });
+  assert.equal(await ask('hello from LINE'), 'answer 1');
+  const session = a.runtime.store.findSessionByOrigin({ kind: 'line', to: 'Uowner' }, a.runtime.lineAgent().id)!;
+  const desktop = a.runtime.start(session.id, 'desktop follow-up');
+  assert.throws(() => a.runtime.start(session.id, 'x'), /already running/);
+  let answered = false;
+  const line = ask('second from LINE').then(r => { answered = true; return r; });
+  for (let i = 0; seen.length < 2 && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(answered, false); assert.equal(seen.length, 2); // waiting, not failed and not started
+  gate.resolve();
+  assert.equal((await desktop.result).text, 'answer 2');
+  assert.equal(await line, 'answer 3');
+  assert.ok(seen[2]!.includes('desktop follow-up') && seen[2]!.at(-1) === 'second from LINE', 'the LINE message sees the desktop turn');
+});
+
+// A LINE message that waits on a desktop run of its session while a settings save changes LINE under it.
+async function waitingMessage(t: TestContext, save: (c: Config) => void) {
+  const home = testHome(t); process.env.BIGNOSE_HOME = home; configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = ['Uowner']; });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  const gate = Promise.withResolvers<void>(); t.after(() => gate.resolve());
+  let calls = 0;
+  const sent: string[] = [];
+  const provider: Provider = { kind: 'openai-compatible', async *stream() {
+    if (++calls === 2) await gate.promise; // the desktop follow-up
+    yield { type: 'text_delta', text: `answer ${calls}` };
+    yield { type: 'done', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } };
+  } };
+  const a = await startDaemon({ home, providerFactory: () => provider, lineOptions: { apiBase: 'https://line.example', fetchImpl: async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith('/reply') || path.endsWith('/push')) sent.push(...JSON.parse(String(init!.body)).messages.map((m: { text: string }) => m.text));
+    return Response.json({});
+  } } });
+  t.after(() => a.close());
+  const until = async (cond: () => boolean) => { for (let i = 0; !cond() && i < 400; i++) await new Promise(resolve => setTimeout(resolve, 5)); assert.ok(cond()); };
+  await until(() => a.lineStatus().running);
+  let seq = 0;
+  const dm = async (text: string) => {
+    const raw = JSON.stringify({ events: [{ type: 'message', webhookEventId: `e${++seq}`, replyToken: `rt-${seq}`, source: { type: 'user', userId: 'Uowner' }, message: { type: 'text', text } }] });
+    assert.equal((await fetch(`http://127.0.0.1:${a.lineStatus().port}/line/webhook`, { method: 'POST', body: raw,
+      headers: { 'X-Line-Signature': createHmac('sha256', 'test-secret').update(raw).digest('base64') } })).status, 200);
+  };
+  await dm('hello from LINE');
+  await until(() => calls === 1 && a.runtime.store.listSessions().length === 1 && !a.runtime.isRunning(a.runtime.store.listSessions()[0]!.id));
+  const session = a.runtime.store.listSessions()[0]!;
+  const desktop = a.runtime.start(session.id, 'desktop follow-up');
+  await until(() => calls === 2);
+  await dm('second from LINE'); // waits for the desktop run
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const config = a.config(); save(config);
+  const saved = await fetch(`http://127.0.0.1:${a.port}/api/settings`, { method: 'PUT', body: JSON.stringify({ config }),
+    headers: { Authorization: `Bearer ${a.token}`, 'Content-Type': 'application/json' } });
+  assert.equal(saved.status, 200);
+  gate.resolve();
+  assert.equal((await desktop.result).text, 'answer 2');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  return { a, calls: () => calls, sent, session, stored: () => JSON.stringify(a.runtime.store.getMessages(session.id)).includes('second from LINE') };
+}
+
+test('a LINE message waiting on a desktop run is not run once LINE was turned off', async t => {
+  const w = await waitingMessage(t, c => { c.line.enabled = false; });
+  assert.equal(w.a.lineStatus().running, false);
+  assert.equal(w.calls(), 2); // no third provider call for a gateway that is gone
+  assert.equal(w.stored(), false);
+});
+
+test('a LINE message waiting on a desktop run is not run once its chat was removed from the allow list', async t => {
+  const w = await waitingMessage(t, c => { c.line.allow.users = []; });
+  assert.equal(w.a.lineStatus().running, true); // LINE stays on: this is a reconfigure, not a close
+  assert.equal(w.calls(), 2); // the text of a chat the owner just removed never reaches the model
+  assert.equal(w.stored(), false);
+  assert.deepEqual(w.sent, ['answer 1']); // only the answer from before the save went out
+  assert.equal(w.a.lineStatus().lastError, undefined);
 });

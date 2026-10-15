@@ -274,9 +274,9 @@ export interface Config {
   while stopped are skipped, not replayed). `scheduleTools(scheduler, agentId): Tool[]` — `schedule_create` (ask; delivery
   defaults to the caller's origin: line → that chat, everything else → desktop), `schedule_list` (allow),
   `schedule_delete` (allow).
-- `line/index.ts`: `createLineGateway(opts)` returning `{ handler(req, res), listen(port) , close(), push(to, text),
-  askApproval(to, text) => Promise<boolean>, status() }`, with `opts = { config: LineConfig, channelSecret,
-  accessToken, onMessage: ({to, userId, text}) => Promise<string>, fetchImpl?, apiBase? = 'https://api.line.me',
+- `line/index.ts`: `createLineGateway(opts)` returning `{ handler(req, res), listen(port) , reconfigure(next, port), close(),
+  push(to, text), askApproval(to, text) => Promise<boolean>, status() }`, with `opts = { config: LineConfig, channelSecret,
+  accessToken, onMessage: ({to, userId, text}, signal) => Promise<string> (`signal` aborts when the gateway closes), fetchImpl?, apiBase? = 'https://api.line.me',
   now?, timers? }`. Behaviour in section 7.
 
 ### core-app
@@ -306,7 +306,7 @@ export interface Config {
   (when enabled and both secrets set), the API server; write `daemon.json` with the **bound** port (`api.port: 0` and
   `line.port: 0` mean ephemeral ports, used by tests; the test helper `testHome` sets `BIGNOSE_TEST_PORTS=0`, so the
   daemon binds the API on port 0, and LINE on port 0 when it is the default 47822, so first-run tests without a config
-  file never bind 47821/47822); apply settings changes live (LINE restart, MCP update); clean shutdown on
+  file never bind 47821/47822); apply settings changes live (LINE hot-apply, MCP update); clean shutdown on
   SIGINT/SIGTERM.
   The API listens and `daemon.json` is written before connectors finish initializing. Initial connector startup
   runs asynchronously in the same serialized queue as settings writes; pending connectors show `connected:false`.
@@ -315,6 +315,12 @@ export interface Config {
   connectors cannot delay inbound LINE or cron LINE delivery. Settings writes wait behind an in-flight connector
   initialization (up to the 180 s stdio initialize timeout).
   A failed LINE bind is retried on the next settings/secrets reload, even when those values are unchanged.
+  A LINE settings or secret save is applied to the running gateway (`reconfigure`), never by building a new one: chats
+  in flight, queued messages, open approvals and parked "Get answer" answers stay, and finish through the new
+  credentials (reply token if still young, else push). Only a change of `line.port` moves the listener: the new port is
+  bound first and the old one closed after, so a busy port leaves the old listener up with `lastError` set (retried on
+  the next reload; that bind error is shown ahead of an older send error). The new config and credentials apply even
+  when the port move fails: they are live on the old port. Turning LINE off, or removing a secret, closes the gateway and ends its in-flight work, as before.
   `line.agentId` is excluded from the LINE listener fingerprint: changing or deleting the chosen agent keeps the
   same webhook listener; the runtime resolves the current agent on each message.
 - `cli.ts` (`#!/usr/bin/env node`): `bignose daemon`, `bignose chat -q "<prompt>"` (headless single turn without a
@@ -441,7 +447,24 @@ export interface Config {
   carries it). A tap while still PENDING replies "still working" with the button again.
 - Approvals: `askApproval(to, text)` sends a confirm template (Allow / Deny postbacks `approve:<id>` /
   `deny:<id>`), resolved by the first tap from an allowlisted user (timeout 10 min = deny).
-- One active run per chat; messages arriving meanwhile queue in order.
+- One active run per chat; messages arriving meanwhile queue in order. The desktop may be running the same session:
+  `Runtime.lineMessage` waits for that run to end and then answers from the context it left (never "Sorry, something went
+  wrong.", never dropped). A message that waits long enough gets the "Get answer" button like any slow answer. If the
+  gateway that asked closed during the wait (LINE turned off, a secret removed), or a save removed its chat from the
+  allow lists, the message is not run (the text never reaches the model).
+- Settings and secret saves do not reset any of this: `reconfigure` swaps the config (allow lists, slow time) and the
+  credentials in place, so a run in flight, a queued message, an open approval or a parked answer survives the save and is
+  delivered with the credentials current at that moment (section 5, core-app). A request masks both the credentials it
+  went out with and the current ones in its errors, a refused request and a rejected fetch alike, so a token rotated
+  mid-request never reaches `lastError`.
+- Revocation: every gateway answer and prompt re-checks the live `allow` lists after each await. A queued message checks
+  them when it is about to run (a message that waited on a desktop run checks again after the wait) and again before its
+  answer is sent. A delivery under way (reply, the fallback push after a refused reply, each further batch, a "Get answer"
+  tap, an approval prompt) stops at the next call once the chat is gone; a "Get answer" delivery that stopped early stays
+  READY and resumes at the remainder if the chat is allowed again. `askApproval` for a chat that is not allowed returns
+  `false` at once. A chat removed by a save meanwhile gets no run and no answer; a run already in flight finishes (its
+  text reached the model while the owner still allowed it), but its answer is not sent. Pushes by `push()` (cron
+  delivery) are not filtered by `allow`.
 
 ## 8. Desktop
 
@@ -479,6 +502,8 @@ export interface Config {
 | both adapters parse streamed tool calls from recorded fixtures | `core/test/providers/*.test.ts` + `core/test/providers/fixtures/` |
 | MCP client vs fake stdio server (initialize, tools/list, tools/call, error path) | `core/test/mcp/client.test.ts` |
 | LINE: signature 200/401, allowlist, reply→push fallback, PENDING→READY→DELIVERED | `core/test/line/line.test.ts` |
+| LINE settings/secret save keeps in-flight answers, queued messages, approvals and parked answers; port move | `core/test/line/reload.test.ts` |
+| LINE message during a desktop run of the same session waits; Connect reports an inactive webhook or a stopped listener | `core/test/app/line-followups.test.ts`, `core/test/api/line-api.test.ts` |
 | cron parse and next-run | `core/test/cron/cron.test.ts` |
 | skills index and load | `core/test/skills/skills.test.ts` |
 | memory FTS5 search | `core/test/store/store.test.ts` |
@@ -792,7 +817,12 @@ Local API (the daemon reads the token from `.env` and passes `lineOptions.fetchI
     `Connected to <displayName> (<basicId>)`; failure -> the masked error.
   - webhook: token step failed -> `Fix the token first.`; no public URL -> `Set a public HTTPS URL first.`;
     `publicUrlProblem` -> its text; else `setLineWebhook(webhookUrlFor(publicUrl))` -> ok with `Webhook set to <url>`;
-    failure -> the masked error. `ok` is true only when both steps are ok.
+    failure -> the masked error. After a successful PUT, `lineWebhookActive` reads GET `/v2/bot/channel/webhook/endpoint`
+    (field `active`; LINE answers 404 to that GET until an endpoint is set, which is why it comes second; a failed read
+    is ignored). When the PUT worked but the webhook cannot deliver, the step is `ok: false` and the detail is
+    `Webhook set to <url>.` followed by each problem: `The LINE listener is not running. Turn LINE on, save, then connect
+    again.` (local listener stopped) and `Turn on Use webhook in the LINE Developers console.` (`active` is `false`).
+    `ok` is true only when both steps are ok.
 - `POST /api/line/test` -> 200 `{ ok, running, statusCode?, reason?, detail }`: token, public URL and local listener are
   checked first (same texts as above; listener off -> `The LINE listener is not running. Turn LINE on, save, then test
   again.`), then `testLineWebhook(webhookUrlFor(publicUrl))`; `ok` = LINE's `success`; `detail` = LINE's detail or

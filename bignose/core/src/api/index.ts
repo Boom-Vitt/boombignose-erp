@@ -12,7 +12,7 @@ import type { Runtime } from '../app/runtime.ts';
 import type { Config, Delivery } from '../types.ts';
 import type { Scheduler } from '../cron/index.ts';
 import type { McpManager } from '../mcp/manager.ts';
-import { lineBotInfo, setLineWebhook, testLineWebhook, publicUrlProblem, webhookUrlFor } from '../line/index.ts';
+import { lineBotInfo, setLineWebhook, lineWebhookActive, testLineWebhook, publicUrlProblem, webhookUrlFor } from '../line/index.ts';
 import { listModels } from '../providers/models.ts';
 import { isOllama, OLLAMA_CONTEXT_NOTE, ollamaWarnings } from '../providers/ollama.ts';
 import type { LineApiOptions } from '../line/index.ts';
@@ -302,8 +302,14 @@ export function createApiServer(opts: ApiOptions) {
             }
             let webhookOk = false, webhookDetail = !bot ? 'Fix the token first.' : problem ?? '';
             if (bot && webhookUrl) {
-              try { await setLineWebhook(o, webhookUrl); webhookOk = true; webhookDetail = `Webhook set to ${webhookUrl}`; }
-              catch (e) { webhookDetail = clean(e instanceof Error ? e.message : String(e)); }
+              try {
+                await setLineWebhook(o, webhookUrl);
+                // After the PUT: LINE answers 404 to this GET until an endpoint is set. A failed read is not fatal.
+                const active = await lineWebhookActive(o).catch(() => undefined);
+                const notes = [...(opts.lineStatus().running ? [] : ['The LINE listener is not running. Turn LINE on, save, then connect again.']),
+                  ...(active === false ? ['Turn on Use webhook in the LINE Developers console.'] : [])];
+                webhookOk = !notes.length; webhookDetail = `Webhook set to ${webhookUrl}${notes.length ? '. ' + notes.join(' ') : ''}`;
+              } catch (e) { webhookDetail = clean(e instanceof Error ? e.message : String(e)); }
             }
             return send(res, safeValue({ ok: !!bot && webhookOk, ...(bot ? { bot } : {}), ...(webhookUrl ? { webhookUrl } : {}),
               steps: [{ name: 'token', ok: !!bot, detail: tokenDetail }, { name: 'webhook', ok: webhookOk, detail: webhookDetail }] }, clean));
