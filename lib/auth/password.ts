@@ -41,7 +41,10 @@ export function isDeadSessionError(error: { name?: string; code?: string }): boo
   return (
     error.name === "AuthSessionMissingError" ||
     error.code === "session_not_found" ||
-    error.code === "session_expired"
+    error.code === "session_expired" ||
+    // An idle session whose refresh token was revoked (signed out elsewhere) or already rotated.
+    error.code === "refresh_token_not_found" ||
+    error.code === "refresh_token_already_used"
   )
 }
 

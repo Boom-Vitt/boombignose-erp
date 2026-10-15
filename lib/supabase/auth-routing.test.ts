@@ -143,3 +143,17 @@ it('a signed-in sign-up visit with a pending challenge goes to the challenge, no
  const res=await updateSession(new NextRequest('https://app.example.test/signup?redirect=%2Fdeals'))
  expect(res.headers.get('location')).toBe('https://app.example.test/login/mfa?redirect=%2Fdeals')
 })
+it.each(['/login','/setup-2fa'])('a dot-segment destination on %s cannot leave the app', async path => {
+ mfaUser('aal2')
+ const res=await updateSession(new NextRequest(`https://app.example.test${path}?redirect=${encodeURIComponent('/.//evil.example.test')}`))
+ expect(res.headers.get('location')).toBe('https://app.example.test/dashboard')
+})
+it('a pending challenge carries only a sanitized destination to the challenge page', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest(`https://app.example.test/login?redirect=${encodeURIComponent('//evil.example.test')}`))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login/mfa?redirect=%2Fdashboard')
+})
+it('a pending challenge blocks non-public API routes, not only pages', async () => {
+ mfaUser('aal1')
+ expect(new URL((await updateSession(new NextRequest('https://app.example.test/api/export?x=1'))).headers.get('location')!).pathname).toBe('/login/mfa')
+})

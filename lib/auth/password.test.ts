@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 
 import { authLinkErrorMessage, EXPIRED_RESET_MESSAGE, isDeadSessionError, validatePassword, PASSWORD_MIN_LENGTH } from "@/lib/auth/password"
 
@@ -103,4 +103,44 @@ describe("authLinkErrorMessage", () => {
     expect(authLinkErrorMessage("toString")).toBeNull()
     expect(authLinkErrorMessage(null)).toBeNull()
   })
+})
+
+describe("isDeadSessionError with the real auth client", () => {
+  /** An idle recovery session: access token expired, refresh token revoked or reused on the server. */
+  async function idleSessionClient(code: string) {
+    const { createClient } = await import("@supabase/supabase-js")
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const session = {
+      access_token: "h.e30.s",
+      refresh_token: "revoked",
+      token_type: "bearer",
+      expires_in: 3600,
+      expires_at: Math.floor(Date.now() / 1000) - 3600,
+      user: { id: "user", aud: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" },
+    }
+    const store = new Map([["test-auth", JSON.stringify(session)]])
+    return createClient("http://127.0.0.1:55501", "test-key", {
+      auth: {
+        storageKey: "test-auth",
+        storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v), removeItem: (k) => void store.delete(k) },
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        fetch: async () =>
+          Response.json({ code, message: "Invalid Refresh Token" }, { status: 400, headers: { "x-supabase-api-version": "2024-01-01" } }),
+      },
+    })
+  }
+
+  it.each(["refresh_token_not_found", "refresh_token_already_used", "session_expired", "session_not_found"])(
+    "treats a password update and factor list on a dead %s session as a dead session",
+    async (code) => {
+      const supabase = await idleSessionClient(code)
+      const { error: updateError } = await supabase.auth.updateUser({ password: "NewPassword123" })
+      expect(updateError && isDeadSessionError(updateError)).toBe(true)
+      const { error: listError } = await (await idleSessionClient(code)).auth.mfa.listFactors()
+      expect(listError && isDeadSessionError(listError)).toBe(true)
+    }
+  )
 })

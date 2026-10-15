@@ -35,3 +35,28 @@ it.each(["/login", "/login/mfa", "/signup", "/auth/confirm", "/a/../login", "/%2
 it("only blocks whole auth segments, not routes that share a prefix", () => {
   expect(safeReturnPath("/authz")).toBe("/authz")
 })
+
+it.each(["/.//evil.test", "/a/..//evil.test", "/%2e//evil.test", "/x/%2E%2E//evil.test/path?q=1"])(
+  "never lets dot segments normalize %j into a protocol-relative URL",
+  (value) => {
+    expect(safeReturnPath(value)).toBe("/dashboard")
+    expect(withReturnPath("/login", value)).toBe("/login?redirect=%2Fdashboard")
+  }
+)
+
+it.each(["javascript:alert(1)", "/\\evil.test", "\\\\evil.test", "/%5c%5cevil.test", "/%2f%2fevil.test", "/%0d%0aSet-Cookie:x=1", "/ evil"])(
+  "falls back to the dashboard for script, backslash, lowercase-encoded or control-character destination %j",
+  (value) => {
+    expect(safeReturnPath(value)).toBe("/dashboard")
+  }
+)
+
+it("keeps double-encoded slashes as a harmless local path segment", () => {
+  expect(safeReturnPath("/%252F%252Fevil.test")).toBe("/%252F%252Fevil.test")
+})
+
+it("keeps a very long local path local and intact", () => {
+  const long = `/deals/${"a".repeat(20_000)}?q=${"b".repeat(5_000)}`
+  expect(safeReturnPath(long)).toBe(long)
+  expect(safeReturnPath(`/${"/".repeat(5_000)}evil.test`)).toBe("/dashboard")
+})
