@@ -7,15 +7,7 @@ import { z } from "zod"
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
-
-/** Turn a free-text name into a url-safe, lowercased, hyphenated slug. */
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-}
+import { slugify } from "@/lib/utils"
 
 const TemplateInput = z.object({
   name: z.string().min(1, "Name is required"),
@@ -134,6 +126,11 @@ export async function createCategory(input: {
   name: string
 }): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  try {
+    requireCapability(ctx, "template:manage")
+  } catch {
+    return { error: "Only owners and admins can manage templates." }
+  }
   const parsed = CategoryInput.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
 

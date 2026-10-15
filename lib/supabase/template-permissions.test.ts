@@ -13,7 +13,7 @@ vi.mock('@/lib/auth', async () => {
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
-import { createTemplate, updateTemplate } from '@/app/(app)/templates/actions'
+import { createCategory, createTemplate, updateTemplate } from '@/app/(app)/templates/actions'
 
 const values = { name: 'Lead intake', implementationChecklist: [], tags: [] }
 
@@ -31,4 +31,17 @@ it('admins pass the capability check and reach the database', async () => {
   state.from.mockReturnValue({ insert: () => ({ select: () => ({ single }) }) })
   await createTemplate(values)
   expect(single).toHaveBeenCalled()
+})
+
+it('members cannot create template categories', async () => {
+  expect(await createCategory({ name: 'Marketing' })).toEqual({ error: 'Only owners and admins can manage templates.' })
+  expect(state.from).not.toHaveBeenCalled()
+})
+
+it('a Thai category name keeps a usable slug', async () => {
+  state.role = 'owner'
+  const insert = vi.fn(async () => ({ error: null }))
+  state.from.mockReturnValue({ insert })
+  expect(await createCategory({ name: ' การตลาด ออนไลน์ ' })).toEqual({})
+  expect(insert).toHaveBeenCalledWith({ org_id: 'A', name: 'การตลาด ออนไลน์', slug: 'การตลาด-ออนไลน์' })
 })

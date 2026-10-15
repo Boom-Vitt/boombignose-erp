@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { slugify } from "@/lib/utils"
 import {
   Dialog,
   DialogClose,
@@ -19,21 +20,12 @@ import {
 } from "@/components/ui/dialog"
 import { createCategory } from "../actions"
 
-/** Preview the slug we'll store, so founders see what gets created. */
-function slugPreview(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-}
-
 export function NewCategoryDialog() {
   const [open, setOpen] = React.useState(false)
   const [name, setName] = React.useState("")
   const [pending, setPending] = React.useState(false)
 
-  const slug = slugPreview(name)
+  const slug = slugify(name)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()

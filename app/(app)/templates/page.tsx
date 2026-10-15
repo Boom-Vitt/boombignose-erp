@@ -3,6 +3,7 @@ import { Plus, Sparkles } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic"
 
 export default async function TemplatesPage() {
   const ctx = await requireOrgContext()
+  const canManage = can(ctx.role, "template:manage")
   const supabase = await createClient()
 
   const [{ data: categories }, { data: templates }] = await Promise.all([
@@ -46,10 +48,14 @@ export default async function TemplatesPage() {
         title="Templates"
         description="Your reusable automation playbooks — price them, tag them, ship them."
       >
-        <NewCategoryDialog />
-        <Button render={<Link href="/templates/new" />}>
-          <Plus /> New template
-        </Button>
+        {canManage ? (
+          <>
+            <NewCategoryDialog />
+            <Button render={<Link href="/templates/new" />}>
+              <Plus /> New template
+            </Button>
+          </>
+        ) : null}
       </PageHeader>
 
       {cards.length === 0 ? (
@@ -58,9 +64,11 @@ export default async function TemplatesPage() {
           title="No templates yet"
           description="Capture your first reusable automation so you can quote and deliver it faster next time."
           action={
-            <Button render={<Link href="/templates/new" />}>
-              <Plus /> New template
-            </Button>
+            canManage ? (
+              <Button render={<Link href="/templates/new" />}>
+                <Plus /> New template
+              </Button>
+            ) : undefined
           }
         />
       ) : (
