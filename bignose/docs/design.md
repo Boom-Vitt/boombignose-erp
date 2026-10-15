@@ -450,14 +450,21 @@ export interface Config {
 - One active run per chat; messages arriving meanwhile queue in order. The desktop may be running the same session:
   `Runtime.lineMessage` waits for that run to end and then answers from the context it left (never "Sorry, something went
   wrong.", never dropped). A message that waits long enough gets the "Get answer" button like any slow answer. If the
-  gateway that asked closed during the wait (LINE turned off, a secret removed), the message is not run.
+  gateway that asked closed during the wait (LINE turned off, a secret removed), or a save removed its chat from the
+  allow lists, the message is not run (the text never reaches the model).
 - Settings and secret saves do not reset any of this: `reconfigure` swaps the config (allow lists, slow time) and the
   credentials in place, so a run in flight, a queued message, an open approval or a parked answer survives the save and is
   delivered with the credentials current at that moment (section 5, core-app). A request masks both the credentials it
-  went out with and the current ones in its errors, so a token rotated mid-request never reaches `lastError`.
-- Revocation: a queued message checks the live `allow` lists when it is about to run and again before its answer is sent.
-  A chat removed by a save meanwhile gets no run and no answer (its in-flight run is dropped too). Pushes by `push()`
-  (cron delivery) are not filtered by `allow`.
+  went out with and the current ones in its errors, a refused request and a rejected fetch alike, so a token rotated
+  mid-request never reaches `lastError`.
+- Revocation: every gateway answer and prompt re-checks the live `allow` lists after each await. A queued message checks
+  them when it is about to run (a message that waited on a desktop run checks again after the wait) and again before its
+  answer is sent. A delivery under way (reply, the fallback push after a refused reply, each further batch, a "Get answer"
+  tap, an approval prompt) stops at the next call once the chat is gone; a "Get answer" delivery that stopped early stays
+  READY and resumes at the remainder if the chat is allowed again. `askApproval` for a chat that is not allowed returns
+  `false` at once. A chat removed by a save meanwhile gets no run and no answer; a run already in flight finishes (its
+  text reached the model while the owner still allowed it), but its answer is not sent. Pushes by `push()` (cron
+  delivery) are not filtered by `allow`.
 
 ## 8. Desktop
 

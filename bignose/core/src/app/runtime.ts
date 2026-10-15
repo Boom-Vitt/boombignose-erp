@@ -291,8 +291,13 @@ export class Runtime {
     const session = this.store.findSessionByOrigin(origin, agentId) ?? this.store.createSession({ origin, agentId });
     // The desktop may be running this very session: wait for that run instead of failing, then answer from the context it left.
     // Nothing awaits between this loop and start(), so a run cannot slip in.
-    while (this.runs.has(session.id)) await this.runs.get(session.id)!.result.catch(() => {});
+    let waited = false;
+    while (this.runs.has(session.id)) { waited = true; await this.runs.get(session.id)!.result.catch(() => {}); }
     signal?.throwIfAborted(); // the gateway that asked closed while this waited: its answer would be dropped, so do not run it
+    if (waited) { // a save may have removed the chat from the allow lists meanwhile: its text must not reach the model
+      const { users, groups, rooms } = this.opts.config().line.allow;
+      if (![...users, ...groups, ...rooms].includes(message.to)) return ''; // the gateway drops it: it checks the same lists
+    }
     let result: RunResult;
     try { result = await this.start(session.id, message.text, { origin, userId: message.userId }).result; }
     catch (e) {

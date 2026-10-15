@@ -82,6 +82,12 @@ export function createLineGateway(options: LineGatewayOptions) {
     if (!c) chats.set(to, (c = { queue: [], busy: false }));
     return c;
   };
+  // The live allow list, for work that was queued before a settings save: a chat removed since then gets no run and no answer.
+  const stillAllowed = (to: string): boolean => {
+    const { users, groups, rooms } = opts.config.allow;
+    return users.includes(to) || groups.includes(to) || rooms.includes(to);
+  };
+
   // Keep the last error for status(); never let the channel credentials into it.
   const fail = (e: unknown) => {
     let msg = e instanceof Error ? e.message : String(e);
@@ -94,18 +100,22 @@ export function createLineGateway(options: LineGatewayOptions) {
   async function call(path: string, body: unknown): Promise<void> {
     if (closed) return;
     const { accessToken, channelSecret } = opts; // reconfigure() may rotate these while the request is in flight
-    const res = await fetchImpl(`${apiBase}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-      redirect: 'error',
-    });
-    let text = await res.text().catch(() => '');
-    if (!res.ok) {
+    const mask = (text: string) => {
       for (const secret of [accessToken, channelSecret, opts.accessToken, opts.channelSecret]) if (secret) text = text.replaceAll(secret, '***');
-      throw new Error(`LINE ${path} failed: ${res.status} ${text.slice(0, 200)}`);
-    }
+      return text;
+    };
+    let res: Response;
+    try {
+      res = await fetchImpl(`${apiBase}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+        redirect: 'error',
+      });
+    } catch (e) { throw new Error(`LINE ${path} failed: ${mask(e instanceof Error ? e.message : String(e))}`); }
+    const text = await res.text().catch(() => '');
+    if (!res.ok) throw new Error(`LINE ${path} failed: ${res.status} ${mask(text).slice(0, 200)}`);
   }
 
   /** The chat's latest reply token if it is still young; tokens are single use, so it is dropped either way. */
@@ -117,10 +127,13 @@ export function createLineGateway(options: LineGatewayOptions) {
 
   // At most 5 messages per call. The first call tries the free reply token; if there is none, or LINE refuses it
   // (expired, already used), it goes out as a metered push. Further calls are always pushes.
-  async function sendMessages(to: string, messages: LineMessage[], pending?: Pending): Promise<void> {
+  // onlyAllowed (every gateway answer and prompt; not push()): stop as soon as the chat leaves the allow list, before each call
+  // and before the fallback push. Resolves true when everything was sent, false when it stopped early.
+  async function sendMessages(to: string, messages: LineMessage[], pending?: Pending, onlyAllowed = false): Promise<boolean> {
     const start = pending?.delivered ?? 0;
+    const stopped = () => closed || (onlyAllowed && !stillAllowed(to));
     for (let i = start; i < messages.length; i += MAX_PER_CALL) {
-      if (closed) return;
+      if (stopped()) return false;
       const batch = messages.slice(i, i + MAX_PER_CALL);
       const token = i === start ? takeToken(to) : undefined;
       if (token) {
@@ -130,11 +143,14 @@ export function createLineGateway(options: LineGatewayOptions) {
           continue;
         } catch (e) { fail(e); }
       }
+      if (stopped()) return false;
       await call('/v2/bot/message/push', { to, messages: batch });
       if (pending && !closed) pending.delivered = i + batch.length;
     }
+    return true;
   }
-  const send = (to: string, text: string) => sendMessages(to, textMessages(text));
+  const send = (to: string, text: string) => sendMessages(to, textMessages(text)).then(() => {}); // push(): cron delivery is not filtered by allow
+  const say = (to: string, text: string) => sendMessages(to, textMessages(text), undefined, true);
 
   const workingMessage = (p: Pending): LineMessage => ({
     type: 'template', altText: WORKING,
@@ -179,16 +195,16 @@ export function createLineGateway(options: LineGatewayOptions) {
     if (early !== null) timers.clearTimeout(timer);
     if (closed || !stillAllowed(to)) return;
     if (early !== null) {
-      await send(to, early);
+      await say(to, early);
       return;
     }
     // Too slow for the reply token: park the answer behind a "Get answer" button.
     const pending: Pending = { id: randomBytes(6).toString('hex'), to, state: 'PENDING', delivered: 0 };
     remember(pending);
-    try { await sendMessages(to, [workingMessage(pending)]); } catch (e) {
+    try { if (!await sendMessages(to, [workingMessage(pending)], undefined, true)) { pendings.delete(pending.id); return; } } catch (e) {
       fail(e);
       pendings.delete(pending.id);
-      await send(to, await answer);
+      await say(to, await answer);
       return;
     }
     pending.text = await answer;
@@ -206,7 +222,7 @@ export function createLineGateway(options: LineGatewayOptions) {
   }
 
   function askApproval(to: string, text: string): Promise<boolean> {
-    if (closed) return Promise.resolve(false);
+    if (closed || !stillAllowed(to)) return Promise.resolve(false); // nobody in a removed chat could answer, so do not show it the prompt
     const id = randomBytes(6).toString('hex');
     // The confirm template only fits 240 characters. Longer prompts go out in full first, so the owner always
     // sees the whole command before tapping Allow.
@@ -221,7 +237,7 @@ export function createLineGateway(options: LineGatewayOptions) {
     ];
     return new Promise<boolean>((resolve) => {
       approvals.set(id, { to, resolve, timer: timers.setTimeout(() => settleApproval(id, false), APPROVAL_TIMEOUT_MS) });
-      sendMessages(to, messages).catch((e) => { fail(e); settleApproval(id, false); });
+      sendMessages(to, messages, undefined, true).then((sent) => { if (!sent) settleApproval(id, false); }, (e) => { fail(e); settleApproval(id, false); });
     });
   }
 
@@ -235,13 +251,13 @@ export function createLineGateway(options: LineGatewayOptions) {
     }
     if (action !== 'get') return;
     const p = pendings.get(id);
-    if (!p || p.to !== to) { send(to, 'That answer is no longer available.').catch(fail); return; }
-    if (p.state === 'PENDING') { sendMessages(to, [workingMessage(p)]).catch(fail); return; }
-    if (p.state === 'DELIVERED') { send(to, 'That answer was already sent above.').catch(fail); return; }
+    if (!p || p.to !== to) { say(to, 'That answer is no longer available.').catch(fail); return; }
+    if (p.state === 'PENDING') { sendMessages(to, [workingMessage(p)], undefined, true).catch(fail); return; }
+    if (p.state === 'DELIVERED') { say(to, 'That answer was already sent above.').catch(fail); return; }
     if (p.sending) return;
     p.sending = true;
-    void sendMessages(to, textMessages(p.text ?? ''), p).then(
-      () => { if (!closed) { p.state = 'DELIVERED'; p.text = undefined; } },
+    void sendMessages(to, textMessages(p.text ?? ''), p, true).then(
+      (sent) => { if (sent && !closed) { p.state = 'DELIVERED'; p.text = undefined; } }, // stopped early: the next tap resumes at the remainder
       fail, // Keep the successfully delivered batches; the next tap resumes at the remainder.
     ).finally(() => { p.sending = false; });
   }
@@ -257,12 +273,6 @@ export function createLineGateway(options: LineGatewayOptions) {
     if (src.type === 'room' && typeof src.roomId === 'string') return { to: src.roomId, userId, allowed: rooms.includes(src.roomId) };
     return undefined;
   }
-
-  // The live allow list, for work that was queued before a settings save: a chat removed since then gets no run and no answer.
-  const stillAllowed = (to: string): boolean => {
-    const { users, groups, rooms } = opts.config.allow;
-    return users.includes(to) || groups.includes(to) || rooms.includes(to);
-  };
 
   function handleEvent(ev: LineEvent): void {
     if (closed) return;
