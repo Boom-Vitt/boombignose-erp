@@ -5,9 +5,8 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react"
 
@@ -33,27 +32,43 @@ export function useViewMode(): ViewModeCtx {
   return ctx
 }
 
-export function ViewModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<ViewMode>("2d")
-  const [ready, setReady] = useState(false)
+// Survives private mode, where localStorage throws.
+let memoryMode: ViewMode | null = null
+const listeners = new Set<() => void>()
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved === "2d" || saved === "3d") setModeState(saved)
-    } catch {
-      /* private mode */
-    }
-    setReady(true)
-  }, [])
+function subscribe(listener: () => void) {
+  listeners.add(listener)
+  window.addEventListener("storage", listener)
+  return () => {
+    listeners.delete(listener)
+    window.removeEventListener("storage", listener)
+  }
+}
+
+function readMode(): ViewMode {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved === "2d" || saved === "3d") return saved
+  } catch {
+    /* private mode */
+  }
+  return memoryMode ?? "2d"
+}
+
+export function ViewModeProvider({ children }: { children: ReactNode }) {
+  // Server snapshot is null: the saved mode is unknown until hydration, so `ready` stays false.
+  const stored = useSyncExternalStore(subscribe, readMode, () => null)
+  const mode = stored ?? "2d"
+  const ready = stored !== null
 
   const setMode = useCallback((next: ViewMode) => {
-    setModeState(next)
+    memoryMode = next
     try {
       localStorage.setItem(STORAGE_KEY, next)
     } catch {
       /* ignore */
     }
+    listeners.forEach((listener) => listener())
   }, [])
 
   const value = useMemo(() => ({ mode, setMode, ready }), [mode, setMode, ready])
