@@ -99,7 +99,8 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
     const step3 = el('span', { class: 'step' });
     const stepRow3 = el('div', { class: 'row' }, step3, el('div', { class: 'row-text' }, 'Choose who may talk to BigNose', peopleSub, people), addBtn);
 
-    // ---- Tried to reach you (the core reports blocked senders only when it can)
+    // ---- Tried to reach you
+    // shortcut: core does not send LineStatus.blocked yet (tested with a fake), so nothing shows until it does; drop this block if that never ships
     const blocked = (st.blocked ?? []).filter((b) => !KINDS.some(([key]) => lines(lists[key].box.value).includes(b.id)));
     async function allow(id: string, b: HTMLButtonElement): Promise<void> {
       const kind = KINDS.find(([, prefix]) => id.startsWith(prefix));
@@ -180,7 +181,7 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
     // ---- the save bar
     const now = (): Record<string, string> => ({
       'Answer LINE messages': enabled.checked ? 'On' : 'Off',
-      'Answered by': agents.find((a) => a.id === answeredBy.value)?.name ?? '',
+      'Answered by': answeredBy.value, // the id: agent names are not unique
       'Channel token': token.value.trim() ? 'replaced' : '', 'Channel secret': secret.value.trim() ? 'replaced' : '',
       'Public address': publicUrl.value.trim(), 'Local port': String(port.value), '“Still working” after': slow.value.trim(),
       'Allowed users': users.box.value.trim(), 'Allowed groups': groups.box.value.trim(), 'Allowed rooms': rooms.box.value.trim(),
@@ -189,7 +190,13 @@ export function mountMessaging(pane: HTMLElement, api: Api): void {
     const bar = saveBar(reload);
     const RESTART = ['Answer LINE messages', 'Local port', 'Channel token', 'Channel secret'];
     function refresh(): void {
-      const changes = dirty(initial, now(), { secret: ['Channel token', 'Channel secret'], hidden: ['Allowed users', 'Allowed groups', 'Allowed rooms'] });
+      const agentName = (id = '') => agents.find((a) => a.id === id)?.name ?? '';
+      const changes = dirty(initial, now(), { secret: ['Channel token', 'Channel secret'], hidden: ['Allowed users', 'Allowed groups', 'Allowed rooms'] })
+        .map((c) => {
+          if (c.label !== 'Answered by') return c;
+          const [from, to] = [agentName(c.from), agentName(c.to)];
+          return from === to ? { label: c.label } : { ...c, from, to }; // two agents may share a name
+        });
       bar.set(changes, changes.some((c) => RESTART.includes(c.label)) ? ' · LINE will reconnect' : '');
     }
 

@@ -106,6 +106,7 @@ export interface LineStatus {
   /** The agent that answers LINE. */
   agentId?: string;
   /** Senders the allowlist turned away; the core does not report them yet, so the LINE tab shows the list only when it is there. */
+  // shortcut: core does not send this yet; the LINE tab's "Tried to reach you" list stays empty until it does
   blocked?: { id: string; kind: string; at: Time }[];
 }
 export interface LineConnectResult {

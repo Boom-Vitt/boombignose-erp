@@ -90,11 +90,13 @@ export async function openUi(t: TestContext, info: { port: number; token: string
     rmSync(profile, { recursive: true, force: true, maxRetries: 3 });
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-  await until(() => {
+  // Chrome can create DevToolsActivePort before it writes the port, so wait for a numeric first line.
+  const debugPort = await until(() => {
     if (chrome.exitCode !== null || chrome.signalCode !== null || !chrome.pid) throw new Error(`Chrome stopped: ${diagnostic}`);
-    return existsSync(join(profile, 'DevToolsActivePort'));
+    const file = join(profile, 'DevToolsActivePort');
+    const port = existsSync(file) ? readFileSync(file, 'utf8').split('\n')[0] : '';
+    return /^\d+$/.test(port!) ? port : undefined;
   }, 'Chrome DevTools');
-  const debugPort = readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0];
   const pages = await fetch(`http://127.0.0.1:${debugPort}/json/list`).then(r => r.json()) as { type: string; webSocketDebuggerUrl: string }[];
   cdp = await connect(pages.find(p => p.type === 'page')!.webSocketDebuggerUrl);
   const page = cdp;

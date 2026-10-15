@@ -5,6 +5,7 @@ import { mountModel } from '../src/settings/providers.ts';
 import { agent, config } from './agent-fixture.ts';
 import { TestNode, installDom, json, flush } from './dom-fixture.ts';
 import type { Agent, Config } from '../src/types.ts';
+import type { TestContext } from 'node:test';
 
 const control = (node: TestNode, label: string) => {
   const found = node.querySelectorAll('.field').find(f => f.querySelector('.field-label')?.textContent === label);
@@ -16,9 +17,15 @@ const radios = (node: TestNode) => node.querySelectorAll('input').filter(i => i.
 // a real input event fires on the field and bubbles to the form; the fixture has no bubbling, so both are fired
 const type = (form: TestNode, field: TestNode, value: string) => { field.value = value; field.fire('input'); form.fire('input'); };
 const barText = (node: TestNode) => node.querySelector('.save-bar-text')!.textContent;
+function withToasts(t: TestContext) {
+  t.after(installDom());
+  const host = new TestNode('div');
+  (globalThis.document as unknown as { getElementById: () => TestNode }).getElementById = () => host;
+  return host;
+}
 const barShown = (node: TestNode) => !node.querySelector('.save-bar')!.hidden;
 
-function harness(change?: (c: Config) => void, over: { ollamaUp?: boolean; statusFails?: boolean } = {}) {
+function harness(change?: (c: Config) => void, over: { ollamaUp?: boolean; statusFails?: boolean; patchFails?: string } = {}) {
   const stored: Config = structuredClone(config);
   stored.providers = [{ id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:11434/v1', apiKeyEnv: 'OLLAMA_API_KEY', contextWindow: 32768 },
     { id: 'remote', kind: 'anthropic', label: 'Remote', baseUrl: 'http://127.0.0.1:1', apiKeyEnv: 'REMOTE_API_KEY' }];
@@ -32,7 +39,7 @@ function harness(change?: (c: Config) => void, over: { ollamaUp?: boolean; statu
     calls.push({ path, method, body });
     if (path === '/api/settings') { if (method === 'PUT') current = body.config; return json({ config: current, secrets: { OLLAMA_API_KEY: '', REMOTE_API_KEY: '••••1234' } }); }
     if (path === '/api/agents') return json({ agents });
-    if (path.startsWith('/api/agents/') && method === 'PATCH') { Object.assign(agents.find(a => a.id === path.split('/').at(-1))!, body); return json({}); }
+    if (path.startsWith('/api/agents/') && method === 'PATCH') { if (path.endsWith(`/${over.patchFails}`)) return json({ error: 'Agent is busy' }, 500); Object.assign(agents.find(a => a.id === path.split('/').at(-1))!, body); return json({}); }
     if (path === '/api/secrets') return json({ name: body.name, masked: '••••' });
     if (path === '/api/providers/ollama/status') return over.statusFails ? json({ error: 'Status unavailable' }, 500) : json({ note: 'Ollama context note', warnings: ['Small context'] });
     if (path === '/api/providers/remote/status') return json({ warnings: [] });
@@ -150,4 +157,34 @@ test('context window and address are kept per provider and validated before anyt
   assert.ok(!h.calls.some(c => c.method === 'PUT'), 'a bad address saves nothing');
   type(form, control(form, 'Ollama address'), 'http://127.0.0.1:11434/v1'); form.fire('submit'); await flush();
   assert.equal(h.config().providers[0]!.contextWindow, 16000);
+});
+
+test('the test line never speaks for an unsaved address or key: it says to save first, and goes back when they are put back', async t => {
+  t.after(installDom());
+  const h = harness(); const form = await open(h);
+  const line = () => h.pane.querySelector('.test-line')!;
+  assert.match(line().textContent, /Ollama is running/);
+  type(form, control(form, 'Ollama address'), 'http://127.0.0.1:9999/v1');
+  assert.match(line().textContent, /Save to test the new address\./); assert.equal(button(line(), 'Test').disabled, true);
+  type(form, control(form, 'API key (optional)'), 'paste-me-123');
+  assert.match(line().textContent, /Save to test the new address and key\./);
+  type(form, control(form, 'Ollama address'), 'http://127.0.0.1:11434/v1');
+  assert.match(line().textContent, /Save to test the new key\./);
+  type(form, control(form, 'API key (optional)'), '');
+  assert.match(line().textContent, /Not tested yet\./); assert.equal(button(line(), 'Test').disabled, false);
+  const listed = h.calls.filter(c => c.path === '/api/providers/ollama/models').length;
+  button(line(), 'Test').fire('click'); await flush();
+  assert.equal(h.calls.filter(c => c.path === '/api/providers/ollama/models').length, listed + 1, 'a saved address is tested again');
+});
+
+test('when an agent cannot be moved to the new default model, a toast names it and the others still move', async t => {
+  const toasts = withToasts(t);
+  const h = harness(c => { c.agent.workspace = '/tmp/work'; }, { patchFails: 'a1' });
+  h.agents.push({ ...agent, id: 'a3', name: 'Three', provider: 'ollama', model: 'qwen3:4b' });
+  const form = await open(h);
+  type(form, control(form, 'Model'), 'qwen3:8b');
+  form.fire('submit'); await flush();
+  assert.deepEqual(h.config().active, { provider: 'ollama', model: 'qwen3:8b' });
+  assert.deepEqual(h.agents.map(a => a.model), ['qwen3:4b', 'claude-x', 'qwen3:8b']);
+  assert.match(toasts.textContent, new RegExp(`${agent.name} could not be moved to qwen3:8b and still use qwen3:4b`));
 });

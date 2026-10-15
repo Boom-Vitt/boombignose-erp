@@ -124,6 +124,7 @@ export function mountModel(pane: HTMLElement, api: Api, changed: () => void = ()
     cloudChoice.input.addEventListener('change', () => { if (cloudChoice.input.checked) pick('cloud'); });
     service.addEventListener('change', () => { syncDraft(); provider.value = service.value; key.value = ''; showProvider(); void models.reload(); untested(); refresh(); });
     model.addEventListener('input', untested);
+    for (const input of [url, key, optKey]) input.addEventListener('input', untested);
 
     // ---- the test line: until the core can send a test message, it checks that the server answers and has the model
     let seq = 0;
@@ -132,8 +133,16 @@ export function mountModel(pane: HTMLElement, api: Api, changed: () => void = ()
       testIcon.replaceChildren(...(state === 'ok' ? [icon('check')] : state === 'bad' ? [icon('x')] : state === 'testing' ? [el('span', { class: 'spin' })] : []));
       testText.textContent = text; testBtn.textContent = action; testBtn.disabled = state === 'testing';
     }
-    function untested(): void { seq++; setLine('idle', 'Not tested yet.', 'Test'); }
+    // Test asks the daemon, which uses the saved address and key: with unsaved ones the result would belong to the old values
+    const unsaved = () => [url.value.trim() !== saved[provider.value]!.url.trim() && 'address', (mode === 'mac' ? optKey : key).value.trim() && 'key'].filter(Boolean).join(' and ');
+    function untested(): void {
+      seq++;
+      const what = unsaved();
+      setLine('idle', what ? `Save to test the new ${what}.` : 'Not tested yet.', 'Test');
+      testBtn.disabled = !!what;
+    }
     async function check(): Promise<void> {
+      if (unsaved()) { untested(); return; }
       const mine = ++seq, name = model.value.trim();
       if (!name) { setLine('idle', 'Enter a model name first.', 'Test'); return; }
       setLine('testing', `Testing ${name}…`, 'Test');
@@ -223,13 +232,16 @@ export function mountModel(pane: HTMLElement, api: Api, changed: () => void = ()
           Object.assign(c.agent, limits);
         });
         // agents that followed the old Settings model follow the new one (the agent form calls that "Same as Settings")
+        const stayed: string[] = [];
         if (before.provider !== chosen.id || before.model !== name) {
           for (const a of (await api.listAgents()).agents) {
-            if (a.provider === before.provider && a.model === before.model) await api.patchAgent(a.id, { provider: chosen.id, model: name });
+            if (a.provider !== before.provider || a.model !== before.model) continue;
+            try { await api.patchAgent(a.id, { provider: chosen.id, model: name }); } catch { stayed.push(a.name); }
           }
         }
         changed();
         toast('Saved');
+        if (stayed.length) toast(`${stayed.join(', ')} could not be moved to ${name} and still use ${before.model}. Change ${stayed.length === 1 ? 'it' : 'them'} on the Agents page.`, 'error');
         reload();
       }, bar.submit);
     });

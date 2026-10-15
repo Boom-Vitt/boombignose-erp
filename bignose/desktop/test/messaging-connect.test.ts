@@ -21,7 +21,7 @@ const status: LineStatus = {
 
 function harness(connect: () => Response | Promise<Response> = () => json({ ok: true, steps: [] }),
   webhookTest: () => Response | Promise<Response> = () => json({ ok: true, running: true, statusCode: 200, detail: 'OK' }),
-  lineStatus: LineStatus = status, slowResponseMs = 45000) {
+  lineStatus: LineStatus = status, slowResponseMs = 45000, secondName = 'สอง') {
   let stored = structuredClone(config);
   stored.line = { ...stored.line, enabled: lineStatus.enabled, port: lineStatus.port, publicUrl: lineStatus.publicUrl, slowResponseMs };
   const calls: { path: string; method: string; body: any; headers: Record<string, string> }[] = [];
@@ -31,7 +31,7 @@ function harness(connect: () => Response | Promise<Response> = () => json({ ok: 
     calls.push({ path, method, body, headers: init?.headers as Record<string, string> });
     if (path === '/api/settings') { if (method === 'PUT') stored = body.config; return json({ config: stored, secrets: {} }); }
     if (path === '/api/secrets') return json({ name: body.name, masked: '••••' });
-    if (path === '/api/agents') return json({ agents: [agent, { ...agent, id: 'a2', name: 'สอง' }] });
+    if (path === '/api/agents') return json({ agents: [agent, { ...agent, id: 'a2', name: secondName }] });
     if (path === '/api/line/status') return json(lineStatus);
     if (path === '/api/line/connect') return connect();
     if (path === '/api/line/test') return webhookTest();
@@ -158,6 +158,16 @@ test('the LINE page chooses which agent answers', async t => {
   form.fire('submit'); await flush();
   assert.equal(h.config().line.agentId, 'a2');
   assert.equal(h.calls.filter(c => c.method === 'PUT').length, 2, 'one save per submit');
+});
+
+test('two agents with the same name: choosing the other one still shows the save bar and saves its id', async t => {
+  t.after(installDom());
+  const h = harness(undefined, undefined, status, 45000, 'One'); const form = await mount(h);
+  type(form, control(form, 'Answered by'), 'a2');
+  assert.equal(form.querySelector('.save-bar')!.hidden, false);
+  assert.equal(form.querySelector('.save-bar-text')!.textContent, 'Answered by changed');
+  form.fire('submit'); await flush();
+  assert.equal(h.config().line.agentId, 'a2');
 });
 
 test('the save bar names what changed and says LINE will reconnect only for the fields that restart it', async t => {

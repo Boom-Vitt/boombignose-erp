@@ -373,18 +373,38 @@ test('Tools shows four plain groups with what each does today, and a click saves
   assert.ok(page.textContent.includes('Never hides the tool from BigNose completely.'));
 });
 
-test('Tools shows no pressed segment for a mixed group and says where the rules are', async t => {
+test('Tools shows no pressed segment for a mixed group and names what each tool does', async t => {
   t.after(installDom());
   const h = toolsHarness(c => { c.permissions = { write_file: 'allow', 'mcp__rea__*': 'deny' }; });
   const page = await mountedTools(h);
   assert.deepEqual(pressed(groupRow(page, 'Change files')), []);
-  assert.match(groupRow(page, 'Change files').textContent, /Custom rules in More options/);
+  assert.match(groupRow(page, 'Change files').textContent, /write_file Allow · edit_file Ask/);
   assert.deepEqual(page.querySelectorAll('.kv').map(r => [r.querySelector('input')!.value, r.querySelector('select')!.value]), [['mcp__rea__*', 'deny']]);
   button(page, 'Add rule').fire('click');
   const names = page.querySelectorAll('.kv').map(r => r.querySelector('input')!);
   names[1]!.value = 'mcp__rea__*'; names[1]!.fire('input'); page.fire('input');
   button(page, 'Save').fire('click'); await flush();
   assert.deepEqual(h.config().permissions, { write_file: 'allow', 'mcp__rea__*': 'deny' }, 'two rules for one tool are refused, nothing is saved');
+});
+
+test('Tools shows the policy the core uses: the tool\'s own rule, then the longest prefix* rule, then the default; pressing a segment always needs Save', async t => {
+  t.after(installDom());
+  const h = toolsHarness(c => { c.permissions = { '*': 'allow' }; });
+  const page = await mountedTools(h);
+  assert.deepEqual(['Read files', 'Change files', 'Run commands', 'Open web pages'].map(l => pressed(groupRow(page, l))), [['Allow'], ['Allow'], ['Allow'], ['Allow']], 'a * rule decides every tool');
+  assert.equal(page.querySelector('.save-bar')!.hidden, true);
+  assert.ok(page.textContent.includes('A rule for one tool beats a prefix rule, and a prefix rule beats the defaults.'));
+  button(groupRow(page, 'Run commands'), 'Allow').fire('click');
+  assert.equal(page.querySelector('.save-bar')!.hidden, false, 'pressing Allow writes shell: allow, so it can be saved');
+  assert.equal(page.querySelector('.save-bar-text')!.textContent, 'Run commands changed');
+  button(groupRow(page, 'Run commands'), 'Ask').fire('click');
+  assert.equal(page.querySelector('.save-bar-text')!.textContent, 'Run commands changed from Allow to Ask');
+  button(page, 'Save').fire('click'); await flush();
+  assert.deepEqual(h.config().permissions, { '*': 'allow', shell: 'ask' }, 'the group writes its own exact rule, which beats the * rule');
+  const longer = toolsHarness(c => { c.permissions = { '*': 'allow', 'shell*': 'deny', read_file: 'ask' }; });
+  const second = await mountedTools(longer);
+  assert.deepEqual([pressed(groupRow(second, 'Run commands')), pressed(groupRow(second, 'Read files')), pressed(groupRow(second, 'Open web pages'))], [['Never'], [], ['Allow']]);
+  assert.match(groupRow(second, 'Read files').textContent, /read_file Ask · list_files Allow · search_files Allow/);
 });
 
 test('the workspace folder is checked only when it changes: a relative one is refused, ~ goes to the daemon, a stale stored one never blocks another save', async t => {

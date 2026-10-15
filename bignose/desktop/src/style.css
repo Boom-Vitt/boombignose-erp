@@ -603,7 +603,7 @@ button.back { border: 0; background: none; font: inherit; cursor: pointer; }
 input[type=checkbox]:not(.switch) { width: auto; min-height: 0; accent-color: var(--accent); }
 .field > .btn { margin-top: 6px; }
 .field > .field-label { margin-bottom: 6px; }
-.kv, .kv-rows { display: grid; gap: 6px; }
+.kv, .kv-rows, .hook-list { display: grid; gap: 6px; }
 .kv { grid-template-columns: 1fr 1.4fr auto; }
 .agent-rules:empty { display: none; }
 

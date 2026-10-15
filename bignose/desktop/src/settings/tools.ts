@@ -22,24 +22,37 @@ export function mountTools(pane: HTMLElement, api: Api): void {
   }
 
   function render({ config, skills }: Settings & { skills: SkillSummary[] }): void {
-    // ---- what BigNose may do: four groups write config.permissions; any other rule keeps its own row
+    // ---- what BigNose may do: four groups write one exact rule per tool into config.permissions;
+    // the policy a group shows is the one the core uses: the tool's own rule, else the longest `prefix*` rule, else the default
     const known = new Set(GROUPS.flatMap(([, tools]) => tools));
     const group: Record<string, Policy> = {};
     for (const [tool, policy] of Object.entries(config.permissions)) if (known.has(tool)) group[tool] = policy;
+    const rules: { root: HTMLElement; name: HTMLInputElement; policy: HTMLSelectElement }[] = [];
+    const policyOf = (tool: string): Policy => {
+      if (Object.hasOwn(group, tool)) return group[tool]!;
+      const typed = rules.map((r) => [r.name.value.trim(), r.policy.value as Policy] as const);
+      const prefix = typed.filter(([n]) => n.endsWith('*') && tool.startsWith(n.slice(0, -1))).sort((a, b) => b[0].length - a[0].length)[0];
+      return typed.find(([n]) => n === tool)?.[1] ?? prefix?.[1] ?? DEFAULT_POLICY[tool]!;
+    };
     const effective = (tools: string[]): Policy | undefined => {
-      const set = new Set(tools.map((t) => group[t] ?? DEFAULT_POLICY[t]));
+      const set = new Set(tools.map(policyOf));
       return set.size === 1 ? [...set][0] : undefined;
     };
     const policyText = (p?: Policy) => POLICIES.find(([v]) => v === p)?.[1] ?? 'Custom';
+    /** The explicit rules a group holds: pressing a segment writes them even when the shown policy would not change. */
+    const entries = (tools: string[]) => JSON.stringify(tools.map((t) => group[t] ?? null));
+    const repaints: (() => void)[] = [];
     const groupRows = GROUPS.map(([label, tools]) => {
       const sub = el('div', { class: 'row-sub' });
-      const control = seg(label, POLICIES, (v) => { for (const t of tools) group[t] = v as Policy; paint(); refresh(); });
-      const paint = () => { const v = effective(tools); control.set(v); sub.textContent = v ? '' : 'Custom rules in More options'; };
-      paint();
+      const control = seg(label, POLICIES, (v) => { for (const t of tools) group[t] = v as Policy; refresh(); });
+      repaints.push(() => {
+        const v = effective(tools);
+        control.set(v);
+        sub.textContent = v ? '' : tools.map((t) => `${t} ${policyText(policyOf(t))}`).join(' · ');
+      });
       return el('div', { class: 'row' }, el('div', { class: 'row-text' }, label, sub), control.root);
     });
 
-    const rules: { root: HTMLElement; name: HTMLInputElement; policy: HTMLSelectElement }[] = [];
     const ruleList = el('div', { class: 'agent-rules' });
     const addRule = (tool = '', policy: Policy = 'ask') => {
       const name = el('input', { type: 'text', value: tool, placeholder: 'shell or mcp__rea__*', 'aria-label': 'Tool name or prefix', autocomplete: 'off', spellcheck: 'false' });
@@ -50,6 +63,7 @@ export function mountTools(pane: HTMLElement, api: Api): void {
       ruleList.append(root);
     };
     Object.entries(config.permissions).filter(([tool]) => !known.has(tool)).forEach(([tool, policy]) => addRule(tool, policy));
+    repaints.forEach((paint) => paint());
 
     // ---- the workspace folder (the daemon expands ~ and checks the folder exists when it changes)
     const workspace = el('input', { type: 'text', value: config.agent.workspace, required: true, spellcheck: 'false', autocomplete: 'off' });
@@ -64,7 +78,7 @@ export function mountTools(pane: HTMLElement, api: Api): void {
     const more = el('details', { class: 'card disclosure' },
       el('summary', {}, icon('chev-r'), 'More options', el('span', { class: 'row-sub' }, 'Rules for single tools, add a connector, hooks')),
       el('div', {},
-        row('Rules for single tools', 'One rule per tool, or a prefix ending in *. A rule here beats the groups above.', btn('Add rule', () => { addRule(); refresh(); }, 'small')),
+        row('Rules for single tools', 'Name one tool, or a prefix ending in *. A rule for one tool beats a prefix rule, and a prefix rule beats the defaults. The groups above write one rule for each of their tools.', btn('Add rule', () => { addRule(); refresh(); }, 'small')),
         ruleList,
         connectorForm(api, () => connectors.refresh(true)),
         row('Hooks', 'Shell commands that run around tool calls. The event details come as JSON on standard input.'),
@@ -78,8 +92,16 @@ export function mountTools(pane: HTMLElement, api: Api): void {
       Hooks: JSON.stringify(hooks.value()),
     });
     const initial = values();
+    const initialEntries = GROUPS.map(([, tools]) => entries(tools));
+    const groupEdited = (i: number) => entries(GROUPS[i]![1]) !== initialEntries[i];
     const bar = saveBar(reload, { button: true });
-    function refresh(): void { bar.set(dirty(initial, values(), { hidden: ['Tool rules', 'Hooks'] })); }
+    function refresh(): void {
+      repaints.forEach((paint) => paint());
+      const changes = dirty(initial, values(), { hidden: ['Tool rules', 'Hooks'] });
+      // a pressed segment that keeps the shown policy (a `*` rule already decided it) still writes rules, so it still needs Save
+      GROUPS.forEach(([label], i) => { if (groupEdited(i) && !changes.some((c) => c.label === label)) changes.push({ label }); });
+      bar.set(changes);
+    }
 
     const root = el('div', { class: 'tools-page' },
       el('h2', { class: 'group-title' }, 'What BigNose may do'),
@@ -97,7 +119,7 @@ export function mountTools(pane: HTMLElement, api: Api): void {
       const now = values(), changed = (k: string) => now[k] !== initial[k];
       const folder = changed('Workspace folder') ? checkWorkspace(workspace.value) : undefined;
       let permissions: Record<string, Policy> | undefined;
-      if (GROUPS.some(([label]) => changed(label)) || changed('Tool rules')) {
+      if (GROUPS.some((_, i) => groupEdited(i)) || changed('Tool rules')) {
         permissions = Object.create(null) as Record<string, Policy>;
         Object.assign(permissions, group);
         for (const r of rules) {
