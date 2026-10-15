@@ -39,10 +39,8 @@ function MfaChallengeForm() {
     const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
     const factor = factors?.totp[0]
     // Signed out or expired meanwhile (another tab, long idle): only a fresh sign-in helps.
-    if (listError && isDeadSessionError(listError)) {
-      router.push(withReturnPath("/login", redirectTo))
-      return
-    }
+    const signInAgain = () => router.push(withReturnPath("/login", redirectTo))
+    if (listError && isDeadSessionError(listError)) return signInAgain()
     if (listError) {
       setLoading(false)
       toast.error("Verification failed", { description: listError.message })
@@ -55,6 +53,7 @@ function MfaChallengeForm() {
       return
     }
     const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code })
+    if (verifyError && isDeadSessionError(verifyError)) return signInAgain()
     setLoading(false)
     if (verifyError) {
       setCode("")
