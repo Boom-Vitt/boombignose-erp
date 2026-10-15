@@ -76,6 +76,11 @@ export async function updateSession(request: NextRequest) {
     return redirectWithSession(new URL(mfaPath(pathname), request.url))
   }
 
+  // Enrollment is a one-time step; a second factor would only confuse the challenge page.
+  if (pathname === "/setup-2fa" && user?.factors?.some((f) => f.status === "verified")) {
+    return redirectWithSession(new URL("/dashboard", request.url))
+  }
+
   // Preserve local invitation destinations when already signed in.
   const authPage = pathname === "/login" || pathname === "/signup" || pathname === MFA_PATH
   if (user && authPage && !(mfaPending && pathname === MFA_PATH)) {

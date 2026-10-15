@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
-import { normalizeTotpCode } from "@/lib/auth/mfa"
+import { normalizeTotpCode, totpErrorMessage } from "@/lib/auth/mfa"
 import { createClient } from "@/lib/supabase/client"
 import {
   AlertDialog,
@@ -67,7 +67,7 @@ export function TwoFactorSettings({
     setBusy(false)
     if (error) {
       setCode("")
-      toast.error("Invalid code", { description: error.message })
+      toast.error("Invalid code", { description: totpErrorMessage(error) })
       return
     }
     toast.success("Two-factor authentication is on")

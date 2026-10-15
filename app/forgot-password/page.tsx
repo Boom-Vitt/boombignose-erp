@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Loader2, MailCheck } from "lucide-react"
 import { toast } from "sonner"
 
@@ -18,7 +19,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordForm() {
+  // Set by /auth/confirm when a reset link was expired, reused or opened in another browser.
+  const linkError = useSearchParams().get("error")
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
@@ -68,6 +71,7 @@ export default function ForgotPasswordPage() {
         <CardDescription>
           Enter your account email and we&apos;ll send you a reset link.
         </CardDescription>
+        {linkError ? <p role="alert" className="text-destructive pt-1 text-sm">{linkError}</p> : null}
       </CardHeader>
       <form onSubmit={onSubmit}>
         <CardContent className="space-y-4">
@@ -97,5 +101,13 @@ export default function ForgotPasswordPage() {
         </CardFooter>
       </form>
     </AuthShell>
+  )
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense>
+      <ForgotPasswordForm />
+    </Suspense>
   )
 }

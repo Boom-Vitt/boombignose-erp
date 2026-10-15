@@ -116,16 +116,17 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               aria-invalid={showPolicy}
+              aria-describedby="password-help"
               required
             />
             {showPolicy ? (
-              <ul className="text-destructive space-y-1 text-xs">
+              <ul id="password-help" className="text-destructive space-y-1 text-xs">
                 {policy.issues.map((issue) => (
                   <li key={issue}>{issue}</li>
                 ))}
               </ul>
             ) : (
-              <p className="text-muted-foreground text-xs">
+              <p id="password-help" className="text-muted-foreground text-xs">
                 At least 10 characters with upper, lower, and a number.
               </p>
             )}

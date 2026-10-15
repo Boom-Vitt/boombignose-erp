@@ -42,3 +42,15 @@ export function mfaPath(returnTo: string): string {
 export function normalizeTotpCode(value: string): string {
   return value.replace(/\D/g, "").slice(0, 6)
 }
+
+/** User-facing text for a failed TOTP verify; Supabase's raw messages are terse or technical. */
+export function totpErrorMessage(error: { code?: string; status?: number; message: string }): string {
+  if (error.code === "mfa_verification_failed") {
+    return "That code didn't match. Enter the current 6-digit code from your authenticator app."
+  }
+  if (error.code === "mfa_challenge_expired") return "The code timed out. Enter the newest code and try again."
+  if (error.code === "over_request_rate_limit" || error.status === 429) {
+    return "Too many attempts. Wait a minute, then try again."
+  }
+  return error.message
+}

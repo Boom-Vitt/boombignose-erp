@@ -17,7 +17,8 @@ import { safeReturnPath } from "@/lib/supabase/redirect"
  * IMPORTANT: uses the SSR server client so the verified session is written to
  * the response cookies; a plain `@supabase/supabase-js` client would verify but
  * leave the user unauthenticated. On success → the local `next` path (password
- * recovery sends `/reset-password`, default /dashboard), else → /login.
+ * recovery sends `/reset-password`, default /dashboard), else → /login, or
+ * /forgot-password for a dead recovery link so a new one is one click away.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
         status: 303,
       })
     }
-    return failureOrExistingSession(request, error.message, next)
+    return failureOrExistingSession(request, error.message, next, type)
   }
 
   // OTP flow: verify the email token hash.
@@ -50,23 +51,35 @@ export async function GET(request: NextRequest) {
         status: 303,
       })
     }
-    return failureOrExistingSession(request, error.message, next)
+    return failureOrExistingSession(request, error.message, next, type)
   }
 
-  return failureOrExistingSession(request, "Invalid or expired confirmation link.", next)
+  // Supabase rejected the link before redirecting here (e.g. error_code=otp_expired).
+  const message = searchParams.get("error_description") ?? "Invalid or expired confirmation link."
+  return failureOrExistingSession(request, message, next, type)
 }
 
+/** A recovery link has no use once dead; the raw Supabase reason is not actionable. */
+const EXPIRED_RESET_MESSAGE =
+  "This reset link has expired or was already used. Request a new one below, and open it in this browser."
+
 /** Reusing a consumed link must not discard an already authenticated session. */
-async function failureOrExistingSession(request: NextRequest, message: string, next: string) {
+async function failureOrExistingSession(
+  request: NextRequest,
+  message: string,
+  next: string,
+  type: EmailOtpType | null
+) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (user) return NextResponse.redirect(new URL(next, request.url), { status: 303 })
-  return failure(request, message)
+  const recovery = type === "recovery" || next === "/reset-password"
+  return recovery ? failure(request, "/forgot-password", EXPIRED_RESET_MESSAGE) : failure(request, "/login", message)
 }
 
-/** Redirect to /login with a human-readable error message in the query. */
-function failure(request: NextRequest, message: string) {
-  const url = new URL("/login", request.url)
+/** Redirect to an auth page with a human-readable error message in the query. */
+function failure(request: NextRequest, pathname: string, message: string) {
+  const url = new URL(pathname, request.url)
   url.searchParams.set("error", message)
   return NextResponse.redirect(url, { status: 303 })
 }

@@ -79,3 +79,26 @@ it('signed-out reset form requires the recovery session', async () => {
  const res=await updateSession(new NextRequest('https://app.example.test/reset-password'))
  expect(res.headers.get('location')).toBe('https://app.example.test/login?redirect=%2Freset-password')
 })
+it('signed-out authenticator setup asks for sign-in first', async () => {
+ state.user=null
+ const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login?redirect=%2Fsetup-2fa')
+})
+it('an unenrolled user can open authenticator setup', async () => {
+ expect((await updateSession(new NextRequest('https://app.example.test/setup-2fa'))).headers.get('location')).toBeNull()
+})
+it('an abandoned unverified factor neither challenges nor blocks setup', async () => {
+ state.user={id:'actor',factors:[{status:'unverified'}]}
+ expect((await updateSession(new NextRequest('https://app.example.test/dashboard'))).headers.get('location')).toBeNull()
+ expect((await updateSession(new NextRequest('https://app.example.test/setup-2fa'))).headers.get('location')).toBeNull()
+})
+it('an enrolled user is not offered a second authenticator', async () => {
+ mfaUser('aal2')
+ const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/dashboard')
+})
+it('an enrolled password-only session clears its challenge before setup', async () => {
+ mfaUser('aal1')
+ const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/login/mfa?redirect=%2Fsetup-2fa')
+})

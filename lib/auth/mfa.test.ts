@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { MFA_PATH, mfaPath, needsMfa, normalizeTotpCode, tokenAal } from "@/lib/auth/mfa"
+import { MFA_PATH, mfaPath, needsMfa, normalizeTotpCode, tokenAal, totpErrorMessage } from "@/lib/auth/mfa"
 
 /** Unsigned JWT-shaped token; base64url like Supabase issues. */
 function token(payload: object): string {
@@ -53,5 +53,22 @@ describe("normalizeTotpCode", () => {
     expect(normalizeTotpCode("123 456")).toBe("123456")
     expect(normalizeTotpCode(" 12-34-56-78 ")).toBe("123456")
     expect(normalizeTotpCode("abc")).toBe("")
+  })
+})
+
+describe("totpErrorMessage", () => {
+  it("explains a wrong code", () => {
+    expect(totpErrorMessage({ code: "mfa_verification_failed", status: 422, message: "Invalid TOTP code entered" })).toMatch(
+      /didn't match/
+    )
+  })
+
+  it("explains an expired challenge and rate limiting", () => {
+    expect(totpErrorMessage({ code: "mfa_challenge_expired", message: "x" })).toMatch(/timed out/)
+    expect(totpErrorMessage({ status: 429, message: "x" })).toMatch(/Too many attempts/)
+  })
+
+  it("falls back to the original message", () => {
+    expect(totpErrorMessage({ message: "Network down" })).toBe("Network down")
   })
 })

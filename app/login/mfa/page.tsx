@@ -1,11 +1,11 @@
 "use client"
 
-import { Suspense, useState } from "react"
+import { Suspense, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
-import { normalizeTotpCode } from "@/lib/auth/mfa"
+import { normalizeTotpCode, totpErrorMessage } from "@/lib/auth/mfa"
 import { createClient } from "@/lib/supabase/client"
 import { safeReturnPath } from "@/lib/supabase/redirect"
 import { AuthShell } from "@/components/auth-shell"
@@ -27,10 +27,13 @@ function MfaChallengeForm() {
 
   const [code, setCode] = useState("")
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const input = useRef<HTMLInputElement>(null)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+    setError(null)
     const supabase = createClient()
     const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
     const factor = factors?.totp[0]
@@ -41,11 +44,13 @@ function MfaChallengeForm() {
       })
       return
     }
-    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code })
+    const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code })
     setLoading(false)
-    if (error) {
+    if (verifyError) {
       setCode("")
-      toast.error("Verification failed", { description: error.message })
+      setError(totpErrorMessage(verifyError))
+      // The disabled submit button drops focus; put it back for the retry.
+      requestAnimationFrame(() => input.current?.focus())
       return
     }
     router.push(redirectTo)
@@ -68,6 +73,7 @@ function MfaChallengeForm() {
           <Label htmlFor="code">Authentication code</Label>
           <Input
             id="code"
+            ref={input}
             className="erp-auth-code"
             inputMode="numeric"
             autoComplete="one-time-code"
@@ -76,8 +82,15 @@ function MfaChallengeForm() {
             autoFocus
             value={code}
             onChange={(e) => setCode(normalizeTotpCode(e.target.value))}
+            aria-invalid={error !== null}
+            aria-describedby={error ? "code-error" : undefined}
             required
           />
+          {error ? (
+            <p id="code-error" role="alert" className="text-destructive text-xs">
+              {error}
+            </p>
+          ) : null}
         </CardContent>
       </form>
       <CardFooter className="mt-2 flex-col gap-3">

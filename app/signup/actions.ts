@@ -43,7 +43,8 @@ export async function signUp(input: {
     email,
     password,
     options: {
-      emailRedirectTo: `${appUrl}/auth/confirm`,
+      // Unset in some local setups: let Supabase use its Site URL rather than "undefined/auth/confirm".
+      emailRedirectTo: appUrl ? `${appUrl}/auth/confirm` : undefined,
     },
   })
 
