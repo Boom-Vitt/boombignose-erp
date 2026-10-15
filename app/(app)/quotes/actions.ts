@@ -66,6 +66,7 @@ export async function createQuote(
   const parsed = CreateQuote.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
+  if (d.valid_until && d.valid_until < (d.issue_date ?? todayISO())) return { error: "Valid until cannot be before the issue date" }
 
   const supabase = await createSupabaseClient()
 
@@ -138,6 +139,7 @@ export async function updateQuote(
   const parsed = UpdateQuote.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
+  if (d.valid_until && d.issue_date && d.valid_until < d.issue_date) return { error: "Valid until cannot be before the issue date" }
 
   const supabase = await createSupabaseClient()
   const { data: current, error: readError } = await supabase

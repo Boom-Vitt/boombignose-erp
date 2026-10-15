@@ -77,6 +77,7 @@ export async function createInvoice(
   const parsed = CreateInvoice.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
+  if (d.due_date && d.due_date < (d.issue_date ?? todayISO())) return { error: "Due date cannot be before the issue date" }
 
   const supabase = await createSupabaseClient()
 
@@ -154,6 +155,7 @@ export async function updateInvoice(
   const parsed = UpdateInvoice.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
+  if (d.due_date && d.issue_date && d.due_date < d.issue_date) return { error: "Due date cannot be before the issue date" }
 
   const supabase = await createSupabaseClient()
   const { error } = await supabase
