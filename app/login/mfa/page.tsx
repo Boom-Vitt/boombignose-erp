@@ -6,8 +6,9 @@ import { Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { normalizeTotpCode, totpErrorMessage } from "@/lib/auth/mfa"
+import { isDeadSessionError } from "@/lib/auth/password"
 import { createClient } from "@/lib/supabase/client"
-import { safeReturnPath } from "@/lib/supabase/redirect"
+import { safeReturnPath, withReturnPath } from "@/lib/supabase/redirect"
 import { AuthShell } from "@/components/auth-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,6 +38,11 @@ function MfaChallengeForm() {
     const supabase = createClient()
     const { data: factors, error: listError } = await supabase.auth.mfa.listFactors()
     const factor = factors?.totp[0]
+    // Signed out or expired meanwhile (another tab, long idle): only a fresh sign-in helps.
+    if (listError && isDeadSessionError(listError)) {
+      router.push(withReturnPath("/login", redirectTo))
+      return
+    }
     if (listError) {
       setLoading(false)
       toast.error("Verification failed", { description: listError.message })
