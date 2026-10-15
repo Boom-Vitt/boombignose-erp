@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
@@ -38,6 +38,8 @@ export function TwoFactorSettings({
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null)
   const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
+  const [codeError, setCodeError] = useState<string | null>(null)
+  const codeInput = useRef<HTMLInputElement>(null)
 
   async function startSetup() {
     setBusy(true)
@@ -53,6 +55,7 @@ export function TwoFactorSettings({
       toast.error("Could not start setup", { description: error.message })
       return
     }
+    setCodeError(null)
     setEnrollment({ factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret })
   }
 
@@ -60,6 +63,7 @@ export function TwoFactorSettings({
     e.preventDefault()
     if (!enrollment) return
     setBusy(true)
+    setCodeError(null)
     const { error } = await createClient().auth.mfa.challengeAndVerify({
       factorId: enrollment.factorId,
       code,
@@ -67,7 +71,9 @@ export function TwoFactorSettings({
     setBusy(false)
     if (error) {
       setCode("")
-      toast.error("Invalid code", { description: totpErrorMessage(error) })
+      setCodeError(totpErrorMessage(error))
+      // The disabled submit button drops focus; put it back for the retry.
+      requestAnimationFrame(() => codeInput.current?.focus())
       return
     }
     toast.success("Two-factor authentication is on")
@@ -142,6 +148,7 @@ export function TwoFactorSettings({
           <Label htmlFor="totp-code">Authentication code</Label>
           <Input
             id="totp-code"
+            ref={codeInput}
             className="erp-auth-code"
             inputMode="numeric"
             autoComplete="one-time-code"
@@ -149,8 +156,15 @@ export function TwoFactorSettings({
             maxLength={6}
             value={code}
             onChange={(e) => setCode(normalizeTotpCode(e.target.value))}
+            aria-invalid={codeError !== null}
+            aria-describedby={codeError ? "totp-code-error" : undefined}
             required
           />
+          {codeError ? (
+            <p id="totp-code-error" role="alert" className="text-destructive text-xs">
+              {codeError}
+            </p>
+          ) : null}
         </div>
         <div className="flex gap-2">
           <Button type="submit" disabled={busy || code.length !== 6}>
