@@ -34,7 +34,7 @@ beforeEach(() => {
     payments: ['A','B'].map(org_id => ({org_id,invoice_id:`invoice-${org_id}`,amount_satang:org_id==='A'?100:500,paid_at:date,verification_state:'verified'})).concat([{org_id:'A',invoice_id:'invoice-A',amount_satang:777,paid_at:date,verification_state:'legacy_unverified'}]),
     costs: ['A','B'].map(org_id => ({org_id,amount_satang:org_id==='A'?300:900,incurred_on:date})),
     subscriptions: ['A','B'].map(org_id => ({org_id,status:'active',amount_satang:org_id==='A'?600:1800,interval:'monthly'})),
-    time_entries: ['A','B'].map(org_id => ({org_id,project_id:`project-${org_id}`,minutes:org_id==='A'?60:180,billable:true,rate_satang:100,work_date:date})),
+    time_entries: ['A','B'].map(org_id => ({org_id,project_id:`project-${org_id}`,minutes:org_id==='A'?60:180,billable:true,rate_satang:100,work_date:date})).concat([{org_id:'A',project_id:'project-A',minutes:120,billable:false,rate_satang:100,work_date:date}]),
     projects: [{ org_id: 'A', status: 'in_progress' },{ org_id: 'B', status: 'in_progress' }],
     saved_views: ['A','B'].map(org_id => ({ id: org_id, org_id, user_id: 'user', module: 'deals', name: `VIEW_${org_id}`, config: {} })),
     quotes: ['A','B'].map(org_id => ({ org_id, status: 'sent', total_satang: org_id === 'A' ? 200 : 1000 })),

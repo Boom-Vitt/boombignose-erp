@@ -159,7 +159,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const openQuotesCount = quotes.length
   const openQuotesValueSatang = sumSatang(quotes.map((q) => q.total_satang))
 
-  const billableHoursThisMonth = minutesToHours(totalMinutes(timeEntries))
+  const billableHoursThisMonth = minutesToHours(totalMinutes(timeEntries.filter((e) => e.billable)))
   const billableValueThisMonthSatang = billableValueSatang(timeEntries)
   const utilizationThisMonth = utilization(timeEntries)
 
