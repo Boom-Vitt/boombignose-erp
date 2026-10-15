@@ -29,12 +29,12 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${fontSans.variable} ${fontMono.variable} h-full antialiased`}
+      className={`dark ${fontSans.variable} ${fontMono.variable} h-full antialiased`}
     >
       <body className="bg-background text-foreground min-h-full">
         <PublicEnvScript />
         <TooltipProvider>{children}</TooltipProvider>
-        <Toaster richColors position="top-right" />
+        <Toaster richColors position="top-right" theme="dark" />
       </body>
     </html>
   )
