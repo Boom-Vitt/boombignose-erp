@@ -31,7 +31,7 @@ const optionalString = z
 
 /** Optional per-hour rate in baht: empty → null. */
 const optionalRate = z
-  .union([z.coerce.number(), z.literal("")])
+  .union([z.literal(""), z.coerce.number()])
   .optional()
   .transform((v) => (v === "" || v == null ? null : (v as number)))
 

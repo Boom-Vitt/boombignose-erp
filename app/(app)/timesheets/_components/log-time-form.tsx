@@ -29,7 +29,7 @@ const Schema = z.object({
   work_date: z.string().optional(),
   hours: z.coerce.number().min(1 / 60, "Log at least one minute").max(24, "Hours must be 24 or less"),
   billable: z.boolean(),
-  rateBaht: z.union([z.coerce.number().min(0), z.literal("")]).optional(),
+  rateBaht: z.union([z.literal(""), z.coerce.number().min(0)]).optional(),
   notes: z.string().optional(),
 })
 

@@ -7,6 +7,7 @@ vi.mock('@/lib/supabase/server', () => ({ createClient: async () => state.client
 vi.mock('@/lib/auth', () => ({ requireOrgContext: async () => ({ userId: 'user', orgId: 'A', role: 'owner' }) }))
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND') }, redirect: vi.fn(), useRouter: vi.fn(), useSearchParams: vi.fn(), usePathname: () => '' }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+vi.mock('@/lib/audit', () => ({ writeAudit: vi.fn() }))
 
 import TimesheetsPage from '@/app/(app)/timesheets/page'
 import { logTime } from '@/app/(app)/timesheets/actions'
@@ -75,4 +76,11 @@ it.each(['time_entries','projects'])('a failed %s read cannot show invented zero
     return q
   } }
   await expect(TimesheetsPage()).rejects.toThrow('Timesheet data unavailable')
+})
+
+it('a blank rate is stored as no rate, not 0 THB', async () => {
+  const time_entries: Record<string, unknown>[] = []
+  state.client = databaseFixture({ time_entries })
+  expect(await logTime({ project_id: 'project-A', hours: 1, rateBaht: '' })).toEqual({})
+  expect(time_entries[0]).toMatchObject({ org_id: 'A', minutes: 60, rate_satang: null })
 })

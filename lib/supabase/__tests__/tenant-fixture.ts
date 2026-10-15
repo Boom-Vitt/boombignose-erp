@@ -34,6 +34,7 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
         order: () => query,
         limit: (value: number) => { rows = rows.slice(0, value); return query },
         maybeSingle: () => { single = true; return query },
+        single: () => { single = true; return query },
         then: (resolve: (result: unknown) => unknown, reject?: (error: unknown) => unknown) =>
           Promise.resolve({ data: single ? rows[0] ?? null : rows, error: null }).then(resolve, reject),
       }
