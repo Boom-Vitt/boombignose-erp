@@ -50,6 +50,33 @@ notices render as the error card; `info` and `warn` stay one-line notes. Approva
 the client for the life of the page, because the daemon does not store approvals. Opening a chat or New chat drops any older
 pending read, so the new chat streams; a failed first open shows its error without replaying held events onto "Loading…".
 
+## Agents
+
+`agents.ts` has two pages. `mountAgents` is the roster (`#/agents`): one `.card` of `.agent-row`s, each with the avatar
+(`avatar()` in `dom.ts`: the agent's emoji, or the headphone bot for a blank or default 🤖 icon), the name (+ an "Answers LINE"
+badge only while `line.enabled`), what it is for (the first line of the instructions, 80 characters, or "General assistant"),
+and its model (prefixed with the provider when that differs from Settings) with an "N schedules" link. **Chat** shows on hover or
+focus (opacity, so it stays a tab stop); the ⋯ menu (Edit…, Duplicate, Delete…) opens with a click or ↓, moves with ↑/↓, closes with Esc
+(focus returns to ⋯), Tab or a press elsewhere on the page, and highlights with the neutral `--select` fill. Delete… asks through
+`confirmDialog` (Cancel focused) and says what goes with the agent: its schedules, and who answers LINE afterwards. It is off for the
+last agent.
+
+`mountAgentForm` is the form as its own page: `#/agents/new` and `#/agents/<id>` (`main.ts` routes both). A card of rows (Name, Icon
+with a live avatar, Instructions, Model), then one **More options** fold (What it may do, Connectors and skills, Longest answer),
+then the save bar. The save bar names what differs from the saved agent ("Instructions changed", "Name and 2 more changed") and
+hides when nothing does; a new agent shows "New agent · Cancel · Create agent". Saving goes back to `#/agents` with an "Agent saved" toast.
+
+- **Model** is a select: "Same as Settings (…)" (writes the active provider and model), a model the provider lists, or Other… (shows
+  Provider and a typed Model name; the `agent-models` datalist keeps suggesting). An agent already on the Settings model, or on a
+  listed one, opens as that option.
+- **What it may do** has four plain groups (Read files, Change files, Run commands, Open web pages) with Allow / Ask / Never; pressing
+  the pressed one hands the tools back to Settings. Any other tool keeps its own rule row (`Add permission`). One tool cannot have two rules.
+- **Connectors and skills** keeps the two "All / pick some" fieldsets unchanged behind **Choose…**.
+- LINE is chosen in Settings › LINE, not on the form. A blank icon saves the default 🤖 (the API wants 1 to 16 characters).
+
+Not built, because the core has no field for it: the "Last run failed" line on a row (`lastError`), the "Chat opens the newest desktop
+chat" rule (the session list has no origin kind), and an introduction line for a blank instruction (the hint only says what is true).
+
 ## BigNose OS panel
 
 `body.os-panel` (set by `main.ts` when the Tauri side says so) turns the shell into one 420 px column: the nav becomes a top
@@ -60,17 +87,18 @@ returns to the panel once the server is up. The toggle button is mounted on `<bo
 
 ## Not finished here (next streams)
 
-- Agents roster and form page, and the five Settings tabs (migration steps 3 to 5 of the spec). Until then Agents and
-  Settings keep their old DOM: `style.css` ends with a `/* phase1 bridge */` block that styles it with the new tokens, and the
-  Settings page shows its eight sections as a tab row. The step that moves them deletes the bridge and that tab row, and
-  replaces the `model` entry in `ALIASES` in `main.ts` (`#/settings/model` opens Providers & models for now).
-- The e2e checks cover the chat routes and the panel. Each later stream adds its own routes to `e2e/ui-simple.e2e.ts`.
+- The five Settings tabs (migration steps 4 and 5 of the spec). Until then Settings keeps its old DOM: `style.css` ends with a
+  `/* phase1 bridge */` block that styles it with the new tokens, and the Settings page shows its eight sections as a tab row. The
+  step that moves them deletes the bridge and that tab row, and replaces the `model` entry in `ALIASES` in `main.ts`
+  (`#/settings/model` opens Providers & models for now). The agent form does not rely on the bridge (its own rules sit above it).
+  `confirmBtn` stays exported in `dom.ts` for Settings until its stream moves to `confirmDialog`.
+- The e2e checks cover the chat routes, the panel and the agents pages. Each later stream adds its own routes to `e2e/ui-simple.e2e.ts`.
 
 ## Checks
 
-- `pnpm --filter desktop test`: unit tests (`chat`, `ui-simple`, `format`, `os/startup` among them).
+- `pnpm --filter desktop test`: unit tests (`chat`, `ui-simple`, `agents`, `agent-model`, `format`, `os/startup` among them).
 - `pnpm --filter desktop e2e`: builds (contrast gate included) and runs `agents-rea`, `os-layout` and `ui-simple` in headless
-  Chrome, each with its own daemon on a temp home. Set `BIGNOSE_SHOTS=<dir>` to save `chat-light.png`, `chat-dark.png` and a
-  few more for a human look.
+  Chrome, each with its own daemon on a temp home. Set `BIGNOSE_SHOTS=<dir>` to save `chat-light.png`, `chat-dark.png`,
+  `agents-light.png`, `agent-edit-light.png` and a few more for a human look.
 - Not covered: the real Tauri WKWebView. `size-adjust`, the `local()` Sukhumvit names, `:has()`, `text-wrap: balance` and
   `content: "Esc" / ""` need one look in the app window.

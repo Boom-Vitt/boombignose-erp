@@ -61,21 +61,30 @@ test('create/edit/duplicate/delete an agent and run /rea with approvals and SSE 
   const { cdp, wait, click, fill } = await openUi(t, { port, token });
   const field = (label: string, value: string) => cdp.evaluate(`(()=>{const e=Array.from(document.querySelectorAll('.agent-form label')).find(l=>l.querySelector('.field-label')?.textContent===${JSON.stringify(label)}).querySelector('input,textarea,select');e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await wait(`document.querySelector('.nav-conn')?.textContent==='Connected'`);
-  await click('Agents'); await click('Create agent');
+  // the agent form is its own page: wait for it, because the route loads its data first
+  const formReady = () => wait(`document.querySelector('.agent-form')`);
+  // a row's actions live behind its ⋯ menu
+  const menu = async (card: string, label: string) => {
+    await wait(`${card}?.querySelector('[aria-haspopup=menu]')`);
+    await cdp.evaluate(`${card}.querySelector('[aria-haspopup=menu]').click()`);
+    await click(label, card);
+  };
+  await click('Agents'); await click('New agent'); await formReady();
   await field('Name', 'Hermes Reverser'); await field('Instructions', 'Inspect local apps with evidence.');
   // A restricted list exercises both the global connector toggle and the agent PATCH.
   await cdp.evaluate(`Array.from(document.querySelectorAll('.agent-form legend')).find(e=>e.textContent==='Connectors').parentElement.querySelector('input').click()`);
   await click('Create agent', `document.querySelector('.agent-form')`);
   const created = await until(async () => (await api.listAgents()).agents.find(a => a.name === 'Hermes Reverser'), 'created agent');
   const card = `document.querySelector('[data-agent-id="${created.id}"]')`;
-  await click('Edit', card); await field('Icon', '🔎'); await field('Instructions', 'Evidence only <script>unsafe()</script>.');
-  await click('Save agent');
+  await menu(card, 'Edit…'); await formReady(); await field('Icon', '🔎'); await field('Instructions', 'Evidence only <script>unsafe()</script>.');
+  await click('Save', `document.querySelector('.save-bar')`);
   await until(async () => { const a = await api.getAgent(created.id); return a.icon === '🔎' && a.instructions === 'Evidence only <script>unsafe()</script>.'; }, 'persisted edits');
-  await click('Duplicate', card);
+  await wait(`document.querySelector('[data-agent-id="${created.id}"]')`);
+  await menu(card, 'Duplicate');
   const copy = await until(async () => (await api.listAgents()).agents.find(a => a.name === 'Hermes Reverser copy'), 'duplicate');
   assert.equal(copy.instructions, 'Evidence only <script>unsafe()</script>.'); assert.equal(copy.icon, '🔎');
   const copyCard = `document.querySelector('[data-agent-id="${copy.id}"]')`;
-  await click('Delete', copyCard); await click('Delete with sessions, agent notes and schedules?', copyCard);
+  await menu(copyCard, 'Delete…'); await click('Delete', `document.querySelector('dialog[open]')`);
   await until(async () => !(await api.listAgents()).agents.some(a => a.id === copy.id), 'copy deleted');
   await click('Chat', card);
   await wait(`document.querySelector('[aria-label="Chat agent"]')?.value===${JSON.stringify(created.id)}`);
