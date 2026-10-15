@@ -295,6 +295,26 @@ test('the OS panel at 420x640 has no horizontal overflow and keeps the composer 
   assert.deepEqual(ui.cdp.errors, []);
 });
 
+test('click finds and clicks in one step while its scope re-renders', { timeout: 60_000 }, async (t) => {
+  const home = testHome(t);
+  configured(home, 'http://127.0.0.1:1/v1');
+  const app = await startDaemon({ home }); t.after(() => app.close());
+  const ui = await openUi(t, app, { viewport: SIZES[1]! });
+  // The scope is a button container on odd looks and null on even ones, like a roster that re-renders between a wait and the click.
+  await ui.cdp.evaluate(`(() => {
+    const box = document.createElement('div'), button = document.createElement('button');
+    button.textContent = 'Flaky'; box.append(button);
+    window.__looks = 0; window.__clicks = 0;
+    button.addEventListener('click', () => { window.__clicks++; });
+    window.__scope = () => (++window.__looks % 2 ? box : null);
+  })()`);
+  const counts = () => ui.cdp.evaluate(`({ looks: window.__looks, clicks: window.__clicks })`);
+  await ui.click('Flaky', 'window.__scope()');
+  assert.deepEqual(await counts(), { looks: 1, clicks: 1 }, 'a scope that holds the button is clicked in the same look');
+  await ui.click('Flaky', 'window.__scope()');
+  assert.deepEqual(await counts(), { looks: 3, clicks: 2 }, 'a null scope is waited out, then clicked once');
+});
+
 test('the agents pages', { timeout: 300_000 }, async (t) => {
   // Own daemon and temp home. The default agent has the bot icon and blank instructions; the others are made through the API.
   const home = testHome(t);

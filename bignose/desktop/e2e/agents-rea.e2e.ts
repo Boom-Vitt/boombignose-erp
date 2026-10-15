@@ -58,21 +58,23 @@ test('create/edit/duplicate/delete an agent and run /rea with approvals and SSE 
   const { port } = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8'));
   const token = readFileSync(join(home, 'api-token'), 'utf8').trim();
   const api = createApi({ port, token });
-  const { cdp, wait, click, fill } = await openUi(t, { port, token });
-  const field = (label: string, value: string) => cdp.evaluate(`(()=>{const e=Array.from(document.querySelectorAll('.agent-form label')).find(l=>l.querySelector('.field-label')?.textContent===${JSON.stringify(label)}).querySelector('input,textarea,select');e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  const { cdp, wait, click, fill, field: fieldIn } = await openUi(t, { port, token });
+  const field = (label: string, value: string) => fieldIn(label, value, `document.querySelector('.agent-form')`);
+  // Find the target and act on it in one evaluate: the wait repeats only while the target is missing, so a re-render between a look and the action cannot leave it null.
+  const on = (target: string, act: string, label: string) => wait(`(()=>{const e=${target};if(!e)return false;${act};return true})()`, label);
   await wait(`document.querySelector('.nav-conn')?.textContent==='Connected'`);
   // the agent form is its own page: wait for it, because the route loads its data first
   const formReady = () => wait(`document.querySelector('.agent-form')`);
   // a row's actions live behind its ⋯ menu
-  const menu = async (card: string, label: string) => {
-    await wait(`${card}?.querySelector('[aria-haspopup=menu]')`);
-    await cdp.evaluate(`${card}.querySelector('[aria-haspopup=menu]').click()`);
-    await click(label, card);
-  };
+  const menu = (card: string, label: string) => wait(`(()=>{
+    const c=${card},more=c?.querySelector('[aria-haspopup=menu]'),item=Array.from(c?.querySelectorAll('[role=menuitem]')??[]).find(b=>b.textContent===${JSON.stringify(label)}&&!b.disabled);
+    if(!more||!item)return false;
+    more.click();item.click();return true;
+  })()`, `menu ${label}`);
   await click('Agents'); await click('New agent'); await formReady();
   await field('Name', 'Hermes Reverser'); await field('Instructions', 'Inspect local apps with evidence.');
   // A restricted list exercises both the global connector toggle and the agent PATCH.
-  await cdp.evaluate(`Array.from(document.querySelectorAll('.agent-form legend')).find(e=>e.textContent==='Connectors').parentElement.querySelector('input').click()`);
+  await on(`Array.from(document.querySelectorAll('.agent-form legend')).find(e=>e.textContent==='Connectors')?.parentElement.querySelector('input')`, 'e.click()', 'the Connectors toggle');
   await click('Create agent', `document.querySelector('.agent-form')`);
   const created = await until(async () => (await api.listAgents()).agents.find(a => a.name === 'Hermes Reverser'), 'created agent');
   const card = `document.querySelector('[data-agent-id="${created.id}"]')`;
@@ -86,11 +88,12 @@ test('create/edit/duplicate/delete an agent and run /rea with approvals and SSE 
   const copyCard = `document.querySelector('[data-agent-id="${copy.id}"]')`;
   await menu(copyCard, 'Delete…'); await click('Delete', `document.querySelector('dialog[open]')`);
   await until(async () => !(await api.listAgents()).agents.some(a => a.id === copy.id), 'copy deleted');
+  await wait(`!${copyCard}`, 'the deleted copy leaves the roster');
   await click('Chat', card);
   await wait(`document.querySelector('[aria-label="Chat agent"]')?.value===${JSON.stringify(created.id)}`);
   await fill('[aria-label="Message"]', '/');
   await wait(`!document.querySelector('.slash-picker').hidden && document.querySelector('.slash-picker').textContent.includes('/rea')`);
-  await cdp.evaluate(`Array.from(document.querySelectorAll('.slash-option')).find(b=>b.querySelector('strong').textContent==='/rea').click()`);
+  await on(`Array.from(document.querySelectorAll('.slash-option')).find(b=>b.querySelector('strong').textContent==='/rea')`, 'e.click()', 'the /rea option');
   await fill('[aria-label="Message"]', `/rea ${target}`); await click('Send');
   await wait(`document.querySelector('.connector-confirm')?.textContent.includes('Turn on rea for Hermes Reverser?')`);
   assert.equal((await api.getSettings()).config.mcp.servers.rea!.enabled, false);
@@ -99,9 +102,8 @@ test('create/edit/duplicate/delete an agent and run /rea with approvals and SSE 
   // Reload with a pending approval: the new SSE stream must replay run_start and the approval.
   await cdp.call('Page.reload');
   await wait(`document.querySelector('.nav-conn')?.textContent==='Connected'`);
-  await cdp.evaluate(`(()=>{const e=document.querySelector('[aria-label="Chat agent"]');e.value=${JSON.stringify(created.id)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-  await wait(`document.querySelector('.session-list .session')`);
-  await cdp.evaluate(`document.querySelector('.session-list .session').click()`);
+  await on(`document.querySelector('[aria-label="Chat agent"]')`, `e.value=${JSON.stringify(created.id)};e.dispatchEvent(new Event('change',{bubbles:true}))`, 'the chat agent select');
+  await on(`document.querySelector('.session-list .session')`, 'e.click()', 'the saved session');
   await wait(`document.querySelector('.approval')?.textContent.includes('mcp__rea__open_binary')`);
   assert.equal(await cdp.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Stop').hidden`), false);
   await click('Allow once', `document.querySelector('.approval')`);

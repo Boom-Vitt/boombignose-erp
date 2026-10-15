@@ -106,12 +106,20 @@ export async function openUi(t: TestContext, info: { port: number; token: string
   if (options.viewport) await page.call('Emulation.setDeviceMetricsOverride', { ...options.viewport, deviceScaleFactor: 1, mobile: false });
   await page.call('Page.navigate', { url: `http://127.0.0.1:${(server.address() as { port: number }).port}/${options.hash ?? ''}` });
   const wait = (expression: string, label = expression) => until(() => page.evaluate(expression), label);
-  const click = async (label: string, scope = 'document') => {
-    await wait(`Array.from((${scope})?.querySelectorAll('button,a') ?? []).some(b=>b.textContent===${JSON.stringify(label)} && !b.disabled)`);
-    await page.evaluate(`Array.from(${scope}.querySelectorAll('button,a')).find(b=>b.textContent===${JSON.stringify(label)}).click()`);
-  };
-  const fill = (selector: string, value: string) => page.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-  const field = (label: string, value: string, scope = 'document') => page.evaluate(`(()=>{const e=Array.from(${scope}.querySelectorAll('label')).find(l=>l.querySelector('.field-label')?.textContent===${JSON.stringify(label)}).querySelector('input,textarea,select');e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  // Each helper finds its target and acts in the same evaluate, and the bounded wait repeats only while the target is not there, so a re-render between two looks cannot leave a stale or null scope behind.
+  const click = (label: string, scope = 'document') => wait(`(() => {
+    const b = Array.from((${scope})?.querySelectorAll('button,a') ?? []).find(b => b.textContent === ${JSON.stringify(label)} && !b.disabled);
+    if (!b) return false;
+    b.click(); return true;
+  })()`, `click ${label}`);
+  const set = (found: string, value: string) => `(() => {
+    const e = ${found};
+    if (!e) return false;
+    e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('input', { bubbles: true })); return true;
+  })()`;
+  const fill = (selector: string, value: string) => wait(set(`document.querySelector(${JSON.stringify(selector)})`, value), `fill ${selector}`);
+  const field = (label: string, value: string, scope = 'document') => wait(
+    set(`Array.from((${scope})?.querySelectorAll('label') ?? []).find(l => l.querySelector('.field-label')?.textContent === ${JSON.stringify(label)})?.querySelector('input,textarea,select')`, value), `field ${label}`);
   if (options.shell !== false) await wait(`document.querySelector('.nav-conn')?.textContent==='Connected'`);
   return { cdp: page, wait, click, fill, field };
 }
