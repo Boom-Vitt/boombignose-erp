@@ -27,7 +27,7 @@ import { SelectField, type Option } from "./form-fields"
 const Schema = z.object({
   project_id: z.string().min(1, "Choose a project"),
   work_date: z.string().optional(),
-  hours: z.coerce.number().min(0, "Hours must be 0 or more"),
+  hours: z.coerce.number().min(1 / 60, "Log at least one minute").max(24, "Hours must be 24 or less"),
   billable: z.boolean(),
   rateBaht: z.union([z.coerce.number().min(0), z.literal("")]).optional(),
   notes: z.string().optional(),
@@ -124,6 +124,7 @@ export function LogTimeForm({
                   <Input
                     type="number"
                     min={0}
+                    max={24}
                     step="0.25"
                     inputMode="decimal"
                     name={field.name}

@@ -9,6 +9,7 @@ vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 import TimesheetsPage from '@/app/(app)/timesheets/page'
+import { logTime } from '@/app/(app)/timesheets/actions'
 import TemplatesPage from '@/app/(app)/templates/page'
 import TemplateDetailPage from '@/app/(app)/templates/[id]/page'
 import EditTemplatePage from '@/app/(app)/templates/[id]/edit/page'
@@ -60,4 +61,8 @@ it('month tiles total every entry this month, not just the 100 rows in the table
   } finally {
     vi.useRealTimers()
   }
+})
+
+it.each([0, 0.001, 25])('logging %s hours is rejected before any write', async hours => {
+  expect(await logTime({ project_id: 'project-A', hours })).toEqual({ error: 'Invalid input' })
 })

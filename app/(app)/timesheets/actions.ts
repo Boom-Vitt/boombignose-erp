@@ -38,7 +38,7 @@ const LogTime = z.object({
   project_id: z.string().min(1, "Project is required"),
   task_id: optionalId,
   work_date: optionalDate,
-  hours: z.coerce.number().min(0, "Hours must be 0 or more"),
+  hours: z.coerce.number().min(1 / 60, "Log at least one minute").max(24, "Hours must be 24 or less"),
   billable: z.coerce.boolean().default(true),
   rateBaht: optionalRate,
   notes: optionalString,
