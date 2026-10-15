@@ -734,4 +734,106 @@ describe("local stack manager", () => {
     expect(errText).toContain("3992")
     expect(errText).toMatch(/already in use|busy/i)
   })
+
+  it("serve reuses a healthy server on its port without building or starting another", async () => {
+    let out = ""
+    const touched: string[] = []
+    const code = await runServe({
+      erpDir: makeTempErpDir(true),
+      cacheDir: makeTempErpDir(false),
+      port: 3994,
+      runner: {
+        async exec(cmd: string) {
+          touched.push(cmd)
+          return { code: 0, stdout: "", stderr: "" }
+        },
+        spawn(cmd: string) {
+          touched.push(cmd)
+          throw new Error("must not spawn")
+        },
+      },
+      probeHealthy: async () => true,
+      checkPort: async () => false,
+      stdout: {
+        write(s: string) {
+          out += s
+        },
+      },
+      stderr: { write() {} },
+    })
+    expect(code).toBe(0)
+    expect(out).toBe("ready http://127.0.0.1:3994\n")
+    expect(touched).toEqual([])
+  })
+
+  it("a second serve on the same port waits for the first and reuses its server", async () => {
+    const erpDir = makeTempErpDir(true)
+    const cacheDir = makeTempErpDir(false)
+    const sha = "4".repeat(40)
+    mkdirSync(path.join(cacheDir, sha, ".next"), { recursive: true })
+    writeFileSync(path.join(cacheDir, sha, ".next", "BUILD_ID"), "b4")
+
+    let spawns = 0
+    let healthy = false
+    const fakeChild = new EventEmitter() as EventEmitter & {
+      kill: (sig?: string) => boolean
+    }
+    fakeChild.kill = (sig = "SIGTERM") => {
+      healthy = false
+      fakeChild.emit("exit", 0, sig)
+      return true
+    }
+    const runner = {
+      async exec(cmd: string, args: string[]) {
+        if (cmd === "git") return { code: 0, stdout: `${sha}\n`, stderr: "" }
+        if (args.includes("status")) {
+          return {
+            code: 0,
+            stdout:
+              'API_URL="http://127.0.0.1:54421"\nANON_KEY="a"\nSERVICE_ROLE_KEY="s"',
+            stderr: "",
+          }
+        }
+        return { code: 0, stdout: "", stderr: "" }
+      },
+      spawn() {
+        spawns++
+        setTimeout(() => {
+          healthy = true
+        }, 30)
+        return fakeChild
+      },
+    }
+    const outs = ["", ""]
+    const serve = (i: number) =>
+      runServe({
+        erpDir,
+        cacheDir,
+        port: 3995,
+        runner,
+        env: { PATH: "/usr/bin" },
+        checkPort: async () => !healthy,
+        probeHealthy: async () => healthy,
+        probeLogin: async () => healthy,
+        probeIntervalMs: 5,
+        isParentAlive: () => true,
+        stdout: {
+          write(s: string) {
+            outs[i] += s
+          },
+        },
+        stderr: { write() {} },
+      })
+
+    const first = serve(0)
+    const second = await serve(1)
+    expect(second).toBe(0)
+    expect(outs[1]).toBe("ready http://127.0.0.1:3995\n")
+    expect(spawns).toBe(1)
+    expect(existsSync(path.join(cacheDir, ".serve-3995.lock"))).toBe(true)
+
+    fakeChild.kill()
+    expect(await first).toBe(0)
+    expect(existsSync(path.join(cacheDir, ".serve-3995.lock"))).toBe(false)
+  })
 })

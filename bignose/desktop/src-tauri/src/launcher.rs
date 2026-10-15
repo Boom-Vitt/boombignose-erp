@@ -7,6 +7,7 @@ use serde::Serialize;
 use std::collections::VecDeque;
 use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::{BufRead, BufReader, ErrorKind, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,24 @@ const TAIL_LINES: usize = 12;
 /// The ERP's address; matches `site_url` in the ERP's supabase/config.toml.
 pub fn erp_url() -> String {
     format!("http://127.0.0.1:{ERP_PORT}")
+}
+
+/// True when 127.0.0.1:<port> answers `GET /login` with HTTP 200: a working ERP is already serving there.
+pub fn erp_healthy(port: u16) -> bool {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(500)) else { return false };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+    if stream.write_all(b"GET /login HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").is_err() {
+        return false;
+    }
+    let mut status_line = String::new();
+    BufReader::new(stream).read_line(&mut status_line).is_ok() && is_http_200(&status_line)
+}
+
+fn is_http_200(status_line: &str) -> bool {
+    let mut parts = status_line.split_whitespace();
+    parts.next().is_some_and(|v| v.starts_with("HTTP/")) && parts.next() == Some("200")
 }
 
 // ---- status shown by the startup screen
@@ -282,6 +301,21 @@ impl Launcher {
     fn sequence(&self, gen: u64, plan: &Plan, on_ready: &OnReady) {
         let mut log = open_log(&plan.home);
         let fail = |title: &str, out: &Outcome| self.set(gen, failure_from_output(title, &out.tail, &plan.erp_dir, &plan.home).into());
+        let ready_now = || {
+            self.set(gen, Status::Ready { url: erp_url_for(plan.port) });
+            if self.current(gen) {
+                on_ready();
+            }
+        };
+
+        // 0. a healthy ERP is already on the port (a terminal `pnpm local:serve`, an earlier app run): use it as is.
+        // It is not this run's child, so neither Retry nor Quit stops it.
+        if erp_healthy(plan.port) {
+            if let Some(f) = log.as_mut() {
+                let _ = writeln!(f, "reusing the healthy ERP on {}", erp_url_for(plan.port));
+            }
+            return ready_now();
+        }
 
         // 1. Docker
         self.set(gen, Status::Starting { step: "docker", detail: None });
@@ -326,10 +360,7 @@ impl Launcher {
         let out = match self.run_child(gen, cmd, &mut log, |l| {
             if l == ready {
                 announced = true;
-                self.set(gen, Status::Ready { url: erp_url_for(plan.port) });
-                if self.current(gen) {
-                    on_ready();
-                }
+                ready_now();
             } else if !announced {
                 // after `ready`, later output (Next warnings, request logs) goes to the log only: Ready stays until the child exits
                 self.set(gen, Status::Starting { step: "erp", detail: Some(short(l)) });
@@ -339,6 +370,10 @@ impl Launcher {
             Err(e) => return self.set(gen, Failure { title: "The ERP launcher did not start".into(), message: e }.into()),
         };
         if !self.current(gen) {
+            return;
+        }
+        // serve exits 0 after `ready` when it reused a server another process owns; Ready stays while that one answers
+        if announced && out.code == Some(0) && erp_healthy(plan.port) {
             return;
         }
         let title = if announced { "The ERP server stopped" } else { "The ERP server did not start" };
@@ -510,6 +545,11 @@ mod tests {
 
     // ---- the child handling, against a fake stack.mjs
 
+    /// A port nothing listens on, so the launcher's health check finds it closed.
+    fn free_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    }
+
     fn fake_plan(script: &str, port: u16) -> Plan {
         let erp = temp_dir("fake-erp");
         std::fs::create_dir_all(erp.join("scripts/local")).unwrap();
@@ -545,19 +585,20 @@ else if (cmd === 'serve') {
 
     #[test]
     fn launch_runs_doctor_up_serve_and_reports_ready() {
-        let plan = fake_plan(FAKE, 3187);
+        let plan = fake_plan(FAKE, free_port());
+        let (url, port) = (erp_url_for(plan.port), plan.port);
         let log_path = plan.home.join("logs/erp.log");
         let launcher = Launcher::default();
         let readied = Arc::new(AtomicUsize::new(0));
         let r = readied.clone();
         launcher.start_with(move || Ok(plan), Arc::new(move || { r.fetch_add(1, Ordering::SeqCst); }));
         let s = wait_for(&launcher, "ready", |s| matches!(s, Status::Ready { .. }));
-        assert_eq!(s, Status::Ready { url: "http://127.0.0.1:3187".into() });
+        assert_eq!(s, Status::Ready { url });
         assert_eq!(readied.load(Ordering::SeqCst), 1);
         assert!(launcher.running());
         // the key reached the child's environment, and the log has output but never the key
         let log = std::fs::read_to_string(&log_path).unwrap();
-        assert!(log.contains("key:set port:3187"));
+        assert!(log.contains(&format!("key:set port:{port}")));
         assert!(!log.contains("fake-key-4"));
         // quit: the serve child (and its group) goes away
         launcher.stop();
@@ -568,7 +609,8 @@ else if (cmd === 'serve') {
     fn ready_stays_ready_when_serve_keeps_logging() {
         // Next prints warnings and request logs after `ready`; none of them may push the status back to Starting
         let script = FAKE.replace("setInterval(() => { if (process.ppid === 1) process.exit(0); }, 200); // like stack.mjs: leave when the parent is gone", "for (let i = 1; i <= 3; i++) console.log('late ' + i); setInterval(() => { if (process.ppid === 1) process.exit(0); }, 200);");
-        let plan = fake_plan(&script, 3192);
+        let plan = fake_plan(&script, free_port());
+        let url = erp_url_for(plan.port);
         let log_path = plan.home.join("logs/erp.log");
         let launcher = Launcher::default();
         launcher.start_with(move || Ok(plan), Arc::new(|| {}));
@@ -579,18 +621,18 @@ else if (cmd === 'serve') {
             std::thread::sleep(Duration::from_millis(20));
         }
         std::thread::sleep(Duration::from_millis(300)); // the last line has been handled by now
-        assert_eq!(launcher.status(), Status::Ready { url: "http://127.0.0.1:3192".into() });
+        assert_eq!(launcher.status(), Status::Ready { url });
         launcher.stop();
     }
 
     #[test]
     fn docker_stopped_is_reported_not_failed() {
-        let mut plan = fake_plan(&FAKE.replace("process.env.FAKE_DOCKER ?? 'running'", "'stopped'"), 3188);
+        let mut plan = fake_plan(&FAKE.replace("process.env.FAKE_DOCKER ?? 'running'", "'stopped'"), free_port());
         plan.openrouter_key = None;
         let launcher = Launcher::default();
         launcher.start_with(move || Ok(plan), Arc::new(|| {}));
         assert_eq!(wait_for(&launcher, "docker", |s| matches!(s, Status::DockerStopped { .. })), Status::DockerStopped { installed: true });
-        let plan = fake_plan(&FAKE.replace("process.env.FAKE_DOCKER ?? 'running'", "'missing'"), 3189);
+        let plan = fake_plan(&FAKE.replace("process.env.FAKE_DOCKER ?? 'running'", "'missing'"), free_port());
         launcher.start_with(move || Ok(plan), Arc::new(|| {}));
         assert_eq!(wait_for(&launcher, "missing", |s| matches!(s, Status::DockerStopped { installed: false })), Status::DockerStopped { installed: false });
         launcher.stop();
@@ -600,11 +642,11 @@ else if (cmd === 'serve') {
     fn up_exit_3_means_docker_stopped_and_other_exits_fail_with_the_output() {
         let up3 = FAKE.replace("console.log('migrations applied');", "process.exit(3);");
         let launcher = Launcher::default();
-        let plan = fake_plan(&up3, 3190);
+        let plan = fake_plan(&up3, free_port());
         launcher.start_with(move || Ok(plan), Arc::new(|| {}));
         wait_for(&launcher, "docker via up", |s| matches!(s, Status::DockerStopped { installed: true }));
         let broken = FAKE.replace("console.log('migrations applied');", "console.error('migration 0026 failed'); process.exit(1);");
-        let plan = fake_plan(&broken, 3191);
+        let plan = fake_plan(&broken, free_port());
         launcher.start_with(move || Ok(plan), Arc::new(|| {}));
         match wait_for(&launcher, "failed", |s| matches!(s, Status::Failed { .. })) {
             Status::Failed { title, message } => {
@@ -613,6 +655,46 @@ else if (cmd === 'serve') {
             }
             other => panic!("{other:?}"),
         }
+        launcher.stop();
+    }
+
+    /// A tiny HTTP server on a free port that answers every request with `status`.
+    fn http_server(status: &'static str) -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for mut conn in listener.incoming().map_while(Result::ok) {
+                let mut first = String::new();
+                let _ = BufReader::new(&conn).read_line(&mut first);
+                let _ = write!(conn, "HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn health_check_wants_http_200_from_login() {
+        assert!(erp_healthy(http_server("200 OK")));
+        assert!(!erp_healthy(http_server("500 Internal Server Error")));
+        assert!(!erp_healthy(http_server("307 Temporary Redirect")));
+        assert!(!erp_healthy(free_port()));
+        assert!(is_http_200("HTTP/1.1 200 OK\r\n"));
+        assert!(!is_http_200("SSH-2.0 200"));
+    }
+
+    #[test]
+    fn a_healthy_erp_on_the_port_is_reused_without_starting_anything() {
+        // doctor would fail: reaching Ready proves no stack.mjs step ran
+        let mut plan = fake_plan(&FAKE.replace("process.env.FAKE_DOCKER ?? 'running'", "'stopped'"), http_server("200 OK"));
+        let url = erp_url_for(plan.port);
+        plan.openrouter_key = None;
+        let launcher = Launcher::default();
+        let readied = Arc::new(AtomicUsize::new(0));
+        let r = readied.clone();
+        launcher.start_with(move || Ok(plan), Arc::new(move || { r.fetch_add(1, Ordering::SeqCst); }));
+        assert_eq!(wait_for(&launcher, "ready", |s| matches!(s, Status::Ready { .. })), Status::Ready { url });
+        assert_eq!(readied.load(Ordering::SeqCst), 1);
+        assert!(!launcher.running(), "a reused server is not this run's child, so Quit leaves it alone");
         launcher.stop();
     }
 
