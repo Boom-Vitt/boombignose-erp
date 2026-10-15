@@ -82,6 +82,7 @@ export default async function TimesheetsPage() {
       .eq("org_id", ctx.orgId)
       .order("name", { ascending: true }),
   ])
+  if (entriesRes.error || monthRes.error || projectsRes.error) throw new Error("Timesheet data unavailable. Reload before relying on totals.")
 
   const entries = (entriesRes.data ?? []) as EntryRow[]
   const projects = (projectsRes.data ?? []) as Array<{ id: string; name: string }>

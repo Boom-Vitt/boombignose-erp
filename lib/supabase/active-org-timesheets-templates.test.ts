@@ -66,3 +66,13 @@ it('month tiles total every entry this month, not just the 100 rows in the table
 it.each([0, 0.001, 25])('logging %s hours is rejected before any write', async hours => {
   expect(await logTime({ project_id: 'project-A', hours })).toEqual({ error: 'Invalid input' })
 })
+
+it.each(['time_entries','projects'])('a failed %s read cannot show invented zero hours', async table => {
+  const client = state.client as ReturnType<typeof databaseFixture>
+  state.client = { from: (t: string) => {
+    const q = client.from(t)
+    if (t === table) q.then = (resolve, reject) => Promise.resolve({ data: null, error: { message: 'Unavailable' } }).then(resolve, reject)
+    return q
+  } }
+  await expect(TimesheetsPage()).rejects.toThrow('Timesheet data unavailable')
+})
