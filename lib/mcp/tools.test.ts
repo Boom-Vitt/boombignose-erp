@@ -92,6 +92,15 @@ describe("organization resolution", () => {
     expect(dataLayer.queries).toEqual([])
   })
 
+  it("an argument the tool does not define is refused, not silently ignored", async () => {
+    const clients = [{ id: "c1", org_id: ORG_A, name: "Acme" }]
+    await expect(run("list_clients", { client_id: "c1" }, { clients }).result).rejects.toThrow(
+      "Unknown argument for list_clients: client_id"
+    )
+    await expect(run("get_customer", { name: "Acme", email: "x" }, { clients }).result).rejects.toThrow("email")
+    expect((await run("list_clients", { org_id: ORG_A, limit: 5 }, { clients }).result).items).toHaveLength(1)
+  })
+
   it("an unknown tool fails after the org check, with no tenant query", async () => {
     const { dataLayer, result } = run("drop_tables", { org_id: ORG_A }, {})
     await expect(result).rejects.toThrow("Unknown tool: drop_tables")
