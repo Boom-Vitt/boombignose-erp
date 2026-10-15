@@ -21,6 +21,7 @@ export type Capability =
   | "invoice:delete"
   | "cost:delete"
   | "subscription:manage" // generate-now / delete a subscription
+  | "time:delete_any" // delete a teammate's time entry (own entries need no capability)
   | "payment:verify"
   | "audit:view" // view the audit log
 
@@ -43,6 +44,7 @@ export const CAPABILITY_ROLES: Record<Capability, Role[]> = {
   "invoice:delete": ALL_STAFF,
   "cost:delete": ALL_STAFF,
   "subscription:manage": ALL_STAFF,
+  "time:delete_any": ALL_STAFF,
   "audit:view": ALL_STAFF,
   "payment:verify": ALL_STAFF,
 }

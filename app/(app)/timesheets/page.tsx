@@ -2,6 +2,7 @@ import { Clock, Timer, Coins, Gauge } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { currentMonthKey, nextMonthStart, todayISO } from "@/lib/dates"
 import { formatTHB } from "@/lib/money"
 import {
@@ -214,12 +215,14 @@ export default async function TimesheetsPage() {
                         {value > 0 ? formatTHB(value) : "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <DeleteTimeEntryButton
-                          id={e.id}
-                          label={`${minutesToHours(e.minutes).toFixed(2)}h on ${
-                            e.projects?.name ?? "project"
-                          }`}
-                        />
+                        {e.user_id === ctx.userId || can(ctx.role, "time:delete_any") ? (
+                          <DeleteTimeEntryButton
+                            id={e.id}
+                            label={`${minutesToHours(e.minutes).toFixed(2)}h on ${
+                              e.projects?.name ?? "project"
+                            }`}
+                          />
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   )

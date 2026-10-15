@@ -101,13 +101,16 @@ export async function deleteTimeEntry(
   if (!parsed.success) return { error: "Invalid input" }
 
   const supabase = await createSupabaseClient()
-  const { error } = await supabase
+  // RLS lets members delete only their own entries; a refused row is just absent, not an error.
+  const { data: deleted, error } = await supabase
     .from("time_entries")
     .delete()
     .eq("id", parsed.data.id)
     .eq("org_id", ctx.orgId)
+    .select("id")
 
   if (error) return { error: error.message }
+  if (!deleted?.length) return { error: "You can only delete your own time entries." }
 
   await writeAudit(ctx, {
     entity: "time_entry",
