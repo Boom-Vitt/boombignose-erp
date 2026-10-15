@@ -141,7 +141,8 @@ export async function ingestMedia(
     else if (ev.kind === 'audio') Object.assign(record, await x.audio(path));
   } catch (e) {
     clearTimeout(timer);
-    record.error = (e instanceof Error ? e.message : String(e)).replaceAll(o.accessToken, '***').slice(0, 300);
+    const msg = e instanceof Error ? e.message : String(e);
+    record.error = (o.accessToken ? msg.replaceAll(o.accessToken, '***') : msg).slice(0, 300); // '' would match between every char
   }
   try {
     mkdirSync(o.dir, { recursive: true, mode: 0o700 });

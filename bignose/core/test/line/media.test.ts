@@ -280,6 +280,12 @@ test('download failures: non-200, no body, rejected fetch, cut stream, empty and
   assert.equal(records(dir).length, 7);
 });
 
+test('no access token yet: the failure reads as sent, not interleaved with redaction marks', async (t) => {
+  const dir = tmp(t), { fetchImpl } = contentFetch(() => bytesResponse({}, null, 401));
+  const r = await ingestMedia(imageEvent, { dir, accessToken: '', fetchImpl });
+  assert.equal(r.error, 'content download failed: 401');
+});
+
 test('abort: the caller signal and a timeout guard the request; aborting mid-stream removes the partial file', async (t) => {
   const dir = tmp(t), ctl = new AbortController();
   const { fetchImpl, inits } = contentFetch((init) => new Response(new ReadableStream<Uint8Array>({
