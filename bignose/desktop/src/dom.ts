@@ -37,7 +37,7 @@ export function toast(message: string, kind: 'info' | 'error' = 'info'): void {
 }
 
 /** Runs `fn` with `btn` disabled and shows a failure as a toast. */
-export async function guarded(fn: () => Promise<unknown>, btn?: HTMLButtonElement): Promise<boolean> {
+export async function guarded(fn: () => Promise<unknown>, btn?: { disabled: boolean }): Promise<boolean> {
   if (btn) btn.disabled = true;
   try { await fn(); return true; }
   catch (e) { toast(errMsg(e), 'error'); return false; }
@@ -47,17 +47,6 @@ export async function guarded(fn: () => Promise<unknown>, btn?: HTMLButtonElemen
 export function btn(label: string, onClick: (b: HTMLButtonElement) => void, kind = ''): HTMLButtonElement {
   const b = el('button', { type: 'button', class: `btn ${kind}`.trim() }, label);
   b.addEventListener('click', () => onClick(b));
-  return b;
-}
-
-/** Destructive button that asks to be clicked twice. */
-export function confirmBtn(label: string, onConfirm: (b: HTMLButtonElement) => void, extra = '', again = 'Click again to confirm'): HTMLButtonElement {
-  let timer = 0;
-  const b = btn(label, () => {
-    if (timer) { window.clearTimeout(timer); timer = 0; b.textContent = label; onConfirm(b); return; }
-    b.textContent = again;
-    timer = window.setTimeout(() => { timer = 0; b.textContent = label; }, 3000);
-  }, `danger ${extra}`.trim());
   return b;
 }
 
@@ -183,6 +172,13 @@ export function renderText(into: HTMLElement, text: string): void {
     }
   }));
   setLang(into, text);
+}
+
+/** A fresh empty element inside `container`, so a late load from a page the user already left writes into a detached element. */
+export function freshHost(container: HTMLElement): HTMLElement {
+  const host = el('div');
+  container.replaceChildren(host);
+  return host;
 }
 
 /** Loads data into a pane with a loading state and a retry on failure. */

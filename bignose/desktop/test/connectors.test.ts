@@ -183,7 +183,7 @@ function mcpPane(servers: { name: string; connected: boolean; enabled?: boolean;
   }) as typeof fetch });
   const pane = new TestNode('div');
   mountConnectors(pane as unknown as HTMLElement, api);
-  const card = (name: string) => pane.querySelectorAll('section').find((s) => s.querySelector('h3')!.textContent.startsWith(name))!;
+  const card = (name: string) => pane.querySelectorAll('.connector').find((s) => s.attrs['data-name'] === name)!;
   const button = (node: TestNode, label: string) => node.querySelectorAll('button').find((b) => b.textContent === label);
   return { pane, patches, card, button };
 }
@@ -209,4 +209,22 @@ test('Save selection is hidden while the connector is not connected', async (t) 
   h.button(h.card('live'), 'None')!.fire('click');
   h.button(h.card('live'), 'Save selection')!.fire('click'); await flush();
   assert.deepEqual(h.patches, [{ path: '/api/mcp/live', body: { tools: [] } }], 'a deliberate None on a connected connector still saves, and nothing else was saved');
+});
+
+test('a connector is a row with a switch: it names its state, turns on and off through the daemon, and the add form is not part of the list', async (t) => {
+  t.after(installDom());
+  const h = mcpPane([{ name: 'rea', connected: false, enabled: false }, { name: 'live', connected: true, tools: [{ name: 'echo', selected: true }] } as never, { name: 'boot', connected: false, starting: true }],
+    { live: [{ name: 'echo', selected: true }] });
+  await flush();
+  const state = (name: string) => h.card(name).querySelectorAll('.badge').map((b) => b.textContent);
+  assert.ok(state('rea').includes('Off') && state('rea').includes('Built in'));
+  assert.ok(state('live').includes('Connected')); assert.ok(state('boot').includes('Starting…'));
+  assert.match(h.card('live').textContent, /1 tools/);
+  const switchOf = (name: string) => h.card(name).querySelectorAll('input').find((i) => i.className.includes('switch'))!;
+  assert.equal(switchOf('rea').checked, false); assert.equal(switchOf('live').checked, true);
+  switchOf('rea').checked = true; switchOf('rea').fire('change'); await flush();
+  assert.deepEqual(h.patches, [{ path: '/api/mcp/rea', body: { enabled: true } }]);
+  assert.ok(h.button(h.card('live'), 'Delete'));
+  assert.equal(h.button(h.card('rea'), 'Delete'), undefined, 'the built-in connector cannot be deleted');
+  assert.equal(h.pane.querySelector('form'), null, 'the add form lives under More options');
 });

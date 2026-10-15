@@ -103,6 +103,10 @@ export interface LineStatus {
   enabled: boolean; running: boolean; port: number; publicUrl?: string; webhookUrl?: string;
   healthUrl?: string; warnings: string[];
   tokenSet: boolean; secretSet: boolean; lastEventAt?: Time; lastError?: string;
+  /** The agent that answers LINE. */
+  agentId?: string;
+  /** Senders the allowlist turned away; the core does not report them yet, so the LINE tab shows the list only when it is there. */
+  blocked?: { id: string; kind: string; at: Time }[];
 }
 export interface LineConnectResult {
   ok: boolean; bot?: { displayName: string; basicId: string }; webhookUrl?: string;

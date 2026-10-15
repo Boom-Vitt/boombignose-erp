@@ -497,14 +497,13 @@ pre.code code { display: block; padding: var(--sp-3); overflow-x: auto; white-sp
 .avatar-field input { width: 72px; text-align: center; font-size: 16px; }
 .menu-note { padding: 2px 10px 4px; font-size: var(--fs-xs); color: var(--muted); }
 .page-head > div { flex: 1; min-width: 0; }
-/* agent form: the rows that sit inside More options. Own rules, so removing the phase1 bridge does not touch them. */
+/* agent form: the rows that sit inside More options */
 .agent-form fieldset { min-width: 0; margin: 0; padding: 10px var(--sp-4); border: 0; border-radius: 0; }
 .agent-form legend { padding: 0; font-weight: var(--fw-medium); }
 .agent-form .check { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
 .agent-form input[type=checkbox] { width: auto; min-height: 0; accent-color: var(--accent); }
 .agent-picks { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-2); }
 .agent-rules { display: grid; gap: 6px; padding: 10px var(--sp-4); }
-.agent-form .kv { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; }
 
 /* schedules */
 .when { display: flex; gap: var(--sp-2); }
@@ -581,46 +580,71 @@ dialog.confirm p { margin-top: var(--sp-2); color: var(--muted); }
   .os-panel .toggle-rail { display: inline; }
 }
 
-/* phase1 bridge: styles TODAY's Agents and Settings DOM (classes agents.ts and settings/* still emit) with the new tokens.
-   Chat and the shell no longer need it. The stream that moves Agents and Settings to the new structure deletes everything
-   below this line. */
-
-/* old settings pages: h2 page title, h3 card titles, padded cards, loose helpers */
-.settings > div > h2, .settings > h2 { font-size: var(--fs-xl); font-weight: var(--fw-semibold); line-height: var(--lh-tight); margin-bottom: var(--sp-1); }
-.settings > div > p.muted, .settings > p.muted { margin-bottom: var(--sp-4); }
-.settings h3 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
-/* a legacy card with no row children (agent card, memory note, schedule, connector) stays a padded card */
-.card:not(:has(> .field, > .grid2, > .row, > .agent-row, > summary)) { display: grid; gap: 6px; padding: var(--sp-4); }
-.card.card:not(:has(> .field, > .grid2, > .row, > .agent-row, > summary)) > :not([hidden]) ~ :not([hidden]) { border-top: 0; }
-/* a legacy form card mixes fields with h3 / actions / notes: pad the non-row children */
-.card:has(> .field, > .grid2) > :not(.field, .row, .grid2, summary) { padding: 10px var(--sp-4); margin: 0; }
-.card .grid2 > div:not([class]) > .key-state { padding: 10px var(--sp-4) 0; }
-.card > fieldset { margin: 0; border: 0; border-radius: 0; }
-.cards { display: grid; gap: var(--sp-3); margin-top: var(--sp-3); }
-.actions, .badges, .card-head, .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-.card-head { justify-content: space-between; }
-.toolbar > .field { flex: 1 1 200px; padding: 0; }
+/* ================= Settings tabs: Model, LINE, Tools, Memory, Schedules ================= */
+.hint { font-size: var(--fs-xs); color: var(--muted); }
+.pad { padding: 10px var(--sp-4); }
+.page-stack { display: grid; gap: var(--sp-4); }
+.page-stack > .page-sub { margin-bottom: 0; }
+.page-sub > span { flex: 1; min-width: 0; }
+.page-sub strong { color: var(--text); font-weight: var(--fw-semibold); }
+button.back { border: 0; background: none; font: inherit; cursor: pointer; }
+.rows > :not([hidden]) ~ :not([hidden]) { border-top: 1px solid var(--line); } /* a list of rows inside a card, or a form made of rows */
+.card-title { padding: 10px var(--sp-4); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: 10px var(--sp-4); }
 .result { font-size: var(--fs-xs); color: var(--muted); }
-.result.ok { color: var(--ok); } .result.bad { color: var(--bad); }
-.check { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
-input[type=checkbox]:not(.switch) { width: auto; min-height: 0; accent-color: var(--accent); }
-.btn.block { width: 100%; }
-.field > .btn { justify-self: start; margin-top: 6px; }
-.key-row, .hook-row { border-top: 1px solid var(--line); }
-.key-state { margin-bottom: 6px; }
-.hook-list, .kv-rows { display: grid; gap: 6px; }
-.kv { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; }
-.split { display: grid; grid-template-columns: 240px 1fr; gap: var(--sp-4); align-items: start; }
-.plain-list { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: grid; gap: var(--sp-1); }
+.result.ok { color: var(--ok); } .result.warn { color: var(--warn); } .result.bad { color: var(--bad); }
+.row .result { font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+.row-sub p { margin: 2px 0; }
+.row-sub .notice { margin-top: 4px; }
+.row-sub .status.bad { color: var(--bad); }
 .note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.spacer { flex: 1; }
+.row-menu { position: relative; }
+input[type=checkbox]:not(.switch) { width: auto; min-height: 0; accent-color: var(--accent); }
+.field > .btn { margin-top: 6px; }
+.field > .field-label { margin-bottom: 6px; }
+.kv, .kv-rows { display: grid; gap: 6px; }
+.kv { grid-template-columns: 1fr 1.4fr auto; }
+.agent-rules:empty { display: none; }
+
+/* Model */
+.test-icon { display: grid; place-items: center; width: 16px; flex: none; }
+.test-icon:empty { display: none; }
+pre.diag { margin: 0; padding: 10px var(--sp-4); max-height: 260px; overflow: auto; border-top: 1px solid var(--line); background: var(--code-bg);
+  font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* LINE */
+.line-step .row-text { min-width: 0; }
+.line-warnings { display: grid; gap: var(--sp-2); padding: 10px var(--sp-4); }
+.line-warnings:empty { display: none; }
+.people:empty { display: none; }
+.row code.id { font-size: 12px; }
+
+/* Tools: add-ons, rules, hooks */
+.connector-name { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-weight: var(--fw-medium); }
+.addon-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--sp-2); }
+.addon-actions .btn { margin-left: -8px; }
 .tools-panel { border-top: 1px solid var(--line); }
-.tool-picks { max-height: 320px; overflow-y: auto; margin-top: var(--sp-2); display: grid; gap: 2px; }
+.tool-picks { max-height: 320px; overflow-y: auto; display: grid; gap: 2px; padding: 0 var(--sp-4) var(--sp-3); }
 .tool-pick { display: grid; grid-template-columns: auto 1fr; column-gap: var(--sp-2); padding: 4px 6px; border-radius: var(--r-sm); cursor: pointer; }
 .tool-pick:hover { background: var(--hover); }
 .tool-pick .hint { grid-column: 2; }
 .tool-pick-name { font: 12px var(--font-mono); }
-fieldset { margin: var(--sp-2) 0; padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); }
-.pad { padding: 10px var(--sp-3); }
-.card + .card, .card + form.card, form.card + .card { margin-top: var(--sp-4); }
-.card > .check { display: flex; }
-.cards > .card + .card { margin-top: 0; }
+.hook-row { border-top: 1px solid var(--line); }
+.hooks-event + .hooks-event { border-top: 1px solid var(--line); }
+
+/* Skills (opened from Tools) */
+.split { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
+.skill-pick { width: 100%; border: 0; background: none; text-align: left; cursor: pointer; }
+.skill-pick:hover { background: var(--hover); }
+.skill-pick .row-text { display: block; }
+.skill-name { display: block; font-weight: var(--fw-medium); }
+.skill-pick .row-sub { display: block; }
+.skill-list > .skill-pick:first-child { border-radius: var(--r-lg) var(--r-lg) 0 0; }
+
+/* Memory and Schedules */
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.toolbar > .field { flex: 1 1 180px; padding: 0; }
+.toolbar .field > label { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.note { min-width: 0; }
+.note > .field { padding-bottom: 0; }
