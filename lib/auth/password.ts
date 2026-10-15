@@ -16,6 +16,10 @@
 
 export const PASSWORD_MIN_LENGTH = 10
 
+/** A recovery link or session has no use once dead; the raw Supabase reason is not actionable. */
+export const EXPIRED_RESET_MESSAGE =
+  "This reset link has expired or was already used. Request a new one below, and open it in this browser."
+
 export type PasswordCheck = {
   /** True only when every policy rule is satisfied. */
   ok: boolean

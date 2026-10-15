@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { EXPIRED_RESET_MESSAGE } from "@/lib/auth/password"
 import { safeReturnPath } from "@/lib/supabase/redirect"
 
 /**
@@ -58,10 +59,6 @@ export async function GET(request: NextRequest) {
   const message = searchParams.get("error_description") ?? "Invalid or expired confirmation link."
   return failureOrExistingSession(request, message, next, type)
 }
-
-/** A recovery link has no use once dead; the raw Supabase reason is not actionable. */
-const EXPIRED_RESET_MESSAGE =
-  "This reset link has expired or was already used. Request a new one below, and open it in this browser."
 
 /** Reusing a consumed link must not discard an already authenticated session. */
 async function failureOrExistingSession(

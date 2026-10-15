@@ -74,10 +74,11 @@ it('signed-out forgot-password is public', async () => {
  state.user=null
  expect((await updateSession(new NextRequest('https://app.example.test/forgot-password'))).headers.get('location')).toBeNull()
 })
-it('signed-out reset form requires the recovery session', async () => {
+it('signed-out reset form offers a new reset link instead of sign-in', async () => {
  state.user=null
- const res=await updateSession(new NextRequest('https://app.example.test/reset-password'))
- expect(res.headers.get('location')).toBe('https://app.example.test/login?redirect=%2Freset-password')
+ const location=new URL((await updateSession(new NextRequest('https://app.example.test/reset-password'))).headers.get('location')!)
+ expect(location.pathname).toBe('/forgot-password')
+ expect(location.searchParams.get('error')).toMatch(/expired/)
 })
 it('signed-out authenticator setup asks for sign-in first', async () => {
  state.user=null

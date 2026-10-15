@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { MFA_PATH, mfaPath, needsMfa } from "@/lib/auth/mfa"
+import { EXPIRED_RESET_MESSAGE } from "@/lib/auth/password"
 import { safeReturnPath } from "@/lib/supabase/redirect"
 
 import type { Database } from "@/lib/types/database"
@@ -61,6 +62,13 @@ export async function updateSession(request: NextRequest) {
     const response = NextResponse.redirect(url)
     supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie))
     return response
+  }
+
+  // Without its recovery session the reset form cannot work; offer a new link instead of sign-in.
+  if (!user && pathname === "/reset-password") {
+    const url = new URL("/forgot-password", request.url)
+    url.searchParams.set("error", EXPIRED_RESET_MESSAGE)
+    return redirectWithSession(url)
   }
 
   if (!user && (!isPublic(pathname) || pathname === MFA_PATH)) {
