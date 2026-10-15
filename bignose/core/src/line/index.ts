@@ -5,8 +5,11 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { LineConfig } from '../types.ts';
+import { ingestMedia } from './media.ts';
+import type { MediaKind, MediaOptions, MediaRecord, SourceType } from './media.ts';
 export { lineBotInfo, setLineWebhook, lineWebhookActive, testLineWebhook, publicUrlProblem, webhookUrlFor } from './connect.ts';
 export type { LineApiOptions } from './connect.ts';
+export type { MediaOptions, MediaRecord } from './media.ts';
 
 const MAX_BODY = 1024 * 1024;        // 1 MiB
 const CHUNK = 4500;                  // characters per text message
@@ -24,6 +27,8 @@ export interface LineGatewayOptions {
   onMessage: (m: { to: string; userId: string; text: string }, signal: AbortSignal) => Promise<string>; // signal: the gateway closed
   fetchImpl?: typeof fetch;
   apiBase?: string;
+  media?: MediaOptions;              // where image/video/audio/file messages are stored; unset = media is ignored
+  onMedia?: (r: MediaRecord) => void;
   seen?: Set<string>;
   now?: () => number;
   timers?: { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(handle: unknown): void };
@@ -37,8 +42,8 @@ export interface LineStatus {
 type LineMessage = Record<string, unknown>;
 interface Source { type?: string; userId?: unknown; groupId?: unknown; roomId?: unknown }
 interface LineEvent {
-  type?: string; webhookEventId?: unknown; replyToken?: unknown; source?: Source;
-  message?: { type?: string; text?: unknown }; postback?: { data?: unknown };
+  type?: string; webhookEventId?: unknown; replyToken?: unknown; source?: Source; timestamp?: unknown;
+  message?: { type?: string; text?: unknown; id?: unknown; fileName?: unknown }; postback?: { data?: unknown };
 }
 interface Chat { token?: { value: string; at: number }; queue: (() => Promise<void>)[]; busy: boolean }
 interface Pending { id: string; to: string; state: PendingState; text?: string; delivered: number; sending?: boolean }
@@ -264,13 +269,31 @@ export function createLineGateway(options: LineGatewayOptions) {
 
   // ---- events
 
-  function resolveChat(src: Source | undefined): { to: string; userId: string; allowed: boolean } | undefined {
+  // Download, store and extract in the background (not in the chat queue: a big video must not hold up text runs).
+  // The acknowledgement goes through the queue, and only while LINE is enabled.
+  function takeMedia(chat: { to: string; userId: string; sourceType: SourceType }, ev: LineEvent, kind: MediaKind): void {
+    const media = opts.media;
+    if (!media || typeof ev.message?.id !== 'string') return;
+    void ingestMedia({
+      messageId: ev.message.id, kind, sourceType: chat.sourceType, sourceId: chat.to, userId: chat.userId,
+      timestamp: typeof ev.timestamp === 'number' ? ev.timestamp : undefined,
+      fileName: typeof ev.message.fileName === 'string' ? ev.message.fileName : undefined,
+    }, { ...media, accessToken: opts.accessToken, fetchImpl, signal: closing.signal, now }).then((r) => {
+      if (r.error) fail(new Error(`LINE media ${r.messageId}: ${r.error}`));
+      opts.onMedia?.(r);
+      if (r.error || closed || !opts.config.enabled) return;
+      const what = kind === 'image' ? 'รูป' : kind === 'video' ? 'วิดีโอ' : kind === 'audio' ? 'เสียง' : 'ไฟล์';
+      enqueue(chat.to, () => say(chat.to, `รับ${what}แล้ว บันทึกไว้เรียบร้อยครับ`).then(() => {}));
+    }, fail);
+  }
+
+  function resolveChat(src: Source | undefined): { to: string; userId: string; allowed: boolean; sourceType: SourceType } | undefined {
     if (!src) return undefined;
     const userId = typeof src.userId === 'string' ? src.userId : '';
     const { users, groups, rooms } = opts.config.allow;
-    if (src.type === 'user' && userId) return { to: userId, userId, allowed: users.includes(userId) };
-    if (src.type === 'group' && typeof src.groupId === 'string') return { to: src.groupId, userId, allowed: groups.includes(src.groupId) };
-    if (src.type === 'room' && typeof src.roomId === 'string') return { to: src.roomId, userId, allowed: rooms.includes(src.roomId) };
+    if (src.type === 'user' && userId) return { to: userId, userId, allowed: users.includes(userId), sourceType: 'user' };
+    if (src.type === 'group' && typeof src.groupId === 'string') return { to: src.groupId, userId, allowed: groups.includes(src.groupId), sourceType: 'group' };
+    if (src.type === 'room' && typeof src.roomId === 'string') return { to: src.roomId, userId, allowed: rooms.includes(src.roomId), sourceType: 'room' };
     return undefined;
   }
 
@@ -293,10 +316,7 @@ export function createLineGateway(options: LineGatewayOptions) {
       const text = ev.message!.text as string;
       enqueue(chat.to, () => runMessage(chat.to, chat.userId, text));
     } else if (isMedia) {
-      // Media bytes are not fetched yet (needs content API + store). Acknowledge so groups/OA do not look dead.
-      const kind = String(msgType);
-      enqueue(chat.to, () => say(chat.to,
-        `รับ${kind === 'image' ? 'รูป' : kind === 'video' ? 'วิดีโอ' : kind === 'audio' ? 'เสียง' : 'ไฟล์'}แล้วครับ — ตอนนี้ยังประมวลผลมีเดียไม่ได้ ช่วยพิมพ์ข้อความสั้น ๆ แทนได้ไหม`).then(() => {}));
+      takeMedia(chat, ev, msgType as MediaKind);
     } else {
       onTap(chat.to, chat.userId, ev.postback!.data as string); // taps bypass the queue: a run may be waiting on this very answer
     }

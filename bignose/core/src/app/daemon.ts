@@ -69,7 +69,7 @@ export async function startDaemon(options: DaemonOptions = {}) {
         catch (e) { lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); } // the old listener stays up; retry on the next reload
       } else {
         const gateway = createLineGateway({ config: structuredClone(config.line), channelSecret, accessToken,
-          onMessage: (m, signal) => runtime.lineMessage(m, signal), seen, ...options.lineOptions });
+          onMessage: (m, signal) => runtime.lineMessage(m, signal), seen, media: { dir: paths(home).lineMedia }, ...options.lineOptions });
         try { await gateway.listen(linePort()); line = gateway; }
         catch (e) { await gateway.close(); lineFingerprint = ''; lineError = runtime.clean(e instanceof Error ? e.message : String(e)); }
       }

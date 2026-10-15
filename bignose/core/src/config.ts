@@ -32,6 +32,7 @@ export function paths(home: string = homeDir()) {
     skills: join(home, 'skills'),
     daemon: join(home, 'daemon.json'),
     logs: join(home, 'logs'),
+    lineMedia: join(home, 'line-media'),
   };
 }
 
