@@ -32,7 +32,7 @@ const Schema = z.object({
   name: z.string().min(1, "Name is required"),
   client_id: z.string().min(1, "Choose a client"),
   project_id: z.string().optional(),
-  amountBaht: z.coerce.number().min(0, "Amount must be 0 or more"),
+  amountBaht: z.coerce.number().positive("Amount must be more than 0"),
   interval: z.enum(["weekly", "monthly", "quarterly", "yearly"]),
   start_date: z.string().optional(),
   notes: z.string().optional(),

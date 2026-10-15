@@ -87,3 +87,25 @@ describe("subscription action boundaries", () => {
     expect(await updateSubscription({ ...input, start_date: "2026-08-01" })).toEqual({ error: "read failed" })
   })
 })
+
+describe("subscription amount and project checks", () => {
+  it("rejects a zero amount and sub-satang decimals instead of rounding them", async () => {
+    expect(await createSubscription({ ...input, amountBaht: 0 })).toEqual({ error: "Invalid input" })
+    expect(await createSubscription({ ...input, amountBaht: "100.005" })).toEqual({ error: "Invalid input" })
+    expect(state.calls).toEqual([])
+  })
+  it("refuses a project that belongs to another client, which billing would never accept", async () => {
+    const writes: string[] = []
+    state.client = createClient<Database>("http://127.0.0.1:55501", "test-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (url, init) => {
+        if ((init?.method ?? "GET") !== "GET") { writes.push(String(url)); return Response.json({}) }
+        return Response.json([{ client_id: "55555555-5555-4555-8555-555555555555" }])
+      } },
+    })
+    const project_id = "66666666-6666-4666-8666-666666666666"
+    expect((await createSubscription({ ...input, project_id })).error).toContain("belong to the selected client")
+    expect((await updateSubscription({ ...input, project_id })).error).toContain("belong to the selected client")
+    expect(writes).toEqual([])
+  })
+})

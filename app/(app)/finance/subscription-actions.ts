@@ -6,10 +6,11 @@ import { z } from "zod"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
-import { bahtToSatang, formatTHBWhole } from "@/lib/money"
+import { formatTHBWhole } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
 import { generateSubscriptionOccurrence } from "@/lib/billing/generate"
+import { serviceAmountSatang } from "@/lib/workflows/service"
 
 const RECURRING_INTERVALS = ["weekly", "monthly", "quarterly", "yearly"] as const
 const SUBSCRIPTION_STATUSES = ["active", "paused", "cancelled"] as const
@@ -33,9 +34,30 @@ const optionalDate = z
   .optional()
   .transform((v) => (v ? v : undefined))
 
-const amountBaht = z.coerce.number().min(0).refine(value => {
-  try { bahtToSatang(value); return true } catch { return false }
-}, "Amount exceeds safe satang bounds")
+// Exact decimal parse (a float would round 100.005 silently); billing needs at least 1 satang.
+const amountBaht = z.union([z.string(), z.number()]).refine((value) => {
+  try { return serviceAmountSatang(value) > 0 } catch { return false }
+}, "Enter an amount over 0 with up to two decimals")
+
+type Db = Awaited<ReturnType<typeof createSupabaseClient>>
+
+/** Billing refuses a project of another client, so such a subscription would never generate. */
+async function projectClientError(
+  supabase: Db,
+  orgId: string,
+  projectId: string | null,
+  clientId: string
+): Promise<string | null> {
+  if (!projectId) return null
+  const { data, error } = await supabase
+    .from("projects")
+    .select("client_id")
+    .eq("id", projectId)
+    .eq("org_id", orgId)
+    .maybeSingle()
+  if (error) return "Unable to check the project. Please try again."
+  return data?.client_id === clientId ? null : "The project must belong to the selected client."
+}
 
 // ---------------------------------------------------------------------------
 // Create
@@ -67,6 +89,8 @@ export async function createSubscription(
   const start = d.start_date ?? todayISO()
 
   const supabase = await createSupabaseClient()
+  const projectError = await projectClientError(supabase, ctx.orgId, d.project_id, d.client_id)
+  if (projectError) return { error: projectError }
   const { data, error } = await supabase
     .from("subscriptions")
     .insert({
@@ -74,7 +98,7 @@ export async function createSubscription(
       client_id: d.client_id,
       project_id: d.project_id,
       name: d.name,
-      amount_satang: bahtToSatang(d.amountBaht),
+      amount_satang: serviceAmountSatang(d.amountBaht),
       interval: d.interval,
       status: "active",
       start_date: start,
@@ -91,7 +115,7 @@ export async function createSubscription(
     entity: "subscription",
     entityId: data.id,
     action: "created",
-    summary: `Created subscription ${d.name} (${formatTHBWhole(bahtToSatang(d.amountBaht))}/${d.interval})`,
+    summary: `Created subscription ${d.name} (${formatTHBWhole(serviceAmountSatang(d.amountBaht))}/${d.interval})`,
   })
 
   revalidatePath("/finance/subscriptions")
@@ -127,6 +151,8 @@ export async function updateSubscription(
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
+  const projectError = await projectClientError(supabase, ctx.orgId, d.project_id, d.client_id)
+  if (projectError) return { error: projectError }
   // The billing schedule is anchored on the start date and users cannot move next_run_date,
   // so a new start would leave every scheduled run rejected by generate_subscription_occurrence.
   // shortcut: refuses the edit, upgrade to re-anchoring next_run_date in guard_subscription_schedule (migration) if users need it.
@@ -148,7 +174,7 @@ export async function updateSubscription(
       client_id: d.client_id,
       project_id: d.project_id,
       name: d.name,
-      amount_satang: bahtToSatang(d.amountBaht),
+      amount_satang: serviceAmountSatang(d.amountBaht),
       interval: d.interval,
       start_date: d.start_date ?? undefined,
       notes: d.notes ?? null,
