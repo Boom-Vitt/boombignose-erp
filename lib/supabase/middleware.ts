@@ -78,7 +78,7 @@ export async function updateSession(request: NextRequest) {
 
   // Enrollment is a one-time step; a second factor would only confuse the challenge page.
   if (pathname === "/setup-2fa" && user?.factors?.some((f) => f.status === "verified")) {
-    return redirectWithSession(new URL("/dashboard", request.url))
+    return redirectWithSession(new URL(safeReturnPath(request.nextUrl.searchParams.get("redirect")), request.url))
   }
 
   // Preserve local invitation destinations when already signed in.

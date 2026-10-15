@@ -8,7 +8,7 @@ import { toast } from "sonner"
 
 import { mfaPath, needsMfa } from "@/lib/auth/mfa"
 import { createClient } from "@/lib/supabase/client"
-import { safeReturnPath } from "@/lib/supabase/redirect"
+import { safeReturnPath, withReturnPath } from "@/lib/supabase/redirect"
 import { AuthShell } from "@/components/auth-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -108,7 +108,7 @@ function LoginForm() {
           ) : null}
           <p className="text-muted-foreground text-center text-xs">
             New to BoomBigNose?{" "}
-            <Link href="/signup" className="erp-auth-link">
+            <Link href={withReturnPath("/signup", params.get("redirect"))} className="erp-auth-link">
               Create an account
             </Link>
           </p>

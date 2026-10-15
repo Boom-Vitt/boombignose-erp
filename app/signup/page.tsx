@@ -1,13 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { CheckCircle2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { signUp } from "@/app/signup/actions"
 import { validatePassword } from "@/lib/auth/password"
+import { withReturnPath } from "@/lib/supabase/redirect"
 import { AuthShell } from "@/components/auth-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,8 +21,10 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter()
+  // An invitation link sends invitees here via sign-in; keep it through 2FA setup.
+  const returnTo = useSearchParams().get("redirect")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -51,7 +54,7 @@ export default function SignupPage() {
       return
     }
     if (!result.requiresConfirmation) {
-      router.push("/setup-2fa")
+      router.push(withReturnPath("/setup-2fa", returnTo))
       router.refresh()
       return
     }
@@ -76,7 +79,7 @@ export default function SignupPage() {
           <Button
             variant="outline"
             className="w-full"
-            render={<Link href="/login" />}
+            render={<Link href={withReturnPath("/login", returnTo)} />}
           >
             Back to sign in
           </Button>
@@ -146,12 +149,20 @@ export default function SignupPage() {
           </Button>
           <p className="text-muted-foreground text-center text-xs">
             Already have an account?{" "}
-            <Link href="/login" className="erp-auth-link">
+            <Link href={withReturnPath("/login", returnTo)} className="erp-auth-link">
               Sign in
             </Link>
           </p>
         </CardFooter>
       </form>
     </AuthShell>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   )
 }

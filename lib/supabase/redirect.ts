@@ -14,3 +14,8 @@ export function safeReturnPath(value: string | null | undefined): string {
     return "/dashboard"
   }
 }
+
+/** `path` carrying a sanitized `?redirect=` across auth steps; unchanged when there is none. */
+export function withReturnPath(path: string, returnTo: string | null | undefined): string {
+  return returnTo ? `${path}?redirect=${encodeURIComponent(safeReturnPath(returnTo))}` : path
+}

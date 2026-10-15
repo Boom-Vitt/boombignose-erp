@@ -1,18 +1,22 @@
 "use client"
 
+import { Suspense } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ShieldCheck } from "lucide-react"
 
 import { TwoFactorSettings } from "@/app/(app)/settings/_components/two-factor-settings"
+import { safeReturnPath } from "@/lib/supabase/redirect"
 import { AuthShell } from "@/components/auth-shell"
 import { CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 
 /** Post-signup step: enroll a TOTP authenticator (Google Authenticator etc.) via QR. */
-export default function SetupTwoFactorPage() {
+function SetupTwoFactor() {
   const router = useRouter()
+  const returnTo = useSearchParams().get("redirect")
+  const next = returnTo ? safeReturnPath(returnTo) : "/onboarding"
   const done = () => {
-    router.push("/onboarding")
+    router.push(next)
     router.refresh()
   }
   return (
@@ -31,10 +35,18 @@ export default function SetupTwoFactorPage() {
         <TwoFactorSettings factorId={null} onEnabled={done} />
       </CardContent>
       <CardFooter className="mt-2 justify-center text-xs">
-        <Link href="/onboarding" className="erp-auth-link">
+        <Link href={next} className="erp-auth-link">
           Skip for now (set up later in Settings)
         </Link>
       </CardFooter>
     </AuthShell>
+  )
+}
+
+export default function SetupTwoFactorPage() {
+  return (
+    <Suspense>
+      <SetupTwoFactor />
+    </Suspense>
   )
 }

@@ -102,3 +102,8 @@ it('an enrolled password-only session clears its challenge before setup', async 
  const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa'))
  expect(res.headers.get('location')).toBe('https://app.example.test/login/mfa?redirect=%2Fsetup-2fa')
 })
+it('an enrolled user leaves setup for the carried invitation destination', async () => {
+ mfaUser('aal2')
+ const res=await updateSession(new NextRequest('https://app.example.test/setup-2fa?redirect=%2Finvite%2Fvalid-token'))
+ expect(res.headers.get('location')).toBe('https://app.example.test/invite/valid-token')
+})
