@@ -127,6 +127,20 @@ export async function updateSubscription(
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
+  // The billing schedule is anchored on the start date and users cannot move next_run_date,
+  // so a new start would leave every scheduled run rejected by generate_subscription_occurrence.
+  // shortcut: refuses the edit, upgrade to re-anchoring next_run_date in guard_subscription_schedule (migration) if users need it.
+  if (d.start_date) {
+    const { data: current } = await supabase
+      .from("subscriptions")
+      .select("start_date")
+      .eq("id", d.id)
+      .eq("org_id", ctx.orgId)
+      .maybeSingle()
+    if (current && current.start_date !== d.start_date) {
+      return { error: "The start date can't be changed. Create a new subscription for a different start date." }
+    }
+  }
   const { error } = await supabase
     .from("subscriptions")
     .update({
