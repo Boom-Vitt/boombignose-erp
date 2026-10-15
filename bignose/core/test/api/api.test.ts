@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, request as httpRequest } from 'node:http';
 import type { TestContext } from 'node:test';
 import { startDaemon } from '../../src/app/daemon.ts';
 import type { DaemonOptions } from '../../src/app/daemon.ts';
-import { maskSecret, readEnv, setSecret, loadConfig } from '../../src/config.ts';
+import { maskSecret, paths, readEnv, setSecret, loadConfig } from '../../src/config.ts';
 import type { Config, Provider } from '../../src/types.ts';
 import { createCleaner, safeValue } from '../../src/app/settings.ts';
 import { configured, mockOpenai, testHome, toolCall } from '../e2e/helpers.ts';
@@ -743,4 +743,45 @@ test('run errors are stored as notices and survive a restart', async t => {
   await settled(again, id);
   const two = (await call(again, `/api/sessions/${id}`)).body;
   assert.deepEqual(two.notices.map((n: any) => [n.after, n.level]), [[1, 'error'], [2, 'error']]);
+});
+
+test('a LINE-delivery schedule is refused while LINE is off, accepted while the gateway runs, and a desktop one is never refused', async t => {
+  const job = { cron: '* * * * *', prompt: 'task', delivery: { kind: 'line', to: 'Cabc' } };
+  const off = await app(t);
+  const refused = await call(off, '/api/schedules', 'POST', job);
+  assert.equal(refused.status, 400); assert.match(refused.body.error, /LINE is off/);
+  assert.deepEqual((await call(off, '/api/schedules')).body, { jobs: [] }, 'nothing was saved');
+  assert.equal((await call(off, '/api/schedules', 'POST', { ...job, delivery: { kind: 'desktop' } })).status, 200);
+
+  const home = testHome(t);
+  configured(home, undefined, c => { c.line.enabled = true; c.line.allow.users = ['owner']; });
+  setSecret('LINE_CHANNEL_ACCESS_TOKEN', 'test-token', home); setSecret('LINE_CHANNEL_SECRET', 'test-secret', home);
+  const on = await app(t, { home });
+  const deadline = Date.now() + 3000;
+  while (!on.lineStatus().running) { assert.ok(Date.now() < deadline); await new Promise(resolve => setTimeout(resolve, 10)); }
+  assert.equal((await call(on, '/api/schedules', 'POST', job)).status, 200);
+});
+
+test('creating a skill with an existing name is refused with 409 and leaves the skill alone; a plain PUT still edits it', async t => {
+  const a = await app(t);
+  const put = (body: Record<string, unknown>) => call(a, '/api/skills/taxes', 'PUT', body);
+  assert.equal((await put({ description: 'File taxes', body: 'Original steps.', create: true })).status, 200);
+  const again = await put({ description: 'Scratch', body: 'Scratch.', create: true });
+  assert.equal(again.status, 409); assert.match(again.body.error, /already exists/);
+  assert.deepEqual((await call(a, '/api/skills/taxes')).body, { name: 'taxes', description: 'File taxes', body: 'Original steps.' });
+  assert.equal((await put({ description: 'File taxes', body: 'Edited steps.' })).status, 200);
+  assert.equal((await call(a, '/api/skills/taxes')).body.body, 'Edited steps.');
+  assert.equal((await call(a, '/api/skills/..%2Fescape', 'PUT', { description: 'bad', body: 'bad', create: true })).status, 400);
+});
+
+test('saving a skill keeps its other frontmatter keys when the Skills page saves it unchanged', async t => {
+  const home = testHome(t);
+  configured(home);
+  const folder = join(paths(home).skills, 'imported'); mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, 'SKILL.md'), '---\nname: imported\ndescription: An imported skill\nlicense: Apache-2.0\nallowed-tools: Bash(git:*) Read\nmetadata:\n  author: someone\n---\n\nSteps.\n');
+  const a = await app(t, { home });
+  const skill = (await call(a, '/api/skills/imported')).body;
+  assert.equal((await call(a, '/api/skills/imported', 'PUT', { description: skill.description, body: skill.body })).status, 200);
+  const text = readFileSync(join(folder, 'SKILL.md'), 'utf8');
+  for (const line of ['license: Apache-2.0', 'allowed-tools: Bash(git:*) Read', 'metadata:\n  author: someone']) assert.ok(text.includes(line), line);
 });

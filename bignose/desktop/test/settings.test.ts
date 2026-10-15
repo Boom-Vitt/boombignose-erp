@@ -2,6 +2,8 @@ import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApi, type Api } from '../src/api.ts';
 import { mountGeneral } from '../src/settings/general.ts';
+import { mountSchedules } from '../src/settings/schedules.ts';
+import { mountSkills } from '../src/settings/skills.ts';
 import { generalFromConfig, generalToConfig, hooksFromConfig, hooksToConfig } from '../src/settings/forms.ts';
 import type { Config } from '../src/types.ts';
 import { installDom, TestNode, flush, json } from './dom-fixture.ts';
@@ -247,4 +249,66 @@ test('T17 diagnostics client uses authenticated POST and preserves request error
   const doctor = (api as unknown as { doctor: () => Promise<unknown> }).doctor;
   assert.deepEqual(await doctor(), { code: 1, lines: ['fail sqlite'] });
   await assert.rejects(doctor(), /Doctor unavailable/);
+});
+
+// ---- Skills and Schedules pages
+
+function withToasts(t: TestContext) {
+  t.after(installDom());
+  const host = new TestNode('div');
+  (globalThis.document as unknown as { getElementById: () => TestNode }).getElementById = () => host;
+  return host;
+}
+const all = (n: TestNode): TestNode[] => [n, ...n.children.flatMap(all)];
+const button = (n: TestNode, label: string) => all(n).find(b => b.tag === 'button' && b.textContent === label)!;
+const input = (n: TestNode, placeholder: string) => all(n).find(b => b.attrs.placeholder === placeholder)!;
+
+test('creating a skill with an existing name is refused: New skill asks the daemon for create mode and shows its message', async t => {
+  const toasts = withToasts(t);
+  const puts: unknown[][] = [];
+  const pane = new TestNode('section');
+  mountSkills(pane as unknown as HTMLElement, {
+    listSkills: async () => ({ skills: [{ name: 'taxes', description: 'File taxes' }] }),
+    putSkill: async (...args: unknown[]) => { puts.push(args); throw Object.assign(new Error('A skill named "taxes" already exists.'), { status: 409 }); },
+  } as unknown as Api);
+  await flush();
+  button(pane, 'New skill').fire('click');
+  input(pane, 'my-skill').value = 'taxes';
+  input(pane, 'When should BigNose use this skill?').value = 'Scratch';
+  all(pane).find(n => n.tag === 'form')!.fire('submit');
+  await flush();
+  assert.deepEqual(puts, [['taxes', { description: 'Scratch', body: '' }, true]]);
+  assert.match(toasts.textContent, /already exists/);
+  assert.doesNotMatch(toasts.textContent, /Saved/);
+});
+
+test('a LINE-delivery schedule is refused while LINE is off: the form says so and posts nothing', async t => {
+  const toasts = withToasts(t);
+  const added: unknown[] = [];
+  let lineRunning = false;
+  const pane = new TestNode('section');
+  mountSchedules(pane as unknown as HTMLElement, {
+    listAgents: async () => ({ agents: [{ id: 'a1', name: 'BigNose' }] }),
+    listSchedules: async () => ({ jobs: [] }),
+    lineStatus: async () => ({ running: lineRunning }),
+    addSchedule: async (job: unknown) => { added.push(job); },
+  } as unknown as Api);
+  await flush();
+  const form = all(pane).find(n => n.tag === 'form')!;
+  const fill = () => {
+    input(pane, '0 9 * * 1-5').value = '0 9 * * *';
+    input(pane, 'What should BigNose do?').value = 'Daily brief';
+    const delivery = all(pane).find(n => n.tag === 'select' && n.children.some(o => o.value === 'line'))!;
+    delivery.value = 'line'; delivery.fire('change');
+    input(pane, 'U… or C… or R…').value = 'Cabc';
+  };
+  fill();
+  form.fire('submit');
+  await flush();
+  assert.deepEqual(added, []);
+  assert.match(toasts.textContent, /LINE is off/);
+  lineRunning = true;
+  form.fire('submit');
+  await flush();
+  assert.equal(added.length, 1);
 });

@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { VERSION, paths, maskSecret, setSecret, getApiKey } from '../config.ts';
-import { deleteSkill, listSkills, loadSkill, saveSkill } from '../skills/index.ts';
+import { deleteSkill, listSkills, loadSkill, saveSkill, SkillExistsError } from '../skills/index.ts';
 import { CommandError, listCommands } from '../commands/index.ts';
 import { doctor } from '../app/doctor.ts';
 import { isObject, restoreMaskedConfig, safeValue, settingsResponse, validateAgent, validateConfig, validateMcpName, validateMcpServer } from '../app/settings.ts';
@@ -248,7 +248,10 @@ export function createApiServer(opts: ApiOptions) {
         }
         if (id && method === 'PUT') {
           const b = await body(req); check(typeof b.description === 'string' && typeof b.body === 'string', 'description and body must be strings');
-          validate(() => saveSkill(dir, { name: id, description: b.description as string, body: b.body as string })); return send(res, { ok: true });
+          // create: true is the Skills page's "New skill": a name that is taken is a 409 instead of a silent overwrite.
+          try { saveSkill(dir, { name: id, description: b.description as string, body: b.body as string }, b.create === true); }
+          catch (e) { throw new HttpError(e instanceof SkillExistsError ? 409 : 400, e instanceof Error ? e.message : String(e)); }
+          return send(res, { ok: true });
         }
         if (id && method === 'DELETE') { if (!validate(() => deleteSkill(dir, id))) return missing(); return send(res, { ok: true }); }
       }
@@ -276,6 +279,8 @@ export function createApiServer(opts: ApiOptions) {
         }
         if (!id && method === 'POST') {
           const b = await body(req), cron = text(b.cron, 'cron'), prompt = text(b.prompt, 'prompt'), to = delivery(b.delivery);
+          // The same condition fireJob checks before it runs the model: an answer with nowhere to go is only wasted work.
+          check(to.kind !== 'line' || opts.lineStatus().running, 'LINE is off. Turn it on under Settings > Messaging before you schedule a LINE delivery.');
           return send(res, validate(() => scheduler.add({ cron, prompt, delivery: to, agentId: agentId(b.agentId, true) })));
         }
         if (id && method === 'PATCH') {

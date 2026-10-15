@@ -102,6 +102,8 @@ export interface SchedulerOptions {
 }
 export type ScheduledJob = Job & { nextRunAt?: number };
 
+const sigOf = (job: Job) => `${job.enabled}|${job.cron}`; // what a plan was made from; a different stored value is planned again
+
 const defaultSetTimer = (fn: () => void, ms: number) => {
   const t = setTimeout(fn, ms);
   t.unref();
@@ -111,6 +113,8 @@ const defaultSetTimer = (fn: () => void, ms: number) => {
 export class Scheduler {
   #opts: SchedulerOptions;
   #next = new Map<string, number>();   // enabled job id -> next run (ms); only while started
+  #sig = new Map<string, string>();    // job id -> the enabled flag and cron it was planned from; a different stored value is re-planned
+  #synced = 0;                         // ms of the last #sync
   #running = new Set<string>();
   #cancel: (() => void) | undefined;
   #started = false;
@@ -124,8 +128,7 @@ export class Scheduler {
   start(): void {
     if (this.#started) return;
     this.#started = true;
-    const now = this.#now();
-    for (const job of this.#opts.store.listJobs()) if (job.enabled) this.#plan(job, now);
+    this.#sync(this.#now());
     this.#arm();
   }
 
@@ -134,6 +137,7 @@ export class Scheduler {
     this.#cancel?.();
     this.#cancel = undefined;
     this.#next.clear();
+    this.#sig.clear();
   }
 
   add(input: { cron: string; prompt: string; delivery: Delivery; agentId: string }): Job {
@@ -143,22 +147,24 @@ export class Scheduler {
     nextRun(cron, this.#now()); // throws on a bad or never-matching expression
     const job: Job = { id: randomBytes(4).toString('hex'), agentId: input.agentId, cron, prompt, delivery: input.delivery, enabled: true };
     this.#opts.store.saveJob(job);
-    if (this.#started) { this.#plan(job, this.#now()); this.#arm(); }
+    this.#own(job);
+    this.#resync();
     return job;
   }
 
   remove(id: string): boolean {
     const ok = this.#opts.store.deleteJob(id);
-    this.#next.delete(id);
-    this.#arm();
+    this.#resync();
     return ok;
   }
 
   setEnabled(id: string, on: boolean): boolean {
     const job = this.#find(id);
     if (!job) return false;
-    this.#opts.store.saveJob({ ...job, enabled: on });
-    if (this.#started) { if (on) this.#plan(job, this.#now()); else this.#next.delete(id); this.#arm(); }
+    const changed = { ...job, enabled: on };
+    this.#opts.store.saveJob(changed);
+    this.#own(changed);
+    this.#resync();
     return true;
   }
 
@@ -173,18 +179,47 @@ export class Scheduler {
     try { this.#next.set(job.id, nextRun(job.cron, from).getTime()); } catch { this.#next.delete(job.id); }
   }
 
-  // Recheck wall time at least every minute so machine sleep cannot delay a job for hours after wake.
+  /** A job this process just added or switched on is planned from now, so the minute it was made in does not fire; #sync then skips it. */
+  #own(job: Job): void {
+    if (!this.#started || !job.enabled) return;
+    this.#sig.set(job.id, sigOf(job));
+    this.#plan(job, this.#now());
+  }
+
+  /** Plans what is new or changed in the store and forgets what is gone. Another process (`bignose chat -q`) writes the same store. */
+  #sync(now: Date, from = now): void {
+    const jobs = this.#opts.store.listJobs(), ids = new Set(jobs.map((j) => j.id));
+    for (const id of [...this.#sig.keys()]) if (!ids.has(id)) { this.#sig.delete(id); this.#next.delete(id); }
+    for (const job of jobs) {
+      const sig = sigOf(job);
+      if (this.#sig.get(job.id) === sig) continue;
+      this.#sig.set(job.id, sig);
+      if (job.enabled) this.#plan(job, from); else this.#next.delete(job.id);
+    }
+    this.#synced = now.getTime();
+  }
+
+  // Like a tick: jobs that another process wrote since the last look are planned from that look, so a run that came due meanwhile is not skipped.
+  #resync(): void {
+    if (!this.#started) return;
+    this.#sync(this.#now(), new Date(this.#synced));
+    this.#arm();
+  }
+
+  // Recheck wall time at least every minute so machine sleep cannot delay a job for hours after wake, and so a job
+  // written by another process is noticed even when this scheduler has none armed.
   #arm(): void {
     this.#cancel?.();
     this.#cancel = undefined;
-    if (!this.#started || !this.#next.size) return;
-    const delay = Math.min(Math.max(Math.min(...this.#next.values()) - this.#now().getTime(), 0), 60_000);
+    if (!this.#started) return;
+    const delay = Math.min(Math.max((this.#next.size ? Math.min(...this.#next.values()) : Infinity) - this.#now().getTime(), 0), 60_000);
     this.#cancel = (this.#opts.setTimer ?? defaultSetTimer)(() => this.#tick(), delay);
   }
 
   #tick(): void {
     if (!this.#started) return;
     const now = this.#now();
+    this.#sync(now, new Date(this.#synced)); // a job another process added since the last look still fires if it came due meanwhile
     for (const [id, at] of [...this.#next]) {
       if (at > now.getTime()) continue;
       const job = this.#find(id);

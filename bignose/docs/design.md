@@ -263,7 +263,10 @@ export interface Config {
   `memoryPrompt(store, agentId?): string` (notes for the system prompt, capped at 4000 chars).
 - `skills/index.ts`: skills live in `<home>/skills/<name>/SKILL.md` (agentskills.io: YAML frontmatter `name`,
   `description`, then the body). `listSkills(dir)`, `loadSkill(dir, name)` (body + list of other files in the
-  folder), `saveSkill(dir, {name, description, body})` (name `^[a-z0-9][a-z0-9-]{0,63}$`), `deleteSkill(dir, name)`,
+  folder), `saveSkill(dir, {name, description, body}, create?)` (name `^[a-z0-9][a-z0-9-]{0,63}$`; saving over an existing
+  skill rewrites `name`, `description` (including a quoted value that runs over several lines) and the body and keeps
+  every other frontmatter key verbatim, such as `license`, `allowed-tools` and `metadata`; the old SKILL.md is opened
+  with `O_NOFOLLOW`, so a symlinked one is replaced and never read through; with `create`, a folder that already exists throws `SkillExistsError`), `deleteSkill(dir, name)`,
   `skillsIndex(dir, allowed?: string[] | null): string` (one line per skill for the system prompt), `skillTools(dir, allowed?: string[] | null): Tool[]` — `skill_load`
   (allow), `skill_save` (ask).
 - `cron/index.ts`: `parseCron(expr)` (5 fields: minute hour day-of-month month day-of-week; `*`, lists, ranges,
@@ -271,7 +274,15 @@ export interface Config {
   `nextRun(expr, after: Date): Date` (local time, strictly after), `Scheduler({ store, onFire: (job) => Promise<void>,
   now?, setTimer? })` with `start()`, `stop()`, `add({cron, prompt, delivery, agentId})`, `remove(id)`,
   `setEnabled(id, on)`, `list()`. Jobs persist in the store and reload on `start()` (survive restarts; runs missed
-  while stopped are skipped, not replayed). `scheduleTools(scheduler, agentId): Tool[]` — `schedule_create` (ask; delivery
+  while stopped are skipped, not replayed). The store is shared with other processes (`bignose chat -q` adds jobs
+  with its own, never started, Scheduler), so a started Scheduler re-reads it at least every minute: a job that is
+  new, switched on or off, or has a changed cron is planned from the previous look (so a run that came due since then
+  still fires, also when this process added or removed some other job in between), and a removed one is dropped. A job
+  that this process adds or switches on is planned from now, so it never fires in the minute it was made in. The
+  catch-up window is at most one check (about 60 s): a job another process creates during its own matching minute fires
+  once at the next check, which the Job record cannot tell apart from an older one. The Scheduler keeps a 60-second
+  timer even with no enabled job, for that check.
+  `scheduleTools(scheduler, agentId): Tool[]` — `schedule_create` (ask; delivery
   defaults to the caller's origin: line → that chat, everything else → desktop), `schedule_list` (allow),
   `schedule_delete` (allow).
 - `line/index.ts`: `createLineGateway(opts)` returning `{ handler(req, res), listen(port) , reconfigure(next, port), close(),
@@ -296,7 +307,10 @@ export interface Config {
   `context` in the store, sets a title from the first user message, routes approvals to the origin's channel
   (desktop → API event + `POST /api/approvals/:id`; cli = `chat -q` in-process → TTY prompt, denied without a TTY;
   line → LINE confirm buttons; cron → the job's delivery channel; 10 min timeout = deny), and delivers cron results
-  (desktop → `notification` event + session; line → push). Keeps one session per LINE chat per agent (`findSessionByOrigin`).
+  (desktop → `notification` event + session; line → push). A cron job that fails (provider error, push refused, no LINE
+  gateway) also emits `{type:'notification', title:'Scheduled task failed', body}` without a `sessionId`, which the desktop
+  shows as a toast; `lastStatus` still records it. `fireJob` checks the gateway before it runs the model for a LINE job,
+  so a LINE job fails with `LINE is off, so this schedule was not run` and costs no tokens. Keeps one session per LINE chat per agent (`findSessionByOrigin`).
   First-message and scheduled-session titles are redacted before whitespace normalization and truncation. A 2000-character tool preview omits a
   possible partial-secret suffix after redaction, so truncated credentials cannot reach API/CLI events.
   **LINE senders outside `allow.users`** (members of an allowlisted group or room) run with every `allow` policy
@@ -411,13 +425,15 @@ export interface Config {
     serialized settings queue, so concurrent mutations compose instead of overwriting one another.
   - `GET /api/commands?agent=<id>` → `{commands: [{name, description, usage, kind}]}`; commands use the agent's skills (no agent = first agent; unknown agent = 400). See section 11 for slash expansion and REA.
   - `GET /api/skills` → `{skills: [{name, description, bundled?}]}`; `GET /api/skills/:name` → `{name, description, body}`;
-    `PUT /api/skills/:name` `{description, body}`; `DELETE /api/skills/:name`. Bundled names refuse PUT/DELETE with `400 {error: 'built-in skill'}`; user folders with the same name take precedence when listing/loading.
+    `PUT /api/skills/:name` `{description, body, create?}` (`create: true`, which the Skills page sends for "New skill",
+    answers `409` and changes nothing when the name is taken; without it the PUT edits or replaces the skill and keeps its other frontmatter keys); `DELETE /api/skills/:name`. Bundled names refuse PUT/DELETE with `400 {error: 'built-in skill'}`; user folders with the same name take precedence when listing/loading.
   - `GET /api/memory?kind=&q=&agent=<id>` → `{notes: [{id, agentId, kind, text, updatedAt}]}`;
     `POST /api/memory` `{kind, text, agentId?}` (400 for agent-kind without a known agentId; user notes have
     `agentId:null`). Agent filters include shared user notes and only that agent's notes, subject to the kind filter;
     `PUT /api/memory/:id` `{text}`; `DELETE /api/memory/:id`.
   - `GET /api/schedules?agent=<id>` → `{jobs: [{id, agentId, cron, prompt, delivery, enabled, nextRunAt, lastRunAt?, lastStatus?}]}`;
-    `POST /api/schedules` `{cron, prompt, delivery, agentId?}` (default first agent; `400` on a bad cron/unknown agent); `PATCH /api/schedules/:id` `{enabled}`;
+    `POST /api/schedules` `{cron, prompt, delivery, agentId?}` (default first agent; `400` on a bad cron/unknown agent, and
+    on a `line` delivery while the LINE gateway is not running; the Schedules form checks `GET /api/line/status` first and shows the same message); `PATCH /api/schedules/:id` `{enabled}`;
     `DELETE /api/schedules/:id`.
   - `GET /api/line/status` → `{enabled, running, port, agentId, publicUrl?, webhookUrl?, tokenSet, secretSet, lastEventAt?,
     lastError?}`. LINE settings change through `/api/settings` (section `line`) and `/api/secrets`.
@@ -552,7 +568,9 @@ export interface Agent {
   user notes + this agent's notes + the index of the agent's skills + today's date; tools = builtin + memory tools and
   `session_search` scoped to the agent + skill tools limited to the agent's skills + schedule tools (new jobs get the
   agent's id) + MCP tools of servers that are enabled and in `agent.connectors` (null = all enabled); permissions =
-  `{...config.permissions, ...agent.permissions}` (then the LINE non-owner raise to `ask`). LINE messages go to
+  `{...config.permissions, ...agent.permissions}` (then the LINE non-owner raise to `ask`). A tool whose effective policy
+  is `deny` (exact name or `prefix*`, from the agent or the global permissions, MCP tools included) is not in the list the
+  model is offered, so it cannot waste a turn; the nested delegate run inherits that list and `read_file` and the rest stay. LINE messages go to
   `line.agentId` (fallback: first agent). A cron job runs with its own agent. Unknown connector or skill names in an
   agent are ignored at run time.
 - **API** (§6 additions; every timestamp is epoch ms):
