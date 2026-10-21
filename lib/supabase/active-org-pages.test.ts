@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { databaseFixture, pageContent } from './__tests__/tenant-fixture'
 
 vi.mock('server-only', () => ({}))
@@ -8,6 +9,7 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => { throw new Er
 vi.mock('@/lib/auth', () => ({ requireOrgContext: async () => ({ userId: 'user', orgId: state.orgId, role: 'owner' }) }))
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND') }, redirect: vi.fn(), useRouter: vi.fn(), useSearchParams: vi.fn(), usePathname: () => '' }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+vi.mock('@/app/(app)/clients/_components/clients-toolbar', () => ({ ClientsToolbar: () => null }))
 
 import ClientsPage from '@/app/(app)/clients/page'
 import ClientDetailPage from '@/app/(app)/clients/[id]/page'
@@ -58,6 +60,41 @@ describe('active workspace business reads', () => {
     const content = pageContent(await ClientsPage({ searchParams: Promise.resolve({}) }))
     expect(content).toContain('CLIENT_B')
     expect(content).not.toContain('CLIENT_A')
+  })
+
+  it('clients show open deal counts, including zero, without counting closed or other-workspace deals', async () => {
+    state.client = databaseFixture({
+      clients: ['active', 'second', 'closed', 'empty'].map(id => ({
+        id, org_id: 'A', name: id, created_at: '2026-10-01',
+      })).concat([{ id: 'foreign', org_id: 'B', name: 'foreign', created_at: '2026-10-01' }]),
+      deals: [
+        ...['lead', 'contacted', 'discovery', 'proposal', 'negotiation', 'won', 'lost'].map(stage => ({
+          org_id: 'A', client_id: 'active', stage,
+        })),
+        { org_id: 'A', client_id: 'second', stage: 'proposal' },
+        { org_id: 'A', client_id: 'closed', stage: 'won' },
+        { org_id: 'A', client_id: 'closed', stage: 'lost' },
+        { org_id: 'B', client_id: 'active', stage: 'lead' },
+      ],
+    })
+    const html = renderToStaticMarkup(await ClientsPage({ searchParams: Promise.resolve({}) }))
+    expect(html).toContain('Open deals')
+    const rows = [...html.matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].slice(1)
+    expect(rows.map(([, row]) => {
+      const cells = [...row.matchAll(/<td\b[^>]*>(.*?)<\/td>/g)]
+        .map(([, cell]) => cell.replace(/<[^>]+>/g, ''))
+      return [cells[0], cells[3]]
+    })).toEqual([['active', '5'], ['second', '1'], ['closed', '0'], ['empty', '0']])
+  })
+
+  it('client search keeps open deal counts and the no-results state', async () => {
+    const html = renderToStaticMarkup(await ClientsPage({ searchParams: Promise.resolve({ q: ' CLIENT_A ' }) }))
+    expect(html).toContain('CLIENT_A')
+    expect(html).not.toContain('CLIENT_B')
+    expect(html).toContain('Open deals')
+    expect(html).toMatch(/<td[^>]*>1<\/td>/)
+    expect(pageContent(await ClientsPage({ searchParams: Promise.resolve({ q: 'missing' }) })))
+      .toContain('No matching clients')
   })
 
   it.each([
