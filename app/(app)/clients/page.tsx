@@ -3,6 +3,7 @@ import { Users, Plus } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { OPEN_STAGES } from "@/lib/metrics/pipeline"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
@@ -31,8 +32,9 @@ export default async function ClientsPage({
 
   let query = supabase
     .from("clients")
-    .select("id, name, industry, source, created_at")
+    .select("id, name, industry, source, created_at, deals(count)")
     .eq("org_id", ctx.orgId)
+    .in("deals.stage", OPEN_STAGES)
     .order("name", { ascending: true })
   if (q) query = query.ilike("name", `%${q}%`)
 
@@ -81,6 +83,7 @@ export default async function ClientsPage({
                 <TableHead>Name</TableHead>
                 <TableHead>Industry</TableHead>
                 <TableHead>Source</TableHead>
+                <TableHead className="text-right">Open deals</TableHead>
                 <TableHead className="text-right">Added</TableHead>
               </TableRow>
             </TableHeader>
@@ -100,6 +103,9 @@ export default async function ClientsPage({
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {c.source ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {c.deals[0]?.count ?? 0}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-right">
                     {formatDate(c.created_at)}
