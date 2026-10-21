@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { todayISO, monthKey, currentMonthKey, isPastDue, daysUntil } from "@/lib/dates"
+import { todayISO, monthKey, currentMonthKey, isPastDue, daysUntil, startOfDayInstant } from "@/lib/dates"
 
 describe("dates in Asia/Bangkok (UTC+7)", () => {
   it("formats today, rolling over the date at +7", () => {
@@ -8,6 +8,11 @@ describe("dates in Asia/Bangkok (UTC+7)", () => {
     expect(todayISO(new Date("2026-06-30T18:00:00Z"))).toBe("2026-07-01")
     // 10:00 UTC -> 17:00 same day in Bangkok
     expect(todayISO(new Date("2026-06-30T10:00:00Z"))).toBe("2026-06-30")
+  })
+
+  it("returns Bangkok midnight as a UTC instant", () => {
+    expect(startOfDayInstant("2026-10-01")).toBe("2026-09-30T17:00:00.000Z")
+    expect(startOfDayInstant("2027-01-01")).toBe("2026-12-31T17:00:00.000Z")
   })
 
   it("computes month key, accounting for the timezone roll-over", () => {
