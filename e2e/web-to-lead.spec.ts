@@ -51,6 +51,7 @@ test("public form without JavaScript creates a deal in Lead and can be disabled"
 
   await page.goto("/settings/lead-forms")
   await page.getByRole("button", { name: `Disable ${name}`, exact: true }).click()
+  await expect(page.getByRole("button", { name: `Disable ${name}`, exact: true })).toHaveCount(0)
   await publicPage.goto(publicLink)
   await expect(publicPage.getByRole("heading", { name: "Form unavailable" })).toBeVisible()
   await publicContext.close()
