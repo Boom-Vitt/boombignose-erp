@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { ProductLineInput } from "@/lib/products/schema"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireRole } from "@/lib/auth"
@@ -12,6 +13,7 @@ import { writeAudit } from "@/lib/audit"
 // A separate header write can corrupt discounts or leave a persisted line behind.
 
 const AddInvoiceItem = z.object({
+  ...ProductLineInput.shape,
   invoice_id: z.string().min(1),
   description: z.string().trim().min(1, "Description is required"),
   quantity: z.string().refine(v => { try { invoiceLineAmount(v, 0); return true } catch { return false } }, "Enter a positive quantity with up to three decimals"),
@@ -54,6 +56,12 @@ export async function addInvoiceItem(
   if (countErr) return { error: countErr.message }
 
   const unitPriceSatang = moneyInput(d.unitPriceBaht)
+  if (d.product_id) {
+    const { data: product, error: productError } = await supabase.from("products").select("id")
+      .eq("org_id", ctx.orgId).eq("id", d.product_id).eq("active", true).maybeSingle()
+    if (productError) return { error: productError.message }
+    if (!product) return { error: "Product unavailable. Choose an active product or a free-text line." }
+  }
   let amount: number
   try { amount = invoiceLineAmount(d.quantity, unitPriceSatang) }
   catch { return { error: "Line total exceeds safe bounds" } }
@@ -61,6 +69,8 @@ export async function addInvoiceItem(
     org_id: ctx.orgId,
     invoice_id: d.invoice_id,
     description: d.description,
+    product_id: d.product_id ?? null,
+    unit: d.unit ?? null,
     quantity: Number(d.quantity),
     unit_price_satang: unitPriceSatang,
     amount_satang: amount,

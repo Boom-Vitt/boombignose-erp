@@ -353,14 +353,14 @@ isOneToOne: false
                   ]
                 },"invoice_items": {
                   Row: {
-                    "amount_satang": number,"created_at": string,"description": string,"id": string,"invoice_id": string,"org_id": string,"position": number,"quantity": number,"unit_price_satang": number,"updated_at": string
+                    "amount_satang": number,"created_at": string,"description": string,"id": string,"invoice_id": string,"org_id": string,"position": number,"quantity": number,"unit_price_satang": number,"updated_at": string,"product_id": string | null,"unit": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_satang"?: number,"created_at"?: string,"description": string,"id"?: string,"invoice_id": string,"org_id": string,"position"?: number,"quantity"?: number,"unit_price_satang"?: number,"updated_at"?: string
+                    "amount_satang"?: number,"created_at"?: string,"description": string,"id"?: string,"invoice_id": string,"org_id": string,"position"?: number,"quantity"?: number,"unit_price_satang"?: number,"updated_at"?: string,"product_id"?: string | null,"unit"?: string | null
                   }
                   Update: {
-                    "amount_satang"?: number,"created_at"?: string,"description"?: string,"id"?: string,"invoice_id"?: string,"org_id"?: string,"position"?: number,"quantity"?: number,"unit_price_satang"?: number,"updated_at"?: string
+                    "amount_satang"?: number,"created_at"?: string,"description"?: string,"id"?: string,"invoice_id"?: string,"org_id"?: string,"position"?: number,"quantity"?: number,"unit_price_satang"?: number,"updated_at"?: string,"product_id"?: string | null,"unit"?: string | null
                   }
                   Relationships: [
                     {
@@ -375,6 +375,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "organizations"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "invoice_items_product_tenant_fkey"
+      columns: ["org_id","product_id"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["org_id","id"]
     }
                   ]
                 },"invoice_snapshots": {
@@ -825,14 +831,14 @@ isOneToOne: false
                   ]
                 },"quote_items": {
                   Row: {
-                    "amount_satang": number,"created_at": string,"description": string,"id": string,"org_id": string,"position": number,"quantity": number,"quote_id": string,"unit_price_satang": number,"updated_at": string
+                    "amount_satang": number,"created_at": string,"description": string,"id": string,"org_id": string,"position": number,"quantity": number,"quote_id": string,"unit_price_satang": number,"updated_at": string,"product_id": string | null,"unit": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_satang"?: number,"created_at"?: string,"description": string,"id"?: string,"org_id": string,"position"?: number,"quantity"?: number,"quote_id": string,"unit_price_satang"?: number,"updated_at"?: string
+                    "amount_satang"?: number,"created_at"?: string,"description": string,"id"?: string,"org_id": string,"position"?: number,"quantity"?: number,"quote_id": string,"unit_price_satang"?: number,"updated_at"?: string,"product_id"?: string | null,"unit"?: string | null
                   }
                   Update: {
-                    "amount_satang"?: number,"created_at"?: string,"description"?: string,"id"?: string,"org_id"?: string,"position"?: number,"quantity"?: number,"quote_id"?: string,"unit_price_satang"?: number,"updated_at"?: string
+                    "amount_satang"?: number,"created_at"?: string,"description"?: string,"id"?: string,"org_id"?: string,"position"?: number,"quantity"?: number,"quote_id"?: string,"unit_price_satang"?: number,"updated_at"?: string,"product_id"?: string | null,"unit"?: string | null
                   }
                   Relationships: [
                     {
@@ -846,6 +852,12 @@ isOneToOne: false
       columns: ["org_id","quote_id"]
 isOneToOne: false
       referencedRelation: "quotes"
+      referencedColumns: ["org_id","id"]
+    },{
+      foreignKeyName: "quote_items_product_tenant_fkey"
+      columns: ["org_id","product_id"]
+isOneToOne: false
+      referencedRelation: "products"
       referencedColumns: ["org_id","id"]
     }
                   ]
@@ -1063,7 +1075,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                }
+                },
+            "products": {
+              Row: {
+                id: string; org_id: string; sku: string | null; name: string; description: string | null;
+                type: "service" | "goods"; unit: string; list_price_satang: number; cost_satang: number;
+                tax_rate_bps: number; is_stockable: boolean; active: boolean; created_at: string; updated_at: string;
+              }
+              Insert: {
+                id?: string; org_id: string; sku?: string | null; name: string; description?: string | null;
+                type?: "service" | "goods"; unit?: string; list_price_satang?: number; cost_satang?: number;
+                tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
+              }
+              Update: {
+                id?: string; org_id?: string; sku?: string | null; name?: string; description?: string | null;
+                type?: "service" | "goods"; unit?: string; list_price_satang?: number; cost_satang?: number;
+                tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
+              }
+              ComputedFields: never
+              Relationships: [{
+                foreignKeyName: "products_org_id_fkey"
+                columns: ["org_id"]
+                isOneToOne: false
+                referencedRelation: "organizations"
+                referencedColumns: ["id"]
+              }]
+            }
           }
           Views: {
             [_ in never]: never

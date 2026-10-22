@@ -7,6 +7,8 @@ import { requireOrgContext } from "@/lib/auth"
 import { formatTHB } from "@/lib/money"
 import { quoteIsEditable, serviceAmountBaht } from "@/lib/workflows/service"
 import { todayISO } from "@/lib/dates"
+import { activeProductOptions } from "@/lib/products/queries"
+import { can } from "@/lib/permissions"
 
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
@@ -65,7 +67,7 @@ export default async function QuoteDetailPage({
       .maybeSingle(),
     supabase
       .from("quote_items")
-      .select("id, description, quantity, unit_price_satang, amount_satang, position")
+      .select("id, description, quantity, unit_price_satang, amount_satang, position, unit")
       .eq("org_id", ctx.orgId)
       .eq("quote_id", id)
       .order("position", { ascending: true }),
@@ -232,7 +234,7 @@ export default async function QuoteDetailPage({
                   <TableRow key={it.id}>
                     <TableCell className="font-medium">{it.description}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {Number(it.quantity)}
+                      {Number(it.quantity)} {it.unit}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatTHB(it.unit_price_satang)}
@@ -255,7 +257,7 @@ export default async function QuoteDetailPage({
           {locked ? (
             <p className="text-muted-foreground text-sm">{quote.status === "accepted" ? "Accepted scope is locked." : "This quote is locked."}</p>
           ) : (
-            <QuoteItemForm quoteId={quote.id} />
+            <QuoteItemForm quoteId={quote.id} products={await activeProductOptions()} canManageProducts={can(ctx.role, "product:manage")} />
           )}
         </CardContent>
       </Card>

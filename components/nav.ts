@@ -15,6 +15,7 @@ import {
   Settings,
   Compass,
   type LucideIcon,
+  Package,
 } from "lucide-react"
 
 export type NavItem = {
@@ -45,4 +46,5 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Activity", href: "/audit", icon: ScrollText, ownerAdminOnly: true },
   { title: "Blueprint", href: "/blueprint", icon: Compass },
   { title: "Settings", href: "/settings", icon: Settings },
+  { title: "Products", href: "/products", icon: Package },
 ]
