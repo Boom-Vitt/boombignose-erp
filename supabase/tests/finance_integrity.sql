@@ -29,7 +29,11 @@ select throws_ok($$update public.invoices set status='overdue' where id=pg_temp.
 select throws_ok($$update public.invoices set status='partially_paid' where id=pg_temp.finance_id(30)$$,'P0001','Payable state requires issue command','B2 direct partial payment requires a snapshot');
 select throws_ok($$update public.invoices set status='paid' where id=pg_temp.finance_id(30)$$,'P0001','Payable state requires issue command','B2 direct paid requires a snapshot');
 select throws_ok($$select public.submit_internal_payment_claim(pg_temp.finance_id(10),pg_temp.finance_id(30),1,'Synthetic report',pg_temp.finance_id(100))$$,'P0001','Invoice is not payable','B2 staff cannot report cash against a draft');
+select ok(not has_function_privilege('authenticated','public.submit_payment_claim(text,uuid,bigint,text,uuid)','execute'),'B2 authenticated cannot call the portal payment RPC');
+select ok(not has_function_privilege('anon','public.submit_payment_claim(text,uuid,bigint,text,uuid)','execute'),'B2 anon cannot call the portal payment RPC');
+set local role service_role;
 select throws_ok($$select public.submit_payment_claim('synthetic-finance-integrity-token',pg_temp.finance_id(30),1,'Synthetic report',pg_temp.finance_id(101))$$,'P0001','Invoice is not payable','B2 portal cannot report cash against a draft');
+set local role authenticated;
 select lives_ok($$select public.cancel_draft_invoice(pg_temp.finance_id(10),pg_temp.finance_id(34))$$,'B2 explicit command cancels a draft');
 select lives_ok($$select public.cancel_draft_invoice(pg_temp.finance_id(10),pg_temp.finance_id(34))$$,'B2 cancellation retry is harmless');
 select throws_ok($$update public.invoices set status='sent' where id=pg_temp.finance_id(34)$$,'P0001','Cancelled draft is final','B2 cancelled to sent bypass is closed');
@@ -77,12 +81,17 @@ select is((select value from public.document_counters where org_id=pg_temp.finan
 set local role authenticated;
 
 create temp table integrity_results(kind text primary key,id uuid);
+grant insert on pg_temp.integrity_results to service_role;
 insert into integrity_results select 'first',public.submit_internal_payment_claim(pg_temp.finance_id(10),pg_temp.finance_id(30),300,'Synthetic first transfer',pg_temp.finance_id(120));
 select lives_ok($$insert into integrity_results select 'second',public.submit_internal_payment_claim(pg_temp.finance_id(10),pg_temp.finance_id(30),200,'Synthetic second transfer',pg_temp.finance_id(121))$$,'I8 two distinct pending staff transfers are allowed');
+set local role service_role;
 select lives_ok($$insert into integrity_results select 'portal',public.submit_payment_claim('synthetic-finance-integrity-token',pg_temp.finance_id(30),100,'Synthetic portal transfer',pg_temp.finance_id(122))$$,'I8 portal and staff claims share remaining capacity');
+set local role authenticated;
 select is((select sum(amount_satang) from public.payment_claims where invoice_id=pg_temp.finance_id(30) and status='pending'),600::numeric,'I8 all pending claims reserve the open balance');
 select throws_ok($$select public.submit_internal_payment_claim(pg_temp.finance_id(10),pg_temp.finance_id(30),401,'Synthetic excess staff transfer',pg_temp.finance_id(123))$$,'P0001','Report exceeds unclaimed open balance','I8 combined staff claims cannot exceed the balance');
+set local role service_role;
 select throws_ok($$select public.submit_payment_claim('synthetic-finance-integrity-token',pg_temp.finance_id(30),401,'Synthetic excess portal transfer',pg_temp.finance_id(124))$$,'P0001','Claim exceeds unclaimed open balance','I8 combined portal claims cannot exceed the balance');
+set local role authenticated;
 select is(public.submit_internal_payment_claim(pg_temp.finance_id(10),pg_temp.finance_id(30),300,'Synthetic first transfer',pg_temp.finance_id(120)),(select id from integrity_results where kind='first'),'I8 retry reuses the original claim without reserving twice');
 select throws_ok($$select public.submit_internal_payment_claim(pg_temp.finance_id(10),pg_temp.finance_id(30),301,'Synthetic first transfer',pg_temp.finance_id(120))$$,'P0001','Idempotency conflict','I8 changed retry conflicts');
 
