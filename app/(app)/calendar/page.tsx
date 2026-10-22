@@ -1,3 +1,5 @@
+import { activityDueState } from "@/lib/record-history/due"
+import { recordHref } from "@/lib/record-history/model"
 import Link from "next/link"
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react"
 
@@ -60,7 +62,7 @@ export default async function CalendarPage({
   const [activitiesRes, invoicesRes, projectsRes] = await Promise.all([
     supabase
       .from("activities")
-      .select("id, type, due_date, client_id, clients(name)")
+      .select("id, type, due_date, done, record_type, record_id, client_id, clients(name)")
       .eq("org_id", ctx.orgId)
       .not("due_date", "is", null)
       .gte("due_date", rangeStart)
@@ -91,8 +93,8 @@ export default async function CalendarPage({
       id: `activity-${a.id}`,
       date: a.due_date,
       label: client ? `${meta.label} · ${client}` : meta.label,
-      tone: meta.tone,
-      href: a.client_id ? `/clients/${a.client_id}` : undefined,
+      tone: ({ overdue: "red", today: "orange", future: "emerald", none: "neutral" } as const)[activityDueState(a.due_date, today, a.done)],
+      href: a.record_type && a.record_id ? recordHref(a.record_type, a.record_id) : a.client_id ? `/clients/${a.client_id}` : undefined,
     })
   }
 

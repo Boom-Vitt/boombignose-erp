@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { ActivityDue } from "@/components/record/activity-due"
 import { CheckCircle2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -134,8 +135,6 @@ export function ActivitiesSection({
       ) : (
         <ul className="divide-y rounded-lg border">
           {activities.map((a) => {
-            const overdue = !a.done && a.due_date != null && a.due_date < today
-            const dueToday = !a.done && a.due_date === today
             return (
               <li key={a.id} className="flex items-start gap-3 p-3">
                 <ToggleDone id={a.id} done={a.done} dealId={dealId} />
@@ -144,21 +143,7 @@ export function ActivitiesSection({
                     <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
                       {TYPE_LABEL[a.type]}
                     </span>
-                    {a.due_date ? (
-                      <span
-                        className={cn(
-                          "text-xs",
-                          overdue
-                            ? "font-medium text-red-600 dark:text-red-400"
-                            : dueToday
-                              ? "font-medium text-amber-600 dark:text-amber-400"
-                              : "text-muted-foreground"
-                        )}
-                      >
-                        {overdue ? "Overdue · " : dueToday ? "Due today · " : "Due "}
-                        {a.due_date}
-                      </span>
-                    ) : null}
+                    <ActivityDue dueDate={a.due_date} today={today} done={a.done} />
                   </div>
                   <p
                     className={cn(

@@ -7,6 +7,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
+import { ActivityCounter } from "@/components/record/activity-counter"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 export default async function AppLayout({
@@ -28,6 +29,7 @@ export default async function AppLayout({
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-1 h-5" />
           <span className="text-sm font-medium">{ctx.orgName}</span>
+          <ActivityCounter />
           <ThemeToggle />
         </header>
         <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">{children}</div>

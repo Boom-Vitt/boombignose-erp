@@ -1,3 +1,4 @@
+import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -160,6 +161,7 @@ export default async function SubscriptionDetailPage({
           />
         </CardContent>
       </Card> : null}
+      <RecordHistory recordType="subscription" recordId={id} />
     </div>
   )
 }

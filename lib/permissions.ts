@@ -24,6 +24,7 @@ export type Capability =
   | "payment:verify"
   | "audit:view" // view the audit log
   | "product:manage"
+  | "record:write"
 
 const ALL_STAFF: Role[] = ["owner", "admin"]
 
@@ -47,6 +48,7 @@ export const CAPABILITY_ROLES: Record<Capability, Role[]> = {
   "audit:view": ALL_STAFF,
   "payment:verify": ALL_STAFF,
   "product:manage": ALL_STAFF,
+  "record:write": ["owner", "admin", "member"],
 }
 
 /** True when `role` holds `capability`. */

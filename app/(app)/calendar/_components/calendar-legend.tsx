@@ -2,12 +2,10 @@ import { cn } from "@/lib/utils"
 
 /** Dot + label pairs describing the colour coding used across day cells. */
 const LEGEND: { label: string; className: string }[] = [
-  { label: "Follow-up", className: "bg-amber-500" },
-  { label: "Meeting", className: "bg-violet-500" },
-  { label: "Call", className: "bg-blue-500" },
-  { label: "Email / Note", className: "bg-muted-foreground" },
-  { label: "Invoice due", className: "bg-red-500" },
-  { label: "Project deadline", className: "bg-emerald-500" },
+  { label: "Overdue activity / invoice", className: "bg-red-500" },
+  { label: "Activity today", className: "bg-orange-500" },
+  { label: "Future activity / project deadline", className: "bg-emerald-500" },
+  { label: "Completed activity", className: "bg-muted-foreground" },
 ]
 
 export function CalendarLegend() {

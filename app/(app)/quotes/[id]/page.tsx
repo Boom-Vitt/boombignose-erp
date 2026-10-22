@@ -1,3 +1,4 @@
+import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft, Download, ListPlus } from "lucide-react"
@@ -278,6 +279,7 @@ export default async function QuoteDetailPage({
           </CardContent>
         </Card>
       ) : null}
+      <RecordHistory recordType="quote" recordId={id} />
     </div>
   )
 }

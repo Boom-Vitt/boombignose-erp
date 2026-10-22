@@ -15,9 +15,9 @@ describe("can", () => {
     expect(can("admin", "team:manage")).toBe(true)
   })
 
-  it("denies members every gated capability", () => {
+  it("denies members staff capabilities", () => {
     for (const cap of Object.keys(CAPABILITY_ROLES) as Capability[]) {
-      expect(can("member", cap)).toBe(false)
+      expect(can("member", cap)).toBe(cap === "record:write")
     }
   })
 })
@@ -29,7 +29,7 @@ describe("capabilitiesFor", () => {
     )
   })
 
-  it("returns none for member", () => {
-    expect(capabilitiesFor("member")).toEqual([])
+  it("returns record collaboration for member", () => {
+    expect(capabilitiesFor("member")).toEqual(["record:write"])
   })
 })
