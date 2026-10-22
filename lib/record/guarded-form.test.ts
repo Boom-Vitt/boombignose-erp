@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest"
 import { createFormControl, type FormState, type UseFormReturn } from "react-hook-form"
 
-// The hook is called as a function; transitions run at once.
+// GuardedHeader is called as a function component; transitions run at once.
 vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
   useTransition: () => [false, (task: () => unknown) => { void task() }],
@@ -15,7 +15,7 @@ import { useGuardedForm } from "@/components/record/record-guard"
 
 type Header = { title: string; notes: string }
 
-function header() {
+function GuardedHeader() {
   const control = createFormControl<Header>({ defaultValues: { title: "Old", notes: "" } })
   let state = {} as Partial<FormState<Header>>
   control.subscribe({ formState: { isDirty: true, dirtyFields: true, defaultValues: true }, callback: (next) => { state = next } })
@@ -27,7 +27,7 @@ function header() {
 }
 
 it("keeps edits typed while the header save is pending, and keeps them dirty", async () => {
-  const { control, submit, state, inFlight } = header()
+  const { control, submit, state, inFlight } = GuardedHeader()
   control.setValue("title", "Saved", { shouldDirty: true })
   const saving = submit()
   const finish = await inFlight()
@@ -40,7 +40,7 @@ it("keeps edits typed while the header save is pending, and keeps them dirty", a
 })
 
 it("is clean against the saved values when nothing changed during the save", async () => {
-  const { control, submit, state, inFlight } = header()
+  const { control, submit, state, inFlight } = GuardedHeader()
   control.setValue("title", "Saved", { shouldDirty: true })
   const saving = submit()
   ;(await inFlight())(true)
