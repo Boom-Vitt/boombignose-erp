@@ -23,6 +23,24 @@ export type Database = {
           }
         },"public": {
           Tables: {
+      vendors: {
+        Row: { id: string; org_id: string; name: string; tax_id: string | null; email: string | null; phone: string | null; address: string | null; payment_terms_days: number; notes: string | null; active: boolean; created_at: string; updated_at: string }
+        Insert: { id?: string; org_id: string; name: string; tax_id?: string | null; email?: string | null; phone?: string | null; address?: string | null; payment_terms_days?: number; notes?: string | null; active?: boolean; created_at?: string; updated_at?: string }
+        Update: { id?: string; org_id?: string; name?: string; tax_id?: string | null; email?: string | null; phone?: string | null; address?: string | null; payment_terms_days?: number; notes?: string | null; active?: boolean; created_at?: string; updated_at?: string }
+        Relationships: [{ foreignKeyName: "vendors_org_id_fkey"; columns: ["org_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] }]
+      }
+      purchase_orders: {
+        Row: { id: string; org_id: string; number: string; vendor_id: string; status: Database["public"]["Enums"]["purchase_status"]; order_date: string; expected_date: string | null; notes: string | null; created_by: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; org_id: string; number: string; vendor_id: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Update: { id?: string; org_id?: string; number?: string; vendor_id?: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Relationships: [{ foreignKeyName: "purchase_orders_org_id_vendor_id_fkey"; columns: ["org_id", "vendor_id"]; isOneToOne: false; referencedRelation: "vendors"; referencedColumns: ["org_id", "id"] }]
+      }
+      purchase_order_items: {
+        Row: { id: string; org_id: string; purchase_order_id: string; product_id: string | null; description: string; quantity: number; unit: string; unit_cost_satang: number; received_quantity: number; billed_quantity: number; position: number }
+        Insert: { id?: string; org_id: string; purchase_order_id: string; product_id?: string | null; description: string; quantity: number; unit?: string; unit_cost_satang: number; received_quantity?: number; billed_quantity?: number; position?: number }
+        Update: { id?: string; org_id?: string; purchase_order_id?: string; product_id?: string | null; description?: string; quantity?: number; unit?: string; unit_cost_satang?: number; received_quantity?: number; billed_quantity?: number; position?: number }
+        Relationships: [{ foreignKeyName: "purchase_order_items_org_id_purchase_order_id_fkey"; columns: ["org_id", "purchase_order_id"]; isOneToOne: false; referencedRelation: "purchase_orders"; referencedColumns: ["org_id", "id"] }, { foreignKeyName: "purchase_order_items_org_id_product_id_fkey"; columns: ["org_id", "product_id"]; isOneToOne: false; referencedRelation: "products"; referencedColumns: ["org_id", "id"] }]
+      }
             "accounting_connections": {
                   Row: {
                     "config": NonNullable<Json>,"created_at": string,"id": string,"org_id": string,"provider": Database["public"]['Enums']["accounting_provider"],"status": Database["public"]['Enums']["accounting_conn_status"],"updated_at": string
@@ -65,14 +83,14 @@ isOneToOne: false
                   ]
                 },"activities": {
                   Row: {
-                    "body": string | null,"client_id": string | null,"created_at": string,"deal_id": string | null,"done": boolean,"due_date": string | null,"id": string,"org_id": string,"owner": string | null,"type": Database["public"]['Enums']["activity_type"],"updated_at": string,"record_type": Database["public"]["Enums"]["record_type"] | null,"record_id": string | null,"completed_at": string | null
+                    "body": string | null,"client_id": string | null,"created_at": string,"deal_id": string | null,"done": boolean,"due_date": string | null,"id": string,"org_id": string,"owner": string | null,"type": Database["public"]['Enums']["activity_type"],"updated_at": string,"record_type": Database["public"]["Enums"]["record_type"] | null,"record_id": string | null,"completed_at": string | null,"completed_by": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id": string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null
+                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id": string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null,"completed_by"?: string | null
                   }
                   Update: {
-                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id"?: string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null
+                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id"?: string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null,"completed_by"?: string | null
                   }
                   Relationships: [
                     {
@@ -212,16 +230,21 @@ isOneToOne: false
                   ]
                 },"costs": {
                   Row: {
+                    vendor_id: string | null; purchase_order_id: string | null; bill_number: string | null; bill_date: string | null; due_date: string | null; paid_at: string | null;
                     "amount_satang": number,"category": Database["public"]['Enums']["cost_category"],"created_at": string,"id": string,"incurred_on": string,"notes": string | null,"org_id": string,"project_id": string | null,"updated_at": string,"vendor": string | null
                   }
                   ComputedFields: never
                   Insert: {
+                    vendor_id?: string | null; purchase_order_id?: string | null; bill_number?: string | null; bill_date?: string | null; due_date?: string | null; paid_at?: string | null;
                     "amount_satang": number,"category"?: Database["public"]['Enums']["cost_category"],"created_at"?: string,"id"?: string,"incurred_on"?: string,"notes"?: string | null,"org_id": string,"project_id"?: string | null,"updated_at"?: string,"vendor"?: string | null
                   }
                   Update: {
+                    vendor_id?: string | null; purchase_order_id?: string | null; bill_number?: string | null; bill_date?: string | null; due_date?: string | null; paid_at?: string | null;
                     "amount_satang"?: number,"category"?: Database["public"]['Enums']["cost_category"],"created_at"?: string,"id"?: string,"incurred_on"?: string,"notes"?: string | null,"org_id"?: string,"project_id"?: string | null,"updated_at"?: string,"vendor"?: string | null
                   }
                   Relationships: [
+ { foreignKeyName: "costs_vendor_tenant_fkey"; columns: ["org_id", "vendor_id"]; isOneToOne: false; referencedRelation: "vendors"; referencedColumns: ["org_id", "id"] },
+ { foreignKeyName: "costs_purchase_order_tenant_fkey"; columns: ["org_id", "purchase_order_id"]; isOneToOne: false; referencedRelation: "purchase_orders"; referencedColumns: ["org_id", "id"] },
                     {
       foreignKeyName: "costs_org_id_fkey"
       columns: ["org_id"]
@@ -1135,7 +1158,28 @@ isOneToOne: false
       }
 }
           Views: {
-            [_ in never]: never
+            deal_next_activity: {
+              Row: { org_id: string | null; deal_id: string | null; next_due_date: string | null; open_count: number | null }
+              Relationships: []
+            }
+            "client_balances": {
+              Row: {
+                "client_id": string | null,"invoiced_satang": number | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null
+              }
+              Relationships: []
+            }
+            "invoice_balances": {
+              Row: {
+                "amount_satang": number | null,"client_id": string | null,"invoice_id": string | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null,"status": Database["public"]["Enums"]["invoice_status"] | null
+              }
+              Relationships: []
+            }
+            "project_time_totals": {
+              Row: {
+                "minutes": number | null,"org_id": string | null,"project_id": string | null
+              }
+              Relationships: []
+            }
           }
           Functions: {
             "accept_integration_event":
@@ -1190,11 +1234,16 @@ isOneToOne: false
 { Args: { "p_business_address": string,"p_legal_name": string,"p_org_id": string,"p_tax_id": string,"p_tax_status": string }; Returns: undefined
                            }
             update_tax_business_profile: { Args: { p_org_id: string; p_legal_name: string; p_business_address: string; p_tax_id: string; p_vat_registered: boolean; p_vat_rate_bps: number; p_prices_include_vat: boolean; p_branch_label: string }; Returns: undefined }
+            create_purchase_order: { Args: { p_org_id: string; p_vendor_id: string; p_order_date: string; p_expected_date?: string | null; p_notes?: string | null }; Returns: string }
+            transition_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_status: Database["public"]["Enums"]["purchase_status"] }; Returns: undefined }
+            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json }; Returns: undefined }
+            bill_purchase_order: { Args: { p_org_id: string; p_order_id: string }; Returns: string }
             record_activity_assignees: { Args: { p_org_id: string }; Returns: { user_id: string; full_name: string | null }[] }
           }
           Enums: {
             "accounting_conn_status": "disconnected"|"connected"|"error","accounting_provider": "flowaccount"|"peak"|"xero","accounting_sync_status": "pending"|"synced"|"error","activity_type": "note"|"call"|"email"|"meeting"|"follow_up","ai_output_kind": "deal_summary"|"followup_draft"|"meeting_intake","cost_category": "software"|"contractor"|"infra"|"marketing"|"salary"|"other","deal_stage": "lead"|"contacted"|"discovery"|"proposal"|"negotiation"|"won"|"lost","invitation_status": "pending"|"accepted"|"revoked"|"expired","invoice_status": "draft"|"sent"|"partially_paid"|"paid"|"overdue"|"cancelled","outbound_status": "queued"|"delivered"|"failed","payment_method": "transfer"|"cash"|"card"|"promptpay"|"cheque"|"other","project_status": "not_started"|"in_progress"|"review"|"delivered"|"support"|"paused"|"cancelled","quote_status": "draft"|"sent"|"accepted"|"declined"|"expired"|"converted","recurring_interval": "weekly"|"monthly"|"quarterly"|"yearly","reminder_channel": "line"|"email"|"inapp","reminder_status": "pending"|"sent"|"cancelled","role_enum": "owner"|"admin"|"member","subscription_status": "active"|"paused"|"cancelled","task_status": "todo"|"in_progress"|"done"
-      record_type: "client" | "deal" | "quote" | "invoice" | "project" | "subscription"
+      purchase_status: "draft" | "sent" | "confirmed" | "received" | "billed" | "cancelled"
+      record_type: "client" | "deal" | "quote" | "invoice" | "project" | "subscription" | "vendor" | "purchase_order"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -1315,7 +1364,8 @@ export const Constants = {
         },"public": {
           Enums: {
             "accounting_conn_status": ["disconnected", "connected", "error"],"accounting_provider": ["flowaccount", "peak", "xero"],"accounting_sync_status": ["pending", "synced", "error"],"activity_type": ["note", "call", "email", "meeting", "follow_up"],"ai_output_kind": ["deal_summary", "followup_draft", "meeting_intake"],"cost_category": ["software", "contractor", "infra", "marketing", "salary", "other"],"deal_stage": ["lead", "contacted", "discovery", "proposal", "negotiation", "won", "lost"],"invitation_status": ["pending", "accepted", "revoked", "expired"],"invoice_status": ["draft", "sent", "partially_paid", "paid", "overdue", "cancelled"],"outbound_status": ["queued", "delivered", "failed"],"payment_method": ["transfer", "cash", "card", "promptpay", "cheque", "other"],"project_status": ["not_started", "in_progress", "review", "delivered", "support", "paused", "cancelled"],"quote_status": ["draft", "sent", "accepted", "declined", "expired", "converted"],"recurring_interval": ["weekly", "monthly", "quarterly", "yearly"],"reminder_channel": ["line", "email", "inapp"],"reminder_status": ["pending", "sent", "cancelled"],"role_enum": ["owner", "admin", "member"],"subscription_status": ["active", "paused", "cancelled"],"task_status": ["todo", "in_progress", "done"],
-            record_type: ["client", "deal", "quote", "invoice", "project", "subscription"]
+            purchase_status: ["draft", "sent", "confirmed", "received", "billed", "cancelled"],
+            record_type: ["client", "deal", "quote", "invoice", "project", "subscription", "vendor", "purchase_order"]
           }
         }
 } as const

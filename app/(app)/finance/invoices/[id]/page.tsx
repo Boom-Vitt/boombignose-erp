@@ -1,4 +1,4 @@
-import { readAll } from "@/lib/queries/read-all"
+import { readAll } from "@/lib/supabase/read-all"
 import { DocumentTotals } from "@/components/document-totals"
 import { WithholdingForm } from "../../_components/withholding-form"
 import { RecordHistory } from "@/components/record/record-history"
@@ -9,7 +9,7 @@ import { FileSignature, FileText, FolderKanban, Wallet } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
-import { formatTHB, satangToBahtString, sumSatang } from "@/lib/money"
+import { formatTHB, satangToBahtString } from "@/lib/money"
 import {
   deriveInvoiceStatus,
   outstandingSatang,
@@ -95,6 +95,8 @@ export default async function InvoiceDetailPage({
     invoiceRes,
     itemsRes,
     paymentsRes,
+    paymentCountRes,
+    balanceRes,
     clientsRes,
     projectsRes,
     accounting,
@@ -119,6 +121,8 @@ export default async function InvoiceDetailPage({
       .select("id, amount_satang, paid_at, method, notes").eq("verification_state", "verified").eq("org_id", ctx.orgId)
       .eq("invoice_id", id)
       .order("paid_at", { ascending: false }).order("id").range(from, to)),
+    supabase.from("payments").select("id", { count: "exact", head: true }).eq("verification_state", "verified").eq("org_id", ctx.orgId).eq("invoice_id", id),
+    supabase.from("invoice_balances").select("paid_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).maybeSingle(),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
     getInvoiceAccounting(ctx.orgId, id),
@@ -129,8 +133,8 @@ export default async function InvoiceDetailPage({
   if (!invoice) notFound()
 
   const payments = paymentsRes.data ?? []
-  if (paymentsRes.error || itemsRes.error || legacyRes.error || settingsRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
-  const paid = sumSatang(payments.map(p => p.amount_satang))
+  if (paymentsRes.error || balanceRes.error || itemsRes.error || legacyRes.error || settingsRes.error || paymentCountRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
+  const paid = balanceRes.data?.paid_satang ?? 0
   const outstanding = outstandingSatang(invoice.amount_satang, paid)
   const effectiveStatus = deriveInvoiceStatus(invoice, paid, today)
 
@@ -206,7 +210,7 @@ export default async function InvoiceDetailPage({
 
       <SmartButtons
         buttons={[
-          { label: "Payments", icon: Wallet, count: payments.length, href: "#payments" },
+          { label: "Payments", icon: Wallet, count: paymentCountRes.count ?? 0, href: "#payments" },
           {
             label: "Source quote",
             icon: FileSignature,

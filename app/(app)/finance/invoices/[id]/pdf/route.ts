@@ -1,4 +1,4 @@
-import { readAll } from "@/lib/queries/read-all"
+import { readAll } from "@/lib/supabase/read-all"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"

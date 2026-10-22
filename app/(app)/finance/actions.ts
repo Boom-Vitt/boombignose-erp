@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
-import { readAll } from "@/lib/queries/read-all"
+import { readAll } from "@/lib/supabase/read-all"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability, requireRole } from "@/lib/auth"

@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Plus, Target } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { readAll } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import { formatTHBWhole } from "@/lib/money"
@@ -61,14 +62,19 @@ export default async function DealsPage({
     : ""
   const q = (qParam ?? "").trim()
 
-  const [dealsRes, clientsRes, viewsRes, activitiesRes] = await Promise.all([
-    supabase
-      .from("deals")
-      .select(
-        "id,title,stage,value_satang,client_id,owner,next_follow_up_date,created_at"
-      )
-      .eq("org_id", ctx.orgId)
-      .order("created_at", { ascending: false }),
+  // Column counts, sums and the KPIs need every deal, not the first capped page.
+  const [dealsRes, clientsRes, viewsRes, nextRes] = await Promise.all([
+    readAll((from, to) =>
+      supabase
+        .from("deals")
+        .select(
+          "id,title,stage,value_satang,client_id,owner,next_follow_up_date,created_at"
+        )
+        .eq("org_id", ctx.orgId)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    ),
     supabase.from("clients").select("id,name").eq("org_id", ctx.orgId),
     supabase
       .from("saved_views")
@@ -77,25 +83,22 @@ export default async function DealsPage({
       .eq("module", "deals")
       .eq("user_id", ctx.userId)
       .order("created_at", { ascending: true }),
-    supabase
-      .from("activities")
-      .select("deal_id,due_date")
-      .eq("org_id", ctx.orgId)
-      .eq("done", false)
-      .not("deal_id", "is", null)
-      .not("due_date", "is", null)
-      // Earliest first, so a capped response still keeps the dates that drive the dots.
-      .order("due_date", { ascending: true }),
+    // Earliest open activity per deal, aggregated in the database.
+    readAll((from, to) =>
+      supabase
+        .from("deal_next_activity")
+        .select("deal_id,next_due_date")
+        .eq("org_id", ctx.orgId)
+        .order("deal_id")
+        .range(from, to)
+    ),
   ])
 
   const allDeals = dealsRes.data ?? []
   const clients = clientsRes.data ?? []
   const clientName = new Map(clients.map((c) => [c.id, c.name]))
   const ownerName = await profileNames(supabase, allDeals.map((d) => d.owner))
-  const nextActivity = new Map<string, string | null>()
-  for (const a of activitiesRes.data ?? []) {
-    if (a.deal_id) nextActivity.set(a.deal_id, earliestDate([nextActivity.get(a.deal_id) ?? null, a.due_date]))
-  }
+  const nextActivity = new Map((nextRes.data ?? []).map((r) => [r.deal_id, r.next_due_date]))
 
   const savedViews: SavedView[] = (viewsRes.data ?? []).map((v) => ({
     id: v.id,

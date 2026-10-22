@@ -69,5 +69,10 @@ select lives_ok($$select public.review_payment_claim_with_evidence('bd000000-000
 select is((select status::text from public.invoices where id='bd000000-0000-4000-8000-000000000030'),'paid','paid status compares against amount due');
 select is((select sum(amount_satang)::bigint from public.payments where invoice_id='bd000000-0000-4000-8000-000000000030' and verification_state='verified'),104000::bigint,'cash revenue includes only verified net receipt');
 select is((select total_satang from public.invoices where id='bd000000-0000-4000-8000-000000000030'),107000::bigint,'settlement does not rewrite gross total');
+select is((select amount_satang from public.invoice_balances where invoice_id='bd000000-0000-4000-8000-000000000030'),104000::bigint,'invoice balance view exposes net amount due, not gross');
+select is((select paid_satang from public.invoice_balances where invoice_id='bd000000-0000-4000-8000-000000000030'),104000::bigint,'invoice balance view retains verified receipts');
+select is((select outstanding_satang from public.invoice_balances where invoice_id='bd000000-0000-4000-8000-000000000030'),0::bigint,'net settlement leaves no VAT/WHT outstanding');
+select is((select invoiced_satang from public.client_balances where org_id='bd000000-0000-4000-8000-000000000010' and client_id='bd000000-0000-4000-8000-000000000020'),197600::bigint,'client balance aggregates issued net amounts and excludes drafts');
+select is((select outstanding_satang from public.client_balances where org_id='bd000000-0000-4000-8000-000000000010' and client_id='bd000000-0000-4000-8000-000000000020'),93600::bigint,'client balance does not subtract withholding twice');
 select * from finish();
 rollback;

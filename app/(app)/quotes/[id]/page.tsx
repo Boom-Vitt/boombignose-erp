@@ -1,4 +1,4 @@
-import { readAll } from "@/lib/queries/read-all"
+import { readAll } from "@/lib/supabase/read-all"
 import { DocumentTotals } from "@/components/document-totals"
 import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
@@ -80,7 +80,7 @@ export default async function QuoteDetailPage({
       .order("position", { ascending: true }).order("id").range(from, to)),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
-    supabase.from("invoices").select("id").eq("org_id", ctx.orgId).eq("source_quote_id", id),
+    supabase.from("invoices").select("id", { count: "exact" }).eq("org_id", ctx.orgId).eq("source_quote_id", id).limit(1),
     supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle(),
   ])
 
@@ -133,7 +133,6 @@ export default async function QuoteDetailPage({
     if (to === "converted") return { error: "Use quote conversion to create the linked records." }
     return setQuoteStatus({ id: quoteId, status: to })
   }
-  const invoiceIds = (invoicesRes.data ?? []).map((invoice) => invoice.id)
 
   return (
     <div className="space-y-6">
@@ -156,9 +155,9 @@ export default async function QuoteDetailPage({
           {
             label: "Invoices",
             icon: ReceiptText,
-            count: invoiceIds.length,
+            count: invoicesRes.count ?? 0,
             href: recordHref(
-              invoiceIds,
+              invoicesRes,
               (invoiceId) => `/finance/invoices/${invoiceId}`,
               quote.project_id ? `/projects/${quote.project_id}#billing` : "/finance"
             ),

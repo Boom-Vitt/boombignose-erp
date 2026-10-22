@@ -1,4 +1,4 @@
-import { readAll } from "@/lib/queries/read-all"
+import { readAll } from "@/lib/supabase/read-all"
 import { z } from "zod"
 import { notFound } from "next/navigation"
 

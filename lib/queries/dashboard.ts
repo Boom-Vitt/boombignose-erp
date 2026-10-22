@@ -1,4 +1,4 @@
-import { readAll } from "./read-all"
+import { readAll } from "@/lib/supabase/read-all"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { currentMonthKey, lastNMonths, todayISO, isPastDue, startOfDayInstant } from "@/lib/dates"

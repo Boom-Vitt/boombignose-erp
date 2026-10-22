@@ -9,7 +9,7 @@ vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => state.ctx, require
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.client }))
 vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
-import { attachRecordFile, completeRecordActivity, logRecordNote, recordAttachmentUrl, scheduleRecordActivity } from "./actions"
+import { attachRecordFile, completeRecordActivity, logRecordNote, recordAttachmentUrl, scheduleRecordActivity, loadRecordHistoryPage } from "./actions"
 
 const recordId = "10000000-0000-4000-8000-000000000003"
 const activityId = "10000000-0000-4000-8000-000000000004"
@@ -69,7 +69,7 @@ it("schedules for a current workspace member and rejects foreign assignees", asy
 })
 it("marks only a stored activity in the active org done and scopes the update", async () => {
   expect(await completeRecordActivity(activityId)).toEqual({})
-  expect(updates).toEqual([{ table: "activities", values: { done: true } }])
+  expect(updates).toEqual([{ table: "activities", values: { done: true, completed_by: state.ctx.userId, completed_at: expect.any(String) } }])
   expect(filters).toEqual(expect.arrayContaining([
     { table: "activities", key: "org_id", value: state.ctx.orgId }, { table: "activities", key: "id", value: activityId }, { table: "activities", key: "done", value: false },
   ]))
@@ -109,4 +109,10 @@ it("signs only active-org downloads for one minute with attachment disposition",
   tables.record_attachments[0].org_id = "foreign"
   expect(await recordAttachmentUrl(activityId)).toHaveProperty("error")
   expect(state.signed).not.toHaveBeenCalled()
+})
+
+it("rejects forged or malformed timeline cursors before querying history", async () => {
+  expect(await loadRecordHistoryPage({ ...ref, cursor: { at: "2026-10-23T10:00:00Z", id: "note:forged),or(org_id.neq.any)" } })).toHaveProperty("error")
+  expect(await loadRecordHistoryPage({ ...ref, cursor: { at: "yesterday", id: `note:${activityId}` } })).toHaveProperty("error")
+  expect(filters).toHaveLength(0)
 })

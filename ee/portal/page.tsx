@@ -1,4 +1,4 @@
-import { readAll } from "@/lib/queries/read-all"
+import { readAll } from "@/lib/supabase/read-all"
 import { DocumentTotals } from "@/components/document-totals"
 import { FileText, Receipt, FolderKanban, Lock } from "lucide-react"
 
