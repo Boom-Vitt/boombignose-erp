@@ -92,7 +92,7 @@ export default async function FinancePage({
       readAll((from, to) => supabase
         .from("costs")
         .select(
-          "id, category, amount_satang, incurred_on, vendor, project_id, projects(name), vendor_id, purchase_order_id, bill_number, bill_date, due_date, paid_at"
+          "id, category, amount_satang, incurred_on, vendor, project_id, projects(name), vendor_id, purchase_order_id, expense_claim_id, bill_number, bill_date, due_date, paid_at"
         )
         .eq("org_id", ctx.orgId)
         .order("incurred_on", { ascending: false }).order("id").range(from, to)),
@@ -343,12 +343,12 @@ export default async function FinancePage({
                           {c.incurred_on}
                         </TableCell>
                         <TableCell>{c.vendor_id ? <Link className="underline" href={`/vendors/${c.vendor_id}`}>{c.vendor ?? "Vendor"}</Link> : c.vendor ?? "—"}</TableCell>
-                        <TableCell>{c.purchase_order_id ? <Link className="underline" href={`/purchases/${c.purchase_order_id}`}>{c.bill_number}</Link> : c.bill_number ?? "—"}</TableCell>
+                        <TableCell>{c.expense_claim_id ? <Link className="underline" href={`/expenses/${c.expense_claim_id}`}>{c.bill_number}</Link> : c.purchase_order_id ? <Link className="underline" href={`/purchases/${c.purchase_order_id}`}>{c.bill_number}</Link> : c.bill_number ?? "—"}</TableCell>
                         <TableCell className={c.vendor_id && !c.paid_at && c.due_date && c.due_date < today ? "text-destructive" : ""}>{c.due_date ?? "—"}</TableCell>
-                        <TableCell>{c.vendor_id ? c.paid_at ? `Paid ${todayISO(new Date(c.paid_at))}` : <div className="space-y-1"><span>Unpaid</span>{can(ctx.role, "purchase:manage") && <PurchaseAction action={markBillPaid.bind(null, c.id)} label="Mark paid" />}</div> : "—"}</TableCell>
+                        <TableCell>{c.expense_claim_id ? c.paid_at ? `Reimbursed ${todayISO(new Date(c.paid_at))}` : "Awaiting reimbursement" : c.vendor_id ? c.paid_at ? `Paid ${todayISO(new Date(c.paid_at))}` : <div className="space-y-1"><span>Unpaid</span>{can(ctx.role, "purchase:manage") && <PurchaseAction action={markBillPaid.bind(null, c.id)} label="Mark paid" />}</div> : "—"}</TableCell>
                         <TableCell>{c.projects?.name ?? "—"}</TableCell>
                         <TableCell className="text-right">
-                          {!c.vendor_id && !c.purchase_order_id && <DeleteCostButton
+                          {!c.vendor_id && !c.purchase_order_id && !c.expense_claim_id && <DeleteCostButton
                             id={c.id}
                             label={`${COST_CATEGORY_LABEL[c.category]} cost`}
                           />}
