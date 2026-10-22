@@ -49,6 +49,7 @@ export default async function SubscriptionsPage() {
       <PageHeader
         title="Subscriptions"
         description="Recurring invoices that bill clients on a schedule."
+        breadcrumbs={[{ label: "Finance", href: "/finance" }]}
       >
         <Button variant="outline" render={<Link href="/finance" />}>
           <ArrowLeft /> Back

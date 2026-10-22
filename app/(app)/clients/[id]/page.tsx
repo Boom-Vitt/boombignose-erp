@@ -1,10 +1,13 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
-  ArrowLeft,
   Pencil,
   Users,
   Handshake,
+  FileSignature,
+  FolderKanban,
+  ReceiptText,
+  Scale,
   Activity as ActivityIcon,
   Mail,
   Phone,
@@ -12,6 +15,9 @@ import {
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { formatTHB, sumSatang } from "@/lib/money"
+import { unpaidTotal } from "@/lib/metrics/finance"
+import { SmartButtons, recordHref } from "@/components/record/smart-buttons"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { DealStageBadge } from "@/components/status-badge"
@@ -47,7 +53,7 @@ export default async function ClientDetailPage({
 
   if (!client) notFound()
 
-  const [contactsRes, dealsRes, activitiesRes] = await Promise.all([
+  const [contactsRes, dealsRes, activitiesRes, quotesRes, invoicesRes, projectsRes] = await Promise.all([
     supabase
       .from("contacts")
       .select("id, name, email, phone, role")
@@ -67,19 +73,50 @@ export default async function ClientDetailPage({
       .eq("client_id", id)
       .order("created_at", { ascending: false })
       .limit(8),
+    supabase.from("quotes").select("id").eq("org_id", ctx.orgId).eq("client_id", id),
+    supabase
+      .from("invoices")
+      .select("id, status, amount_satang")
+      .eq("org_id", ctx.orgId)
+      .eq("client_id", id),
+    supabase.from("projects").select("id").eq("org_id", ctx.orgId).eq("client_id", id),
   ])
 
   const contacts = contactsRes.data ?? []
   const deals = dealsRes.data ?? []
   const activities = activitiesRes.data ?? []
+  const quoteIds = (quotesRes.data ?? []).map((q) => q.id)
+  const invoices = invoicesRes.data ?? []
+  const invoiceIds = invoices.map((invoice) => invoice.id)
+  const projectIds = (projectsRes.data ?? []).map((p) => p.id)
+
+  const paymentsRes = invoiceIds.length
+    ? await supabase
+        .from("payments")
+        .select("invoice_id, amount_satang")
+        .eq("org_id", ctx.orgId)
+        .eq("verification_state", "verified")
+        .in("invoice_id", invoiceIds)
+    : { data: [], error: null }
+  const payments = paymentsRes.data ?? []
+  // A partial read would understate what the client owes, so hide the balance instead.
+  const balanceKnown = !invoicesRes.error && !paymentsRes.error
+  const openBalance = unpaidTotal(
+    invoices.map((invoice) => ({
+      ...invoice,
+      paid_satang: sumSatang(
+        payments.filter((p) => p.invoice_id === invoice.id).map((p) => p.amount_satang)
+      ),
+    }))
+  )
 
   return (
     <div className="space-y-6">
-      <PageHeader title={client.name} description="Client details">
-        <Button variant="ghost" size="sm" render={<Link href="/clients" />}>
-          <ArrowLeft />
-          Back
-        </Button>
+      <PageHeader
+        title={client.name}
+        description="Client details"
+        breadcrumbs={[{ label: "Clients", href: "/clients" }]}
+      >
         <Button
           variant="outline"
           size="sm"
@@ -90,6 +127,37 @@ export default async function ClientDetailPage({
         </Button>
         <DeleteClientButton id={client.id} name={client.name} />
       </PageHeader>
+
+      <SmartButtons
+        buttons={[
+          { label: "Deals", icon: Handshake, count: deals.length, href: "#deals" },
+          {
+            label: "Quotes",
+            icon: FileSignature,
+            count: quoteIds.length,
+            href: recordHref(quoteIds, (quoteId) => `/quotes/${quoteId}`, "/quotes"),
+          },
+          {
+            label: "Invoices",
+            icon: ReceiptText,
+            count: invoiceIds.length,
+            href: recordHref(invoiceIds, (invoiceId) => `/finance/invoices/${invoiceId}`, "/finance"),
+          },
+          {
+            label: "Projects",
+            icon: FolderKanban,
+            count: projectIds.length,
+            href: recordHref(projectIds, (projectId) => `/projects/${projectId}`, "/projects"),
+          },
+          {
+            label: "Open balance",
+            icon: Scale,
+            count: balanceKnown ? openBalance : 0,
+            value: formatTHB(openBalance),
+            href: "/finance",
+          },
+        ]}
+      />
 
       {/* Overview */}
       <Card>
@@ -177,7 +245,7 @@ export default async function ClientDetailPage({
       </Card>
 
       {/* Deals (read-only) */}
-      <Card>
+      <Card id="deals">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Handshake className="size-4" />

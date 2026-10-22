@@ -1,15 +1,20 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, Download, ListPlus } from "lucide-react"
+import { Download, FolderKanban, ListPlus, ReceiptText } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { formatTHB } from "@/lib/money"
 import { quoteIsEditable, serviceAmountBaht } from "@/lib/workflows/service"
 import { todayISO } from "@/lib/dates"
+import { QUOTE_FLOW } from "@/lib/record/status"
+import type { Enums } from "@/lib/types/database"
 
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
+import { QuoteStatusBadge } from "@/components/status-badge"
+import { StatusBar } from "@/components/record/status-bar"
+import { SmartButtons, recordHref } from "@/components/record/smart-buttons"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -22,7 +27,7 @@ import {
   TableCell,
 } from "@/components/ui/table"
 
-import { updateQuote } from "../actions"
+import { setQuoteStatus, updateQuote } from "../actions"
 import {
   QuoteForm,
   type QuoteFormValues,
@@ -30,8 +35,7 @@ import {
 } from "../_components/quote-form"
 import { QuoteItemForm } from "../_components/quote-item-form"
 import { DeleteQuoteItemButton } from "../_components/delete-quote-item-button"
-import { QuoteStatusControls } from "../_components/quote-status-controls"
-import { QuoteStatusBadge } from "../_components/quote-status-badge"
+import { ConvertQuoteButton } from "../_components/convert-quote-button"
 import { EmailQuoteButton } from "../_components/email-quote-button"
 import type { Option } from "../_components/form-fields"
 
@@ -55,7 +59,7 @@ export default async function QuoteDetailPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [quoteRes, itemsRes, clientsRes, projectsRes] = await Promise.all([
+  const [quoteRes, itemsRes, clientsRes, projectsRes, invoicesRes] = await Promise.all([
     supabase
       .from("quotes")
       .select(
@@ -71,6 +75,7 @@ export default async function QuoteDetailPage({
       .order("position", { ascending: true }),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
+    supabase.from("invoices").select("id").eq("org_id", ctx.orgId).eq("source_quote_id", id),
   ])
 
   const quote = quoteRes.data
@@ -116,12 +121,19 @@ export default async function QuoteDetailPage({
     "use server"
     return updateQuote({ id: quoteId, ...values })
   }
+  async function transitionQuote(to: Enums<"quote_status">) {
+    "use server"
+    if (to === "converted") return { error: "Use quote conversion to create the linked records." }
+    return setQuoteStatus({ id: quoteId, status: to })
+  }
+  const invoiceIds = (invoicesRes.data ?? []).map((invoice) => invoice.id)
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={quote.number}
         description={quote.clients?.name ?? "Quote"}
+        breadcrumbs={[{ label: "Quotes", href: "/quotes" }]}
       >
         <Button
           variant="outline"
@@ -130,10 +142,39 @@ export default async function QuoteDetailPage({
           <Download /> Download PDF
         </Button>
         <EmailQuoteButton quoteId={quote.id} />
-        <Button variant="outline" render={<Link href="/quotes" />}>
-          <ArrowLeft /> Back
-        </Button>
       </PageHeader>
+
+      <SmartButtons
+        buttons={[
+          {
+            label: "Invoices",
+            icon: ReceiptText,
+            count: invoiceIds.length,
+            href: recordHref(
+              invoiceIds,
+              (invoiceId) => `/finance/invoices/${invoiceId}`,
+              quote.project_id ? `/projects/${quote.project_id}#billing` : "/finance"
+            ),
+          },
+          {
+            label: "Project",
+            icon: FolderKanban,
+            count: quote.project_id ? 1 : 0,
+            href: `/projects/${quote.project_id}`,
+          },
+        ]}
+      />
+      <StatusBar
+        label="Quote status"
+        flow={QUOTE_FLOW}
+        status={quote.status}
+        transition={transitionQuote}
+        commands={
+          canConvert
+            ? { convert: (props) => <ConvertQuoteButton quoteId={quote.id} orgId={ctx.orgId} {...props} /> }
+            : {}
+        }
+      />
 
       <Card>
         <CardHeader className="flex-row items-center justify-between">
@@ -192,13 +233,6 @@ export default async function QuoteDetailPage({
             </>
           ) : null}
 
-          <Separator />
-          <QuoteStatusControls
-            quoteId={quote.id}
-            orgId={ctx.orgId}
-            status={quote.status}
-            canConvert={canConvert}
-          />
         </CardContent>
       </Card>
 

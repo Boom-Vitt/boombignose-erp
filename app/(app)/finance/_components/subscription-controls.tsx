@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Play, Pause, Ban, ReceiptText, Trash2 } from "lucide-react"
+import { ReceiptText, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -20,11 +20,7 @@ import {
 import type { Enums } from "@/lib/types/database"
 import { beginInvoiceRequest, readInvoiceRequest, acknowledgeInvoiceRequest } from "@/lib/billing/occurrence-command"
 
-import {
-  setSubscriptionStatus,
-  generateInvoiceNow,
-  deleteSubscription,
-} from "../subscription-actions"
+import { generateInvoiceNow, deleteSubscription } from "../subscription-actions"
 
 type Status = Enums<"subscription_status">
 
@@ -59,18 +55,6 @@ export function SubscriptionControls({
     try { return readInvoiceRequest(sessionStorage, orgId, id)?.occurrence ?? null } catch { return null }
   }, () => null)
 
-  function changeStatus(next: Status) {
-    startTransition(async () => {
-      const res = await setSubscriptionStatus({ id, status: next })
-      if (res?.error) {
-        toast.error(res.error)
-        return
-      }
-      toast.success(`Subscription ${next}`)
-      router.refresh()
-    })
-  }
-
   function generate() {
     startTransition(async () => {
       try {
@@ -90,37 +74,6 @@ export function SubscriptionControls({
 
   return (
     <div className="flex flex-wrap gap-2">
-      {canManage && status !== "active" ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={pending}
-          onClick={() => changeStatus("active")}
-        >
-          <Play /> Activate
-        </Button>
-      ) : canManage ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={pending}
-          onClick={() => changeStatus("paused")}
-        >
-          <Pause /> Pause
-        </Button>
-      ) : null}
-
-      {canManage && status !== "cancelled" ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={pending}
-          onClick={() => changeStatus("cancelled")}
-        >
-          <Ban /> Cancel
-        </Button>
-      ) : null}
-
       {canManage ? (
         <>
           <Button size="sm" disabled={pending || (!isDue && !unacknowledged) || status !== "active"} onClick={generate}>

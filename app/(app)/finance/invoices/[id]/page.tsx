@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, FileText, Wallet } from "lucide-react"
+import { FileSignature, FileText, FolderKanban, Wallet } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -11,10 +11,13 @@ import {
   outstandingSatang,
 } from "@/lib/metrics/invoice-status"
 import type { Enums } from "@/lib/types/database"
+import { INVOICE_FLOW } from "@/lib/record/status"
 
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { InvoiceStatusBadge } from "@/components/status-badge"
+import { StatusBar } from "@/components/record/status-bar"
+import { SmartButtons } from "@/components/record/smart-buttons"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -174,6 +177,7 @@ export default async function InvoiceDetailPage({
       <PageHeader
         title={invoice.number}
         description={invoice.clients?.name ?? "Invoice"}
+        breadcrumbs={[{ label: "Finance", href: "/finance" }]}
       >
         <InvoiceAccountingControls invoiceId={invoice.id} connected={accounting.connected} />
         <Button
@@ -189,13 +193,43 @@ export default async function InvoiceDetailPage({
           <FileText /> Print / PDF
         </Button>
         <EmailInvoiceButton invoiceId={invoice.id} />
-        <Button variant="outline" render={<Link href="/finance" />}>
-          <ArrowLeft /> Back
-        </Button>
       </PageHeader>
 
+      <SmartButtons
+        buttons={[
+          { label: "Payments", icon: Wallet, count: payments.length, href: "#payments" },
+          {
+            label: "Source quote",
+            icon: FileSignature,
+            count: invoice.source_quote_id ? 1 : 0,
+            href: `/quotes/${invoice.source_quote_id}`,
+          },
+          {
+            label: "Project",
+            icon: FolderKanban,
+            count: invoice.project_id ? 1 : 0,
+            href: `/projects/${invoice.project_id}`,
+          },
+        ]}
+      />
+      <StatusBar
+        label="Invoice status"
+        flow={INVOICE_FLOW}
+        status={effectiveStatus}
+        commands={
+          ctx.role === "member"
+            ? {}
+            : {
+                issue: "#issue-invoice",
+                ...(outstanding > 0 && !["draft", "cancelled"].includes(invoice.status)
+                  ? { pay: "#payment-claims" }
+                  : {}),
+              }
+        }
+      />
+
       <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. Tax classification, credits and withholding require accountant-approved evidence. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
-      {invoice.status === "draft" && ctx.role !== "member" ? <Card><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></CardContent></Card> : null}
+      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></CardContent></Card> : null}
       {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -267,7 +301,7 @@ export default async function InvoiceDetailPage({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="payments">
             <CardHeader>
               <CardTitle className="text-base">Payments</CardTitle>
             </CardHeader>
@@ -310,7 +344,7 @@ export default async function InvoiceDetailPage({
         </div>
 
         <div className="space-y-6">
-          <Card>
+          <Card id="payment-claims">
             <CardHeader>
               <CardTitle className="text-base">ตรวจสอบการชำระ / Payment claims</CardTitle>
             </CardHeader>
