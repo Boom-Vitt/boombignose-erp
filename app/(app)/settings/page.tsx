@@ -1,4 +1,5 @@
 import { Wallet, Flame, Users, Lock } from "lucide-react"
+import Link from "next/link"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -82,6 +83,7 @@ export default async function SettingsPage() {
         title="Settings"
         description="Workspace finances and your team. Cash here drives the dashboard."
       />
+      {canEdit ? <Link href="/settings/lead-forms" className="text-sm underline">Lead forms</Link> : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard

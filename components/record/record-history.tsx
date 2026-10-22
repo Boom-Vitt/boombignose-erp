@@ -1,11 +1,11 @@
+import { randomUUID } from "node:crypto"
 import { todayISO } from "@/lib/dates"
 import { recordHistory } from "@/lib/record-history/queries"
 import { ACTIVITY_LABELS, type RecordRef } from "@/lib/record-history/model"
-import { timelineDay } from "@/lib/record-history/timeline"
 import { ActivityComposer } from "./activity-composer"
 import { ActivityDone } from "./activity-done"
 import { ActivityDue } from "./activity-due"
-import { ActivityAttachment } from "./activity-attachment"
+import { ActivityTimeline } from "./activity-timeline"
 
 export async function RecordHistory(ref: RecordRef) {
   const history = await recordHistory(ref)
@@ -24,16 +24,13 @@ export async function RecordHistory(ref: RecordRef) {
         {history.canWrite ? <ActivityDone id={activity.id} /> : null}
       </li>)}</ul> : <p className="text-muted-foreground text-sm">No planned activities.</p>}
     </section>
-    <section aria-label="Timeline" className="space-y-3">
-      <h3 className="font-medium">Timeline</h3>
-      {!history.canViewAudit ? <p className="text-muted-foreground text-xs">System audit entries are visible to owners and admins.</p> : null}
-      {history.timeline.length ? <ol className="space-y-3">{history.timeline.map((entry, index) => <li key={entry.id}>
-        {index === 0 || timelineDay(history.timeline[index - 1].at) !== timelineDay(entry.at) ? <h4 className="text-muted-foreground mb-2 text-xs font-medium">{timelineDay(entry.at)}</h4> : null}
-        <article className="space-y-1 border-l-2 pl-3">
-          <p className="text-muted-foreground text-xs">{entry.actor ? names.get(entry.actor) || "Team member" : "System"} · <time dateTime={entry.at}>{new Date(entry.at).toLocaleTimeString("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" })}</time> · {entry.kind}</p>
-          {entry.attachmentId ? <ActivityAttachment id={entry.attachmentId} filename={entry.text} /> : <p className="whitespace-pre-wrap break-words text-sm">{entry.text}</p>}
-        </article>
-      </li>)}</ol> : <p className="text-muted-foreground text-sm">No history yet.</p>}
-    </section>
+    {/* Refresh older pages too when an activity is reopened beyond the first page. */}
+    <ActivityTimeline
+      key={randomUUID()}
+      record={ref}
+      initial={{ timeline: history.timeline, nextCursor: history.nextCursor }}
+      people={history.people}
+      canViewAudit={history.canViewAudit}
+    />
   </section>
 }

@@ -10,6 +10,7 @@ const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/api/webhooks", "/api/cr
 
 function isPublic(pathname: string): boolean {
   if (pathname === "/" || pathname === "/blueprint-preview") return true
+  if (/^\/f\/[^/]+$/.test(pathname)) return true
   return PUBLIC_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   )

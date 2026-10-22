@@ -1,3 +1,5 @@
+import Link from "next/link"
+import { overdueVendorBillCount } from "@/lib/purchasing/queries"
 import { todayISO } from "@/lib/dates"
 import { ActivityDue } from "@/components/record/activity-due"
 import {
@@ -35,7 +37,7 @@ function runwayLabel(months: number | null): { value: string; hint: string; tone
 }
 
 export default async function DashboardPage() {
-  const d = await getDashboardData()
+  const [d, overdueBills] = await Promise.all([getDashboardData(), overdueVendorBillCount()])
   const runway = runwayLabel(d.runwayMonths)
   const maxRevenue = Math.max(...d.revenueHistory.map((row) => row.revenueSatang))
 
@@ -200,6 +202,10 @@ export default async function DashboardPage() {
                 {d.overdueInvoiceCount}
               </Badge>
             </div>
+            <Link href="/finance?tab=costs" className="flex items-center justify-between rounded-md border p-3 text-sm">
+              <span>Overdue vendor bills</span>
+              <Badge variant={overdueBills > 0 ? "destructive" : "secondary"}>{overdueBills}</Badge>
+            </Link>
             <div className="rounded-md border">
               <div className="border-b px-3 py-2 text-sm font-medium">
                 Overdue follow-ups ({d.overdueFollowUps.length})

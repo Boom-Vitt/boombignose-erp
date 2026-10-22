@@ -206,3 +206,23 @@ insert into subscriptions (id, org_id, client_id, project_id, name, amount_satan
   ('80000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003','e0000000-0000-0000-0000-000000000003','Lanna EdTech — monthly support', 3500000, 'monthly','active', date_trunc('month', current_date)::date, current_date + 27, date_trunc('month', current_date)::date, true, 'Monthly support retainer'),
   ('80000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002',null,                                   'Krua Thai — automation retainer', 4000000, 'monthly','active', current_date, current_date + 30, null, true, 'Monthly automation retainer')
 on conflict (id) do nothing;
+
+insert into public.vendors(id,org_id,name,email,payment_terms_days,notes) values
+  ('a6000000-0000-4000-8000-000000000001','a0000000-0000-0000-0000-000000000001','Demo Cloud Supply','cloud-supply@example.invalid',30,'Synthetic demo vendor'),
+  ('a6000000-0000-4000-8000-000000000002','a0000000-0000-0000-0000-000000000001','Demo Studio Partners','studio-partners@example.invalid',14,'Synthetic demo vendor')
+on conflict(id) do nothing;
+insert into public.purchase_orders(id,org_id,number,vendor_id,status,order_date,expected_date,created_by) values
+  ('a7000000-0000-4000-8000-000000000001','a0000000-0000-0000-0000-000000000001','PO-'||extract(year from current_date)::text||'-001','a6000000-0000-4000-8000-000000000001','received',current_date-5,current_date-1,'b0000000-0000-0000-0000-000000000001'),
+  ('a7000000-0000-4000-8000-000000000002','a0000000-0000-0000-0000-000000000001','PO-'||extract(year from current_date)::text||'-002','a6000000-0000-4000-8000-000000000002','draft',current_date,current_date+7,'b0000000-0000-0000-0000-000000000001')
+on conflict(id) do nothing;
+insert into public.purchase_order_items(id,org_id,purchase_order_id,product_id,description,quantity,unit,unit_cost_satang,received_quantity,position)
+select v.id,'a0000000-0000-0000-0000-000000000001',v.po,p.id,coalesce(p.description,p.name),v.qty,p.unit,p.cost_satang,v.received,0
+from (values
+  ('a7100000-0000-4000-8000-000000000001'::uuid,'a7000000-0000-4000-8000-000000000001'::uuid,'a5000000-0000-4000-8000-000000000001'::uuid,2,2),
+  ('a7100000-0000-4000-8000-000000000002'::uuid,'a7000000-0000-4000-8000-000000000002'::uuid,'a5000000-0000-4000-8000-000000000002'::uuid,1,0)
+) v(id,po,product,qty,received)
+join public.products p on p.id=v.product and p.org_id='a0000000-0000-0000-0000-000000000001'
+on conflict(id) do nothing;
+insert into public.document_counters(org_id,kind,year,value)
+values('a0000000-0000-0000-0000-000000000001','PO',extract(year from current_date)::integer,2)
+on conflict(org_id,kind,year) do update set value=greatest(document_counters.value,excluded.value);

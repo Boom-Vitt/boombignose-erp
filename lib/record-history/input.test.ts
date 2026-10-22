@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { AttachmentInput, MAX_ATTACHMENT_SIZE, NoteInput, ScheduleInput } from "./input"
+import { AttachmentInput, MAX_ATTACHMENT_SIZE, NoteInput, ScheduleInput, TimelinePageInput } from "./input"
 const ref = { recordType: "quote", recordId: "10000000-0000-4000-8000-000000000001" }
 describe("record history boundary validation", () => {
   it("validates trimmed notes, typed targets and real calendar dates", () => {
@@ -16,6 +16,10 @@ describe("record history boundary validation", () => {
     expect(NoteInput.safeParse({ ...seeded, body: "hello" }).success).toBe(true)
     const activity = { ...seeded, type: "call", owner: "b0000000-0000-0000-0000-000000000001", summary: "Call buyer", dueDate: "2026-02-28" }
     expect(ScheduleInput.safeParse(activity).success).toBe(true)
+  })
+  it("preserves the exact timeline timestamp in a validated cursor", () => {
+    const cursor = { at: "2026-10-23T10:00:00.123456+00:00", id: `note:${ref.recordId}` }
+    expect(TimelinePageInput.parse({ ...ref, cursor }).cursor).toEqual(cursor)
   })
   it("enforces the 10 MB boundary, MIME allowlist, and safe filenames", () => {
     const file = { name: "scope.pdf", type: "application/pdf", size: MAX_ATTACHMENT_SIZE }

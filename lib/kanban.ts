@@ -54,6 +54,25 @@ export function moveCard<S extends string>(
   return [{ ...card, stage: to }, ...cards.filter((c) => c.id !== id)]
 }
 
+/**
+ * Focus for a card moved from its "Move to…" menu, decided after each render. The card stays
+ * followed until the move settles: a rejected move remounts it in its old column after the
+ * optimistic render, which drops focus again. Focus moves only when it was lost to the page body.
+ */
+export function movedCardFocus<S extends string>(
+  followId: string | null,
+  cards: readonly KanbanCard<S>[],
+  { pending, focusLost }: { pending: boolean; focusLost: boolean }
+): { selectors: string[]; followId: string | null } {
+  const card = followId ? cards.find((c) => c.id === followId) : undefined
+  if (!card) return { selectors: [], followId: null }
+  return {
+    // The card's own menu button, or its column's strip when that column is folded.
+    selectors: focusLost ? [`[data-card="${card.id}"] [data-move]`, `[data-unfold="${card.stage}"]`] : [],
+    followId: pending ? card.id : null,
+  }
+}
+
 export type DueState = "overdue" | "today" | "planned"
 
 export function dueState(due: string, today: string): DueState {

@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Briefcase, Columns3, List, Plus } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { readAll } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import type { KanbanCard, KanbanColumn } from "@/lib/kanban"
@@ -58,12 +59,17 @@ export default async function ProjectsPage({
   const supabase = await createClient()
   const view = (await searchParams).view === "board" ? "board" : "list"
 
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("id, name, status, deadline, owner, budget_satang, client:clients(name)")
-    .eq("org_id", ctx.orgId)
-    .order("deadline", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: false })
+  // Board column counts and sums need every project, not the first capped page.
+  const { data: projects } = await readAll((from, to) =>
+    supabase
+      .from("projects")
+      .select("id, name, status, deadline, owner, budget_satang, client:clients(name)")
+      .eq("org_id", ctx.orgId)
+      .order("deadline", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to)
+  )
 
   const rows = (projects ?? []) as Array<{
     id: string
