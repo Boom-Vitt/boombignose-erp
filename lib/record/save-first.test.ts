@@ -1,11 +1,12 @@
-import type { ReactElement } from "react"
-import { afterEach, expect, it, vi } from "vitest"
+import { Children, isValidElement, type ReactElement, type ReactNode } from "react"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
 
 // The buttons are called as functions; transitions run at once and refs keep one slot.
 vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
   useTransition: () => [false, (task: () => unknown) => { void task() }],
   useRef: (initial: unknown) => ({ current: initial }),
+  useState: (initial: unknown) => [initial, vi.fn()],
   useCallback: (fn: unknown) => fn,
   useId: () => "button",
   useEffect: () => {},
@@ -23,10 +24,29 @@ import { EmailQuoteButton } from "@/app/(app)/quotes/_components/email-quote-but
 import { ConvertQuoteButton } from "@/app/(app)/quotes/_components/convert-quote-button"
 import { EmailInvoiceButton } from "@/app/(app)/finance/_components/email-invoice-button"
 
+function findButton(node: ReactNode): ReactElement<{ onClick: () => void }> {
+  const children = Children.toArray(node).filter(isValidElement)
+  for (const child of children) {
+    const element = child as ReactElement<{ onClick?: () => void; children?: ReactNode }>
+    if (element.props.onClick) return element as ReactElement<{ onClick: () => void }>
+    if (element.props.children) return findButton(element.props.children)
+  }
+  throw new Error("No action button")
+}
+
+beforeEach(() => {
+  const saved = new Map<string, string>()
+  vi.stubGlobal("window", { sessionStorage: {
+    getItem: (key: string) => saved.get(key) ?? null,
+    setItem: (key: string, value: string) => { saved.set(key, value) },
+    removeItem: (key: string) => { saved.delete(key) },
+  } })
+})
+
 const buttons: [string, () => ReactElement<{ onClick: () => void }>][] = [
   ["email quote", () => EmailQuoteButton({ quoteId: "q1" }) as ReactElement<{ onClick: () => void }>],
   ["email invoice", () => EmailInvoiceButton({ invoiceId: "i1" }) as ReactElement<{ onClick: () => void }>],
-  ["convert", () => ConvertQuoteButton({ quoteId: "q1", orgId: "o1", label: "Convert", variant: "default" }) as ReactElement<{ onClick: () => void }>],
+  ["convert", () => findButton(ConvertQuoteButton({ quoteId: crypto.randomUUID(), orgId: crypto.randomUUID(), label: "Convert", variant: "default" }))],
 ]
 
 afterEach(() => {

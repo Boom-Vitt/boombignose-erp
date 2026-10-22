@@ -102,7 +102,7 @@ export function CountForm({ products, warehouses, balances, scope }: { products:
   </form>
 }
 
-export function ReorderForm({ product, vendors }: { product: Tables<"products">; vendors: { id: string; name: string }[] }) {
+export function ReorderForm({ product, vendors }: { product: Pick<Tables<"products">, "id" | "name" | "reorder_min" | "reorder_qty" | "default_vendor_id">; vendors: { id: string; name: string }[] }) {
   const [pending, start] = useTransition()
   const [message, setMessage] = useState("")
   const router = useRouter()

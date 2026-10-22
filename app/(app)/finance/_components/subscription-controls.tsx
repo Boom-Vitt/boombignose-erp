@@ -20,7 +20,7 @@ import {
 import type { Enums } from "@/lib/types/database"
 import { beginInvoiceRequest, readInvoiceRequest, acknowledgeInvoiceRequest } from "@/lib/billing/occurrence-command"
 
-import { generateInvoiceNow, deleteSubscription } from "../subscription-actions"
+import { generateInvoiceNow, deleteSubscription, setSubscriptionStatus } from "../subscription-actions"
 
 type Status = Enums<"subscription_status">
 
@@ -51,6 +51,7 @@ export function SubscriptionControls({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [billMissedPeriods, setBillMissedPeriods] = useState(false)
   const unacknowledged = useSyncExternalStore(subscribeToRequests, () => {
     try { return readInvoiceRequest(sessionStorage, orgId, id)?.occurrence ?? null } catch { return null }
   }, () => null)
@@ -76,6 +77,18 @@ export function SubscriptionControls({
     <div className="flex flex-wrap gap-2">
       {canManage ? (
         <>
+          {status === "paused" ? <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={billMissedPeriods} disabled={pending} onChange={event => setBillMissedPeriods(event.target.checked)} />Bill missed periods</label>
+            <Button size="sm" disabled={pending} onClick={() => startTransition(async () => {
+              try {
+                const result = await setSubscriptionStatus({ id, status: "active", bill_missed_periods: billMissedPeriods })
+                if (result.error) { toast.error(result.error); return }
+                toast.success("Subscription resumed")
+                router.refresh()
+              } catch { toast.error("Could not confirm resume. Reload before retrying.") }
+            })}>Resume subscription</Button>
+            <p className="text-muted-foreground text-xs">Resume skips missed periods unless selected.</p>
+          </div> : null}
           <Button size="sm" disabled={pending || (!isDue && !unacknowledged) || status !== "active"} onClick={generate}>
             <ReceiptText /> {unacknowledged ? `Retry invoice for ${unacknowledged}` : "Generate scheduled invoice"}
           </Button>

@@ -50,6 +50,15 @@ beforeEach(() => {
 })
 
 describe("palette server actions", () => {
+  it.each(["accepted", "converted"])("routes %s quote invoicing to its controls after validity expiry", async (status) => {
+    state.role = "owner"
+    state.records.quotes = { status, valid_until: "2000-01-01" }
+    expect(await recordActions(`/quotes/${ID}`)).toEqual([{ label: "Create draft invoice", command: "convert" }])
+  })
+  it("does not offer staff acceptance to members", async () => {
+    state.records.quotes = { status: "sent", valid_until: null }
+    expect(await recordActions(`/quotes/${ID}`)).not.toContainEqual(expect.objectContaining({ to: "accepted" }))
+  })
   it("runs only the status changes the record's StatusBar offers now", async () => {
     state.records.quotes = { status: "draft", valid_until: null }
     expect(await runRecordAction({ pathname: `/quotes/${ID}`, to: "accepted" })).toHaveProperty("error")

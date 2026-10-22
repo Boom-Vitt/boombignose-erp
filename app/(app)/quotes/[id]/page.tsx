@@ -7,9 +7,8 @@ import { Download, FolderKanban, ListPlus, ReceiptText } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { formatTHB } from "@/lib/money"
+import { formatTHB, sumSatang } from "@/lib/money"
 import { quoteIsEditable, serviceAmountBaht } from "@/lib/workflows/service"
-import { todayISO } from "@/lib/dates"
 import { activeProductOptions } from "@/lib/products/queries"
 import { can } from "@/lib/permissions"
 import { QUOTE_FLOW } from "@/lib/record/status"
@@ -40,7 +39,8 @@ import {
 } from "../_components/quote-form"
 import { QuoteItemForm } from "../_components/quote-item-form"
 import { DeleteQuoteItemButton } from "../_components/delete-quote-item-button"
-import { ConvertQuoteButton } from "../_components/convert-quote-button"
+import { QuoteInvoiceForm } from "../_components/quote-invoice-form"
+import { CancelQuoteInvoiceButton } from "../_components/cancel-quote-invoice-button"
 import { EmailQuoteButton } from "../_components/email-quote-button"
 import type { Option } from "../_components/form-fields"
 import { dealOptions } from "@/app/(app)/deals/_lib/deal-options"
@@ -70,36 +70,51 @@ export default async function QuoteDetailPage({
     supabase
       .from("quotes")
       .select(
-        "id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, vat_satang, tax_breakdown, prices_include_vat, notes, client_id, project_id, deal_id, converted_invoice_id, clients(name)"
+        "id, number, status, issue_date, valid_until, accepted_at, subtotal_satang, discount_satang, total_satang, vat_satang, tax_breakdown, prices_include_vat, notes, client_id, project_id, deal_id, clients(name)"
       ).eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
     readAll((from, to) => supabase
       .from("quote_items")
-      .select("id, description, quantity, unit_price_satang, amount_satang, position, unit, tax_rate_bps")
+      .select("id, description, quantity, invoiced_quantity, unit_price_satang, amount_satang, position, unit, tax_rate_bps")
       .eq("org_id", ctx.orgId)
       .eq("quote_id", id)
       .order("position", { ascending: true }).order("id").range(from, to)),
-    supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
-    supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
-    supabase.from("invoices").select("id", { count: "exact" }).eq("org_id", ctx.orgId).eq("source_quote_id", id).limit(1),
+    readAll((from, to) => supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name").order("id").range(from, to)),
+    readAll((from, to) => supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name").order("id").range(from, to)),
+    readAll((from, to) => supabase.from("invoices")
+      .select("id, number, status, quote_invoice_kind, quote_deposit_satang, total_satang")
+      .eq("org_id", ctx.orgId).eq("source_quote_id", id)
+      .order("created_at").order("id").range(from, to)),
     supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle(),
   ])
 
   const quote = quoteRes.data
   if (!quote) notFound()
 
-  const { data: deliveryMilestones, error: milestoneError } = await supabase
+  const { data: deliveryMilestones, error: milestoneError } = await readAll((from, to) => supabase
     .from("milestones")
     .select("id, title, done, project_id")
     .eq("org_id", ctx.orgId)
     .eq("source_quote_id", quote.id)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: true }).order("id").range(from, to))
   if (milestoneError) throw new Error(milestoneError.message)
 
-  if (itemsRes.error || settingsRes.error) throw new Error("Quote details unavailable")
+  if (itemsRes.error || clientsRes.error || projectsRes.error || invoicesRes.error || settingsRes.error) throw new Error("Quote details unavailable")
   const items = itemsRes.data ?? []
-  const canConvert = (ctx.role === "owner" || ctx.role === "admin") && (!quote.valid_until || quote.valid_until >= todayISO())
+  const invoices = invoicesRes.data ?? []
+  const invoicedTotal = sumSatang(invoices.filter(invoice => invoice.status !== "cancelled").map(invoice => invoice.total_satang))
+  const canAccept = can(ctx.role, "quote:convert")
+  const canConvert = canAccept && ["accepted", "converted"].includes(quote.status)
+  const flow = {
+    ...QUOTE_FLOW,
+    next: {
+      ...QUOTE_FLOW.next,
+      sent: { ...QUOTE_FLOW.next.sent, primary: canAccept ? QUOTE_FLOW.next.sent.primary : undefined },
+      accepted: { primary: { label: "Create draft invoice", command: "convert" as const } },
+      converted: { primary: { label: "Create draft invoice", command: "convert" as const } },
+    },
+  }
   const editable = quoteIsEditable(quote.status)
   const locked = !editable
   const linkedProject = (projectsRes.data ?? []).find((p) => p.id === quote.project_id)
@@ -158,11 +173,11 @@ export default async function QuoteDetailPage({
           {
             label: "Invoices",
             icon: ReceiptText,
-            count: invoicesRes.count ?? 0,
+            count: invoices.length,
             href: recordHref(
-              invoicesRes,
+              { data: invoices, count: invoices.length },
               (invoiceId) => `/finance/invoices/${invoiceId}`,
-              quote.project_id ? `/projects/${quote.project_id}#billing` : "/finance"
+              "#invoices"
             ),
           },
           {
@@ -175,13 +190,13 @@ export default async function QuoteDetailPage({
       />
       <StatusBar
         label="Quote status"
-        flow={QUOTE_FLOW}
+        flow={flow}
         status={quote.status}
         transition={transitionQuote}
         record={{ recordType: "quote", recordId: quote.id }}
         commands={
           canConvert
-            ? { convert: (props) => <ConvertQuoteButton quoteId={quote.id} orgId={ctx.orgId} {...props} /> }
+            ? { convert: (props) => <QuoteInvoiceForm quoteId={quote.id} orgId={ctx.orgId} lines={items} {...props} /> }
             : {}
         }
       />
@@ -197,24 +212,25 @@ export default async function QuoteDetailPage({
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <Field label="Issue date" value={quote.issue_date ?? "—"} />
             <Field label="Valid until" value={quote.valid_until ?? "—"} />
+            {quote.accepted_at ? <Field label="Accepted at" value={new Date(quote.accepted_at).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })} /> : null}
             <Field label="Client" value={quote.clients?.name ?? "—"} />
             <Field label="Project" value={linkedProject ? (
               <Link href={`/projects/${linkedProject.id}`} className="hover:underline">{linkedProject.name}</Link>
             ) : "—"} />
-            {quote.converted_invoice_id ? (
-              <Field
-                label="Converted invoice"
-                value={
-                  <Link
-                    href={`/finance/invoices/${quote.converted_invoice_id}`}
-                    className="hover:underline"
-                  >
-                    View invoice
-                  </Link>
-                }
-              />
-            ) : null}
           </dl>
+
+          {invoices.length ? <dl id="invoices"><Field label="Invoices" value={
+            <ul className="space-y-1">
+              {invoices.map((invoice) => <li key={invoice.id} className="flex items-center gap-2">
+                <Link href={`/finance/invoices/${invoice.id}`} className="hover:underline">{invoice.number} · {invoice.status}{invoice.quote_invoice_kind === "deposit" ? ` · Deposit ${formatTHB(invoice.quote_deposit_satang)}` : ""}</Link>
+                {canAccept && invoice.status === "draft" ? <CancelQuoteInvoiceButton quoteId={quote.id} invoiceId={invoice.id} number={invoice.number} /> : null}
+              </li>)}
+            </ul>
+          } /></dl> : null}
+          {invoices.length ? <Field label="Invoiced vs quote" value={<div>
+            <p>{formatTHB(invoicedTotal)} / {formatTHB(quote.total_satang)}</p>
+            <p className="text-muted-foreground text-sm">Difference: {formatTHB(invoicedTotal - quote.total_satang)}. Each invoice rounds VAT independently; a few satang may differ after the full scope is invoiced.</p>
+          </div>} /> : null}
 
           {deliveryMilestones?.length ? (
             <Field label="Delivery milestones" value={
@@ -258,6 +274,7 @@ export default async function QuoteDetailPage({
                 <TableRow>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
+                  <TableHead className="text-right">Invoiced</TableHead>
                   <TableHead className="text-right">Unit price</TableHead>
                   <TableHead className="text-right">VAT</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
@@ -273,6 +290,7 @@ export default async function QuoteDetailPage({
                     <TableCell className="text-right tabular-nums">
                       {Number(it.quantity)} {it.unit}
                     </TableCell>
+                    <TableCell className="text-right tabular-nums">{Number(it.invoiced_quantity)}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatTHB(it.unit_price_satang)}
                     </TableCell>
