@@ -37,9 +37,11 @@ describe("revenueForMonth", () => {
 describe("costsForMonth", () => {
   it("sums costs within the target month", () => {
     const costs: CostLike[] = [
-      { amount_satang: 30_000, incurred_on: "2026-06-05" },
-      { amount_satang: 20_000, incurred_on: "2026-06-25" },
-      { amount_satang: 10_000, incurred_on: "2026-07-01" },
+      { category: "software", amount_satang: 30_000, incurred_on: "2026-06-05" },
+      { category: "other", amount_satang: 20_000, incurred_on: "2026-06-25" },
+      { category: "other", amount_satang: 10_000, incurred_on: "2026-07-01" },
+      { category: "inventory", amount_satang: 100_000, incurred_on: "2026-06-05" },
+      { category: "inventory", amount_satang: -15_000, incurred_on: "2026-06-25" },
     ]
     expect(costsForMonth(costs, "2026-06")).toBe(50_000)
   })

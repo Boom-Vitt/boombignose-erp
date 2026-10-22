@@ -2,7 +2,7 @@ import type { Enums } from "@/lib/types/database"
 import { serviceLineAmount } from "@/lib/workflows/service"
 
 export const MOVE_SIGNS: Record<Enums<"stock_move_kind">, 1 | -1> = {
-  receipt: 1, delivery: -1, adjustment_in: 1, adjustment_out: -1, transfer_in: 1, transfer_out: -1,
+  receipt: 1, delivery: -1, adjustment_in: 1, adjustment_out: -1, transfer_in: 1, transfer_out: -1, vendor_return: -1, customer_return: 1,
 }
 
 export function signedQuantity(kind: Enums<"stock_move_kind">, quantity: number) {
@@ -34,13 +34,18 @@ export function stockBalance(moves: { kind: Enums<"stock_move_kind">; quantity: 
 }
 
 export type ReplenishmentProduct = {
-  id: string; name: string; quantity: number; reorder_min: number; reorder_qty: number; default_vendor_id: string | null
+  id: string; name: string; quantity: number; on_order: number; reorder_min: number; reorder_qty: number; default_vendor_id: string | null
+}
+
+export function replenishmentQuantity(product: ReplenishmentProduct) {
+  const shortfall = (Math.round(product.reorder_min * 1000) - Math.round(product.quantity * 1000) - Math.round(product.on_order * 1000)) / 1000
+  return product.reorder_qty > 0 && shortfall > 0 ? Math.max(product.reorder_qty, shortfall) : 0
 }
 
 export function replenishmentGroups<T extends ReplenishmentProduct>(products: T[]) {
   const groups = new Map<string | null, T[]>()
   for (const product of products) {
-    if (product.quantity >= product.reorder_min) continue
+    if (replenishmentQuantity(product) <= 0) continue
     const rows = groups.get(product.default_vendor_id) ?? []
     rows.push(product)
     groups.set(product.default_vendor_id, rows)

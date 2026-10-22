@@ -6,6 +6,7 @@ import {
   DEAL_FLOW,
   INVOICE_FLOW,
   PROJECT_FLOW,
+  PURCHASE_FLOW,
   QUOTE_FLOW,
   STATUS_DISPLAY,
   SUBSCRIPTION_FLOW,
@@ -20,6 +21,7 @@ const FLOWS: Array<[string, DocumentFlow<string>, readonly string[]]> = [
   ["deal", DEAL_FLOW, Constants.public.Enums.deal_stage],
   ["project", PROJECT_FLOW, Constants.public.Enums.project_status],
   ["subscription", SUBSCRIPTION_FLOW, Constants.public.Enums.subscription_status],
+  ["purchase", PURCHASE_FLOW, Constants.public.Enums.purchase_status],
 ]
 
 function actions<S extends string>(flow: DocumentFlow<S>, status: S): FlowAction<S>[] {
@@ -97,4 +99,11 @@ describe("quote flow matches the server transition rules", () => {
       if ("to" in action) expect(quoteTransitionError(status, action.to, null, "2026-10-23")).toBeNull()
     }
   })
+})
+
+it("places a closed purchase on received and offers billing without more receipt", () => {
+  const bar = statusBar(PURCHASE_FLOW, "closed")
+  expect(bar.steps.find(step => step.state === "current")?.value).toBe("received")
+  expect(bar.primary).toEqual({ label: "Create bill", command: "bill" })
+  expect(bar.secondary).toEqual([])
 })

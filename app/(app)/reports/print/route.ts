@@ -8,7 +8,7 @@ import { getReportData } from "../_data"
  * Reports page; all money in integer satang until the format edge.
  */
 export async function GET() {
-  const { orgName, rangeLabel, generatedAt, revenue, hours, totalRevenueSatang } =
+  const { orgName, rangeLabel, generatedAt, revenue, hours, totalRevenueSatang, cogsByMonth, totalCogsSatang } =
     await getReportData()
 
   const html = renderReportHtml({
@@ -16,6 +16,8 @@ export async function GET() {
     generatedAt,
     rangeLabel,
     totalRevenueSatang,
+    cogsByMonth,
+    totalCogsSatang,
     revenue,
     hours,
   })

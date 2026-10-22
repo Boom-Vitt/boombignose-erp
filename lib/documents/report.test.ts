@@ -23,6 +23,8 @@ function buildData(overrides: Partial<ReportData> = {}): ReportData {
     generatedAt: "Generated 2026-07-02",
     rangeLabel: "2026-05 – 2026-06",
     totalRevenueSatang: 180_000,
+    totalCogsSatang: 35_000,
+    cogsByMonth: [{ month: "2026-05", amount_satang: 40_000 }, { month: "2026-06", amount_satang: -5_000 }],
     revenue: revenueByClientMonth(payments, (p) => p.slice(0, 7)),
     hours: hoursByProject(entries),
     ...overrides,
@@ -54,6 +56,14 @@ describe("renderReportHtml", () => {
     expect(html).toContain("Website")
     expect(html).toContain("2.50 h") // 150 total minutes
     expect(html).toContain("2.00 h") // 120 billable minutes
+  })
+
+  it("renders monthly COGS including returns separately from cash received", () => {
+    const html = renderReportHtml(buildData())
+    expect(html).toContain("Cost of goods sold by month")
+    expect(html).toContain("350.00")
+    expect(html).toContain("400.00")
+    expect(html).toContain("-฿50.00")
   })
 
   it("escapes HTML-significant characters in interpolated text", () => {

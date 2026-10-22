@@ -1,7 +1,7 @@
 import { ReportChart } from "./_components/report-chart"
 import type { SearchParams } from "@/lib/search-facets"
 import Link from "next/link"
-import { TrendingUp, Timer, Printer, BarChart3, Clock } from "lucide-react"
+import { TrendingUp, Timer, Printer, BarChart3, Clock, Package } from "lucide-react"
 
 import { formatTHB } from "@/lib/money"
 import { getReportData } from "./_data"
@@ -30,7 +30,7 @@ function fmtHours(hours: number): string {
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<SearchParams> } = { searchParams: Promise.resolve({}) }) {
   const params = await searchParams
   const view = params.view === "line" || params.view === "pivot" ? params.view : "bar"
-  const { months, rangeLabel, revenue, hours, totalRevenueSatang } =
+  const { months, rangeLabel, revenue, hours, totalRevenueSatang, cogsByMonth, totalCogsSatang } =
     await getReportData()
 
   return (
@@ -49,7 +49,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </Button>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Cost of goods sold"
+          value={formatTHB(totalCogsSatang)}
+          icon={Package}
+          hint="Delivered stock cost less customer returns"
+        />
         <StatCard
           label="Verified cash received"
           value={formatTHB(totalRevenueSatang)}
@@ -77,6 +83,22 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           {value === "pivot" ? "Pivot / table" : value === "bar" ? "Bar chart" : "Line chart"}
         </Button>)}
       </nav>
+
+      <Card>
+        <CardHeader><CardTitle>Cost of goods sold by month</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader><TableRow><TableHead>Month</TableHead><TableHead className="text-right">Cost of goods sold</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {cogsByMonth.map((row) => <TableRow key={row.month}>
+                <TableCell>{row.month}</TableCell><TableCell className="text-right tabular-nums">{formatTHB(row.amount_satang)}</TableCell>
+              </TableRow>)}
+              <TableRow><TableCell className="font-semibold">Total</TableCell><TableCell className="text-right font-semibold tabular-nums">{formatTHB(totalCogsSatang)}</TableCell></TableRow>
+            </TableBody>
+          </Table>
+          <p className="text-sm text-muted-foreground mt-3">Delivery costs less customer returns, grouped by Bangkok month. Inventory bills are excluded from operating costs.</p>
+        </CardContent>
+      </Card>
 
       {view !== "pivot" ? <div className="space-y-6">
         <Card><CardHeader><CardTitle>Revenue by month</CardTitle></CardHeader><CardContent>

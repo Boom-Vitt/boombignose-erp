@@ -18,7 +18,8 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (ta
       ]
       const data = table === "payments"
         ? receipts.filter(() => state.verified || !filters.some(([key, value]) => key === "verification_state" && value === "verified"))
-        : table === "costs" ? [12_000_000, 1_500_000, 800_000, 2_500_000, 2_000_000].map((amount_satang) => ({ amount_satang, incurred_on: "2026-10-01" })) : []
+        : table === "costs" ? [12_000_000, 1_500_000, 800_000, 2_500_000, 2_000_000].map((amount_satang) => ({ category: "other", amount_satang, incurred_on: "2026-10-01" })).concat([{ category: "inventory", amount_satang: 10_000_000, incurred_on: "2026-10-01" }])
+        : table === "monthly_inventory_cogs" ? [{ month: "2026-10-01", amount_satang: 2_000_000 }] : []
       return resolve({ data, error: null, count: 0 })
     },
   }
@@ -35,6 +36,7 @@ describe("dashboard verified-receipt definition", () => {
     const data = await getDashboardData()
     expect(data.monthlyRevenueSatang).toBe(0)
     expect(data.monthlyBurnSatang).toBe(18_800_000)
+    expect(data.monthlyCogsSatang).toBe(2_000_000)
     state.verified = true
     expect((await getDashboardData()).monthlyRevenueSatang).toBe(13_000_000)
   })
