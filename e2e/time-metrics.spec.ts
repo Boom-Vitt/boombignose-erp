@@ -60,7 +60,7 @@ test("staff rates stay private while members see labour totals and cancelled tim
       await expect(memberPage.getByLabel("Labour cost (THB/hour)")).toHaveCount(0)
       await expect(memberPage.getByRole("button", { name: "Edit time entry", exact: true })).toBeVisible()
       await memberPage.getByRole("button", { name: "Edit time entry", exact: true }).click()
-      await memberPage.getByLabel("Notes", { exact: true }).fill("Reviewed time")
+      await memberPage.getByRole("dialog").getByLabel("Notes", { exact: true }).fill("Reviewed time")
       await memberPage.getByRole("button", { name: "Save time", exact: true }).click()
       await expect.poll(async () => (await admin.from("time_entries").select("notes").eq("id", entry).single()).data?.notes).toBe("Reviewed time")
       await memberPage.goto(`/projects/${project}`)
