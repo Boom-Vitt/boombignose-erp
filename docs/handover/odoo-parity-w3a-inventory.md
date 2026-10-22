@@ -281,3 +281,59 @@ where l.org_id = :org_id and l.unit is distinct from p.unit;
 ```
 
 If it finds retained agreements, coordinate their repair through the owning track before applying. Multi-warehouse vendor returns require choosing a warehouse with unreturned original receipt allowance; legacy duplicate-product receipts are capped at the pooled original PO warehouse allowance. Opening count cost becomes the product's last counted warehouse average, not a new cross-warehouse valuation method.
+
+
+## Round 3 runtime validation, 2026-10-23
+
+Used only the newly assigned isolated `odoo-inv-db` stack (API 56001, DB 56002, app 3109), through the supplied git-ignored reset wrapper and Playwright configuration. No upstream merge or production-code change was made.
+
+Two outdated fixtures violated the approved B1 rules:
+
+- `supabase/tests/purchasing.sql` created its local product with the default `piece` unit, then inserted its valid agreed PO line with `day`. The real SQL run aborted after 14/44 assertions with `purchasing.sql:42: ERROR: Product line unit must match product unit`. The fixture now explicitly gives that product `day`; its foreign-tenant product remains `piece` and tenant assertions are unchanged.
+- `e2e/products.spec.ts` attempted to change a product unit from `day` to `hour` after quote/invoice lines referenced it, then expected success. The initial real browser run ended with 40 passed, 1 failed and 4 skipped at that success assertion. Removed only the prohibited unit edit; price editing, archiving, original price/unit snapshots and picker exclusion remain covered. SQL already separately verifies rejection of referenced-unit changes.
+
+Independent read-only review approved both fixture corrections. No product bug was found by these reproductions, and no SQL function was created/replaced in this runtime round. The complete migration/seed reset and SQL suite now pass:
+
+```text
+.local-stack/db-reset.sh "$PWD"
+All tests successful.
+Files=22, Tests=592,  2 wallclock secs ( 0.12 usr  0.05 sys +  0.12 cusr  0.12 csys =  0.41 CPU)
+Result: PASS
+```
+
+The prior section's SQL/browser-pending statement records the earlier source-only phase. SQL and browser behavior are now verified against the assigned isolated database and rebuilt production app.
+
+Final local gate results all exited 0:
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+
+ Test Files  126 passed (126)
+      Tests  934 passed (934)
+   Start at  04:11:37
+   Duration  8.03s (transform 16.33s, setup 0ms, import 97.17s, tests 6.90s, environment 7ms)
+
+
+pnpm build
+├ ƒ /vendors/new
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+
+
+pnpm e2e
+
+  4 skipped
+  41 passed (1.1m)
+```
+
+`git diff --check`, memory validation and final scoped ESLint also pass. The only source changes in this runtime round are the two fixture corrections described above; migrations and production code remain byte-identical to `b9b9532`. No environment file or local stack configuration is tracked. Four Pro-only browser cases remain intentionally skipped. The final browser server log also recorded one non-failing active-workspace lookup error during the passing subscription recovery scenario; no causal product defect was established or code changed for that log. There are no remaining failed SQL or browser tests in the assigned scope.
