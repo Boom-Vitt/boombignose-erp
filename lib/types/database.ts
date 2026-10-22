@@ -23,6 +23,15 @@ export type Database = {
           }
         },"public": {
           Tables: {
+      member_cost_rates: {
+        Row: { org_id: string; user_id: string; cost_rate_satang: number }
+        Insert: { org_id: string; user_id: string; cost_rate_satang?: number }
+        Update: { org_id?: string; user_id?: string; cost_rate_satang?: number }
+        Relationships: [
+          { foreignKeyName: "member_cost_rates_org_id_fkey"; columns: ["org_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "member_cost_rates_org_id_user_id_fkey"; columns: ["org_id", "user_id"]; isOneToOne: true; referencedRelation: "memberships"; referencedColumns: ["org_id", "user_id"] }
+        ]
+      }
       warehouses: {
         Row: { id: string; org_id: string; code: string; name: string; address: string | null; is_default: boolean; active: boolean }
         Insert: { id?: string; org_id: string; code: string; name: string; address?: string | null; is_default?: boolean; active?: boolean }
@@ -523,16 +532,13 @@ isOneToOne: false
                   ]
                 },"memberships": {
                   Row: {
-                    "cost_rate_satang": number,
                     "created_at": string,"id": string,"org_id": string,"role": Database["public"]['Enums']["role_enum"],"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "cost_rate_satang"?: number,
                     "created_at"?: string,"id"?: string,"org_id": string,"role"?: Database["public"]['Enums']["role_enum"],"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "cost_rate_satang"?: number,
                     "created_at"?: string,"id"?: string,"org_id"?: string,"role"?: Database["public"]['Enums']["role_enum"],"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [

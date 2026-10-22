@@ -33,7 +33,7 @@ export function EditTimeEntryButton({ entry }: { entry: { id: string; minutes: n
         <div className="space-y-2"><Label htmlFor={`${id}-rate`}>Rate (THB/hour)</Label><Input id={`${id}-rate`} name="rate" inputMode="decimal" defaultValue={entry.rate_satang === null ? "" : satangToBahtString(entry.rate_satang)} /></div>
         <Label><input name="billable" type="checkbox" defaultChecked={entry.billable} /> Billable</Label>
         <div className="space-y-2"><Label htmlFor={`${id}-notes`}>Notes</Label><Textarea id={`${id}-notes`} name="notes" defaultValue={entry.notes ?? ""} maxLength={5000} /></div>
-        <Button disabled={pending}>Save time</Button>
+        <Button type="submit" disabled={pending}>Save time</Button>
       </form>
     </DialogContent>
   </Dialog>
