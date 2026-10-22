@@ -48,7 +48,11 @@ export async function updateSession(request: NextRequest) {
   // IMPORTANT: refreshes tokens; keep this immediately after client creation.
   // getClaims verifies the signed JWT locally; getUser cost an auth-server round trip on every prefetch.
   // Pages and actions still call getUser through requireOrgContext.
-  const { data } = await supabase.auth.getClaims()
+  const { data } = await supabase.auth.getClaims().catch(async () => {
+    // A JWT whose payload is base64url but not JSON makes getClaims throw: treat it as signed out and clear it.
+    await supabase.auth.signOut({ scope: "local" })
+    return { data: null }
+  })
   const user = data?.claims
 
   const { pathname } = request.nextUrl
@@ -68,7 +72,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Preserve local invitation destinations when already signed in.
-  if (user && (pathname === "/login" || pathname === "/signup")) {
+  // Pages send a revoked but unexpired session here, so confirm it with getUser, which also clears its cookie, or the two redirects loop.
+  if (user && (pathname === "/login" || pathname === "/signup") && (await supabase.auth.getUser()).data.user) {
     const url = request.nextUrl.clone()
     const destination = new URL(safeReturnPath(request.nextUrl.searchParams.get("redirect")), request.url)
     url.pathname = destination.pathname
