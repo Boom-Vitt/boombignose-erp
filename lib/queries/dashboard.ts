@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { currentMonthKey, todayISO, isPastDue, startOfDayInstant } from "@/lib/dates"
+import { currentMonthKey, lastNMonths, todayISO, isPastDue, startOfDayInstant } from "@/lib/dates"
 import {
   revenueForMonth,
   costsForMonth,
@@ -32,6 +32,7 @@ export type FollowUp = {
 export type DashboardData = {
   cashSatang: number
   monthlyRevenueSatang: number
+  revenueHistory: { month: string; revenueSatang: number }[]
   monthlyBurnSatang: number
   netBurnSatang: number
   runwayMonths: number | null
@@ -187,6 +188,10 @@ export async function getDashboardData(): Promise<DashboardData> {
   return {
     cashSatang,
     monthlyRevenueSatang,
+    revenueHistory: lastNMonths(6, month).map((month) => ({
+      month,
+      revenueSatang: revenueForMonth(payments, month),
+    })),
     monthlyBurnSatang,
     netBurnSatang: net,
     runwayMonths: runwayMonths(cashSatang, net),

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { databaseFixture, pageContent } from './__tests__/tenant-fixture'
 
@@ -22,6 +22,9 @@ import { addActivity } from '@/app/(app)/deals/actions'
 import { GET as exportDeals } from '@/app/(app)/deals/export/route'
 import { currentMonthKey } from '@/lib/dates'
 import { getDashboardData } from '@/lib/queries/dashboard'
+import DashboardPage from '@/app/(app)/dashboard/page'
+
+afterEach(() => vi.useRealTimers())
 
 beforeEach(() => {
   state.orgId = 'A'
@@ -121,6 +124,8 @@ describe('active workspace business reads', () => {
     expect(a.activeProjectCount).toBe(1)
     expect(a.cashSatang).toBe(500)
     expect(a.monthlyRevenueSatang).toBe(100)
+    expect(a.revenueHistory).toHaveLength(6)
+    expect(a.revenueHistory[5]).toEqual({ month: currentMonthKey(), revenueSatang: a.monthlyRevenueSatang })
     expect(a.monthlyBurnSatang).toBe(300)
     expect(a.unpaidSatang).toBe(900)
     expect(a.unpaidInvoiceCount).toBe(1)
@@ -136,10 +141,52 @@ describe('active workspace business reads', () => {
     expect(b.openQuotesValueSatang).toBe(1000)
     expect(b.cashSatang).toBe(800)
     expect(b.monthlyRevenueSatang).toBe(500)
+    expect(b.revenueHistory[5]).toEqual({ month: currentMonthKey(), revenueSatang: b.monthlyRevenueSatang })
     expect(b.unpaidSatang).toBe(2500)
     expect(b.mrrSatang).toBe(1800)
     expect(b.billableHoursThisMonth).toBe(3)
   })
+})
+
+it('dashboard revenue history uses verified receipts and Bangkok calendar boundaries', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-01-31T17:00:00Z')) // February in Bangkok, January in UTC.
+  const receipt = { org_id: 'A', invoice_id: 'invoice-A', verification_state: 'verified' }
+  state.client = databaseFixture({ payments: [
+    { ...receipt, paid_at: '2025-08-31T16:59:59Z', amount_satang: 9999 },
+    { ...receipt, paid_at: '2025-08-31T17:00:00Z', amount_satang: 101 },
+    { ...receipt, paid_at: '2026-01-31T16:59:59Z', amount_satang: 202 },
+    { ...receipt, paid_at: '2026-01-31T17:00:00Z', amount_satang: 303 },
+    { ...receipt, paid_at: '2026-02-28T16:59:59Z', amount_satang: 404 },
+    { ...receipt, paid_at: '2026-02-28T17:00:00Z', amount_satang: 9999 },
+    { ...receipt, org_id: 'B', paid_at: '2026-01-31T17:00:00Z', amount_satang: 9999 },
+    { ...receipt, verification_state: 'legacy_unverified', paid_at: '2026-01-31T17:00:00Z', amount_satang: 9999 },
+  ] })
+  const data = await getDashboardData()
+  expect(data.revenueHistory).toEqual([
+    { month: '2025-09', revenueSatang: 101 },
+    { month: '2025-10', revenueSatang: 0 },
+    { month: '2025-11', revenueSatang: 0 },
+    { month: '2025-12', revenueSatang: 0 },
+    { month: '2026-01', revenueSatang: 202 },
+    { month: '2026-02', revenueSatang: 707 },
+  ])
+  expect(data.monthlyRevenueSatang).toBe(707)
+  const html = renderToStaticMarkup(await DashboardPage())
+  expect(html).toContain('รายได้ 6 เดือนล่าสุด')
+  expect(html).toContain('Asia/Bangkok')
+  expect(html.match(/<time /g)).toHaveLength(6)
+  expect(html).toContain('height:100%')
+  expect(html).toContain('฿7.07')
+})
+
+it('dashboard shows six zero months and safe bars when there are no payments', async () => {
+  state.client = databaseFixture({})
+  expect((await getDashboardData()).revenueHistory.map(row => row.revenueSatang)).toEqual([0, 0, 0, 0, 0, 0])
+  const html = renderToStaticMarkup(await DashboardPage())
+  expect(html).toContain('ยังไม่มีรายได้ในช่วง 6 เดือนนี้')
+  expect(html.match(/height:0%/g)).toHaveLength(6)
+  expect(html).not.toMatch(/(?:NaN|Infinity)%/)
 })
 
 it('an inactive deal cannot create an activity in the active workspace', async () => {

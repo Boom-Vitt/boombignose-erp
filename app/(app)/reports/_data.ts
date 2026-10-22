@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { currentMonthKey, monthKey, todayISO } from "@/lib/dates"
+import { currentMonthKey, lastNMonths, monthKey, todayISO } from "@/lib/dates"
 import {
   revenueByClientMonth,
   hoursByProject,
@@ -13,22 +13,6 @@ import {
 const RANGE_MONTHS = 6
 const NO_CLIENT = "Unassigned"
 const NO_PROJECT = "No project"
-
-/** The last `n` calendar month keys ('YYYY-MM'), oldest first, ending at `current`. */
-export function lastNMonths(n: number, current: string): string[] {
-  const [y, m] = current.split("-").map(Number)
-  const out: string[] = []
-  for (let i = n - 1; i >= 0; i--) {
-    let mm = m - i
-    let yy = y
-    while (mm <= 0) {
-      mm += 12
-      yy -= 1
-    }
-    out.push(`${yy}-${String(mm).padStart(2, "0")}`)
-  }
-  return out
-}
 
 export type ReportAggregates = {
   orgName: string
