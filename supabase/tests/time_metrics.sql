@@ -46,7 +46,7 @@ update public.time_entries set minutes=888 where id='d4000000-0000-4000-8000-000
 delete from public.time_entries where id='d4000000-0000-4000-8000-000000000040';
 select is((select minutes from public.time_entries where id='d4000000-0000-4000-8000-000000000040'),11,'even staff cannot change or delete billed draft time');
 select throws_ok($$update public.time_entries set invoice_id=current_setting('test.time_invoice')::uuid where id='d4000000-0000-4000-8000-000000000041'$$,'P0001','Time billing links require the billing command','direct attachment changes are blocked');
-update public.invoices set status='cancelled' where id=current_setting('test.time_invoice')::uuid;
+select public.cancel_draft_invoice('d4000000-0000-4000-8000-000000000010',current_setting('test.time_invoice')::uuid);
 select lives_ok($$update public.time_entries set notes='Corrected after cancellation' where id='d4000000-0000-4000-8000-000000000040'$$,'cancelled invoice unlocks time');
 select set_config('test.time_rebill',public.bill_project_time('d4000000-0000-4000-8000-000000000010','d4000000-0000-4000-8000-000000000030','d4000000-0000-4000-8000-000000000052')::text,true);
 select isnt(current_setting('test.time_rebill'),current_setting('test.time_invoice'),'cancelled time may be rebilled to a new draft');
