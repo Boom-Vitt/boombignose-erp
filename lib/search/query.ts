@@ -8,8 +8,7 @@ export const SEARCH_SOURCES = [
   { type: "product", label: "Product", table: "products", columns: ["name", "sku"] },
 ] as const
 
-export type SearchSource = (typeof SEARCH_SOURCES)[number]
-export type SearchType = SearchSource["type"]
+export type SearchType = (typeof SEARCH_SOURCES)[number]["type"]
 
 export const SEARCH_LIMIT = 5
 export const MIN_TERM = 2

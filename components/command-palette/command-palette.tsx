@@ -41,9 +41,11 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
   const [hits, setHits] = useState<SearchHit[]>([])
   const [searching, setSearching] = useState(false)
   const [actions, setActions] = useState<PaletteAction[]>([])
+  const [selected, setSelected] = useState("")
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const latest = useRef("")
   const actionsRequest = useRef(0)
+  const fallbackKeys = useRef(new Map<string, string>())
 
   function changeOpen(next: boolean) {
     setOpen(next)
@@ -53,17 +55,22 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
     setHits([])
     setSearching(false)
     setActions([])
+    setSelected(`go ${commands.goTo[0]?.title}`)
     // A late answer for an earlier opening is dropped.
     const request = ++actionsRequest.current
     if (!next || !recordFromPath(pathname)) return
-    recordActions(pathname).then(
-      (loaded) => request === actionsRequest.current && setActions(loaded),
-      () => {}
-    )
+    recordActions(pathname).then((loaded) => {
+      if (request !== actionsRequest.current) return
+      setActions(loaded)
+      // Highlight the next step, as the StatusBar's primary button, unless the user already typed.
+      if (loaded[0] && !latest.current) setSelected(`action ${loaded[0].label}`)
+    }, () => {})
   }
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key.toLowerCase() !== "k" || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+    // `code` keeps the shortcut working while a Thai (or other non-Latin) layout is active.
+    const k = event.key.toLowerCase() === "k" || event.code === "KeyK"
+    if (!k || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
     event.preventDefault()
     changeOpen(!open)
   })
@@ -72,7 +79,6 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
     document.addEventListener("keydown", listener)
     return () => document.removeEventListener("keydown", listener)
   }, [])
-  useEffect(() => () => clearTimeout(timer.current), [])
 
   function changeQuery(value: string) {
     setQuery(value)
@@ -127,7 +133,9 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
     try {
       key = quoteConversionKey(window.sessionStorage, scope, () => crypto.randomUUID())
     } catch {
-      key = crypto.randomUUID()
+      // Storage is blocked; keep one key per quote for this session so a retry still recovers.
+      key = fallbackKeys.current.get(scope) ?? crypto.randomUUID()
+      fallbackKeys.current.set(scope, key)
     }
     try {
       const res = await convertQuoteToInvoice({ id: quoteId, key })
@@ -159,7 +167,7 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
         title="Command palette"
         description="Go to a module, create a record, search records, or run an action on this record."
       >
-        <Command label="Search commands and records" loop>
+        <Command label="Search commands and records" loop value={selected} onValueChange={setSelected}>
           <CommandInput placeholder="Type a command or search…" value={query} onValueChange={changeQuery} />
           <CommandList>
             <CommandEmpty>{searching ? "Searching…" : "No results."}</CommandEmpty>

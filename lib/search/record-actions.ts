@@ -13,7 +13,8 @@ export function recordFromPath(pathname: string): StatusRecordRef | null {
   for (const type of STATUS_RECORDS) {
     const prefix = recordHref(type, "")
     const id = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : ""
-    if (z.uuid().safeParse(id).success) return { type, id }
+    // guid, not uuid: seeded ids such as 90000000-0000-0000-0000-000000000001 carry no RFC version.
+    if (z.guid().safeParse(id).success) return { type, id }
   }
   return null
 }

@@ -10,6 +10,8 @@ describe("palette record actions", () => {
     expect(recordFromPath(`/quotes/${ID}`)).toEqual({ type: "quote", id: ID })
     expect(recordFromPath(`/finance/invoices/${ID}`)).toEqual({ type: "invoice", id: ID })
     expect(recordFromPath(`/finance/subscriptions/${ID}`)).toEqual({ type: "subscription", id: ID })
+    const seeded = "90000000-0000-0000-0000-000000000001"
+    expect(recordFromPath(`/quotes/${seeded}`)).toEqual({ type: "quote", id: seeded })
     expect(recordFromPath("/quotes/new")).toBeNull()
     expect(recordFromPath(`/deals/${ID}/edit`)).toBeNull()
     expect(recordFromPath(`/clients/${ID}`)).toBeNull()

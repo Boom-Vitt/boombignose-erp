@@ -146,15 +146,18 @@ async function recordContext(ctx: OrgContext, { type, id }: StatusRecordRef): Pr
   }
 }
 
+const Pathname = z.string().max(200)
+
 /** The StatusBar actions for the record whose detail page is `pathname`; none on other pages. */
 export async function recordActions(pathname: string): Promise<PaletteAction[]> {
-  const ref = typeof pathname === "string" ? recordFromPath(pathname) : null
+  const parsed = Pathname.safeParse(pathname)
+  const ref = parsed.success ? recordFromPath(parsed.data) : null
   if (!ref) return []
   const ctx = await requireOrgContext()
   return (await recordContext(ctx, ref))?.actions ?? []
 }
 
-const RunRecordAction = z.object({ pathname: z.string().max(200), to: z.string().max(40) })
+const RunRecordAction = z.object({ pathname: Pathname, to: z.string().max(40) })
 
 /** Runs a status change only if the record's StatusBar offers it right now. */
 export async function runRecordAction(input: z.input<typeof RunRecordAction>): Promise<{ error?: string }> {
