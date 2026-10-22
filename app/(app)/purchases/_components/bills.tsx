@@ -16,7 +16,7 @@ export function VendorBills({ bills, canManage }: { bills: Tables<"costs">[]; ca
         <TableCell>{bill.bill_number ?? "Vendor bill"}</TableCell><TableCell>{bill.bill_date ?? bill.incurred_on}</TableCell>
         <TableCell className={!bill.paid_at && bill.due_date && bill.due_date < today ? "text-destructive" : ""}>{bill.due_date ?? "—"}</TableCell>
         <TableCell>{formatTHB(bill.amount_satang)}</TableCell>
-        <TableCell>{bill.paid_at ? `Paid ${bill.paid_at.slice(0, 10)}` : <div className="space-y-1"><span>{bill.due_date && bill.due_date < today ? "Overdue" : "Unpaid"}</span>{canManage && <PurchaseAction action={markBillPaid.bind(null, bill.id)} label="Mark paid" />}</div>}</TableCell>
+        <TableCell>{bill.paid_at ? `Paid ${todayISO(new Date(bill.paid_at))}` : <div className="space-y-1"><span>{bill.due_date && bill.due_date < today ? "Overdue" : "Unpaid"}</span>{canManage && <PurchaseAction action={markBillPaid.bind(null, bill.id)} label="Mark paid" />}</div>}</TableCell>
         <TableCell>{bill.purchase_order_id ? <Link className="underline" href={`/purchases/${bill.purchase_order_id}`}>View purchase order</Link> : "—"}</TableCell>
       </TableRow>)}</TableBody>
     </Table>}

@@ -345,7 +345,7 @@ export default async function FinancePage({
                         <TableCell>{c.vendor_id ? <Link className="underline" href={`/vendors/${c.vendor_id}`}>{c.vendor ?? "Vendor"}</Link> : c.vendor ?? "—"}</TableCell>
                         <TableCell>{c.purchase_order_id ? <Link className="underline" href={`/purchases/${c.purchase_order_id}`}>{c.bill_number}</Link> : c.bill_number ?? "—"}</TableCell>
                         <TableCell className={c.vendor_id && !c.paid_at && c.due_date && c.due_date < today ? "text-destructive" : ""}>{c.due_date ?? "—"}</TableCell>
-                        <TableCell>{c.vendor_id ? c.paid_at ? `Paid ${c.paid_at.slice(0, 10)}` : <div className="space-y-1"><span>Unpaid</span>{can(ctx.role, "purchase:manage") && <PurchaseAction action={markBillPaid.bind(null, c.id)} label="Mark paid" />}</div> : "—"}</TableCell>
+                        <TableCell>{c.vendor_id ? c.paid_at ? `Paid ${todayISO(new Date(c.paid_at))}` : <div className="space-y-1"><span>Unpaid</span>{can(ctx.role, "purchase:manage") && <PurchaseAction action={markBillPaid.bind(null, c.id)} label="Mark paid" />}</div> : "—"}</TableCell>
                         <TableCell>{c.projects?.name ?? "—"}</TableCell>
                         <TableCell className="text-right">
                           {!c.vendor_id && !c.purchase_order_id && <DeleteCostButton

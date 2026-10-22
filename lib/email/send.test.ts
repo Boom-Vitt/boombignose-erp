@@ -58,3 +58,10 @@ describe("sendEmail", () => {
     expect(res).toEqual({ ok: false, reason: "error", error: "network down" })
   })
 })
+
+it("passes a stable delivery idempotency key as a provider header", async () => {
+  const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "message" }), { status: 200 }))
+  const input = { to: "vendor@example.invalid", subject: "RFQ", html: "Frozen RFQ", idempotencyKey: "purchase-rfq/one-delivery" }
+  await sendEmail(input, { apiKey: "test-key", fetchImpl })
+  expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({ "Idempotency-Key": input.idempotencyKey })
+})
