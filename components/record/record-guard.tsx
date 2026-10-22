@@ -61,15 +61,16 @@ export function useRecordGuard() {
   const [pending, startTransition] = useHeldTransition()
   const run = useCallback((action: () => Promise<unknown>) => startTransition(async () => {
     const result = await recordGuard.run(action)
-    if (result === "unsaved") toast.error("Nothing ran because your changes could not be saved. Fix them and try again.")
+    if (result === "unsaved") toast.error("Nothing ran because some of your changes are not saved yet. Save them, then try again.")
   }), [startTransition])
   return { ...state, pending, run }
 }
 
 /**
  * Registers a record's header form: record actions save it first, and leaving with unsaved
- * edits asks first. `onValid` returns true once saved; the form is then clean again and the
- * page refreshes. Returns the form's own submit handler.
+ * edits asks first. `onValid` returns true once saved; the page then refreshes, and the form is
+ * clean again unless edits were typed during the save, which stop a pending record action.
+ * Returns the form's own submit handler.
  */
 export function useGuardedForm<V extends FieldValues, O>(
   form: UseFormReturn<V, unknown, O>,
@@ -82,15 +83,16 @@ export function useGuardedForm<V extends FieldValues, O>(
   async function commit(values: O) {
     // getValues() is shallow, so nested edits typed during the save would otherwise rewrite `sent`.
     const sent = structuredClone(form.getValues())
-    const saved = (await onValid(values)) === true
-    if (saved) {
-      // The sent values become the baseline; edits typed while the save was in flight stay, and stay dirty.
-      const latest = form.getValues()
-      form.reset(sent)
-      form.reset(latest, { keepDefaultValues: true })
-      startRefresh(() => router.refresh())
-    }
-    return saved
+    if ((await onValid(values)) !== true) return false
+    // The sent values become the baseline; edits typed while the save was in flight stay, and stay dirty.
+    const latest = form.getValues()
+    // shortcut: a JSON compare needs plain form values (no BigInt or File); use a deep-equal if a form adds one.
+    const unsaved = JSON.stringify(latest) !== JSON.stringify(sent)
+    form.reset(sent)
+    form.reset(latest, { keepDefaultValues: true })
+    startRefresh(() => router.refresh())
+    // Those edits are not saved, so a record action waiting on this save must not run over them.
+    return !unsaved
   }
   // Re-registers after every render so the guard always saves with the latest handler.
   useEffect(() => {
