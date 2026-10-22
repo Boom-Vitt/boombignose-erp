@@ -43,6 +43,8 @@ import { DeleteQuoteItemButton } from "../_components/delete-quote-item-button"
 import { ConvertQuoteButton } from "../_components/convert-quote-button"
 import { EmailQuoteButton } from "../_components/email-quote-button"
 import type { Option } from "../_components/form-fields"
+import { dealOptions } from "@/app/(app)/deals/_lib/deal-options"
+import { DealWonOffer } from "@/app/(app)/deals/_components/deal-won-offer"
 
 export const dynamic = "force-dynamic"
 
@@ -68,7 +70,7 @@ export default async function QuoteDetailPage({
     supabase
       .from("quotes")
       .select(
-        "id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, vat_satang, tax_breakdown, prices_include_vat, notes, client_id, project_id, converted_invoice_id, clients(name)"
+        "id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, vat_satang, tax_breakdown, prices_include_vat, notes, client_id, project_id, deal_id, converted_invoice_id, clients(name)"
       ).eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
@@ -114,6 +116,7 @@ export default async function QuoteDetailPage({
   const defaultValues: QuoteFormValues = {
     client_id: quote.client_id,
     project_id: quote.project_id ?? "",
+    deal_id: quote.deal_id ?? "",
     number: quote.number,
     issue_date: quote.issue_date ?? "",
     valid_until: quote.valid_until ?? "",
@@ -182,6 +185,7 @@ export default async function QuoteDetailPage({
             : {}
         }
       />
+      <DealWonOffer quoteId={quote.id} />
 
       <Card>
         <CardHeader className="flex-row items-center justify-between">
@@ -305,6 +309,7 @@ export default async function QuoteDetailPage({
             <QuoteForm
               clients={clients}
               projects={projects}
+              deals={await dealOptions(supabase, ctx.orgId, quote.deal_id)}
               defaultValues={defaultValues}
               submitLabel="Save changes"
               action={saveQuote}

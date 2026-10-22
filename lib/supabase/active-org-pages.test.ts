@@ -32,7 +32,7 @@ beforeEach(() => {
   const date = `${currentMonthKey()}-05`
   state.client = databaseFixture({
     clients: ['A','B'].map(org_id => ({ id: `client-${org_id}`, org_id, name: `CLIENT_${org_id}`, created_at: '2026-10-01' })),
-    deals: ['A','B'].map(org_id => ({ id: `deal-${org_id}`, org_id, title: `DEAL_${org_id}`, stage: 'lead', value_satang: org_id === 'A' ? 100 : 999, client_id: `client-${org_id}`, created_at: '2026-10-01' })),
+    deals: ['A','B'].map(org_id => ({ id: `deal-${org_id}`, org_id, title: `DEAL_${org_id}`, stage: 'lead', probability: 10, sequence: 0, value_satang: org_id === 'A' ? 100 : 999, client_id: `client-${org_id}`, created_at: '2026-10-01' })),
     activities: ['A','B'].map(org_id => ({ id: `activity-${org_id}`, org_id, body: `ACTIVITY_${org_id}`, type: 'note', client_id: 'client-A', deal_id: 'deal-A', done: false, due_date: '2026-10-01' })),
     contacts: ['A','B'].map(org_id => ({ id: `contact-${org_id}`, org_id, name: `CONTACT_${org_id}`, client_id: 'client-A' })),
     org_settings: ['A','B'].map(org_id => ({ org_id, cash_balance_satang: org_id === 'A' ? 500 : 800 })),
@@ -71,7 +71,7 @@ describe('active workspace business reads', () => {
     const busy = Array.from({ length: 1000 }, (_, i) => `deal-busy-${i}`)
     state.client = databaseFixture({
       clients: [{ id: 'client-A', org_id: 'A', name: 'CLIENT_A' }],
-      deals: [{ id: 'deal-A', org_id: 'A', title: 'DEAL_A', stage: 'lead', value_satang: 100, client_id: 'client-A', next_follow_up_date: '2026-12-31', created_at: '2026-10-01' }],
+      deals: [{ id: 'deal-A', org_id: 'A', title: 'DEAL_A', stage: 'lead', probability: 10, sequence: 0, value_satang: 100, client_id: 'client-A', next_follow_up_date: '2026-12-31', created_at: '2026-10-01' }],
       activities: [...busy, 'deal-A'].map((deal_id) => ({ org_id: 'A', deal_id, done: false, due_date: deal_id === 'deal-A' ? '2026-01-15' : '2026-01-01' })),
       deal_next_activity: [...busy, 'deal-A'].map((deal_id) => ({ org_id: 'A', deal_id, next_due_date: deal_id === 'deal-A' ? '2026-01-15' : '2026-01-01', open_count: 1 })),
     })
@@ -81,7 +81,7 @@ describe('active workspace business reads', () => {
 
   it('boards list every deal and project past the 1,000-row cap, so column counts and sums are complete', async () => {
     state.client = databaseFixture({
-      deals: Array.from({ length: 1001 }, (_, i) => ({ id: `deal-${i}`, org_id: 'A', title: `DEAL_${i}`, stage: 'lead', value_satang: 1, client_id: 'client-A', created_at: '2026-10-01' })),
+      deals: Array.from({ length: 1001 }, (_, i) => ({ id: `deal-${i}`, org_id: 'A', title: `DEAL_${i}`, stage: 'lead', probability: 10, sequence: 0, value_satang: 1, client_id: 'client-A', created_at: '2026-10-01' })),
       projects: Array.from({ length: 1001 }, (_, i) => ({ id: `project-${i}`, org_id: 'A', name: `PROJECT_${i}`, status: 'in_progress' })),
     })
     expect(pageContent(await DealsPage({ searchParams: Promise.resolve({}) }))).toContain('DEAL_1000')

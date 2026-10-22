@@ -12,7 +12,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: () 
     select: () => query,
     eq: () => query,
     single: async () => ({ data: { id: "created" }, error: null }),
-    then: (resolve: (result: unknown) => unknown) => resolve({ error: null }),
+    then: (resolve: (result: unknown) => unknown) => resolve({ data: [{ id: "created" }], error: null }),
   }
   return query
 } }) }))

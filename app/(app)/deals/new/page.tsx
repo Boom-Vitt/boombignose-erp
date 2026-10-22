@@ -16,11 +16,10 @@ export default async function NewDealPage({
   const ctx = await requireOrgContext()
   const q = await searchParams
   const supabase = await createClient()
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id,name")
-    .eq("org_id", ctx.orgId)
-    .order("name")
+  const [{ data: clients }, { data: lostReasons }] = await Promise.all([
+    supabase.from("clients").select("id,name").eq("org_id", ctx.orgId).order("name"),
+    supabase.from("deal_lost_reasons").select("id,name").eq("org_id", ctx.orgId).eq("active", true).order("name"),
+  ])
 
   // Prefill from the board's quick create ("Edit"); absent params fall back to the form defaults.
   const amount = Number(q.amount)
@@ -38,6 +37,7 @@ export default async function NewDealPage({
         <CardContent>
           <DealForm
             clients={clients ?? []}
+            lostReasons={lostReasons ?? []}
             action={createDeal}
             defaultValues={defaultValues}
             submitLabel="Create deal"

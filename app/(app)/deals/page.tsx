@@ -4,10 +4,12 @@ import { Download, Plus, Target } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { todayISO } from "@/lib/dates"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
 import { earliestDate, type KanbanCard, type KanbanColumn } from "@/lib/kanban"
 import {
+  expectedRevenue,
   pipelineValue,
   weightedPipelineValue,
   type DealStage,
@@ -55,12 +57,12 @@ export default async function DealsPage({
   const view = params.view === "list" ? "list" : "board"
   const facetQuery = serializeFacets(config, "deals")
 
-  const [allDeals, clientsRes, savedViews, nextRes] = await Promise.all([
+  const [allDeals, clientsRes, savedViews, nextRes, reasonsRes] = await Promise.all([
     readAllOrThrow((from, to) =>
       supabase
         .from("deals")
         .select(
-          "id,title,stage,value_satang,client_id,owner,expected_close_date,next_follow_up_date,created_at,client:clients(name)"
+          "id,title,stage,value_satang,probability,sequence,client_id,owner,expected_close_date,next_follow_up_date,created_at,client:clients(name)"
         )
         .eq("org_id", ctx.orgId)
         .order("created_at", { ascending: false })
@@ -78,6 +80,7 @@ export default async function DealsPage({
         .order("deal_id")
         .range(from, to)
     ),
+    supabase.from("deal_lost_reasons").select("id,name").eq("org_id", ctx.orgId).eq("active", true).order("name"),
   ])
 
   const clients = clientsRes.data ?? []
@@ -113,12 +116,14 @@ export default async function DealsPage({
   const openValue = pipelineValue(allDeals)
   const weighted = weightedPipelineValue(allDeals)
 
-  const cards: KanbanCard<DealStage>[] = deals.map((d) => ({
+  // Saved card order within each column; the stable sort keeps newest first among ties.
+  const cards: KanbanCard<DealStage>[] = [...deals].sort((a, b) => a.sequence - b.sequence).map((d) => ({
     id: d.id,
     stage: d.stage,
     title: d.title,
     href: `/deals/${d.id}`,
     amountSatang: d.value_satang,
+    probability: d.probability,
     client: d.client?.name ?? null,
     owner: ownerLabel(d.owner),
     due: earliestDate([d.next_follow_up_date, nextActivity.get(d.id) ?? null]),
@@ -146,10 +151,10 @@ export default async function DealsPage({
           hint="Value of deals still in play"
         />
         <StatCard
-          label="Weighted pipeline"
+          label="Expected revenue"
           value={formatTHBWhole(weighted)}
           icon={Target}
-          hint="By stage win-probability"
+          hint="Open deals, value × probability"
         />
       </div>
 
@@ -192,10 +197,12 @@ export default async function DealsPage({
                   <TableHead>Owner</TableHead>
                   <TableHead>Expected close</TableHead>
                   <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right">Probability</TableHead>
+                  <TableHead className="text-right">Expected</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <GroupedTableRows rows={listRows} colSpan={6} group={group} amount={(d) => d.value_satang}>
+                <GroupedTableRows rows={listRows} colSpan={8} group={group} amount={(d) => d.value_satang}>
                   {(d) => (
                     <TableRow key={d.id}>
                       <TableCell className="font-medium">
@@ -208,6 +215,8 @@ export default async function DealsPage({
                       <TableCell className="text-muted-foreground">{ownerLabel(d.owner) ?? "—"}</TableCell>
                       <TableCell className="text-muted-foreground">{d.expected_close_date ?? "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatTHB(d.value_satang)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{d.probability}%</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatTHB(expectedRevenue(d))}</TableCell>
                     </TableRow>
                   )}
                 </GroupedTableRows>
@@ -223,6 +232,8 @@ export default async function DealsPage({
           clients={clients}
           today={today}
           storageKey={`kanban:deals:${ctx.userId}`}
+          lostReasons={reasonsRes.data ?? []}
+          canManageReasons={can(ctx.role, "settings:manage")}
         />
       )}
     </div>

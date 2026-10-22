@@ -8,6 +8,7 @@ import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
+import { logRecordNote } from "@/lib/record-history/actions"
 
 const STAGES = [
   "lead",
@@ -27,37 +28,49 @@ function nullableText(v: string | null | undefined): string | null {
   return t === "" ? null : t
 }
 
-const DealInput = z.object({
+const DealFields = z.object({
   clientId: z.guid("Pick a client"),
   title: z.string().min(1, "Title is required"),
   stage: z.enum(STAGES),
   valueBaht: z.coerce.number().min(0, "Value can't be negative"),
+  /** Omitted: the database applies the stage default. */
+  probability: z.coerce.number().int().min(0).max(100, "Probability is 0 to 100").optional(),
+  lostReasonId: z.union([z.guid(), z.literal("")]).optional(),
   expectedCloseDate: z.string().optional(),
   nextFollowUpDate: z.string().optional(),
   source: z.string().optional(),
   notes: z.string().optional(),
 })
+const needsLostReason = (d: { stage: string; lostReasonId?: string }) => d.stage !== "lost" || !!d.lostReasonId
+const LOST_REASON = { message: "Pick a lost reason", path: ["lostReasonId"] }
+const DealInput = DealFields.refine(needsLostReason, LOST_REASON)
 export type DealInput = z.infer<typeof DealInput>
+
+/** Columns the deal form owns; the database derives won_at, lost_at and the closed probabilities. */
+function dealColumns(d: DealInput) {
+  return {
+    client_id: d.clientId,
+    title: d.title.trim(),
+    stage: d.stage,
+    value_satang: bahtToSatang(d.valueBaht),
+    probability: d.probability,
+    lost_reason_id: d.stage === "lost" ? d.lostReasonId : null,
+    expected_close_date: nullableText(d.expectedCloseDate),
+    next_follow_up_date: nullableText(d.nextFollowUpDate),
+    source: nullableText(d.source),
+    notes: nullableText(d.notes),
+  }
+}
 
 /** Inserts a validated deal and writes its audit entry. */
 async function insertDeal(
   ctx: Awaited<ReturnType<typeof requireOrgContext>>,
-  d: z.infer<typeof DealInput>
+  d: DealInput
 ): Promise<{ id?: string; error?: string }> {
   const supabase = await createSupabaseClient()
   const { data, error } = await supabase
     .from("deals")
-    .insert({
-      org_id: ctx.orgId,
-      client_id: d.clientId,
-      title: d.title.trim(),
-      stage: d.stage,
-      value_satang: bahtToSatang(d.valueBaht),
-      expected_close_date: nullableText(d.expectedCloseDate),
-      next_follow_up_date: nullableText(d.nextFollowUpDate),
-      source: nullableText(d.source),
-      notes: nullableText(d.notes),
-    })
+    .insert({ org_id: ctx.orgId, ...dealColumns(d) })
     .select("id")
     .single()
 
@@ -85,12 +98,12 @@ export async function createDeal(input: DealInput): Promise<{ error?: string }> 
   redirect(`/deals/${id}`)
 }
 
-const QuickDealInput = DealInput.pick({
+const QuickDealInput = DealFields.pick({
   clientId: true,
   title: true,
   stage: true,
   valueBaht: true,
-})
+}).refine((d) => d.stage !== "lost", { message: "Create the deal first, then mark it lost", path: ["stage"] })
 
 /** Board quick create: same insert and audit as createDeal, but stays on the board. */
 export async function quickCreateDeal(
@@ -114,63 +127,74 @@ export async function updateDeal(
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("deals")
-    .update({
-      client_id: d.clientId,
-      title: d.title.trim(),
-      stage: d.stage,
-      value_satang: bahtToSatang(d.valueBaht),
-      expected_close_date: nullableText(d.expectedCloseDate),
-      next_follow_up_date: nullableText(d.nextFollowUpDate),
-      source: nullableText(d.source),
-      notes: nullableText(d.notes),
-    })
+    .update(dealColumns(d))
     .eq("id", id)
     .eq("org_id", ctx.orgId)
+    .select("id")
 
   if (error) return { error: error.message }
+  if (!updated.length) return { error: GONE }
 
   revalidatePath("/deals")
   revalidatePath(`/deals/${id}`)
   redirect(`/deals/${id}`)
 }
 
-const StageInput = z.enum(STAGES)
+const GONE = "This deal no longer exists. Refresh to see the latest pipeline."
+
+const StageMove = z.object({
+  id: z.guid(),
+  stage: z.enum(STAGES),
+  /** Board drops: the card it lands after; null or omitted puts it at the top of the column. */
+  after: z.guid().nullish(),
+  lostReasonId: z.guid().optional(),
+  /** Optional closing note for a lost deal, kept in its record history. */
+  note: z.string().trim().max(2000).optional(),
+})
 
 export async function updateDealStage(
   id: string,
-  stage: string
+  stage: string,
+  place: { after?: string | null; lostReasonId?: string; note?: string } = {}
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  const parsed = StageInput.safeParse(stage)
+  const parsed = StageMove.safeParse({ id, stage, ...place })
   if (!parsed.success) return { error: "Invalid stage" }
+  const m = parsed.data
 
   const supabase = await createSupabaseClient()
-  // Capture the prior stage + title for the audit summary before we overwrite.
+  // The title is only for the audit summary; move_deal reports the stage it replaced.
   const { data: before } = await supabase
     .from("deals")
-    .select("title, stage")
+    .select("title")
     .eq("id", id)
     .eq("org_id", ctx.orgId)
     .maybeSingle()
+  if (!before) return { error: GONE }
 
-  const { error } = await supabase
-    .from("deals")
-    .update({ stage: parsed.data })
-    .eq("id", id)
-    .eq("org_id", ctx.orgId)
+  const { data: from, error } = await supabase.rpc("move_deal", {
+    p_org_id: ctx.orgId,
+    p_deal_id: id,
+    p_stage: m.stage,
+    p_after_id: m.after ?? null,
+    p_lost_reason_id: m.lostReasonId ?? null,
+  })
+  if (error) return { error: error.code === "P0002" ? GONE : error.message }
 
-  if (error) return { error: error.message }
-
-  if (before && before.stage !== parsed.data) {
+  if (from !== m.stage) {
     await writeAudit(ctx, {
       entity: "deal",
       entityId: id,
       action: "stage_changed",
-      summary: `Moved deal "${before.title}" from ${before.stage} → ${parsed.data}`,
-      meta: { from: before.stage, to: parsed.data },
+      summary: `Moved deal "${before.title}" from ${from} → ${m.stage}`,
+      meta: { from, to: m.stage, ...(m.lostReasonId ? { lostReasonId: m.lostReasonId } : {}) },
     })
+  }
+  if (m.stage === "lost" && m.note) {
+    const logged = await logRecordNote({ recordType: "deal", recordId: id, body: `Lost: ${m.note}` })
+    if (logged.error) return { error: "The deal is marked lost, but the note was not saved. Add it from the deal page." }
   }
 
   revalidatePath("/deals")

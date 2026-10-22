@@ -82,8 +82,12 @@ insert into deals (id, org_id, client_id, title, stage, value_satang, expected_c
   ('d0000000-0000-0000-0000-000000000005','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000005','Meeting Summary + Ops Bot',       'negotiation',32000000, current_date + 7,  current_date - 2,   'Referral','Negotiating scope. Follow-up overdue!','b0000000-0000-0000-0000-000000000003'),
   ('d0000000-0000-0000-0000-000000000006','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003','AI Tutor Add-on',                 'discovery',  12000000, current_date + 30, current_date + 3,   'Webinar','Exploring an AI tutor module.','b0000000-0000-0000-0000-000000000002'),
   ('d0000000-0000-0000-0000-000000000007','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','Loyalty Campaign Automation',     'lead',        8000000, current_date + 45, current_date + 5,   'LINE OA','New lead from existing client.','b0000000-0000-0000-0000-000000000001'),
-  ('d0000000-0000-0000-0000-000000000008','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000004','Website Chatbot (lost)',          'lost',        9000000, current_date - 5,  null,               'Cold outreach','Lost to in-house build.','b0000000-0000-0000-0000-000000000001')
+  ('d0000000-0000-0000-0000-000000000008','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000004','Website Chatbot (lost)',          'negotiation',        9000000, current_date - 5,  null,               'Cold outreach','Lost to in-house build.','b0000000-0000-0000-0000-000000000001')
 on conflict (id) do nothing;
+-- A lost deal needs a lost reason, which the CRM migration seeds per workspace.
+update deals set stage = 'lost', lost_reason_id = r.id
+  from deal_lost_reasons r
+  where deals.title = 'Website Chatbot (lost)' and deals.stage <> 'lost' and r.org_id = deals.org_id and r.name = 'Not a fit';
 
 -- ── CRM: activities / follow-ups ────────────────────────────────────────────
 insert into activities (org_id, client_id, deal_id, type, due_date, done, body, owner) values

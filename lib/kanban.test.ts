@@ -1,13 +1,19 @@
 import { describe, it, expect } from "vitest"
 
 import {
+  activityCounts,
+  activityState,
+  afterForDrop,
   dueState,
   earliestDate,
   groupCards,
+  hasTypedInput,
   initials,
   moveCard,
   movedCardFocus,
   parseFolded,
+  reorderAfter,
+  serialQueue,
   type KanbanCard,
   type KanbanColumn,
 } from "@/lib/kanban"
@@ -55,6 +61,15 @@ describe("groupCards", () => {
     expect(groups[0]!.cards).toHaveLength(3)
   })
 
+  it("sums expected revenue per column from each card's probability, null when no card has one", () => {
+    const weighted = [
+      { ...card("a", "lead", 150_000), probability: 10 },
+      { ...card("d", "lead", 333), probability: 50 },
+      card("b", "proposal", 2_500_050),
+    ]
+    expect(groupCards(columns, weighted).map((g) => g.expectedSatang)).toEqual([15_167, null, null])
+  })
+
   it("refuses unsafe satang sums instead of losing precision", () => {
     const huge = [card("x", "won", Number.MAX_SAFE_INTEGER), card("y", "won", 1)]
     expect(() => groupCards(columns, huge)).toThrow()
@@ -80,6 +95,101 @@ describe("moveCard (optimistic stage move)", () => {
   it("is a no-op for the current stage or an unknown card", () => {
     expect(moveCard(cards, "a", "lead")).toBe(cards)
     expect(moveCard(cards, "missing", "won")).toBe(cards)
+  })
+
+  it("places the card right after the given card, in its own column or another", () => {
+    expect(summary(moveCard(cards, "a", "lead", "d"))[0]!.ids).toEqual(["c", "d", "a"])
+    expect(summary(moveCard(cards, "d", "lead", "a"))[0]!.ids).toEqual(["a", "d", "c"])
+    expect(summary(moveCard(cards, "b", "lead", "c"))[0]!.ids).toEqual(["a", "c", "b", "d"])
+  })
+
+  it("is a no-op when the card already sits after the given card", () => {
+    expect(moveCard(cards, "c", "lead", "a")).toBe(cards)
+  })
+
+  it("falls back to the top of the column when the anchor card is gone", () => {
+    expect(summary(moveCard(cards, "d", "lead", "missing"))[0]!.ids).toEqual(["d", "a", "c"])
+  })
+})
+
+describe("drop position", () => {
+  const ids = ["a", "c", "d"]
+
+  it("drops after the hovered card on its lower half, after its predecessor on the upper half", () => {
+    expect(afterForDrop(ids, "c", true)).toBe("c")
+    expect(afterForDrop(ids, "c", false)).toBe("a")
+    expect(afterForDrop(ids, "a", false)).toBeNull()
+  })
+
+  it("keeps the dragged card in place when it hovers itself or the slot it already fills", () => {
+    const withDragged = ["a", "x", "b"]
+    expect(afterForDrop(withDragged, "b", false, "x")).toBe("a")
+    expect(afterForDrop(withDragged, "x", true, "x")).toBe("a")
+    expect(afterForDrop(withDragged, "b", true, "x")).toBe("b")
+    expect(afterForDrop(["x", "a"], "a", false, "x")).toBeNull()
+  })
+
+  it("moves one place up or down from the keyboard, undefined at the edges", () => {
+    expect(reorderAfter(ids, "d", "up")).toBe("a")
+    expect(reorderAfter(ids, "c", "up")).toBeNull()
+    expect(reorderAfter(ids, "a", "up")).toBeUndefined()
+    expect(reorderAfter(ids, "a", "down")).toBe("c")
+    expect(reorderAfter(ids, "d", "down")).toBeUndefined()
+  })
+})
+
+describe("serialQueue", () => {
+  it("runs tasks one after another in call order, even when an earlier one is slower", async () => {
+    const enqueue = serialQueue()
+    const log: string[] = []
+    const slow = enqueue(async () => {
+      log.push("start 1")
+      await new Promise((r) => setTimeout(r, 20))
+      log.push("end 1")
+      return 1
+    })
+    const fast = enqueue(async () => {
+      log.push("start 2")
+      return 2
+    })
+    expect(await Promise.all([slow, fast])).toEqual([1, 2])
+    expect(log).toEqual(["start 1", "end 1", "start 2"])
+  })
+
+  it("keeps going after a task fails, and the failure reaches only its caller", async () => {
+    const enqueue = serialQueue()
+    const failed = enqueue(() => Promise.reject(new Error("offline")))
+    const next = enqueue(async () => "ran")
+    await expect(failed).rejects.toThrow("offline")
+    await expect(next).resolves.toBe("ran")
+  })
+})
+
+describe("activity bar", () => {
+  const today = "2026-10-23"
+  const dated = [
+    { ...card("a", "lead", null), due: "2026-10-20" },
+    { ...card("c", "lead", null), due: today },
+    { ...card("d", "lead", null), due: "2026-11-01" },
+    { ...card("e", "lead", null), due: "2026-10-01" },
+    card("f", "lead", null),
+  ]
+
+  it("counts cards by next-activity state", () => {
+    expect(activityCounts(dated, today)).toEqual({ overdue: 2, today: 1, planned: 1, none: 1 })
+  })
+
+  it("gives each card the state its column filter matches", () => {
+    expect(dated.filter((c) => activityState(c, today) === "overdue").map((c) => c.id)).toEqual(["a", "e"])
+    expect(dated.filter((c) => activityState(c, today) === "none").map((c) => c.id)).toEqual(["f"])
+  })
+})
+
+describe("hasTypedInput (quick create Escape guard)", () => {
+  it("is true only when some field holds non-blank text", () => {
+    expect(hasTypedInput([["title", "  "], ["amount", ""]])).toBe(false)
+    expect(hasTypedInput([["title", ""], ["amount", "12"]])).toBe(true)
+    expect(hasTypedInput([["clientId", "c1"]])).toBe(true)
   })
 })
 

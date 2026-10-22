@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { satangToBaht } from "@/lib/money"
+import { expectedRevenue } from "@/lib/metrics/pipeline"
 import { toCsv } from "@/lib/export/csv"
 import { todayISO } from "@/lib/dates"
 import { matchesFacets, parseFacets } from "@/lib/search-facets"
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   const deals = (await readAllOrThrow((from, to) => supabase
     .from("deals")
     .select(
-      "id, title, stage, value_satang, owner, expected_close_date, next_follow_up_date, client:clients(name)"
+      "id, title, stage, value_satang, probability, won_at, lost_at, owner, expected_close_date, next_follow_up_date, client:clients(name), lost_reason:deal_lost_reasons(name)"
     )
     .eq("org_id", ctx.orgId)
     .order("created_at", { ascending: false })
@@ -36,16 +37,26 @@ export async function GET(request: Request) {
     "Client",
     "Stage",
     "Value (THB)",
+    "Probability (%)",
+    "Expected revenue (THB)",
     "Expected close",
     "Next follow-up",
+    "Won at",
+    "Lost at",
+    "Lost reason",
   ]
   const rows = deals.map((d) => [
     d.title,
     d.client?.name ?? "",
     d.stage,
     satangToBaht(d.value_satang),
+    d.probability,
+    satangToBaht(expectedRevenue(d)),
     d.expected_close_date ?? "",
     d.next_follow_up_date ?? "",
+    d.won_at ?? "",
+    d.lost_at ?? "",
+    d.lost_reason?.name ?? "",
   ])
 
   const csv = toCsv(headers, rows)

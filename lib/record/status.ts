@@ -57,7 +57,7 @@ export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }>
 }
 
 /** Steps a page performs with its own control instead of a plain status change. */
-export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "deliver" | "reject"
+export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "deliver" | "reject" | "lose"
 
 export type FlowAction<S extends string> =
   /** `confirm` asks before a destructive move; `reason` also asks why and keeps it in the record history. */
@@ -73,7 +73,9 @@ export type DocumentFlow<S extends string> = {
   next: Record<S, { primary?: FlowAction<S>; secondary?: readonly FlowAction<S>[] }>
 }
 
-const LOSE_DEAL = { label: "Mark lost", to: "lost", confirm: "The deal leaves the pipeline. You can reopen it later.", reason: true } as const
+// Losing a deal needs a reason from the workspace's list, so the deal page opens its own dialog
+// (confirm, reason, optional note) instead of a plain stage change.
+const LOSE_DEAL = { label: "Mark lost", command: "lose" } as const
 
 export const QUOTE_FLOW: DocumentFlow<QuoteStatus> = {
   stages: ["draft", "sent", "accepted", "converted"],

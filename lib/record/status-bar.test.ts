@@ -12,7 +12,8 @@ const bar = () => renderToStaticMarkup(StatusBar({
   flow: DEAL_FLOW,
   status: "proposal",
   transition: async () => ({}),
-  commands: { create_project: "/projects/new" },
+  // Mark lost is the deal page's own reason dialog; any handler puts it on the bar.
+  commands: { create_project: "/projects/new", lose: "#lose" },
 }))
 
 it("disables the whole status bar while one record action is pending", async () => {

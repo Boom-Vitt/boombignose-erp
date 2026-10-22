@@ -46,6 +46,9 @@ test("public form without JavaScript creates a deal in Lead and can be disabled"
   const deal = leadColumn.getByRole("link", { name: `Web form: ${visitor}`, exact: true })
   await expect(deal).toBeVisible()
   await deal.click()
+  // Wait for the deal page itself; the board can still be on screen right after the click.
+  await expect(page).toHaveURL(/\/deals\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole("heading", { level: 1, name: `Web form: ${visitor}`, exact: true })).toBeVisible()
   await expect(page.getByText("Web form", { exact: true })).toBeVisible()
   await expect(page.getByText(message, { exact: false })).toBeVisible()
 
