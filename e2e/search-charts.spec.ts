@@ -1,0 +1,35 @@
+import { expect, test } from "@playwright/test"
+import { loginDemo } from "./auth"
+
+test("quotes keep filter and grouping chips in shareable URLs", async ({ page }) => {
+  await loginDemo(page)
+  await page.goto("/quotes")
+  await page.getByText("Filters, group by and saved views", { exact: true }).click()
+  await page.getByRole("link", { name: "Sent", exact: true }).click()
+  await expect(page).toHaveURL(/status=sent/)
+  await expect(page.getByRole("link", { name: "Remove Sent", exact: true })).toBeVisible()
+  const groupStatus = page.getByRole("link", { name: "Status", exact: true })
+  if (!await groupStatus.isVisible()) await page.getByText("Filters, group by and saved views", { exact: true }).click()
+  await groupStatus.click()
+  await expect(page).toHaveURL(/groupBy=status/)
+  await expect(page.getByRole("link", { name: "Remove Group by: Status", exact: true })).toBeVisible()
+  await expect(page.getByTestId("group-header")).toContainText("Sent")
+  await page.reload()
+  await expect(page.getByTestId("group-header")).toContainText("Sent")
+  await page.getByRole("link", { name: "Remove Sent", exact: true }).click()
+  await expect(page).not.toHaveURL(/status=/)
+  await expect(page.getByRole("link", { name: "Remove Group by: Status", exact: true })).toBeVisible()
+})
+
+test("reports switch between graphs and the pivot table", async ({ page }) => {
+  await loginDemo(page)
+  await page.goto("/reports")
+  await expect(page.getByRole("figure", { name: "Revenue by month bar chart", exact: true })).toBeVisible()
+  await expect(page.getByRole("figure", { name: "Hours by project bar chart", exact: true })).toBeVisible()
+  await page.getByRole("link", { name: "Line chart", exact: true }).click()
+  await expect(page.getByRole("figure", { name: "Revenue by month line chart", exact: true })).toBeVisible()
+  await expect(page.getByRole("figure", { name: "Revenue by month line chart", exact: true }).locator("svg polyline")).toHaveCount(1)
+  await page.getByRole("link", { name: "Pivot / table", exact: true }).click()
+  await expect(page).toHaveURL(/view=pivot/)
+  await expect(page.getByText("Verified cash by client × month", { exact: true })).toBeVisible()
+})
