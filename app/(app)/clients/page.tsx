@@ -35,12 +35,13 @@ export default async function ClientsPage({
   const now = new Date()
   const savedViews = await getFacetSavedViews("clients")
 
-  const query = supabase
+  let query = supabase
     .from("clients")
     .select("id, name, industry, source, created_at, owner, deals(count)")
     .eq("org_id", ctx.orgId)
     .in("deals.stage", OPEN_STAGES)
     .order("name", { ascending: true })
+  if (config.q) query = query.ilike("name", `%${config.q.replace(/[\\%_(),.":]/g, "\\$&")}%`)
 
   const { data, error } = await query
   if (error) throw new Error("Clients unavailable. Please reload.")
@@ -99,7 +100,7 @@ export default async function ClientsPage({
                 group={config.groupBy ? (c) => {
                   const value = config.groupBy === "month" ? monthKey(c.created_at)
                     : config.groupBy === "industry" ? c.industry : c.source
-                  return { key: value ?? "unassigned", label: value ?? "Unassigned" }
+                  return { key: value === null ? "missing" : `value:${value}`, label: value ?? "Unassigned" }
                 } : undefined}>
               {(c) => (
                 <TableRow key={c.id}>

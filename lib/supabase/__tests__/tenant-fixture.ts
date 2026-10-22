@@ -37,7 +37,8 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
           return query
         },
         ilike: (key: string, value: string) => {
-          rows = rows.filter((row) => String(row[key]).toLowerCase().includes(value.replaceAll('%', '').toLowerCase()))
+          const text = value.replace(/^%|%$/g, '').replace(/\\(.)/g, '$1').toLowerCase()
+          rows = rows.filter((row) => String(row[key]).toLowerCase().includes(text))
           return query
         },
         order: () => query,

@@ -10,6 +10,6 @@ export async function getFacetSavedViews(list: FacetList): Promise<SavedView[]> 
     .eq("org_id", ctx.orgId).eq("user_id", ctx.userId).eq("module", list).order("created_at")
   if (error) throw new Error("Saved views unavailable. Please reload.")
   return (data ?? []).map((view) => ({ ...view, config: parseFacets(new URLSearchParams(
-    Object.entries(typeof view.config === "object" && !Array.isArray(view.config) ? view.config : {}).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    Object.entries(view.config !== null && typeof view.config === "object" && !Array.isArray(view.config) ? view.config : {}).filter((entry): entry is [string, string] => typeof entry[1] === "string")
   ), list) }))
 }

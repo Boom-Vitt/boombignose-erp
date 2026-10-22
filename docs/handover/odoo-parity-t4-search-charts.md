@@ -34,7 +34,7 @@ Source investigation found expected behavior, rather than a month calculation bu
 
 ## Verification
 
-Final gate output, all exit codes zero.
+Initial delivery gate output, all exit codes zero.
 
 ```text
 pnpm lint
@@ -58,6 +58,51 @@ pnpm build
 ```
 
 `git diff --check` passed. Server-render tests verify chip removal links, preserved hidden form fields, count/satang headers, chart labels, SVG coordinates and empty/zero data. Saved-view tests cover persistence, invalid config rejection and current user/org/module scoping. Project-local memory reader checks passed.
+
+### Fix round 1, 2026-10-23
+
+Addressed all three independent-review findings with regression tests committed first in `dc3cb07`.
+
+- Client name search now applies an escaped `.ilike()` predicate before Supabase's row cap. LIKE wildcards, backslashes and PostgREST punctuation remain literal search text. The direct column predicate also avoids embedding user input in `.or()` grammar. Other URL facets remain active.
+- Saved-view config parsing explicitly excludes JSON null and arrays before `Object.entries`.
+- Industry/source group keys prefix every present value with `value:` and reserve `missing` for null. Actual data named `unassigned` or `missing` cannot share the missing-value key.
+- The existing tenant fixture now decodes escaped literal search text, preserving its CLIENT_A search assertion.
+
+Before production fixes, the focused command `pnpm exec vitest run lib/queries/clients-facets.test.ts lib/queries/saved-views.test.ts` reported:
+
+```text
+ Test Files  2 failed (2)
+      Tests  5 failed | 4 passed (9)
+```
+
+The failures covered omitted server predicates, the missing client beyond the first 1,000 rows, merged industry/source headers and `Object.entries(null)`. After the fixes the same command reported 2 files and 9 tests passed. Including the existing active-workspace page tests reported 3 files and 27 tests passed. These exercise the actual page/loader with a capped query fixture and server-rendered output; no live database behavior is claimed.
+
+Final fix-round gates all exited zero:
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+ Test Files  79 passed (79)
+      Tests  548 passed (548)
+   Start at  02:07:26
+   Duration  3.91s (transform 7.15s, setup 0ms, import 41.77s, tests 1.61s, environment 14ms)
+
+pnpm build
+├ ƒ /timesheets
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+`git diff --check` also passed. Authenticated Playwright and patch-current independent review remain assigned to the coordinator.
 
 ## Remaining integration checks and limits
 
