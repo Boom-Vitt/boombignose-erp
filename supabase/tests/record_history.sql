@@ -24,7 +24,7 @@ insert into public.quotes(id,org_id,client_id,number) values(pg_temp.history_id(
 insert into public.quote_items(org_id,quote_id,description,quantity,unit_price_satang) values(pg_temp.history_id(10),pg_temp.history_id(102),'History test service',1,100);
 insert into public.invoices(id,org_id,client_id,number) values(pg_temp.history_id(103),pg_temp.history_id(10),pg_temp.history_id(100),'HISTORY-I');
 insert into public.projects(id,org_id,name) values(pg_temp.history_id(104),pg_temp.history_id(10),'History project');
-insert into public.subscriptions(id,org_id,client_id,name) values(pg_temp.history_id(105),pg_temp.history_id(10),pg_temp.history_id(100),'History subscription');
+insert into public.subscriptions(id,org_id,client_id,name,amount_satang) values(pg_temp.history_id(105),pg_temp.history_id(10),pg_temp.history_id(100),'History subscription',100000);
 
 select ok((select bool_and(relrowsecurity and relforcerowsecurity) from pg_class where oid in ('public.record_notes'::regclass,'public.record_attachments'::regclass)), 'new tables enable and force RLS');
 select is((select public from storage.buckets where id='record-attachments'),false,'attachment bucket is private');
