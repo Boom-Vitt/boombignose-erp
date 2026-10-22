@@ -22,6 +22,7 @@ vi.mock("@/lib/supabase/server", () => ({
       in: () => chain,
       order: () => chain,
       range: () => chain,
+      limit: () => chain,
       maybeSingle: async () => ({ data: rows[table]?.[0] ?? null, error: null }),
       then: (resolve: (value: unknown) => unknown) => resolve({ data: rows[table] ?? [], error: null }),
     }

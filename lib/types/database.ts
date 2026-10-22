@@ -1121,6 +1121,24 @@ isOneToOne: false
               Row: { org_id: string | null; deal_id: string | null; next_due_date: string | null; open_count: number | null }
               Relationships: []
             }
+            "client_balances": {
+              Row: {
+                "client_id": string | null,"invoiced_satang": number | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null
+              }
+              Relationships: []
+            }
+            "invoice_balances": {
+              Row: {
+                "amount_satang": number | null,"client_id": string | null,"invoice_id": string | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null,"status": Database["public"]["Enums"]["invoice_status"] | null
+              }
+              Relationships: []
+            }
+            "project_time_totals": {
+              Row: {
+                "minutes": number | null,"org_id": string | null,"project_id": string | null
+              }
+              Relationships: []
+            }
           }
           Functions: {
             "accept_integration_event":
