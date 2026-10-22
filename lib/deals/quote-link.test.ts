@@ -8,7 +8,7 @@ const { state, updateDealStage } = vi.hoisted(() => ({
   updateDealStage: vi.fn(async () => ({})),
 }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.client }))
-vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "A", userId: "user", role: "member" }) }))
+vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "A", userId: "user", role: "member" }), requireCapability: vi.fn() }))
 vi.mock("@/app/(app)/deals/actions", () => ({ updateDealStage }))
 vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
@@ -73,6 +73,7 @@ describe("quote form deal link", () => {
   it("saves the chosen deal on create and edit, and clears it when set to none", async () => {
     const writes: Record<string, unknown>[] = []
     state.client = {
+      rpc: async () => ({ data: "Q-1", error: null }),
       from: () => {
         const query = {
           select: () => query, eq: () => query, order: () => query, range: () => query,
