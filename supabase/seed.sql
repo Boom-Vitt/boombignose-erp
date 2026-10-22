@@ -161,25 +161,36 @@ insert into automation_templates (org_id, category_id, name, description, intern
 on conflict do nothing;
 
 -- ── V3: Quotations + line items ─────────────────────────────────────────────
+insert into products (id, org_id, sku, name, description, type, unit, list_price_satang, cost_satang) values
+  ('a5000000-0000-4000-8000-000000000001','a0000000-0000-0000-0000-000000000001','CRM-BUILD','CRM automation build','CRM automation build (n8n + CRM)','service','project',15000000,9000000),
+  ('a5000000-0000-4000-8000-000000000002','a0000000-0000-0000-0000-000000000001','TRAINING','Team training session','Team training session','service','day',1000000,500000),
+  ('a5000000-0000-4000-8000-000000000003','a0000000-0000-0000-0000-000000000001','LINE-PHASE2','LINE bot phase 2 build','LINE bot — phase 2 build','service','project',8000000,4500000),
+  ('a5000000-0000-4000-8000-000000000004','a0000000-0000-0000-0000-000000000001','DISCOVERY','Discovery and conversation design','Discovery & conversation-flow design','service','project',4000000,2000000),
+  ('a5000000-0000-4000-8000-000000000005','a0000000-0000-0000-0000-000000000001','LINE-DEPOSIT','LINE bot build deposit','LINE bot build (50% deposit)','service','project',5000000,2500000),
+  ('a5000000-0000-4000-8000-000000000006','a0000000-0000-0000-0000-000000000001','CRM-DEPOSIT','CRM automation deposit','CRM automation — deposit','service','project',12500000,8000000),
+  ('a5000000-0000-4000-8000-000000000007','a0000000-0000-0000-0000-000000000001','RETAINER','Monthly automation retainer','Monthly automation retainer','service','month',4000000,2000000),
+  ('a5000000-0000-4000-8000-000000000008','a0000000-0000-0000-0000-000000000001','CONSULTING','Automation consulting','Automation consulting','service','hour',350000,150000)
+on conflict (id) do nothing;
+
 insert into quotes (id, org_id, client_id, project_id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, notes, owner) values
   ('90000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000002','QUO-2026-001','draft',    current_date - 4, current_date + 26, 17000000, 1000000, 16000000, 'CRM automation proposal — build + training', 'b0000000-0000-0000-0000-000000000001'),
   ('90000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','QUO-2026-002','draft',current_date - 9, current_date + 14,  8000000,       0,  8000000, 'LINE bot — phase 2 scope', 'b0000000-0000-0000-0000-000000000002')
 on conflict (id) do nothing;
 
-insert into quote_items (org_id, quote_id, description, quantity, unit_price_satang, amount_satang, position) values
-  ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000001','CRM automation build (n8n + CRM)', 1, 15000000, 15000000, 0),
-  ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000001','Team training session',            2,  1000000,  2000000, 1),
-  ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000002','LINE bot — phase 2 build',         1,  8000000,  8000000, 0)
+insert into quote_items (org_id, quote_id, description, quantity, unit_price_satang, amount_satang, position, product_id, unit) values
+  ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000001','CRM automation build (n8n + CRM)', 1, 15000000, 15000000, 0, 'a5000000-0000-4000-8000-000000000001', 'project'),
+  ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000001','Team training session',            2,  1000000,  2000000, 1, 'a5000000-0000-4000-8000-000000000002', 'day'),
+  ('a0000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000002','LINE bot — phase 2 build',         1,  8000000,  8000000, 0, 'a5000000-0000-4000-8000-000000000003', 'project')
 on conflict do nothing;
 update quotes set status='sent' where id in ('90000000-0000-0000-0000-000000000001','90000000-0000-0000-0000-000000000002');
 update quotes set status='accepted' where id='90000000-0000-0000-0000-000000000002';
 
 
 -- ── V3: Invoice line items (sum to the invoice amount) ──────────────────────
-insert into invoice_items (org_id, invoice_id, description, quantity, unit_price_satang, amount_satang, position) values
-  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000001','Discovery & conversation-flow design', 1, 4000000, 4000000, 0),
-  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000001','LINE bot build (50% deposit)',         1, 5000000, 5000000, 1),
-  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000002','CRM automation — deposit',             1, 12500000, 12500000, 0)
+insert into invoice_items (org_id, invoice_id, description, quantity, unit_price_satang, amount_satang, position, product_id, unit) values
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000001','Discovery & conversation-flow design', 1, 4000000, 4000000, 0, 'a5000000-0000-4000-8000-000000000004', 'project'),
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000001','LINE bot build (50% deposit)',         1, 5000000, 5000000, 1, 'a5000000-0000-4000-8000-000000000005', 'project'),
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000002','CRM automation — deposit',             1, 12500000, 12500000, 0, 'a5000000-0000-4000-8000-000000000006', 'project')
 on conflict do nothing;
 
 -- ── V3: Timesheets ──────────────────────────────────────────────────────────
