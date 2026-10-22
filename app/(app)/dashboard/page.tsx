@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { overdueVendorBillCount } from "@/lib/purchasing/queries"
+import { expenseApprovalCount } from "@/lib/expenses/queries"
 import { todayISO } from "@/lib/dates"
 import { ActivityDue } from "@/components/record/activity-due"
 import {
@@ -37,7 +38,7 @@ function runwayLabel(months: number | null): { value: string; hint: string; tone
 }
 
 export default async function DashboardPage() {
-  const [d, overdueBills] = await Promise.all([getDashboardData(), overdueVendorBillCount()])
+  const [d, overdueBills, expenseApprovals] = await Promise.all([getDashboardData(), overdueVendorBillCount(), expenseApprovalCount()])
   const runway = runwayLabel(d.runwayMonths)
   const maxRevenue = Math.max(...d.revenueHistory.map((row) => row.revenueSatang))
 
@@ -206,6 +207,10 @@ export default async function DashboardPage() {
               <span>Overdue vendor bills</span>
               <Badge variant={overdueBills > 0 ? "destructive" : "secondary"}>{overdueBills}</Badge>
             </Link>
+            {expenseApprovals !== null && <Link href="/expenses?tab=approve" className="flex items-center justify-between rounded-md border p-3 text-sm">
+              <span>Expense claims to approve</span>
+              <Badge variant={expenseApprovals > 0 ? "default" : "secondary"}>{expenseApprovals}</Badge>
+            </Link>}
             <div className="rounded-md border">
               <div className="border-b px-3 py-2 text-sm font-medium">
                 Overdue follow-ups ({d.overdueFollowUps.length})

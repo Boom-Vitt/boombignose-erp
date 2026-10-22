@@ -17,7 +17,7 @@ vi.mock("@/app/(app)/finance/_components/delete-cost-button", () => ({ DeleteCos
 import { VendorBills } from "@/app/(app)/purchases/_components/bills"
 import FinancePage from "@/app/(app)/finance/page"
 
-const bill: Tables<"costs"> = { id: "bill", org_id: "org", vendor_id: "vendor", purchase_order_id: null, bill_number: "B1", bill_date: "2026-10-23", due_date: "2026-11-23", paid_at: "2026-10-23T18:00:00Z", amount_satang: 101, category: "other", incurred_on: "2026-10-23", vendor: "Vendor", project_id: null, notes: null, created_at: "2026-10-23T18:00:00Z", updated_at: "2026-10-23T18:00:00Z" }
+const bill: Tables<"costs"> = { id: "bill", org_id: "org", vendor_id: "vendor", purchase_order_id: null, expense_claim_id: null, bill_number: "B1", bill_date: "2026-10-23", due_date: "2026-11-23", paid_at: "2026-10-23T18:00:00Z", amount_satang: 101, category: "other", incurred_on: "2026-10-23", vendor: "Vendor", project_id: null, notes: null, created_at: "2026-10-23T18:00:00Z", updated_at: "2026-10-23T18:00:00Z" }
 
 it("shows Bangkok payment dates in the vendor and PO bill table", () => {
   const html = renderToStaticMarkup(createElement(VendorBills, { bills: [bill], canManage: false }))
