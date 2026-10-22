@@ -80,4 +80,10 @@ describe("catalog server actions", () => {
     expect(await setProductActive(id, true)).toEqual({ error: "Product not found" })
     expect(writeAudit).not.toHaveBeenCalled()
   })
+
+  it("explains that stock history locks the product unit", async () => {
+    state.result = { data: null, error: { code: "P0001", message: "Stock unit is locked by stock history" } }
+    expect(await saveProduct({ ...input, unit: "box" }, id)).toEqual({ error: "This product has stock history. Keep its current unit or create a new product for a different unit." })
+    expect(writeAudit).not.toHaveBeenCalled()
+  })
 })

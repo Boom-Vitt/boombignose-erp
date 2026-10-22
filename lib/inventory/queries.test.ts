@@ -1,12 +1,13 @@
 import { beforeEach, expect, it, vi } from "vitest"
 
-const state = vi.hoisted(() => ({ rows: {} as Record<string, Record<string, unknown>[]>, fail: "", ranges: [] as [string, number, number][] }))
-vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org", userId: "user" }) }))
-vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (table: string) => {
+const state = vi.hoisted(() => ({ rows: {} as Record<string, Record<string, unknown>[]>, snapshot: {} as Record<string, unknown>, fail: "", mutate: false, ranges: [] as [string, number, number][], rpc: vi.fn() }))
+vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "b8200000-0000-4000-8000-000000000010", userId: "user" }) }))
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: state.rpc, from: (table: string) => {
   const builder = {
     select: () => builder, eq: () => builder, order: () => builder,
     range: async (from: number, to: number) => {
       state.ranges.push([table, from, to])
+      if (state.mutate && table === "stock_on_hand" && from === 1000) state.rows[table].unshift({ ...state.rows[table][0], warehouse_id: "new" })
       return { data: (state.rows[table] ?? []).slice(from, to + 1), error: table === state.fail ? new Error("Unavailable") : null }
     },
   }
@@ -14,20 +15,38 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (ta
 } }) }))
 import { inventoryData } from "./queries"
 
-beforeEach(() => { state.rows = {}; state.fail = ""; state.ranges = [] })
+const org = "b8200000-0000-4000-8000-000000000010"
+const id = "b8200000-0000-4000-8000-000000000030"
+const product = { id, org_id: org, name: "Product", sku: null, description: null, unit: "piece", type: "goods", is_stockable: true, active: true, list_price_satang: 200, cost_satang: 100, tax_rate_bps: 0, reorder_min: 5, reorder_qty: 10, default_vendor_id: null, created_at: "2026-10-23", updated_at: "2026-10-23" }
 
-it("includes balances beyond the API row cap and fails closed on a later page error", async () => {
-  state.rows.products = [{ id: "p", name: "Product" }]
-  state.rows.stock_on_hand = Array.from({ length: 1001 }, (_, i) => ({ product_id: "p", warehouse_id: String(i), quantity: 0.001, value_satang: 101 }))
-  const result = await inventoryData()
-  expect(result.products[0]).toMatchObject({ quantity: 1.001, value_satang: 101101 })
-  expect(state.ranges).toContainEqual(["stock_on_hand", 1000, 1999])
-  state.fail = "stock_on_hand"
-  await expect(inventoryData()).rejects.toThrow("Inventory data unavailable")
+beforeEach(() => {
+  state.rows = { products: [product] }; state.fail = ""; state.mutate = false; state.ranges = []
+  state.snapshot = { products: [{ ...product, quantity: 0, value_satang: 0 }], balances: [] }
+  state.rpc.mockReset().mockImplementation(async () => ({ data: state.snapshot, error: state.fail === "inventory_snapshot" ? new Error("Unavailable") : null }))
 })
 
-it("includes zero-stock products without ledger rows so replenishment can see them", async () => {
-  state.rows.products = [{ id: "p", name: "Product", reorder_min: 5 }]
+it("reads 1,001 balances in one snapshot even if an insertion would shift a later page", async () => {
+  const balances = Array.from({ length: 1001 }, (_, i) => ({ org_id: org, product_id: id, warehouse_id: `b8200000-0000-4000-8000-${(i + 100).toString(16).padStart(12, "0")}`, quantity: 0.001, average_cost_satang: 101000, value_satang: 101 }))
+  state.rows.stock_on_hand = [...balances]
+  state.mutate = true
+  state.snapshot = { products: [{ ...product, quantity: 1.001, value_satang: 101101 }], balances }
   const result = await inventoryData()
+  expect(result.products[0]).toMatchObject({ quantity: 1.001, value_satang: 101101 })
+  expect(result.balances).toHaveLength(1001)
+  expect(state.rpc).toHaveBeenCalledExactlyOnceWith("inventory_snapshot", { p_org_id: org })
+  expect(state.ranges.some(([table]) => table === "stock_on_hand")).toBe(false)
+})
+
+it("includes zero-stock products and passes warehouse/product filters to the snapshot", async () => {
+  const result = await inventoryData("b8200000-0000-4000-8000-000000000020", id)
   expect(result.products[0]).toMatchObject({ quantity: 0, value_satang: 0, reorder_min: 5 })
+  expect(state.rpc).toHaveBeenCalledWith("inventory_snapshot", { p_org_id: org, p_warehouse_id: "b8200000-0000-4000-8000-000000000020", p_product_id: id })
+})
+
+it("fails closed if the snapshot is unavailable or malformed", async () => {
+  state.fail = "inventory_snapshot"
+  await expect(inventoryData()).rejects.toThrow("Inventory data unavailable")
+  state.fail = ""
+  state.snapshot = { products: [{ ...product, quantity: 1, value_satang: Number.MAX_SAFE_INTEGER + 1 }], balances: [] }
+  await expect(inventoryData()).rejects.toThrow("Inventory data unavailable")
 })
