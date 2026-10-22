@@ -9,6 +9,7 @@ vi.mock("react", async (original) => ({
   ...await original<typeof import("react")>(),
   useState: (initial: unknown) => [state.values[state.index++] ?? initial, vi.fn()],
   useRef: () => state.ref,
+  useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
   useTransition: () => [false, (task: () => Promise<void>) => { state.operation = task() }],
 }))
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }))
@@ -24,7 +25,7 @@ function elements(node: ReactNode): React.ReactElement<Record<string, unknown>>[
 function control(mode: string, quantities: Record<string, string> = {}, deposit = "") {
   state.index = 0
   state.values = [mode, quantities, deposit]
-  return elements(QuoteInvoiceForm({ quoteId: "quote", orgId: "org", lines: [{ id: "line", description: "Service", quantity: 5, invoiced_quantity: 2 }], revision: "invoice-a:draft", label: "Invoice", variant: "default" }))
+  return elements(QuoteInvoiceForm({ quoteId: "quote", orgId: "org", lines: [{ id: "line", description: "Service", quantity: 5, invoiced_quantity: 2 }], label: "Invoice", variant: "default" }))
     .find((node) => node.type === ConvertQuoteButton)!
 }
 
@@ -53,19 +54,22 @@ it.each(["0", "100.01", "1.001", "invalid"])("blocks invalid deposit percentage 
   expect(control("deposit_percent", {}, deposit).props.disabled).toBe(true)
 })
 
-it("retains retry keys but issues a new command for changed quantities or invoice progress", async () => {
-  const click = async (revision: string, quantity: number) => {
-    const button = ConvertQuoteButton({ quoteId: "quote", orgId: "org", revision, request: { lines: [{ quote_item_id: "line", quantity }] }, label: "Invoice", variant: "default" })
-    button.props.onClick()
+it("retains the complete original request despite changed quantities or invoice progress", async () => {
+  const quoteId = crypto.randomUUID()
+  const orgId = crypto.randomUUID()
+  const lineId = crypto.randomUUID()
+  const click = async (quantity: number) => {
+    state.index = 0
+    const button = elements(ConvertQuoteButton({ quoteId, orgId, request: { lines: [{ quote_item_id: lineId, quantity }] }, label: "Invoice", variant: "default" })).find((node) => typeof node.props.onClick === "function")!
+    ;(button.props.onClick as () => void)()
     await state.operation
   }
-  await click("initial", 1)
-  await click("initial", 1)
-  await click("invoice-a:draft", 1)
-  await click("invoice-a:draft", 2)
+  await click(1)
+  await click(1)
+  await click(1)
+  await click(2)
   const keys = state.action.mock.calls.map((call) => call[0].key)
   expect(keys[0]).toBe(keys[1])
-  expect(keys[2]).not.toBe(keys[1])
-  expect(keys[3]).not.toBe(keys[2])
-  expect(state.action.mock.calls[3][0].lines).toEqual([{ quote_item_id: "line", quantity: 2 }])
+  expect(new Set(keys).size).toBe(1)
+  expect(state.action.mock.calls[3][0].lines).toEqual([{ quote_item_id: lineId, quantity: 1 }])
 })

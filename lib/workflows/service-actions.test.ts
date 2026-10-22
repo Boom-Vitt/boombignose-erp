@@ -73,6 +73,15 @@ describe("quote conversion command", () => {
     expect(fixture.from).not.toHaveBeenCalled()
   })
 
+  it("distinguishes a rolled-back scope rejection from an uncertain result", async () => {
+    fixture.rpc.mockResolvedValue({ data: null, error: { code: "P0001", message: "Deposit exceeds remaining quote value" } })
+    expect(await convertQuoteToInvoice({ id: quoteId, key, depositBps: 5000 })).toEqual({ error: "Deposit exceeds remaining quote value", rejected: true })
+    for (const error of [{ code: "", message: "Fetch failed" }, { code: "P0001", message: "Only owners and admins may convert quotes" }, { code: "P0001", message: "Idempotency conflict" }]) {
+      fixture.rpc.mockResolvedValue({ data: null, error })
+      expect(await convertQuoteToInvoice({ id: quoteId, key })).toEqual({ error: error.message })
+    }
+  })
+
   it("blocks ordinary members before any database call", async () => {
     fixture.ctx.role = "member"
     expect(await convertQuoteToInvoice({ id: quoteId, key })).toEqual({

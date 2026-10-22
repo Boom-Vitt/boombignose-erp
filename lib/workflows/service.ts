@@ -63,18 +63,3 @@ export const serviceMoneyInput = z.union([z.string(), z.number()]).refine((value
 export const serviceQuantityInput = z.union([z.string(), z.number()]).refine((value) => {
   try { serviceLineAmount(value, 0); return true } catch { return false }
 }, "Enter a positive quantity with up to three decimals").transform(Number)
-
-/** Storage survives a refreshed page after an uncertain transport result. */
-export function quoteConversionKey(
-  storage: Pick<Storage, "getItem" | "setItem">,
-  scope: string,
-  newKey: () => string
-): string {
-  const storageKey = `quote-conversion:${scope}`
-  let previous: string | null = null
-  try { previous = storage.getItem(storageKey) } catch { /* Storage may be disabled. */ }
-  if (previous && z.uuid().safeParse(previous).success) return previous
-  const key = newKey()
-  try { storage.setItem(storageKey, key) } catch { /* The caller retains the key in memory. */ }
-  return key
-}

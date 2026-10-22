@@ -11,11 +11,10 @@ import { ConvertQuoteButton } from "./convert-quote-button"
 type Line = { id: string; description: string; quantity: number; invoiced_quantity: number }
 type Mode = "remaining" | "selected" | "deposit_percent" | "deposit_amount"
 
-export function QuoteInvoiceForm({ quoteId, orgId, lines, revision, label, variant }: {
+export function QuoteInvoiceForm({ quoteId, orgId, lines, label, variant }: {
   quoteId: string
   orgId: string
   lines: Line[]
-  revision: string
   label: string
   variant: "default" | "outline"
 }) {
@@ -44,7 +43,7 @@ export function QuoteInvoiceForm({ quoteId, orgId, lines, revision, label, varia
   }
   return (
     <Dialog>
-      <DialogTrigger render={<Button id="create-invoice" size="sm" variant={variant} disabled={!available.length} />}>{label}</DialogTrigger>
+      <DialogTrigger render={<Button id="create-invoice" size="sm" variant={variant} />}>{label}</DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Create draft invoice</DialogTitle>
@@ -71,7 +70,7 @@ export function QuoteInvoiceForm({ quoteId, orgId, lines, revision, label, varia
           <p className="text-muted-foreground text-sm">Deposit percentages apply to the quote subtotal after discount. Deposits require a single tax rate.</p>
         </div> : null}
         {error ? <p role="status" className="text-destructive text-sm">{error}</p> : null}
-        <ConvertQuoteButton quoteId={quoteId} orgId={orgId} request={request} revision={revision} label="Create draft invoice" variant="default" disabled={!!error || !available.length} />
+        <ConvertQuoteButton quoteId={quoteId} orgId={orgId} request={request} label="Create draft invoice" variant="default" disabled={!!error || !available.length} />
       </DialogContent>
     </Dialog>
   )

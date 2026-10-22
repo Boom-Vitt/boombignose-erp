@@ -408,7 +408,7 @@ const ConvertQuote = z.object({
 
 export async function convertQuoteToInvoice(
   input: z.input<typeof ConvertQuote>
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; rejected?: boolean }> {
   const ctx = await requireOrgContext()
   try {
     requireCapability(ctx, "quote:convert")
@@ -427,7 +427,7 @@ export async function convertQuoteToInvoice(
     ...(parsed.data.depositSatang !== undefined ? { p_deposit_satang: parsed.data.depositSatang } : {}),
     ...(parsed.data.depositBps !== undefined ? { p_deposit_bps: parsed.data.depositBps } : {}),
   })
-  if (error) return { error: error.message }
+  if (error) return { error: error.message, ...(error.code === "P0001" && !["Only owners and admins may convert quotes", "Idempotency conflict"].includes(error.message) ? { rejected: true } : {}) }
   if (!invoiceId) return { error: "Conversion did not return an invoice. Retry this request." }
 
   // The transaction owns project, milestone, invoice, lines, source links and audit.

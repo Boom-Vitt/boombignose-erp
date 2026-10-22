@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { quoteIsEditable, quoteTransitionError, serviceAmountSatang, serviceLineAmount, quoteConversionKey, serviceAmountBaht } from "./service"
+import { quoteIsEditable, quoteTransitionError, serviceAmountSatang, serviceLineAmount, serviceAmountBaht } from "./service"
 
 describe("service quote lifecycle", () => {
   it("allows draft to sent and sent to accepted or declined", () => {
@@ -26,22 +26,6 @@ describe("service quote lifecycle", () => {
     for (const status of ["accepted", "converted", "expired", "declined"] as const) {
       expect(quoteIsEditable(status)).toBe(false)
     }
-  })
-})
-
-describe("quote conversion browser key", () => {
-  it("keeps the request identity through retries and remounts", () => {
-    const values = new Map<string, string>()
-    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) } }
-    const key = "00000000-0000-4000-8000-000000000001"
-    expect(quoteConversionKey(storage, "org-a:quote-a", () => key)).toBe(key)
-    expect(quoteConversionKey(storage, "org-a:quote-a", () => { throw new Error("Should reuse key") })).toBe(key)
-    expect(quoteConversionKey(storage, "org-b:quote-b", () => "00000000-0000-4000-8000-000000000002")).not.toBe(key)
-  })
-  it("ignores corrupt stored keys and tolerates blocked browser storage", () => {
-    const key = "00000000-0000-4000-8000-000000000001"
-    expect(quoteConversionKey({ getItem: () => "corrupt", setItem: () => {} }, "org:quote", () => key)).toBe(key)
-    expect(quoteConversionKey({ getItem: () => { throw new Error("blocked") }, setItem: () => { throw new Error("blocked") } }, "org:quote", () => key)).toBe(key)
   })
 })
 
