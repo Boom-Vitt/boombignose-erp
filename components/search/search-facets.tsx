@@ -111,7 +111,7 @@ export function SearchFacets({ list, config, savedViews, params = {} }: {
           </div>
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">Saved</h3>
-            <SavedViewsMenu views={savedViews} basePath={pathname} activeConfig={config} />
+            <SavedViewsMenu views={savedViews} basePath={pathname} activeConfig={config} params={params} />
             <SaveViewButton module={list} config={config} />
             {savedViews.length === 0 && (
               <p className="text-xs text-muted-foreground">Save the current search, filters and grouping for later.</p>
