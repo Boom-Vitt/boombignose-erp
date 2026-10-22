@@ -392,3 +392,77 @@ pnpm e2e
 ```
 
 `git diff --check`, conflict-marker/unmerged-path checks and project-memory validation pass. The assigned API 56001/app 3109 stack alone was reset and exercised. `.env.local` and `.local-stack/` remain ignored and uncommitted. No dependency or lockfile change was needed. There are no unresolved conflicts or failed gates; only the four expected Pro-only browser cases are skipped. Coordinator integration of this branch is the next step.
+
+## Review fixes, round 4 (2026-10-23)
+
+Fast-forwarded the requested `odoo-parity` parent `c5348bc`. Commit `dc43c48` records failing regressions before the fixes. Applied migrations remain unchanged; SQL changes live only in `supabase/migrations/20261025130500_procure_stock_fixes.sql`.
+
+- Product-unit checks retain the invoker trigger and call an empty-search-path SECURITY DEFINER lookup. The helper checks organization membership, locks the product, and explicitly rejects missing or foreign products. Matching member quote lines remain allowed. Two older product SQL tests now expect the explicit rejection instead of the later FK violation.
+- `stock_moves.stock_value_satang` retains each delivery's actual integer inventory reduction. Customer returns allocate the original delivery amount cumulatively, and `monthly_inventory_cogs` reads these retained amounts. Half-unit deliveries of a one-satang unit now cost `[0,1]`; weighted-average source value 5 stays 5 instead of becoming rounded-unit cost 6. Return inventory additions use those allocated satang, including negative-stock recovery.
+- Vendor-return adjustments derive PO value from rounded remaining net quantities, matching billing and credits. Two half returns of one fully billed satang now produce credits `[0,1]` and no phantom adjustments.
+- Report invoice/time-entry projections include `id`, enabling the existing `readAll` deduplication. The report test simulates an insertion before page two and respects the actual selected ID projection.
+- The ledger uses `.in("kind", facetValues(config.status))`; the browser regression loads Receipt and Delivery together and excludes adjustment kinds. `lib/types/database.ts` includes the new retained amount.
+
+Functions created or replaced, with signatures preserved for existing callers:
+
+```text
+NEW private.lock_product_line_unit(uuid,uuid)
+REPLACE private.guard_product_line_unit()
+REPLACE private.value_stock_move()
+REPLACE public.return_purchase_order(uuid,uuid,jsonb,uuid)
+```
+
+No sibling-owned invoice, quote, subscription, time or payment function is redefined. No dependency was added. Model the Domain shaped the persisted source-value amount; Prove It Works shaped the real SQL/browser and upgrade checks. Independent read-only review approved the final production patch, including migration SHA-256 `e1e55b7f15c7ee9b713d58545abf16a3b90d738ce55cc53faf084ed8cc57f677`; it independently ran the report tests (6/6) and diff check. Two narration comments were removed during that review.
+
+Decisive RED/GREEN evidence is retained in ignored `.audit/round4-*` logs:
+
+```text
+SQL RED: 12 failures in 22 new assertions.
+member insert/update: caught no exception, wanted P0001.
+two half deliveries: have 2 satang, want 1.
+weighted average delivery: have 6 satang, want 5.
+half vendor return adjustment: have 1 satang, want 0.
+Report RED: revenue 100200 instead of 100100; minutes 60120 instead of 60060.
+Browser RED: Stock ledger unavailable; Stock moves heading absent for status=receipt,delivery.
+Negative-stock RED: partial return inventory value -1 instead of 0.
+SQL GREEN: all 37 new assertions pass as part of the full suite.
+Report GREEN: 6 passed (6).
+```
+
+The migration takes an exclusive stock-ledger lock before preflight/backfill. It refuses inconsistent historical customer returns rather than changing retained stock snapshots while repricing their COGS. Those data require explicit reconciliation before upgrade; the seeded stack has no such blocker. Returns that would require nonzero value at zero quantity, a negative average, or value beyond the stored average precision fail atomically. SQL tests cover these refusal paths. Valid retained-data upgrade passes 7/7 assertions, including cross-month COGS, unchanged prior snapshots and restored append-only enforcement; the inconsistent-return preflight passes 2/2 rejection assertions. These checks use rollback-only scripts `.audit/round4-upgrade.sql` and `.audit/round4-upgrade-rejected.sql` against this isolated database.
+
+Fix commit is `daf552a`. Final lint/typecheck/unit/build/SQL gates were rerun against that commit and exited 0. The assigned stack remains API 56001/app 3109; ignored environment and stack files are not committed. Final output excerpts follow.
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+ Test Files  139 passed (139)
+      Tests  1043 passed (1043)
+
+pnpm build
+ƒ Proxy (Middleware)
+ƒ  (Dynamic)  server-rendered on demand
+
+.local-stack/db-reset.sh "$PWD"
+All tests successful.
+Files=26, Tests=754,  3 wallclock secs ( 0.07 usr  0.03 sys +  0.11 cusr  0.07 csys =  0.28 CPU)
+Result: PASS
+db-check ok: daf552a
+```
+
+The initial full browser run passed all inventory cases but timed out at the login page in the unrelated VAT/WHT case (42 passed, four expected edition skips, one failure). Its unchanged focused rerun passed in 4.6 seconds; the timeout's cause was not reproduced. A fresh reset and production build preceded the final full browser rerun. No timeout increase, retry policy change or VAT implementation edit was used.
+
+Final full browser result, exit 0 against the fresh stack and rebuilt production app:
+
+```text
+pnpm e2e
+  4 skipped
+  43 passed (1.4m)
+```
+
+`git diff --check` and project-memory checks pass. The production patch has independent approval; no failed gate or unresolved code blocker remains. Four expected edition cases were skipped, and production deployment was not attempted. Existing inconsistent customer-return valuations need reconciliation before migration; incompatible return value/quantity or average precision is rejected atomically. Coordinator integration of `dc43c48` and `daf552a` plus this handover is next.

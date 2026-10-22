@@ -45,13 +45,13 @@ export async function getReportData(): Promise<ReportAggregates> {
   const [invoicesRes, entriesRes, cogs] = await Promise.all([
     readAll((from, to) => supabase
       .from("invoices")
-      .select("status, total_satang, vat_satang, issue_date, clients(name)")
+      .select("id, status, total_satang, vat_satang, issue_date, clients(name)")
       .eq("org_id", ctx.orgId)
       .not("status", "in", "(draft,cancelled)")
       .gte("issue_date", startDate).order("id").range(from, to)),
     readAll((from, to) => supabase
       .from("time_entries")
-      .select("minutes, billable, work_date, projects(name)")
+      .select("id, minutes, billable, work_date, projects(name)")
       .eq("org_id", ctx.orgId)
       .gte("work_date", startDate).order("id").range(from, to)),
     readAllOrThrow((from, to) => supabase.from("monthly_inventory_cogs")

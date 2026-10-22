@@ -6,17 +6,20 @@ vi.mock("@/lib/dates", async importOriginal => ({ ...(await importOriginal<objec
 import { getReportData } from "@/app/(app)/reports/_data"
 import { databaseFixture } from "@/lib/supabase/__tests__/tenant-fixture"
 
-function serve(invoices: object[], entries: object[] = [], failPage = false) {
+function serve(invoices: object[], entries: object[] = [], failPage = false, overlapPage = false) {
   from.mockImplementation((table: string) => {
-    let lower = "", offset = 0, end = 999
+    let lower = "", offset = 0, end = 999, includeId = false
     const query = {
-      select: () => query, eq: () => query, not: () => query, order: () => query,
+      select: (columns: string) => { includeId = columns.split(",").some(column => column.trim() === "id"); return query },
+      eq: () => query, not: () => query, order: () => query,
       gte: (_column: string, value: string) => { lower = value; return query },
       range: (start: number, to: number) => { offset = start; end = to; return query },
       then: (resolve: (value: object) => void) => {
-        const rows = (table === "invoices" ? invoices : table === "time_entries" ? entries : []) as { issue_date?: string; work_date?: string }[]
+        const rows = (table === "invoices" ? invoices : table === "time_entries" ? entries : []) as { id?: string; issue_date?: string; work_date?: string }[]
+        if (overlapPage && offset === 1000) rows.unshift({ ...rows[0], id: "inserted-before-page" })
         return resolve(failPage && offset > 0 ? { data: null, error: { message: "Page failed" } } : {
-          data: rows.filter(row => (row.issue_date ?? row.work_date ?? "") >= lower).slice(offset, end + 1), error: null,
+          data: rows.filter(row => (row.issue_date ?? row.work_date ?? "") >= lower).slice(offset, end + 1)
+            .map(row => { const projected = { ...row }; if (!includeId) delete projected.id; return projected }), error: null,
         })
       },
     }
@@ -73,6 +76,16 @@ it("includes revenue and hours past the 1,000-row API cap", async () => {
   const report = await getReportData()
   expect(report.totalRevenueSatang).toBe(100100)
   expect(report.hours.totalMinutes).toBe(60060)
+})
+it("counts each invoice and time entry once when an insertion overlaps page boundaries", async () => {
+  serve(
+    Array.from({ length: 1001 }, (_, id) => ({ id: String(id), issue_date: "2026-10-01", total_satang: 107, vat_satang: 7, status: "sent" })),
+    Array.from({ length: 1001 }, (_, id) => ({ id: String(id), work_date: "2026-10-01", minutes: 60, billable: true })),
+    false, true,
+  )
+  const report = await getReportData()
+  expect.soft(report.totalRevenueSatang).toBe(100100)
+  expect.soft(report.hours.totalMinutes).toBe(60060)
 })
 it("fails closed when any aggregate page fails", async () => {
   serve(Array.from({ length: 1001 }, () => ({ issue_date: "2026-10-01", total_satang: 100, vat_satang: 0, status: "sent" })), [], true)
