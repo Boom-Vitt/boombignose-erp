@@ -33,11 +33,38 @@ Additive edits outside ownership, approved by the coordinator: `app/(app)/quotes
 
 Each change has a test that failed before and passes after. Vitest: `lib/metrics/pipeline.test.ts` (3 failing first), `lib/kanban.test.ts` (10, then 1 more for self-hover drops), `lib/record/status.test.ts` (lost is a command), `lib/deals/actions.test.ts` (all 7 fail against the previous `actions.ts`), `lib/record/change-stage-select.test.ts` (3 fail against the previous component), `lib/deals/quote-link.test.ts` (the deal_id save fails against the previous quote actions). SQL: `supabase/tests/crm.sql` (39 assertions) and the updated `lead_forms.sql` (49) were written against the migration but not executed, because Supabase and Docker are off limits on this machine. The coordinator's integration database is their first run.
 
-GATES_PLACEHOLDER
+Gates ran on 2026-10-23 in this worktree after merging `odoo-parity` at `c5348bc`, and all four exited 0:
+
+```text
+pnpm lint
+$ eslint                                  (exit 0)
+
+pnpm typecheck
+$ tsc --noEmit                            (exit 0)
+
+pnpm test
+ Test Files  141 passed (141)
+      Tests  1071 passed (1071)
+
+pnpm build
+✓ Compiled successfully in 3.6s
+├ ƒ /deals
+├ ƒ /deals/[id]
+├ ƒ /deals/[id]/edit
+├ ƒ /deals/export
+├ ƒ /deals/lost-reasons
+├ ƒ /deals/new
+```
+
+`e2e/web-to-lead.spec.ts` was hardened as the coordinator asked: after the card click it now waits for the deal URL and the deal's h1 before checking the source. The spec type-checks but was not run, because e2e needs the local Supabase stack.
 
 ## Review
 
 An independent reviewer read the whole diff (`4bd97d0..HEAD`) and traced the unrunnable SQL by hand. Fixed from that review: three `crm.sql` expectations that kept a stale title, drops in the gap between cards landing at the bottom, same-column drops moving project cards, a per-column lock that could deadlock, the renumber touching a card that had just left the column, a departed deal owner failing a web-form submission, quotes created with only a project losing their deal link (seed included), an offline error in the reason dialog reaching the error boundary, a queued second Lost drop reusing the first dialog's choice (`key`), `authenticated` keeping default DELETE/TRUNCATE grants on `deal_lost_reasons`, the 6px activity-bar hit area, and quick create offered on Lost.
+
+## Merge with odoo-parity
+
+W4-f had turned Mark lost into a confirm dialog with a free-text reason kept as a record note. Under this track a move to lost without a lost reason is refused by the database, so Mark lost stays this track's `lose` command. The reason dialog now also takes W4-f's optional note, which is saved as "Lost: …" in the record history from all three entry points: status bar, stage select and board. The status-bar Mark lost runs under W4-f's record guard, so the whole bar locks while it is pending. W4-f's `status-bar.test.ts` gives the bar a `lose` handler so Mark lost still renders there. Every form here has a submit control, so the new `forms-submit` guard passes.
 
 ## Open issues
 
