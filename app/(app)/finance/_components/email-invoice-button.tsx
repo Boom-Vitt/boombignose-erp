@@ -1,11 +1,11 @@
 "use client"
 
-import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Mail } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useRecordGuard } from "@/components/record/record-guard"
 
 import { sendInvoiceEmail } from "../email-actions"
 
@@ -16,15 +16,15 @@ import { sendInvoiceEmail } from "../email-actions"
  */
 export function EmailInvoiceButton({ invoiceId }: { invoiceId: string }) {
   const router = useRouter()
-  const [pending, startTransition] = useTransition()
+  const { busy, pending, run } = useRecordGuard()
 
   return (
     <Button
       variant="outline"
       size="sm"
-      disabled={pending}
+      disabled={busy}
       onClick={() =>
-        startTransition(async () => {
+        run(async () => {
           const res = await sendInvoiceEmail(invoiceId)
           if (res.reason === "not_configured") {
             toast.warning(

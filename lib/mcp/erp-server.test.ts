@@ -816,6 +816,14 @@ describe("ERP MCP server", () => {
       expect(bangkokSep.monthly_burn_satang).toBe(baht(20_000))
     })
 
+    it("inventory bills and credits are excluded from operating burn", async () => {
+      const data = store()
+      data.costs.push({ ...cost("stock", "2026-10-02", 90_000), category: "inventory" })
+      data.costs.push({ ...cost("credit", "2026-10-03", -10_000), category: "inventory" })
+      const out = await summary(data, "2026-10-15T05:00:00Z")
+      expect(out.monthly_burn_satang).toBe(baht(50_000))
+    })
+
     it("a monthly_burn setting still wins over costs", async () => {
       const out = await summary(store(baht(12_345)), "2026-10-15T05:00:00Z")
       expect(out.monthly_burn_satang).toBe(baht(12_345))

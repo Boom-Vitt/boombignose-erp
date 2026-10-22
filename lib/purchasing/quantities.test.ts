@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { applyReceipt, billAmount, purchaseTotal, type PurchaseLine } from "./quantities"
+import { applyReceipt, billAmount, hasUnbilledQuantities, purchaseTotal, type PurchaseLine } from "./quantities"
 
 const lines: PurchaseLine[] = [
   { id: "a", quantity: 2.5, unit_cost_satang: 101, received_quantity: 0, billed_quantity: 0 },
@@ -20,16 +20,16 @@ describe("purchase satang totals", () => {
 })
 describe("cumulative partial receipts", () => {
   it("preserves other lines, accepts zero, and is idempotent", () => {
-    const receipt = [{ id: "a", received_quantity: 1.125 }]
-    expect(applyReceipt(lines, receipt)).toEqual([{ id: "a", received_quantity: 1.125 }, { id: "b", received_quantity: 1 }])
+    const receipt = [{ id: "a", received_quantity: 1.125, previous_received_quantity: 0 }]
+    expect(applyReceipt(lines, receipt)).toEqual([{ id: "a", received_quantity: 1.125, previous_received_quantity: 0 }, { id: "b", received_quantity: 1, previous_received_quantity: 1 }])
     const received = lines.map((line, i) => ({ ...line, ...applyReceipt(lines, receipt)[i] }))
-    expect(applyReceipt(received, receipt)).toEqual(applyReceipt(lines, receipt))
+    expect(applyReceipt(received, [{ ...receipt[0], previous_received_quantity: 1.125 }])[0].received_quantity).toBe(1.125)
     expect(lines[0].received_quantity).toBe(0)
-    expect(applyReceipt(lines, [{ id: "a", received_quantity: 0 }])[0].received_quantity).toBe(0)
+    expect(applyReceipt(lines, [{ id: "a", received_quantity: 0, previous_received_quantity: 0 }])[0].received_quantity).toBe(0)
   })
   it("rejects overreceipt, backward counts, unknown and duplicate lines", () => {
     for (const receipt of [[{ id: "a", received_quantity: 2.501 }], [{ id: "b", received_quantity: 0 }], [{ id: "x", received_quantity: 1 }], [{ id: "a", received_quantity: 1 }, { id: "a", received_quantity: 1 }], [{ id: "a", received_quantity: NaN }], [{ id: "a", received_quantity: 0.0001 }]]) {
-      expect(() => applyReceipt(lines, receipt)).toThrow()
+      expect(() => applyReceipt(lines, receipt.map(row => ({ ...row, previous_received_quantity: row.id === "b" ? 1 : 0 })))).toThrow()
     }
   })
 })
@@ -45,4 +45,28 @@ describe("vendor bill amount", () => {
     expect(first + second).toBe(1)
     expect(() => billAmount([{ unit_cost_satang: 1, received_quantity: 1, billed_quantity: 2 }])).toThrow()
   })
+})
+
+it("refuses a stale displayed receipt even when the new total is still valid", () => {
+  expect(() => applyReceipt(lines, [{ id: "b", received_quantity: 2, previous_received_quantity: 0 }])).toThrow("Receipt changed, reload")
+})
+it("does not bill quantities already returned to the vendor", () => {
+  expect(billAmount([{ received_quantity: 5, returned_quantity: 3, billed_quantity: 1, unit_cost_satang: 100 }])).toBe(100)
+  expect(billAmount([{ received_quantity: 5, returned_quantity: 3, billed_quantity: 4, unit_cost_satang: 100 }])).toBe(0)
+})
+
+it("keeps unbilled quantities actionable when their rounded amount is zero", () => {
+  for (const line of [
+    { received_quantity: 1, returned_quantity: 0, billed_quantity: 0, unit_cost_satang: 0 },
+    { received_quantity: 0.001, returned_quantity: 0, billed_quantity: 0, unit_cost_satang: 1 },
+  ]) {
+    expect(billAmount([line])).toBe(0)
+    expect(hasUnbilledQuantities([line])).toBe(true)
+  }
+  expect(hasUnbilledQuantities([{ received_quantity: 2, returned_quantity: 1, billed_quantity: 1 }])).toBe(false)
+})
+
+it("compares and bills returned decimal quantities in exact thousandths", () => {
+  expect(hasUnbilledQuantities([{ received_quantity: 0.4, returned_quantity: 0.1, billed_quantity: 0.3 }])).toBe(false)
+  expect(billAmount([{ received_quantity: 0.4, returned_quantity: 0.1, billed_quantity: 0.2, unit_cost_satang: 100 }])).toBe(10)
 })

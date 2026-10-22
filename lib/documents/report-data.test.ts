@@ -4,6 +4,7 @@ vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "active-
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from }) }))
 vi.mock("@/lib/dates", async importOriginal => ({ ...(await importOriginal<object>()), currentMonthKey: () => "2026-10", todayISO: () => "2026-10-13" }))
 import { getReportData } from "@/app/(app)/reports/_data"
+import { databaseFixture } from "@/lib/supabase/__tests__/tenant-fixture"
 
 function serve(invoices: object[], entries: object[] = [], failPage = false) {
   from.mockImplementation((table: string) => {
@@ -13,7 +14,7 @@ function serve(invoices: object[], entries: object[] = [], failPage = false) {
       gte: (_column: string, value: string) => { lower = value; return query },
       range: (start: number, to: number) => { offset = start; end = to; return query },
       then: (resolve: (value: object) => void) => {
-        const rows = (table === "invoices" ? invoices : entries) as { issue_date?: string; work_date?: string }[]
+        const rows = (table === "invoices" ? invoices : table === "time_entries" ? entries : []) as { issue_date?: string; work_date?: string }[]
         return resolve(failPage && offset > 0 ? { data: null, error: { message: "Page failed" } } : {
           data: rows.filter(row => (row.issue_date ?? row.work_date ?? "") >= lower).slice(offset, end + 1), error: null,
         })
@@ -33,6 +34,38 @@ it("recognizes issued pre-VAT base in the issue month including the oldest bound
   expect(report.months[0]).toBe("2026-05")
   expect(report.revenue.cell("Client", "2026-05")).toBe(101)
   expect(report.totalRevenueSatang).toBe(301)
+})
+
+it("reports monthly delivery COGS net of customer returns, scoped to the workspace and range", async () => {
+  const client = databaseFixture({ monthly_inventory_cogs: [
+    { org_id: "active-org", month: "2026-04-01", amount_satang: 9999 },
+    { org_id: "active-org", month: "2026-05-01", amount_satang: 1250 },
+    { org_id: "active-org", month: "2026-10-01", amount_satang: -250 },
+    { org_id: "active-org", month: "2026-11-01", amount_satang: 9999 },
+    { org_id: "other-org", month: "2026-10-01", amount_satang: 9999 },
+  ] })
+  from.mockImplementation(client.from)
+  const report = await getReportData()
+  expect(report.cogsByMonth).toEqual([
+    { month: "2026-05", amount_satang: 1250 },
+    { month: "2026-06", amount_satang: 0 },
+    { month: "2026-07", amount_satang: 0 },
+    { month: "2026-08", amount_satang: 0 },
+    { month: "2026-09", amount_satang: 0 },
+    { month: "2026-10", amount_satang: -250 },
+  ])
+  expect(report.totalCogsSatang).toBe(1000)
+})
+
+it("pages issued invoice revenue and time past the API row cap", async () => {
+  const client = databaseFixture({
+    invoices: Array.from({ length: 1001 }, (_, i) => ({ id: String(i), org_id: "active-org", status: "sent", issue_date: "2026-10-01", total_satang: 1, vat_satang: 0 })),
+    time_entries: Array.from({ length: 1001 }, (_, i) => ({ id: String(i), org_id: "active-org", work_date: "2026-10-01", minutes: 1, billable: true })),
+  })
+  from.mockImplementation(client.from)
+  const report = await getReportData()
+  expect(report.totalRevenueSatang).toBe(1001)
+  expect(report.hours.totalMinutes).toBe(1001)
 })
 it("includes revenue and hours past the 1,000-row API cap", async () => {
   serve(Array.from({ length: 1001 }, () => ({ issue_date: "2026-10-01", total_satang: 107, vat_satang: 7, status: "sent", clients: { name: "Client" } })),

@@ -190,6 +190,7 @@ export default async function QuoteDetailPage({
         flow={flow}
         status={quote.status}
         transition={transitionQuote}
+        record={{ recordType: "quote", recordId: quote.id }}
         commands={
           canConvert
             ? { convert: (props) => <QuoteInvoiceForm quoteId={quote.id} orgId={ctx.orgId} lines={items} {...props} /> }

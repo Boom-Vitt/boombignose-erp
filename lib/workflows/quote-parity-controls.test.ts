@@ -12,6 +12,9 @@ vi.mock("react", async (original) => ({
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
   useTransition: () => [false, (task: () => Promise<void>) => { state.operation = task() }],
 }))
+vi.mock("@/components/record/record-guard", () => ({
+  useRecordGuard: () => ({ busy: false, pending: false, run: (task: () => Promise<void>) => { state.operation = task() } }),
+}))
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }))
 vi.mock("@/app/(app)/quotes/actions", () => ({ convertQuoteToInvoice: state.action }))
 

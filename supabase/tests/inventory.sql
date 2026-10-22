@@ -21,9 +21,9 @@ insert into public.clients(id,org_id,name) values('b8100000-0000-4000-8000-00000
 insert into public.invoices(id,org_id,client_id,number) values
  ('b8100000-0000-4000-8000-000000000050','b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000040','INV-STOCK-1'),
  ('b8100000-0000-4000-8000-000000000051','b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000040','INV-STOCK-2');
-insert into public.invoice_items(org_id,invoice_id,product_id,description,quantity,unit_price_satang) values
- ('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000050','b8100000-0000-4000-8000-000000000030','Goods',3,200),
- ('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000051','b8100000-0000-4000-8000-000000000030','Goods',4,200);
+insert into public.invoice_items(org_id,invoice_id,product_id,description,quantity,unit,unit_price_satang) values
+ ('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000050','b8100000-0000-4000-8000-000000000030','Goods',3,'piece',200),
+ ('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000051','b8100000-0000-4000-8000-000000000030','Goods',4,'piece',200);
 select set_config('test.inventory_warehouse',(select id::text from public.warehouses where org_id='b8100000-0000-4000-8000-000000000010' and is_default),true);
 select set_config('test.other_warehouse',(select id::text from public.warehouses where org_id='b8100000-0000-4000-8000-000000000011' and is_default),true);
 insert into public.stock_moves(org_id,product_id,warehouse_id,kind,quantity,unit_cost_satang,source_type,source_id,balance_after,average_cost_after)
@@ -52,14 +52,14 @@ select set_config('test.inventory_po',public.create_purchase_order('b8100000-000
 insert into public.purchase_order_items(id,org_id,purchase_order_id,product_id,description,quantity,unit_cost_satang)
  values('b8100000-0000-4000-8000-000000000060','b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'b8100000-0000-4000-8000-000000000030','Stock goods',6,100);
 select public.transition_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'confirmed');
-select lives_ok($$select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","received_quantity":2}]')$$,'partial receipt posts');
+select lives_ok($$select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","previous_received_quantity":0,"received_quantity":2}]')$$,'partial receipt posts');
 select is((select quantity from public.stock_on_hand),2::numeric,'partial receipt increases stock');
-select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","received_quantity":2}]');
+select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","previous_received_quantity":2,"received_quantity":2}]');
 select is((select count(*)::int from public.stock_moves),1,'identical receipt does not double post');
-select throws_ok($$select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","received_quantity":6},{"id":"b8100000-0000-4000-8000-000000000099","received_quantity":1}]')$$,'P0001','Receipt line unavailable','invalid later line rolls transaction back');
+select throws_ok($$select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","previous_received_quantity":2,"received_quantity":6},{"id":"b8100000-0000-4000-8000-000000000099","received_quantity":1}]')$$,'P0001','Receipt line unavailable','invalid later line rolls transaction back');
 select is((select quantity from public.stock_on_hand),2::numeric,'failed receipt leaves no stock');
 select is((select received_quantity from public.purchase_order_items where id='b8100000-0000-4000-8000-000000000060'),2::numeric,'failed receipt leaves received total');
-select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","received_quantity":6}]');
+select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","previous_received_quantity":2,"received_quantity":6}]');
 select is((select quantity from public.stock_on_hand),6::numeric,'incremental receipt posts delta only');
 select is((select value_satang from public.stock_on_hand),600::bigint,'receipt value in satang');
 
@@ -73,7 +73,7 @@ select is((select count(*)::int from public.stock_moves where kind='delivery'),1
 select throws_ok($$select public.deliver_invoice('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000051')$$,'P0001','Insufficient stock','second invoice cannot spend the same stock');
 select is((select quantity from public.stock_on_hand),3::numeric,'refused delivery preserves stock');
 select is((select count(*)::int from public.stock_moves where source_id='b8100000-0000-4000-8000-000000000051'),0,'failed delivery has no partial posting');
-select ok((select prosrc like '%order by p.id for update%' from pg_proc where oid='public.deliver_invoice(uuid,uuid,uuid)'::regprocedure),'multi-product deliveries take deterministic product locks');
+select ok((select prosrc like '%order by p.id for update%' from pg_proc where oid='public.deliver_invoice(uuid,uuid,uuid,jsonb)'::regprocedure),'multi-product deliveries take deterministic product locks');
 reset role;
 select ok((select prosrc like '%for update%' and prosrc like '%order by sequence desc limit 1%' from pg_proc where oid='private.value_stock_move()'::regprocedure),'posting locks product before reading the newest committed balance');
 set local role authenticated;
@@ -88,7 +88,7 @@ select throws_ok($$update public.products set is_stockable=false where id='b8100
 select set_config('test.replenishment',public.create_replenishment_rfq('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000020')::text,true);
 select is((select status::text from public.purchase_orders where id=current_setting('test.replenishment')::uuid),'draft','replenishment creates draft RFQ');
 select is((select quantity from public.purchase_order_items where purchase_order_id=current_setting('test.replenishment')::uuid),10::numeric,'replenishment uses configured reorder quantity');
-select throws_ok($$select public.create_replenishment_rfq('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000020')$$,'P0001','An open replenishment RFQ already exists for this vendor','repeat RFQ does not duplicate buying');
+select throws_ok($$select public.create_replenishment_rfq('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000020')$$,'P0001','No products require replenishment','repeat RFQ does not duplicate buying');
 select throws_ok($$select public.delete_warehouse('b8100000-0000-4000-8000-000000000010',current_setting('test.inventory_warehouse')::uuid)$$,'23503',null,'warehouse with evidence retained');
 update public.org_settings set allow_negative_stock=true where org_id='b8100000-0000-4000-8000-000000000010';
 select lives_ok($$select public.deliver_invoice('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000051')$$,'explicit negative-stock policy permits delivery');
@@ -98,12 +98,12 @@ select is((select count(*)::int from public.stock_on_hand),1,'members can view i
 select throws_ok($$select public.deliver_invoice('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000050')$$,'P0001','Only owners and admins may manage inventory','members cannot deliver');
 select throws_ok($$select public.adjust_stock('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000030',current_setting('test.inventory_warehouse')::uuid,1,'member count',gen_random_uuid())$$,'P0001','Only owners and admins may manage inventory','members cannot count');
 select set_config('request.jwt.claims','{"role":"authenticated","sub":"b8100000-0000-4000-8000-000000000001"}',true);
-select public.adjust_stock('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000030',current_setting('test.inventory_warehouse')::uuid,2,'Restore count',gen_random_uuid());
+select public.adjust_stock('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000030',current_setting('test.inventory_warehouse')::uuid,2,'Restore count',gen_random_uuid(),100);
 select set_config('test.cost_po',public.create_purchase_order('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000020','2026-10-24')::text,true);
 insert into public.purchase_order_items(id,org_id,purchase_order_id,product_id,description,quantity,unit_cost_satang)
  values('b8100000-0000-4000-8000-000000000061','b8100000-0000-4000-8000-000000000010',current_setting('test.cost_po')::uuid,'b8100000-0000-4000-8000-000000000030','Higher cost goods',2,300);
 select public.transition_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.cost_po')::uuid,'confirmed');
-select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.cost_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000061","received_quantity":2}]');
+select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.cost_po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000061","previous_received_quantity":0,"received_quantity":2}]');
 select is((select average_cost_satang from public.stock_on_hand),200::bigint,'new receipt weights remaining cost');
 select is((select value_satang from public.stock_on_hand),800::bigint,'weighted average preserves stock value');
 select public.adjust_stock('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000030',current_setting('test.inventory_warehouse')::uuid,4,'No difference','b8100000-0000-4000-8000-000000000071');

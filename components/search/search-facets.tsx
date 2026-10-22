@@ -11,6 +11,7 @@ import { SavedViewsMenu, type SavedView } from "@/app/(app)/views/saved-views-me
 import {
   FACET_LISTS,
   facetLabel,
+  facetValues,
   serializeFacets,
   type FacetConfig,
   type FacetList,
@@ -28,8 +29,14 @@ export function SearchFacets({ list, config, savedViews, selectors = [], params 
   const pathname = usePathname()
   const definition = FACET_LISTS[list]
 
+  const statuses = facetValues(config.status)
+  const isActive = (key: keyof FacetConfig, value: string) => key === "status" ? statuses.includes(value) : config[key] === value
+
+  // A status click toggles that value in the comma list; any other filter is replaced or cleared.
   function href(key: keyof FacetConfig, value?: string) {
-    const next = { ...config, [key]: config[key] === value ? undefined : value }
+    const next = { ...config, [key]: key === "status" && value
+      ? (statuses.includes(value) ? statuses.filter((status) => status !== value) : [...statuses, value]).join(",")
+      : config[key] === value ? undefined : value }
     const qs = [serializeFacets(next, list), new URLSearchParams(params).toString()].filter(Boolean).join("&")
     return qs ? `${pathname}?${qs}` : pathname
   }
@@ -41,7 +48,9 @@ export function SearchFacets({ list, config, savedViews, selectors = [], params 
   ]
   const chips = [
     ...(config.q ? [{ key: "q" as const, label: `Search: ${config.q}` }] : []),
-    ...filters.filter(({ key, value }) => config[key] === value),
+    ...filters.filter(({ key, value }) => key === "mine" && isActive(key, value)),
+    ...(statuses.length ? [{ key: "status" as const, label: statuses.map(facetLabel).join(" or ") }] : []),
+    ...filters.filter(({ key, value }) => key !== "mine" && key !== "status" && isActive(key, value)),
     ...selectors.filter(s => config[s.key]).map(s => ({ key: s.key, label: `${s.label}: ${s.options.find(o => o.id === config[s.key])?.name ?? config[s.key]}` })),
     ...(config.sourceId ? [{ key: "sourceId" as const, label: "Source document" }] : []),
     ...(config.groupBy ? [{ key: "groupBy" as const, label: `Group by: ${facetLabel(config.groupBy)}` }] : []),
@@ -89,10 +98,10 @@ export function SearchFacets({ list, config, savedViews, selectors = [], params 
               <Button
                 key={`${key}-${value}`}
                 size="sm"
-                variant={config[key] === value ? "secondary" : "ghost"}
+                variant={isActive(key, value) ? "secondary" : "ghost"}
                 className="flex"
                 render={<Link href={href(key, value)} />}
-                aria-current={config[key] === value ? "true" : undefined}
+                aria-current={isActive(key, value) ? "true" : undefined}
               >
                 {label}
               </Button>

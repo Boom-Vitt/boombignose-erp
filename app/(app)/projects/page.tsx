@@ -22,7 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { Enums } from "@/lib/types/database"
-import { matchesFacets, parseFacets, serializeFacets, type SearchParams } from "@/lib/search-facets"
+import { facetValues, matchesFacets, parseFacets, serializeFacets, type SearchParams } from "@/lib/search-facets"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
 import { SearchFacets } from "@/components/search/search-facets"
 import { GroupedTableRows } from "@/components/search/grouped-table-rows"
@@ -164,7 +164,7 @@ export default async function ProjectsPage({
         />
       ) : view === "board" ? (
         <ProjectsBoard
-          columns={config.status ? BOARD_COLUMNS.filter((col) => col.id === config.status) : BOARD_COLUMNS}
+          columns={config.status ? BOARD_COLUMNS.filter((col) => facetValues(config.status).includes(col.id)) : BOARD_COLUMNS}
           moveTargets={BOARD_COLUMNS}
           cards={cards}
           today={todayISO()}

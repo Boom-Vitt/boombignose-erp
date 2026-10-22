@@ -1,3 +1,4 @@
+import { parseFacets } from "@/lib/search-facets"
 import { expect, it } from "vitest"
 import { LineInput, PurchaseInput, ReceiptInput, VendorInput } from "./schema"
 const vendor = { name: "Test vendor", tax_id: "", email: "", phone: "", address: "", notes: "", active: true, payment_terms_days: 30 }
@@ -19,5 +20,9 @@ it("accepts seed-shaped references that lack RFC 9562 version bits", () => {
   const [vendorId, order, item, product] = ["60000000-0000-0000-0000-000000000001", "70000000-0000-0000-0000-000000000001", "70000000-0000-0000-0000-000000000002", "50000000-0000-0000-0000-000000000001"]
   expect(PurchaseInput.parse({ vendor_id: vendorId, order_date: "2026-02-28", expected_date: "", notes: "" }).vendor_id).toBe(vendorId)
   expect(LineInput.parse({ purchase_order_id: order, product_id: product, description: "Snapshot", quantity: 1, unit: "piece", unitCostBaht: "1.00" })).toMatchObject({ purchase_order_id: order, product_id: product })
-  expect(ReceiptInput.parse([{ id: item, received_quantity: 1 }])).toEqual([{ id: item, received_quantity: 1 }])
+  expect(ReceiptInput.parse([{ id: item, received_quantity: 1, previous_received_quantity: 0 }])).toEqual([{ id: item, received_quantity: 1, previous_received_quantity: 0 }])
+})
+
+it("registers closed purchases in list and saved-view facets", () => {
+  expect(parseFacets({ status: "closed" }, "purchases")).toEqual({ status: "closed" })
 })

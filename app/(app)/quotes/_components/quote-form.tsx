@@ -1,6 +1,5 @@
 "use client"
 
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -18,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { useGuardedForm } from "@/components/record/record-guard"
 
 import { serviceMoneyInput } from "@/lib/workflows/service"
 
@@ -60,25 +60,25 @@ export function QuoteForm({
   submitLabel: string
   action: (values: Values) => Promise<{ error?: string } | void>
 }) {
-  const router = useRouter()
   const form = useForm<z.input<typeof Schema>, unknown, Values>({
     resolver: zodResolver(Schema),
     defaultValues,
+  })
+  const onSubmit = useGuardedForm(form, async (values) => {
+    const res = await action(values)
+    if (res?.error) {
+      toast.error(res.error)
+      return false
+    }
+    // createQuote redirects on success (no return); update returns {}.
+    toast.success("Quote saved")
+    return true
   })
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(async (values) => {
-          const res = await action(values)
-          if (res?.error) {
-            toast.error(res.error)
-            return
-          }
-          // createQuote redirects on success (no return); update returns {}.
-          toast.success("Quote saved")
-          router.refresh()
-        })}
+        onSubmit={onSubmit}
         className="space-y-5"
       >
         <div className="grid gap-5 sm:grid-cols-2">

@@ -11,3 +11,9 @@ it("round trips ledger selectors, move kind and period through facets and saved 
   expect(parseFacets({ warehouse: "invalid", product: [input.product], status: "sent", period: "invalid" }, "inventory")).toEqual({})
   expect(parseFacets(input, "finance")).toEqual({ period: "this_month" })
 })
+
+it("accepts seeded product and warehouse links and return move filters", () => {
+  for (const kind of ["vendor_return", "customer_return"]) {
+    expect(parseFacets({ status: kind, warehouse: "a0000000-0000-0000-0000-000000000001", product: "a0000000-0000-0000-0000-000000000002" }, "inventory")).toEqual({ status: kind, warehouse: "a0000000-0000-0000-0000-000000000001", product: "a0000000-0000-0000-0000-000000000002" })
+  }
+})

@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { readAll } from "@/lib/supabase/read-all"
+import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { InventorySnapshot } from "./schema"
 
 function checked<T>({ data, error }: { data: T[] | null; error: unknown }): T[] {
@@ -43,10 +43,12 @@ export async function productStock(productId: string) {
   return data?.quantity ?? 0
 }
 
-export async function invoiceStockableCount(invoiceId: string) {
+export async function invoiceStockData(invoiceId: string) {
   const ctx = await requireOrgContext()
   const db = await createClient()
-  const { count, error } = await db.from("invoice_items").select("id,products!inner(is_stockable)", { count: "exact", head: true }).eq("org_id", ctx.orgId).eq("invoice_id", invoiceId).eq("products.is_stockable", true)
-  if (error) throw new Error("Invoice stockable lines unavailable")
-  return count ?? 0
+  const [lines, moves] = await Promise.all([
+    readAllOrThrow((from, to) => db.from("invoice_stock_lines").select("*").eq("org_id", ctx.orgId).eq("invoice_id", invoiceId).eq("is_stockable", true).order("id").range(from, to)),
+    readAllOrThrow((from, to) => db.from("stock_moves").select("*").eq("org_id", ctx.orgId).eq("source_type", "invoice").eq("source_id", invoiceId).order("sequence").order("id").range(from, to)),
+  ])
+  return { lines, moves }
 }

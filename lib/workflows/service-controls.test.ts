@@ -3,7 +3,8 @@ import { Children, isValidElement, type ReactNode } from "react"
 
 const state = vi.hoisted(() => ({
   action: vi.fn(), toast: vi.fn(), operation: Promise.resolve(),
-  values: [] as unknown[], index: 0,
+  values: [] as unknown[], index: 0, pending: false,
+  guard: null as ReturnType<typeof import("@/lib/record/guard").createRecordGuard> | null,
 }))
 vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
@@ -14,10 +15,20 @@ vi.mock("react", async (importOriginal) => ({
   },
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
   useTransition: () => [false, (task: () => Promise<void>) => { state.operation = task() }],
+  useCallback: (fn: unknown) => fn,
+  useId: () => "convert",
+  useEffect: () => {},
+}))
+vi.mock("@/components/record/record-guard", () => ({
+  useRecordGuard: () => ({
+    ...state.guard!.snapshot(), pending: state.pending,
+    run: (task: () => Promise<unknown>) => { state.operation = state.guard!.run(task).then(() => undefined) },
+  }),
 }))
 vi.mock("sonner", () => ({ toast: { error: state.toast, success: vi.fn() } }))
 vi.mock("@/app/(app)/quotes/actions", () => ({ convertQuoteToInvoice: state.action }))
 
+import { createRecordGuard } from "@/lib/record/guard"
 import { ConvertQuoteButton } from "@/app/(app)/quotes/_components/convert-quote-button"
 
 let orgId: string
@@ -26,9 +37,12 @@ const lineId = "33333333-3333-4333-8333-333333333333"
 let values: Map<string, string>
 
 beforeEach(() => {
+  vi.restoreAllMocks()
   vi.clearAllMocks()
   state.action.mockReset()
   state.values = []
+  state.pending = false
+  state.guard = createRecordGuard()
   orgId = crypto.randomUUID()
   values = new Map<string, string>()
   vi.stubGlobal("window", { sessionStorage: {
@@ -135,4 +149,39 @@ it("separates pending requests by active workspace", async () => {
   orgId = crypto.randomUUID()
   await render().click()
   expect(state.action.mock.calls[0][0].key).not.toBe(state.action.mock.calls[1][0].key)
+})
+
+
+it("saves dirty header edits before preparing or submitting an invoice command", async () => {
+  const events: string[] = []
+  let finishSave!: (saved: boolean) => void
+  state.guard!.setForm("header", { dirty: true, save: () => { events.push("save"); return new Promise((resolve) => { finishSave = resolve }) } })
+  const originalNewKey = crypto.randomUUID.bind(crypto)
+  vi.spyOn(crypto, "randomUUID").mockImplementation(() => { events.push("key"); return originalNewKey() })
+  vi.spyOn(window.sessionStorage, "setItem").mockImplementation((key, value) => { events.push("persist"); values.set(key, value) })
+  state.action.mockImplementation(async () => { events.push("convert"); return { error: "Retry" } })
+  const conversion = render({ depositBps: 2500 }).click()
+  expect(events).toEqual(["save"])
+  expect([...values.values()]).toEqual([])
+  expect(state.action).not.toHaveBeenCalled()
+  finishSave(true)
+  await conversion
+  expect(events).toEqual(["save", "key", "persist", "convert"])
+})
+
+it("creates no pending command when dirty header edits cannot be saved", async () => {
+  const save = vi.fn().mockResolvedValue(false)
+  const newKey = vi.spyOn(crypto, "randomUUID")
+  state.guard!.setForm("header", { dirty: true, save })
+  await render({ depositBps: 2500 }).click()
+  expect(save).toHaveBeenCalledOnce()
+  expect(newKey).not.toHaveBeenCalled()
+  expect([...values.values()]).toEqual([])
+  expect(state.action).not.toHaveBeenCalled()
+})
+
+it.each(["busy", "pending"])("disables conversion while the record guard is %s", (phase) => {
+  if (phase === "busy") state.guard!.hold("refresh", true)
+  else state.pending = true
+  expect(render().button.props.disabled).toBe(true)
 })

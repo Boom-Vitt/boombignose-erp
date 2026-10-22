@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useSyncExternalStore, useTransition } from "react"
+import { useState, useSyncExternalStore } from "react"
 import { unstable_rethrow } from "next/navigation"
 import { isRedirectError } from "next/dist/client/components/redirect-error"
 import { getURLFromRedirectError } from "next/dist/client/components/redirect"
@@ -8,6 +8,7 @@ import { FileOutput } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useRecordGuard } from "@/components/record/record-guard"
 import { serviceAmountBaht } from "@/lib/workflows/service"
 import { acknowledgeQuoteConversionCommand, beginQuoteConversionCommand, readQuoteConversionCommand, type QuoteConversionCommand } from "@/lib/workflows/quote-conversion-command"
 
@@ -36,7 +37,7 @@ export function ConvertQuoteButton({
   request?: Omit<Parameters<typeof convertQuoteToInvoice>[0], "id" | "key">
   disabled?: boolean
 }) {
-  const [pending, startTransition] = useTransition()
+  const { busy, pending, run } = useRecordGuard()
   const [activeCommand, setActiveCommand] = useState<QuoteConversionCommand | null>(null)
   const saved = useSyncExternalStore(subscribeToRequests, () => {
     try { return JSON.stringify(readQuoteConversionCommand(browserStore(), orgId, quoteId)) } catch (error) { return `error:${error instanceof Error ? error.message : "Could not read the saved invoice request."}` }
@@ -47,7 +48,7 @@ export function ConvertQuoteButton({
 
   function convert() {
     if (recoveryError || (disabled && !command)) return
-    startTransition(async () => {
+    run(async () => {
       let submitted: QuoteConversionCommand
       try {
         submitted = beginQuoteConversionCommand(browserStore(), orgId, quoteId, request ?? {}, () => crypto.randomUUID())
@@ -87,7 +88,7 @@ export function ConvertQuoteButton({
           : command.request.lines ? <ul>{command.request.lines.map((line) => <li key={line.quote_item_id}>{line.quantity} × quote line {line.quote_item_id}</li>)}</ul>
           : <p>All remaining quantities from the original request</p>}
       </div> : null}
-      <Button size="sm" variant={variant} disabled={pending || !!recoveryError || (!!disabled && !command)} onClick={convert}>
+      <Button size="sm" variant={variant} disabled={busy || pending || !!recoveryError || (!!disabled && !command)} onClick={convert}>
         <FileOutput /> {command ? "Retry pending invoice" : label}
       </Button>
     </div>
