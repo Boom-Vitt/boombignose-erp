@@ -3,9 +3,9 @@ import { NextRequest } from 'next/server'
 const state = vi.hoisted(() => ({ user: {id:'actor'} as {id:string}|null, setAll: undefined as undefined|((cookies:{name:string,value:string,options:object}[])=>void) }))
 vi.mock('@supabase/ssr', () => ({createServerClient: (_url: unknown,_key:unknown,options:{cookies:{setAll:typeof state.setAll}}) => {
  state.setAll = options.cookies.setAll
- return {auth:{getUser:async()=>{
+ return {auth:{getUser:async()=>({data:{user:state.user},error:null}),getClaims:async()=>{
   state.setAll?.([{name:'refreshed-session',value:'valid-session',options:{httpOnly:true,path:'/'}}])
-  return {data:{user:state.user},error:null}
+  return {data:state.user?{claims:state.user}:null,error:null}
  }}}
 }}))
 import { updateSession } from './middleware'
