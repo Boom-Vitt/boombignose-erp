@@ -23,8 +23,9 @@ describe("palette record actions", () => {
     expect(paletteActions(DEAL_FLOW, "proposal", true, {})).toEqual([
       { label: "Start negotiation", to: "negotiation" },
       { label: "Mark won", to: "won" },
-      { label: "Mark lost", to: "lost" },
     ])
+    // Losing needs a reason, which only the deal page's dialog collects.
+    expect(paletteActions(DEAL_FLOW, "proposal", true, {})).not.toContainEqual(expect.objectContaining({ label: "Mark lost" }))
   })
 
   it("drops status changes without a transition and commands without a handler", () => {

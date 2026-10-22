@@ -84,6 +84,15 @@ describe("statusBar", () => {
     expect(bar.primary).toEqual({ label: "Record payment", command: "pay" })
   })
 
+  it("asks for a lost reason: Mark lost is a page command, never a bare stage change", () => {
+    for (const stage of Constants.public.Enums.deal_stage) {
+      for (const action of actions(DEAL_FLOW, stage)) {
+        expect("to" in action && action.to === "lost").toBe(false)
+      }
+    }
+    expect(actions(DEAL_FLOW, "negotiation")).toContainEqual({ label: "Mark lost", command: "lose" })
+  })
+
   it("drops actions the page cannot offer without promoting a secondary", () => {
     const bar = statusBar(QUOTE_FLOW, "sent", (a) => !("to" in a && a.to === "accepted"))
     expect(bar.primary).toBeNull()

@@ -56,7 +56,7 @@ export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }>
 }
 
 /** Steps a page performs with its own control instead of a plain status change. */
-export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "reject"
+export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "reject" | "lose"
 
 export type FlowAction<S extends string> =
   | { label: string; to: S }
@@ -71,7 +71,8 @@ export type DocumentFlow<S extends string> = {
   next: Record<S, { primary?: FlowAction<S>; secondary?: readonly FlowAction<S>[] }>
 }
 
-const LOSE_DEAL = { label: "Mark lost", to: "lost" } as const
+// Losing a deal needs a reason, so the deal page opens a dialog instead of changing the stage.
+const LOSE_DEAL = { label: "Mark lost", command: "lose" } as const
 
 export const QUOTE_FLOW: DocumentFlow<QuoteStatus> = {
   stages: ["draft", "sent", "accepted", "converted"],
