@@ -132,6 +132,7 @@ export default async function ProjectDetailPage({
       .select("id, number, status, amount_satang, total_satang, vat_satang, source_quote_id, source_milestone_id")
       .eq("org_id", ctx.orgId)
       .eq("project_id", id)
+      .order("created_at")
       .order("id")
       .range(from, to)),
     readAllOrThrow((from, to) => supabase.from("costs").select("id, amount_satang").eq("org_id", ctx.orgId).eq("project_id", id).order("id").range(from, to)),
