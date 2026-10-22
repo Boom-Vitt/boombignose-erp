@@ -19,7 +19,7 @@ New code lives in `app/(app)/expenses/**` and `lib/expenses/**`, plus `supabase/
 
 ## Verification
 
-Executed in this worktree on 2026-10-23. All four source gates exited 0. Final lines:
+Executed in this worktree on 2026-10-23, after merging `odoo-parity` at `75e8342` into this branch. The merge was clean. Parity's new `lib/purchasing/paid-date.test.ts` builds a full `costs` row, so it gained `expense_claim_id: null`. All four source gates exited 0 on the merged tree. Final lines:
 
 ```text
 pnpm lint
@@ -29,11 +29,11 @@ pnpm typecheck
 $ tsc --noEmit                            (exit 0)
 
 pnpm test
- Test Files  109 passed (109)
-      Tests  772 passed (772)
+ Test Files  115 passed (115)
+      Tests  824 passed (824)
 
 pnpm build
-✓ Compiled successfully in 7.6s
+✓ Compiled successfully in 5.2s
 ├ ƒ /expenses
 ├ ƒ /expenses/[id]
 ├ ƒ /expenses/new
@@ -41,7 +41,7 @@ pnpm build
 
 Unit tests in `lib/expenses/flow.test.ts` cover the transition table against every enum pair and four actor kinds, no self-decisions, the viewer-narrowed status bar, claim totals including the safe-integer bound, and the line input parser (baht to satang, zero and three-decimal amounts refused, seeded non-RFC ids accepted).
 
-No Docker or Supabase was started. The SQL was run in a throwaway PGlite harness instead. It runs PostgreSQL 18 in WASM with real pgTAP and Supabase auth and storage stand-ins, applies every migration and `seed.sql`, and lives outside the repo in the session scratchpad. `supabase/tests/expenses.sql` passes 69/69. The other 15 SQL test files also pass, so existing suites are unaffected. A seed check confirmed the seeded claim, its lines, the approver activity and the counter. A mutation check showed the tests catch regressions: removing the self-decision guard failed the no-self-approval and no-self-rejection tests, and removing the cost deletion on reject failed the orphan-cost tests. The harness runs migrations as a superuser on PG 18 rather than as Supabase's `postgres` on PG 15, so the integration run is still the real check.
+No Docker or Supabase was started. The SQL was run in a throwaway PGlite harness instead. It runs PostgreSQL 18 in WASM with real pgTAP and Supabase auth and storage stand-ins, applies every migration and `seed.sql`, and lives outside the repo in the session scratchpad. `supabase/tests/expenses.sql` passes 69/69. The other 17 SQL test files on the merged tree also pass, including parity's `purchasing_fixes`, `vat_wht` and `search_throttle`, so existing suites are unaffected. The migration version `20261024130000` is the one the coordinator reserved for this track. A seed check confirmed the seeded claim, its lines, the approver activity and the counter. A mutation check showed the tests catch regressions: removing the self-decision guard failed the no-self-approval and no-self-rejection tests, and removing the cost deletion on reject failed the orphan-cost tests. The harness runs migrations as a superuser on PG 18 rather than as Supabase's `postgres` on PG 15, so the integration run is still the real check.
 
 `pnpm exec playwright test e2e/expenses.spec.ts --list` stops before discovery with `ENOENT .local-stack/isolation.json`, as on the purchasing track. The e2e spec has not run. It signs in as the first seeded member, creates a claim, adds a line, submits and checks Approve is hidden. It then signs in as the owner, approves from the To approve tab, checks the Costs smart button, and finds the cost by claim number in Finance.
 
