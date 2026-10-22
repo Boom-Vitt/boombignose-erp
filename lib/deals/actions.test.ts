@@ -10,6 +10,7 @@ const { db, writeAudit, logRecordNote, ctx } = vi.hoisted(() => ({
     before: null as { title: string } | null,
     rpc: vi.fn(),
     updated: [] as { id: string }[],
+    error: null as { code: string; message: string } | null,
     update: vi.fn(),
   },
   writeAudit: vi.fn(),
@@ -33,19 +34,20 @@ vi.mock("@/lib/supabase/server", () => ({
           return query
         },
         maybeSingle: async () => ({ data: db.before, error: null }),
-        then: (resolve: (v: object) => void) => resolve({ data: db.updated, error: null }),
+        then: (resolve: (v: object) => void) => resolve({ data: db.error ? null : db.updated, error: db.error }),
       }
       return query
     },
   }),
 }))
 
-import { createDeal, updateDeal, updateDealStage } from "@/app/(app)/deals/actions"
+import { createDeal, deleteDeal, updateDeal, updateDealStage } from "@/app/(app)/deals/actions"
 
 beforeEach(() => {
   vi.clearAllMocks()
   db.before = { title: "Chatbot" }
   db.updated = [{ id: DEAL }]
+  db.error = null
   db.rpc.mockResolvedValue({ data: "proposal", error: null })
 })
 
@@ -70,6 +72,7 @@ describe("updateDealStage", () => {
       p_stage: "lost",
       p_after_id: AFTER,
       p_lost_reason_id: REASON,
+      p_note: null,
     })
     expect(writeAudit).toHaveBeenCalledWith(ctx, expect.objectContaining({
       action: "stage_changed",
@@ -77,9 +80,16 @@ describe("updateDealStage", () => {
     }))
   })
 
-  it("keeps a lost deal's closing note in its record history", async () => {
+  it("saves a lost deal's closing note in the same command as the move", async () => {
     expect(await updateDealStage(DEAL, "lost", { lostReasonId: REASON, note: "  Went in-house  " })).toEqual({})
-    expect(logRecordNote).toHaveBeenCalledWith({ recordType: "deal", recordId: DEAL, body: "Lost: Went in-house" })
+    expect(db.rpc).toHaveBeenCalledWith("move_deal", expect.objectContaining({ p_note: "Lost: Went in-house" }))
+    expect(logRecordNote).not.toHaveBeenCalled()
+  })
+
+  it("fails the whole move when the closing note cannot be saved", async () => {
+    db.rpc.mockResolvedValue({ data: null, error: { code: "23514", message: "Unable to save the note" } })
+    expect(await updateDealStage(DEAL, "lost", { lostReasonId: REASON, note: "Went in-house" })).toEqual({ error: "Unable to save the note" })
+    expect(writeAudit).not.toHaveBeenCalled()
   })
 
   it("reorders within a column without an audit entry", async () => {
@@ -107,5 +117,30 @@ describe("deal form", () => {
       error: expect.stringContaining("no longer exists"),
     })
     expect(db.update).toHaveBeenCalledWith(expect.objectContaining({ probability: 0, lost_reason_id: REASON }))
+  })
+})
+
+describe("deleteDeal", () => {
+  it("detaches activities and deletes in one command, then audits the deal's title", async () => {
+    db.rpc.mockResolvedValue({ data: "Chatbot", error: null })
+    await deleteDeal(DEAL)
+    expect(db.rpc).toHaveBeenCalledWith("delete_deal", { p_org_id: "org-1", p_deal_id: DEAL })
+    expect(db.update).not.toHaveBeenCalled()
+    expect(writeAudit).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: "deleted", summary: 'Deleted deal "Chatbot"' }))
+  })
+
+  it("reports a deal that is already gone without an audit entry", async () => {
+    db.rpc.mockResolvedValue({ data: null, error: { code: "P0002", message: "Deal not found" } })
+    expect(await deleteDeal(DEAL)).toEqual({ error: expect.stringContaining("no longer exists") })
+    expect(writeAudit).not.toHaveBeenCalled()
+  })
+})
+
+describe("deal client", () => {
+  it("explains that a quoted deal keeps its customer", async () => {
+    db.error = { code: "23503", message: 'update or delete on table "deals" violates foreign key constraint "quotes_deal_client_fkey" on table "quotes"' }
+    const input = { clientId: CLIENT, title: "Chatbot", stage: "proposal" as const, valueBaht: 1000, probability: 50 }
+    expect(await updateDeal(DEAL, input)).toEqual({ error: expect.stringContaining("quotes") })
+    expect(await updateDeal(DEAL, input)).not.toEqual({ error: expect.stringContaining("foreign key") })
   })
 })
