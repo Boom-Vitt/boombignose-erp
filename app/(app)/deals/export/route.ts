@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const deals = (await fetchAllRows(() => supabase
     .from("deals")
     .select(
-      "title, stage, value_satang, owner, expected_close_date, next_follow_up_date, client:clients(name)"
+      "id, title, stage, value_satang, owner, expected_close_date, next_follow_up_date, client:clients(name)"
     )
     .eq("org_id", ctx.orgId)
     .order("created_at", { ascending: false })

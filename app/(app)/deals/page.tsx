@@ -104,7 +104,10 @@ export default async function DealsPage({
   const group = config.groupBy ? groups[config.groupBy] : undefined
   const listRows = config.groupBy === "stage"
     ? [...deals].sort((a, b) => stageIndex(a.stage) - stageIndex(b.stage))
-    : deals
+    : config.groupBy === "month"
+      // Undated deals sort last.
+      ? [...deals].sort((a, b) => (a.expected_close_date ?? "9999-12-31").localeCompare(b.expected_close_date ?? "9999-12-31"))
+      : deals
 
   // Headline KPIs summarize the whole pipeline, independent of the active filter.
   const openValue = pipelineValue(allDeals)

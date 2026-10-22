@@ -32,7 +32,7 @@ test("deals list view groups by stage and keeps the view when filtering", async 
   await page.getByRole("link", { name: "My records" }).click()
   await expect(page).toHaveURL(/mine=1/)
   await expect(page).toHaveURL(/view=list/)
-  await expect(page.getByRole("link", { name: "Board" })).toHaveAttribute("href", /mine=1/)
+  await expect(page.getByRole("link", { name: "Board", exact: true })).toHaveAttribute("href", /mine=1/)
 })
 
 test("projects board honours a status filter and stays on the board", async ({ page }) => {
