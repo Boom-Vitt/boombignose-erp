@@ -1,20 +1,25 @@
 import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { Pencil, FolderPlus, ArrowLeft } from "lucide-react"
+import { FileSignature, FolderKanban, Pencil } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import { formatTHB } from "@/lib/money"
+import { DEAL_FLOW } from "@/lib/record/status"
+import type { Enums } from "@/lib/types/database"
 import { PageHeader } from "@/components/page-header"
 import { DealStageBadge } from "@/components/status-badge"
+import { StatusBar } from "@/components/record/status-bar"
+import { SmartButtons, recordHref } from "@/components/record/smart-buttons"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { ChangeStageSelect } from "../_components/change-stage-select"
 import { ActivitiesSection } from "../_components/activities-section"
 import { AiPanel } from "../_components/ai-panel"
+import { updateDealStage } from "../actions"
 
 export const dynamic = "force-dynamic"
 
@@ -38,7 +43,7 @@ export default async function DealDetailPage({
 
   if (!deal) notFound()
 
-  const [{ data: client }, { data: activities }] = await Promise.all([
+  const [{ data: client }, { data: activities }, { data: projects }] = await Promise.all([
     supabase.from("clients").select("id,name").eq("org_id", ctx.orgId).eq("id", deal.client_id).maybeSingle(),
     supabase
       .from("activities")
@@ -47,7 +52,20 @@ export default async function DealDetailPage({
       .eq("deal_id", id)
       .order("done", { ascending: true })
       .order("created_at", { ascending: false }),
+    supabase.from("projects").select("id").eq("org_id", ctx.orgId).eq("deal_id", id),
   ])
+  // Quotes carry no deal link; they reach a deal through its projects.
+  const projectIds = (projects ?? []).map((p) => p.id)
+  const { data: quotes } = projectIds.length
+    ? await supabase.from("quotes").select("id").eq("org_id", ctx.orgId).in("project_id", projectIds)
+    : { data: [] }
+  const quoteIds = (quotes ?? []).map((q) => q.id)
+
+  const dealId = deal.id
+  async function transitionDeal(to: Enums<"deal_stage">) {
+    "use server"
+    return updateDealStage(dealId, to)
+  }
 
   const followUp = deal.next_follow_up_date
   const followUpOverdue = followUp != null && followUp < today
@@ -55,38 +73,47 @@ export default async function DealDetailPage({
 
   return (
     <div className="space-y-6">
-      <div>
+      <PageHeader
+        title={deal.title}
+        description={client?.name ?? undefined}
+        breadcrumbs={[{ label: "Deals", href: "/deals" }]}
+      >
         <Button
-          variant="ghost"
-          size="sm"
-          className="mb-2 -ml-2"
-          render={<Link href="/deals" />}
+          variant="outline"
+          render={<Link href={`/deals/${deal.id}/edit`} />}
         >
-          <ArrowLeft className="size-4" />
-          Pipeline
+          <Pencil className="size-4" />
+          Edit
         </Button>
-        <PageHeader title={deal.title} description={client?.name ?? undefined}>
-          {deal.stage === "won" ? (
-            <Button
-              render={
-                <Link
-                  href={`/projects/new?dealId=${deal.id}&clientId=${deal.client_id}`}
-                />
-              }
-            >
-              <FolderPlus className="size-4" />
-              Create project
-            </Button>
-          ) : null}
-          <Button
-            variant="outline"
-            render={<Link href={`/deals/${deal.id}/edit`} />}
-          >
-            <Pencil className="size-4" />
-            Edit
-          </Button>
-        </PageHeader>
-      </div>
+      </PageHeader>
+
+      <SmartButtons
+        buttons={[
+          {
+            label: "Quotes",
+            icon: FileSignature,
+            count: quoteIds.length,
+            href: recordHref(quoteIds, (quoteId) => `/quotes/${quoteId}`, "/quotes"),
+          },
+          {
+            label: "Projects",
+            icon: FolderKanban,
+            count: projectIds.length,
+            href: recordHref(projectIds, (projectId) => `/projects/${projectId}`, "/projects"),
+          },
+        ]}
+      />
+      <StatusBar
+        label="Deal stage"
+        flow={DEAL_FLOW}
+        status={deal.stage}
+        transition={transitionDeal}
+        commands={
+          projectIds.length
+            ? {}
+            : { create_project: `/projects/new?dealId=${deal.id}&clientId=${deal.client_id}` }
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-1">

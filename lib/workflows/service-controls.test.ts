@@ -9,14 +9,10 @@ vi.mock("react", async (importOriginal) => ({
   useRef: () => state.ref,
   useTransition: () => [false, (task: () => Promise<void>) => { state.operation = task() }],
 }))
-vi.mock("next/navigation", async (importOriginal) => ({
-  ...await importOriginal<typeof import("next/navigation")>(),
-  useRouter: () => ({ refresh: vi.fn() }),
-}))
 vi.mock("sonner", () => ({ toast: { error: state.toast, success: vi.fn() } }))
-vi.mock("@/app/(app)/quotes/actions", () => ({ convertQuoteToInvoice: state.action, setQuoteStatus: vi.fn() }))
+vi.mock("@/app/(app)/quotes/actions", () => ({ convertQuoteToInvoice: state.action }))
 
-import { QuoteStatusControls } from "@/app/(app)/quotes/_components/quote-status-controls"
+import { ConvertQuoteButton } from "@/app/(app)/quotes/_components/convert-quote-button"
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -27,8 +23,8 @@ beforeEach(() => {
 })
 
 function clickConversion(orgId = "org-a") {
-  const element = QuoteStatusControls({ quoteId: "quote-a", orgId, status: "accepted", canConvert: true })
-  element.props.children[2].props.onClick()
+  const element = ConvertQuoteButton({ quoteId: "quote-a", orgId, label: "Convert", variant: "default" })
+  element.props.onClick()
   return state.operation
 }
 

@@ -1,27 +1,28 @@
 import { RecordHistory } from "@/components/record/record-history"
-import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { FolderKanban, ReceiptText } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import { formatTHB, satangToBaht } from "@/lib/money"
 import type { Enums } from "@/lib/types/database"
+import { SUBSCRIPTION_FLOW } from "@/lib/record/status"
 
 import { PageHeader } from "@/components/page-header"
-import { Button } from "@/components/ui/button"
+import { StatusBar } from "@/components/record/status-bar"
+import { SmartButtons, recordHref } from "@/components/record/smart-buttons"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 
-import { updateSubscription } from "../../subscription-actions"
+import { setSubscriptionStatus, updateSubscription } from "../../subscription-actions"
 import {
   SubscriptionForm,
   type SubscriptionFormValues,
   type SubscriptionFormSubmitValues,
 } from "../../_components/subscription-form"
 import { SubscriptionControls } from "../../_components/subscription-controls"
-import { SubscriptionStatusBadge } from "../../_components/subscription-status-badge"
+import { SubscriptionStatusBadge } from "@/components/status-badge"
 import type { Option } from "../../_components/form-fields"
 
 export const dynamic = "force-dynamic"
@@ -51,7 +52,7 @@ export default async function SubscriptionDetailPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [subRes, clientsRes, projectsRes] = await Promise.all([
+  const [subRes, clientsRes, projectsRes, occurrencesRes] = await Promise.all([
     supabase
       .from("subscriptions")
       .select(
@@ -62,6 +63,11 @@ export default async function SubscriptionDetailPage({
       .maybeSingle(),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
+    supabase
+      .from("subscription_occurrences")
+      .select("invoice_id")
+      .eq("org_id", ctx.orgId)
+      .eq("subscription_id", id),
   ])
 
   const sub = subRes.data
@@ -95,17 +101,45 @@ export default async function SubscriptionDetailPage({
     "use server"
     return updateSubscription({ id: subId, ...values })
   }
+  async function transitionSubscription(to: Enums<"subscription_status">) {
+    "use server"
+    return setSubscriptionStatus({ id: subId, status: to })
+  }
+  const invoiceIds = (occurrencesRes.data ?? []).map((o) => o.invoice_id)
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={sub.name}
         description={sub.clients?.name ?? "Subscription"}
-      >
-        <Button variant="outline" render={<Link href="/finance/subscriptions" />}>
-          <ArrowLeft /> Back
-        </Button>
-      </PageHeader>
+        breadcrumbs={[
+          { label: "Finance", href: "/finance" },
+          { label: "Subscriptions", href: "/finance/subscriptions" },
+        ]}
+      />
+
+      <SmartButtons
+        buttons={[
+          {
+            label: "Invoices",
+            icon: ReceiptText,
+            count: invoiceIds.length,
+            href: recordHref(invoiceIds, (invoiceId) => `/finance/invoices/${invoiceId}`, "/finance"),
+          },
+          {
+            label: "Project",
+            icon: FolderKanban,
+            count: sub.project_id ? 1 : 0,
+            href: `/projects/${sub.project_id}`,
+          },
+        ]}
+      />
+      <StatusBar
+        label="Subscription status"
+        flow={SUBSCRIPTION_FLOW}
+        status={sub.status}
+        transition={canManage ? transitionSubscription : undefined}
+      />
 
       <Card>
         <CardHeader className="flex-row items-center justify-between">

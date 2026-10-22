@@ -2,8 +2,9 @@ import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
-  ArrowLeft,
+  FileSignature,
   Pencil,
+  ReceiptText,
   ListChecks,
   Flag,
   Wallet,
@@ -23,11 +24,18 @@ import {
   billableValueSatang,
 } from "@/lib/metrics/timesheets"
 import { todayISO } from "@/lib/dates"
+import { PROJECT_FLOW } from "@/lib/record/status"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
-import { ProjectStatusBadge, TaskStatusBadge, InvoiceStatusBadge } from "@/components/status-badge"
-import { QuoteStatusBadge } from "../../quotes/_components/quote-status-badge"
+import {
+  ProjectStatusBadge,
+  TaskStatusBadge,
+  InvoiceStatusBadge,
+  QuoteStatusBadge,
+} from "@/components/status-badge"
+import { StatusBar } from "@/components/record/status-bar"
+import { SmartButtons, recordHref } from "@/components/record/smart-buttons"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -39,6 +47,7 @@ import { StatusSelect } from "../_components/status-select"
 import { TaskToggle, MilestoneToggle } from "../_components/toggle-check"
 import { AddTaskForm } from "../_components/add-task-form"
 import { AddMilestoneForm } from "../_components/add-milestone-form"
+import { updateProjectStatus } from "../actions"
 import { LogTimeForm } from "@/app/(app)/timesheets/_components/log-time-form"
 
 export const dynamic = "force-dynamic"
@@ -177,17 +186,66 @@ export default async function ProjectDetailPage({
   const billedInvoices = invoices.filter((invoice) => ["sent", "partially_paid", "paid", "overdue"].includes(invoice.status))
   const hasFinancials = billedInvoices.length > 0 || costs.length > 0
   const profit = hasFinancials ? projectProfit(billedInvoices, costs) : null
+  const invoiceIds = invoices.map((invoice) => invoice.id)
+  const quoteIds = (sourceQuotes ?? []).map((quote) => quote.id)
+
+  const projectId = p.id
+  async function transitionProject(to: Enums<"project_status">) {
+    "use server"
+    return updateProjectStatus({ id: projectId, status: to })
+  }
 
   return (
     <div className="space-y-6">
-      <PageHeader title={p.name} description={p.client?.name ?? "No client"}>
-        <Button variant="outline" render={<Link href="/projects" />}>
-          <ArrowLeft data-icon="inline-start" /> Back
-        </Button>
+      <PageHeader
+        title={p.name}
+        description={p.client?.name ?? "No client"}
+        breadcrumbs={[{ label: "Projects", href: "/projects" }]}
+      >
         <Button variant="outline" render={<Link href={`/projects/${id}/edit`} />}>
           <Pencil data-icon="inline-start" /> Edit
         </Button>
       </PageHeader>
+
+      <SmartButtons
+        buttons={[
+          {
+            label: "Tasks",
+            icon: ListChecks,
+            count: tasks.length,
+            value: `${doneTasks}/${tasks.length}`,
+            href: "#tasks",
+          },
+          {
+            label: "Hours logged",
+            icon: Clock,
+            count: loggedMinutes,
+            value: minutesToHours(loggedMinutes).toFixed(1),
+            href: "#time",
+          },
+          {
+            label: "Invoices",
+            icon: ReceiptText,
+            count: invoiceIds.length,
+            href: invoiceIds.length
+              ? recordHref(invoiceIds, (invoiceId) => `/finance/invoices/${invoiceId}`, "#billing")
+              : "/finance/invoices/new",
+            nextStep: p.status === "delivered" || p.status === "support",
+          },
+          {
+            label: "Quotes",
+            icon: FileSignature,
+            count: quoteIds.length,
+            href: recordHref(quoteIds, (quoteId) => `/quotes/${quoteId}`, "#billing"),
+          },
+        ]}
+      />
+      <StatusBar
+        label="Project status"
+        flow={PROJECT_FLOW}
+        status={p.status}
+        transition={transitionProject}
+      />
 
       {/* Overview + quick status change */}
       <Card>
@@ -234,7 +292,7 @@ export default async function ProjectDetailPage({
       </Card>
 
       {sourceQuotes?.length || invoices.length ? (
-        <Card>
+        <Card id="billing">
           <CardHeader><CardTitle className="text-base">Quotes and invoices</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <ul className="space-y-2">
@@ -281,7 +339,7 @@ export default async function ProjectDetailPage({
       ) : null}
 
       {/* Tasks */}
-      <Card>
+      <Card id="tasks">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ListChecks className="size-4" /> Tasks
@@ -391,7 +449,7 @@ export default async function ProjectDetailPage({
       </Card>
 
       {/* Time logged */}
-      <Card>
+      <Card id="time">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Clock className="size-4" /> Time logged
