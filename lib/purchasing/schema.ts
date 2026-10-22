@@ -26,7 +26,9 @@ export const LineInput = z.object({
   unit: z.string().trim().min(1).max(40),
   unitCostBaht: serviceMoneyInput,
 })
-export const ReceiptInput = z.array(z.object({ id: z.guid(), received_quantity: z.number().finite().nonnegative() })).min(1)
+export const ReceiptInput = z.array(z.object({ id: z.guid(), received_quantity: z.number().finite().nonnegative(), previous_received_quantity: z.number().finite().nonnegative() })).min(1)
+
+export const ReturnInput = z.array(z.object({ id: z.guid(), returned_quantity: z.number().finite().nonnegative().max(999999999.999).refine(value => Math.abs(value * 1000 - Math.round(value * 1000)) < 0.00001, "Use at most three decimal places") })).min(1)
 
 export const RFQClaim = z.object({
   delivery_key: z.uuid(),

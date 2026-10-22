@@ -25,6 +25,8 @@ export type ReportData = {
   /** Human label for the covered range, e.g. "2026-02 – 2026-07". */
   rangeLabel: string
   totalRevenueSatang: number
+  cogsByMonth: { month: string; amount_satang: number }[]
+  totalCogsSatang: number
   /** Revenue by client (rows) × month (columns). */
   revenue: Pivot
   hours: ReportHoursSummary
@@ -37,7 +39,7 @@ function fmtHours(hours: number): string {
 
 function renderRevenueTable(revenue: Pivot): string {
   if (revenue.rowKeys.length === 0) {
-    return `<p class="muted">No payments in this range.</p>`
+    return `<p class="muted">No issued invoices in this range.</p>`
   }
 
   const head = `<tr>
@@ -169,7 +171,11 @@ export function renderReportHtml(data: ReportData): string {
 
     <div class="stats">
       <div class="stat">
-        <div class="label">Verified cash received</div>
+        <div class="label">Cost of goods sold</div>
+        <div class="value">${escapeHtml(formatTHB(data.totalCogsSatang))}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Revenue before VAT</div>
         <div class="value">${escapeHtml(formatTHB(data.totalRevenueSatang))}</div>
       </div>
       <div class="stat">
@@ -182,8 +188,18 @@ export function renderReportHtml(data: ReportData): string {
       </div>
     </div>
 
-    <h2>Verified cash by client × month</h2>
+    <h2>Issued revenue by client × month</h2>
     ${renderRevenueTable(data.revenue)}
+
+    <h2>Cost of goods sold by month</h2>
+    <p>Delivered stock cost less customer returns, grouped by Bangkok month.</p>
+    <table>
+      <thead><tr><th>Month</th><th class="num">Cost of goods sold</th></tr></thead>
+      <tbody>
+        ${data.cogsByMonth.map((row) => `<tr><td>${escapeHtml(row.month)}</td><td class="num">${escapeHtml(formatTHB(row.amount_satang))}</td></tr>`).join("\n")}
+        <tr class="totals-row"><td class="strong">Total</td><td class="num strong">${escapeHtml(formatTHB(data.totalCogsSatang))}</td></tr>
+      </tbody>
+    </table>
 
     <h2>Hours by project</h2>
     ${renderHoursTable(data.hours)}

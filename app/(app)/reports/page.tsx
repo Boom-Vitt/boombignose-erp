@@ -1,7 +1,7 @@
 import { ReportChart } from "./_components/report-chart"
 import type { SearchParams } from "@/lib/search-facets"
 import Link from "next/link"
-import { TrendingUp, Timer, Printer, BarChart3, Clock } from "lucide-react"
+import { TrendingUp, Timer, Printer, BarChart3, Clock, Package } from "lucide-react"
 
 import { formatTHB } from "@/lib/money"
 import { getReportData } from "./_data"
@@ -30,7 +30,7 @@ function fmtHours(hours: number): string {
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<SearchParams> } = { searchParams: Promise.resolve({}) }) {
   const params = await searchParams
   const view = params.view === "line" || params.view === "pivot" ? params.view : "bar"
-  const { months, rangeLabel, revenue, hours, totalRevenueSatang } =
+  const { months, rangeLabel, revenue, hours, totalRevenueSatang, cogsByMonth, totalCogsSatang } =
     await getReportData()
 
   return (
@@ -49,13 +49,19 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </Button>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="Verified cash received"
+          label="Cost of goods sold"
+          value={formatTHB(totalCogsSatang)}
+          icon={Package}
+          hint="Delivered stock cost less customer returns"
+        />
+        <StatCard
+          label="Revenue before VAT"
           value={formatTHB(totalRevenueSatang)}
           icon={TrendingUp}
           tone="positive"
-          hint="Verified receipts in range · Bangkok month"
+          hint="Issued invoices in range · Issue month"
         />
         <StatCard
           label="Billable hours"
@@ -78,6 +84,22 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </Button>)}
       </nav>
 
+      <Card>
+        <CardHeader><CardTitle>Cost of goods sold by month</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader><TableRow><TableHead>Month</TableHead><TableHead className="text-right">Cost of goods sold</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {cogsByMonth.map((row) => <TableRow key={row.month}>
+                <TableCell>{row.month}</TableCell><TableCell className="text-right tabular-nums">{formatTHB(row.amount_satang)}</TableCell>
+              </TableRow>)}
+              <TableRow><TableCell className="font-semibold">Total</TableCell><TableCell className="text-right font-semibold tabular-nums">{formatTHB(totalCogsSatang)}</TableCell></TableRow>
+            </TableBody>
+          </Table>
+          <p className="text-sm text-muted-foreground mt-3">Delivery costs less customer returns, grouped by Bangkok month. Inventory bills are excluded from operating costs.</p>
+        </CardContent>
+      </Card>
+
       {view !== "pivot" ? <div className="space-y-6">
         <Card><CardHeader><CardTitle>Revenue by month</CardTitle></CardHeader><CardContent>
           <ReportChart title="Revenue by month" unit="satang" kind={view} rows={months.map((month) => ({ label: month, value: revenue.colTotal(month) }))} />
@@ -88,18 +110,18 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <Card><CardHeader><CardTitle>Hours by project</CardTitle></CardHeader><CardContent>
           <ReportChart title="Hours by project" unit="hours" kind={view} rows={hours.projects.map((project) => ({ label: project.project_name, value: project.totalHours }))} />
         </CardContent></Card>
-        <p className="text-sm text-muted-foreground">Revenue is verified cash received, grouped by Bangkok month. Pivot / table shows the underlying totals.</p>
+        <p className="text-sm text-muted-foreground">Revenue is issued invoice value before VAT, grouped by issue month. Pivot / table shows the underlying totals.</p>
       </div> : <>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Verified cash by client × month</CardTitle>
+          <CardTitle className="text-base">Revenue by client × month</CardTitle>
         </CardHeader>
         <CardContent>
           {revenue.rowKeys.length === 0 ? (
             <EmptyState
               icon={BarChart3}
-              title="No payments in range"
-              description="Only verified receipts appear here by client and month."
+              title="No issued invoices in range"
+              description="Issued revenue before VAT appears here by client and issue month."
               className="border-0"
             />
           ) : (

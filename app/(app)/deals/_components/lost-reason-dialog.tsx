@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Textarea } from "@/components/ui/textarea"
+import { useRecordGuard } from "@/components/record/record-guard"
+
+const OFFLINE = "Couldn't reach the server. Please try again."
 
 export type LostReason = { id: string; name: string }
 
@@ -27,10 +31,11 @@ export function LostReasonDialog({
   reasons: LostReason[]
   /** Owners and admins get a link to edit the list. */
   canManage: boolean
-  onConfirm: (reasonId: string) => Promise<{ error?: string }>
+  onConfirm: (reasonId: string, note: string) => Promise<{ error?: string }>
 }) {
   const id = useId()
   const [reason, setReason] = useState<string | null>(null)
+  const [note, setNote] = useState("")
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
 
@@ -41,7 +46,7 @@ export function LostReasonDialog({
       return
     }
     startTransition(async () => {
-      const res = await onConfirm(reason).catch(() => ({ error: "Couldn't reach the server. Please try again." }))
+      const res = await onConfirm(reason, note.trim()).catch(() => ({ error: OFFLINE }))
       setError(res.error ?? "")
     })
   }
@@ -76,6 +81,10 @@ export function LostReasonDialog({
               No lost reasons yet. {canManage ? "Add some first." : "Ask an owner or admin to add some."}
             </p>
           )}
+          <div className="space-y-2">
+            <Label htmlFor={`${id}-note`}>Note (optional)</Label>
+            <Textarea id={`${id}-note`} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+          </div>
           {canManage ? (
             <Link href="/deals/lost-reasons" className="text-muted-foreground text-sm underline-offset-4 hover:underline">
               Manage lost reasons
@@ -94,7 +103,7 @@ export function LostReasonDialog({
   )
 }
 
-/** The deal page's "Mark lost" step: a button that opens the reason dialog. */
+/** The deal page's "Mark lost" step: a button that opens the reason dialog, locked with the status bar. */
 export function MarkLostButton({
   label,
   variant,
@@ -108,13 +117,14 @@ export function MarkLostButton({
   dealTitle: string
   reasons: LostReason[]
   canManage: boolean
-  onConfirm: (reasonId: string) => Promise<{ error?: string }>
+  onConfirm: (reasonId: string, note: string) => Promise<{ error?: string }>
 }) {
   const router = useRouter()
+  const { busy, run } = useRecordGuard()
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button size="sm" variant={variant} onClick={() => setOpen(true)}>
+      <Button size="sm" variant={variant} disabled={busy} onClick={() => setOpen(true)}>
         {label}
       </Button>
       <LostReasonDialog
@@ -123,13 +133,19 @@ export function MarkLostButton({
         dealTitle={dealTitle}
         reasons={reasons}
         canManage={canManage}
-        onConfirm={async (reasonId) => {
-          const res = await onConfirm(reasonId)
-          if (res.error) return res
+        onConfirm={async (reasonId, note) => {
+          // Like the bar's other steps: the dialog closes and the move runs under the record lock.
           setOpen(false)
-          toast.success("Deal marked lost")
-          router.refresh()
-          return res
+          run(async () => {
+            const res = await onConfirm(reasonId, note).catch(() => ({ error: OFFLINE }))
+            if (res.error) {
+              toast.error(res.error)
+              return
+            }
+            toast.success("Deal marked lost")
+            router.refresh()
+          })
+          return {}
         }}
       />
     </>

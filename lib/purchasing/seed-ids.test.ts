@@ -36,7 +36,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({
 }) }))
 
 import { redirect } from "next/navigation"
-import { createPurchaseBill, markBillPaid, receivePurchase, removePurchaseLine, transitionPurchase } from "@/app/(app)/purchases/actions"
+import { createPurchaseBill, markBillPaid, receivePurchase, removePurchaseLine, transitionPurchase, returnPurchase } from "@/app/(app)/purchases/actions"
 import { sendPurchaseRFQ } from "@/app/(app)/purchases/email-actions"
 import PurchasesPage from "@/app/(app)/purchases/page"
 import { saveVendor } from "@/app/(app)/vendors/actions"
@@ -65,8 +65,15 @@ describe("purchasing accepts demo seed ids", () => {
 
   it("receives a seed-id purchase", async () => {
     state.rows.purchase_order_items = [{ id: lineId, quantity: 2, received_quantity: 0 }]
-    expect(await receivePurchase(orderId, [{ id: lineId, received_quantity: 1 }])).toEqual({})
-    expect(state.rpcs).toEqual([["receive_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_lines: [{ id: lineId, received_quantity: 1 }] }]])
+    expect(await receivePurchase(orderId, [{ id: lineId, received_quantity: 1, previous_received_quantity: 0 }])).toEqual({})
+    expect(state.rpcs).toEqual([["receive_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_lines: [{ id: lineId, received_quantity: 1, previous_received_quantity: 0 }] }]])
+  })
+
+  it("receives stock into a chosen warehouse whose id lacks RFC version bits", async () => {
+    const warehouseId = seedId(7)
+    state.rows.purchase_order_items = [{ id: lineId, quantity: 2, received_quantity: 0 }]
+    expect(await receivePurchase(orderId, [{ id: lineId, received_quantity: 1, previous_received_quantity: 0 }], warehouseId)).toEqual({})
+    expect(state.rpcs).toEqual([["receive_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_lines: [{ id: lineId, received_quantity: 1, previous_received_quantity: 0 }], p_warehouse_id: warehouseId }]])
   })
 
   it("bills a seed-id purchase", async () => {
@@ -105,4 +112,19 @@ describe("purchasing accepts demo seed ids", () => {
     expect(state.filters).toContainEqual(["vendors", "id", vendorId])
     expect(redirect).toHaveBeenCalledWith(`/vendors/${vendorId}`)
   })
+})
+
+it("closes a purchase and posts a cumulative vendor return", async () => {
+  expect(await transitionPurchase(orderId, "closed")).toEqual({})
+  const lines = [{ id: lineId, returned_quantity: 1 }]
+  expect(await returnPurchase(orderId, lines, vendorId)).toEqual({})
+  expect(state.rpcs).toEqual([
+    ["transition_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_status: "closed" }],
+    ["return_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_lines: lines, p_warehouse_id: vendorId }],
+  ])
+})
+it("refuses a receipt whose previously displayed quantity changed", async () => {
+  state.rows.purchase_order_items = [{ id: lineId, quantity: 4, received_quantity: 2 }]
+  expect(await receivePurchase(orderId, [{ id: lineId, previous_received_quantity: 1, received_quantity: 3 }])).toEqual({ error: "Receipt changed, reload" })
+  expect(state.rpcs).toEqual([])
 })

@@ -3,8 +3,8 @@ import { sumSatang, type Satang } from "@/lib/money"
 import { outstandingSatang } from "@/lib/metrics/invoice-status"
 import type { Enums } from "@/lib/types/database"
 
-export type PaymentLike = { amount_satang: number; paid_at: string }
-export type CostLike = { amount_satang: number; incurred_on: string }
+export type RevenueInvoice = { status: Enums<"invoice_status">; issue_date: string; total_satang: number; vat_satang: number }
+export type CostLike = { category: string; amount_satang: number; incurred_on: string }
 
 export type RecurringInvoiceLike = {
   status: Enums<"invoice_status">
@@ -25,20 +25,20 @@ export type SubscriptionLike = {
   interval: Enums<"recurring_interval">
 }
 
-/** Sum of payments received in the given 'YYYY-MM' (app timezone). */
+/** Issued invoice base before VAT and WHT, recognized in the issue month. */
 export function revenueForMonth(
-  payments: PaymentLike[],
+  invoices: RevenueInvoice[],
   monthKeyStr: string,
   tz?: string
 ): Satang {
   return sumSatang(
-    payments
-      .filter((p) => monthKey(p.paid_at, tz) === monthKeyStr)
-      .map((p) => p.amount_satang)
+    invoices
+      .filter((i) => i.status !== "draft" && i.status !== "cancelled" && monthKey(i.issue_date, tz) === monthKeyStr)
+      .map((i) => i.total_satang - i.vat_satang)
   )
 }
 
-/** Sum of costs incurred in the given 'YYYY-MM' (app timezone). */
+/** Operating costs incurred in the given 'YYYY-MM', excluding inventory assets. */
 export function costsForMonth(
   costs: CostLike[],
   monthKeyStr: string,
@@ -46,7 +46,7 @@ export function costsForMonth(
 ): Satang {
   return sumSatang(
     costs
-      .filter((c) => monthKey(c.incurred_on, tz) === monthKeyStr)
+      .filter((c) => c.category !== "inventory" && monthKey(c.incurred_on, tz) === monthKeyStr)
       .map((c) => c.amount_satang)
   )
 }
@@ -108,12 +108,12 @@ export function unpaidCount(invoices: InvoiceWithPaid[]): number {
   ).length
 }
 
-/** Net monthly burn = costs − revenue. Positive means cash is being spent. */
+/** Net monthly cash burn = costs less verified receipts. Positive means cash is spent. */
 export function netBurnSatang(
   monthlyCostsSatang: Satang,
-  monthlyRevenueSatang: Satang
+  monthlyCashReceivedSatang: Satang
 ): Satang {
-  return monthlyCostsSatang - monthlyRevenueSatang
+  return monthlyCostsSatang - monthlyCashReceivedSatang
 }
 
 /**

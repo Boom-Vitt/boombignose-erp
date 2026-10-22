@@ -59,6 +59,17 @@ describe("deal facets", () => {
     expect(html).not.toContain('aria-label="Lead"')
     expect(html).toContain('href="/deals/export?status=won"')
   })
+  it("shows the board columns of every selected stage", async () => {
+    const html = await render(DealsPage, "/deals", { status: "proposal,lead" })
+    expect(html).toContain('aria-label="Remove Lead or Proposal"')
+    for (const label of ["Lead", "Proposal"]) expect(html).toContain(`aria-label="${label}"`)
+    for (const label of ["Contacted", "Negotiation", "Won"]) expect(html).not.toContain(`aria-label="${label}"`)
+    expect(html).toContain("Deal lead1")
+    expect(html).toContain("Deal prop1")
+    expect(html).not.toContain("Deal won1")
+    expect(html).not.toContain("Deal neg1")
+    expect(html).toContain('href="/deals/export?status=lead%2Cproposal"')
+  })
   it("finds a deal beyond the API's first 1,000 rows", async () => {
     state.tables.deals = [...Array.from({ length: 1000 }, (_, i) => deal(`x${i}`, "lead", "other", null)), deal("target", "proposal", "me", null)]
     const html = await render(DealsPage, "/deals", { q: "Deal target" })
@@ -91,6 +102,15 @@ describe("project facets", () => {
     expect(html).toContain("Project rev1")
     expect(html).not.toContain("Project ip1")
     expect(html).toContain('href="/projects?view=board"')
+  })
+  it("shows the board columns of every selected status", async () => {
+    state.tables.projects = [project("rev1", "review", "2026-10-30"), project("ip1", "in_progress", null), project("del1", "delivered", null)]
+    const html = await render(ProjectsPage, "/projects", { view: "board", status: "review,in_progress" })
+    for (const label of ["Review", "In progress"]) expect(html).toContain(`aria-label="${label}"`)
+    for (const label of ["Not started", "Delivered"]) expect(html).not.toContain(`aria-label="${label}"`)
+    expect(html).toContain("Project rev1")
+    expect(html).toContain("Project ip1")
+    expect(html).not.toContain("Project del1")
   })
   it("groups the list by deadline month with undated projects apart", async () => {
     const html = await render(ProjectsPage, "/projects", { groupBy: "month" })

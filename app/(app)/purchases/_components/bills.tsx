@@ -13,10 +13,10 @@ export function VendorBills({ bills, canManage }: { bills: Tables<"costs">[]; ca
     {bills.length === 0 ? <p className="text-sm text-muted-foreground">No bills yet.</p> : <Table>
       <TableHeader><TableRow><TableHead>Bill</TableHead><TableHead>Date</TableHead><TableHead>Due date</TableHead><TableHead>Amount</TableHead><TableHead>Payment</TableHead><TableHead>Purchase order</TableHead></TableRow></TableHeader>
       <TableBody>{bills.map(bill => <TableRow key={bill.id}>
-        <TableCell>{bill.bill_number ?? "Vendor bill"}</TableCell><TableCell>{bill.bill_date ?? bill.incurred_on}</TableCell>
+        <TableCell>{bill.purchase_cost_kind === "return_adjustment" ? "Internal return adjustment" : bill.bill_number ?? (bill.purchase_cost_kind === "credit" ? "Vendor credit" : "Vendor bill")}</TableCell><TableCell>{bill.bill_date ?? bill.incurred_on}</TableCell>
         <TableCell className={!bill.paid_at && bill.due_date && bill.due_date < today ? "text-destructive" : ""}>{bill.due_date ?? "—"}</TableCell>
         <TableCell>{formatTHB(bill.amount_satang)}</TableCell>
-        <TableCell>{bill.paid_at ? `Paid ${todayISO(new Date(bill.paid_at))}` : <div className="space-y-1"><span>{bill.due_date && bill.due_date < today ? "Overdue" : "Unpaid"}</span>{canManage && <PurchaseAction action={markBillPaid.bind(null, bill.id)} label="Mark paid" />}</div>}</TableCell>
+        <TableCell>{bill.purchase_cost_kind === "return_adjustment" || bill.vendor_id === null ? "Not payable" : bill.paid_at ? `Paid ${todayISO(new Date(bill.paid_at))}` : <div className="space-y-1"><span>{bill.due_date && bill.due_date < today ? "Overdue" : "Unpaid"}</span>{canManage && <PurchaseAction action={markBillPaid.bind(null, bill.id)} label="Mark paid" />}</div>}</TableCell>
         <TableCell>{bill.purchase_order_id ? <Link className="underline" href={`/purchases/${bill.purchase_order_id}`}>View purchase order</Link> : "—"}</TableCell>
       </TableRow>)}</TableBody>
     </Table>}

@@ -31,5 +31,5 @@ test("reports switch between graphs and the pivot table", async ({ page }) => {
   await expect(page.getByRole("figure", { name: "Revenue by month line chart", exact: true }).locator("svg polyline")).toHaveCount(1)
   await page.getByRole("link", { name: "Pivot / table", exact: true }).click()
   await expect(page).toHaveURL(/view=pivot/)
-  await expect(page.getByText("Verified cash by client × month", { exact: true })).toBeVisible()
+  await expect(page.getByText("Revenue by client × month", { exact: true })).toBeVisible()
 })

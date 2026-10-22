@@ -44,5 +44,9 @@ test("a member submits a claim, the owner approves it and its costs reach Financ
   await expect(owner.getByRole("navigation", { name: "Related records" }).getByRole("link", { name: /Costs/ })).toContainText("1")
 
   await owner.goto("/finance?tab=costs")
-  await expect(owner.getByRole("row").filter({ hasText: number })).toContainText("123.45")
+  const cost = owner.getByRole("row").filter({ hasText: number })
+  await expect(cost).toContainText("123.45")
+  await expect(cost).toContainText("Awaiting reimbursement")
+  await expect(cost.getByRole("link", { name: number, exact: true })).toHaveAttribute("href", /^\/expenses\/[0-9a-f-]{36}$/)
+  await expect(cost.getByRole("button", { name: /^Delete/ })).toHaveCount(0)
 })

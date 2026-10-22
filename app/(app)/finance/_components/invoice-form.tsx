@@ -1,6 +1,5 @@
 "use client"
 
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -19,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { useGuardedForm } from "@/components/record/record-guard"
 import { Switch } from "@/components/ui/switch"
 
 import { SelectField, type Option } from "./form-fields"
@@ -35,14 +35,6 @@ const Schema = z
     client_id: z.string().min(1, "Choose a client"),
     project_id: z.string().optional(),
     number: z.string().optional(),
-    status: z.enum([
-      "draft",
-      "sent",
-      "partially_paid",
-      "paid",
-      "overdue",
-      "cancelled",
-    ]),
     issue_date: z.string().optional(),
     due_date: z.string().optional(),
     amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter an exact THB amount with up to two decimals"),
@@ -66,7 +58,6 @@ export type InvoiceFormValues = {
   client_id: string
   project_id: string
   number: string
-  status: Values["status"]
   issue_date: string
   due_date: string
   amountBaht: string
@@ -88,7 +79,6 @@ export function InvoiceForm({
   submitLabel: string
   action: (values: Values) => Promise<{ error?: string } | void>
 }) {
-  const router = useRouter()
   const form = useForm<z.input<typeof Schema>, unknown, Values>({
     resolver: zodResolver(Schema),
     defaultValues,
@@ -96,26 +86,27 @@ export function InvoiceForm({
 
   // eslint-disable-next-line react-hooks/incompatible-library -- watch() is RHF's intended API
   const isRecurring = form.watch("is_recurring")
+  const onSubmit = useGuardedForm(form, async (values) => {
+    const payload = {
+      ...values,
+      recurring_interval: values.is_recurring
+        ? values.recurring_interval
+        : undefined,
+    }
+    const res = await action(payload)
+    if (res?.error) {
+      toast.error(res.error)
+      return false
+    }
+    // createInvoice redirects on success (no return); update returns {}.
+    toast.success("Invoice saved")
+    return true
+  })
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(async (values) => {
-          const payload = {
-            ...values,
-            recurring_interval: values.is_recurring
-              ? values.recurring_interval
-              : undefined,
-          }
-          const res = await action(payload)
-          if (res?.error) {
-            toast.error(res.error)
-            return
-          }
-          // createInvoice redirects on success (no return); update returns {}.
-          toast.success("Invoice saved")
-          router.refresh()
-        })}
+        onSubmit={onSubmit}
         className="space-y-5"
       >
         <div className="grid gap-5 sm:grid-cols-2">
@@ -142,18 +133,17 @@ export function InvoiceForm({
             name="number"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Invoice number</FormLabel>
+                <FormLabel>Draft reference (optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="Auto (INV-2026-00X)" {...field} />
+                  <Input placeholder="Assigned on issue" {...field} />
                 </FormControl>
                 <FormDescription>
-                  Leave blank to auto-number.
+                  The issued invoice number is assigned by the issue command.
                 </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <FormField control={form.control} name="status" render={({ field }) => <FormItem><FormLabel>Status</FormLabel><FormControl><Input {...field} readOnly /></FormControl><FormDescription>Payment status is derived from verified receipts. Use the issue action to issue a draft.</FormDescription></FormItem>} />
         </div>
 
         <div className="grid gap-5 sm:grid-cols-3">
@@ -162,10 +152,11 @@ export function InvoiceForm({
             name="issue_date"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Issue date</FormLabel>
+                <FormLabel>Draft date</FormLabel>
                 <FormControl>
                   <Input type="date" {...field} />
                 </FormControl>
+                <FormDescription>Issuing replaces this with today in Bangkok.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}

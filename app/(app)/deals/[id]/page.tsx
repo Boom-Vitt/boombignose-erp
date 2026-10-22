@@ -69,9 +69,9 @@ export default async function DealDetailPage({
     "use server"
     return updateDealStage(dealId, to)
   }
-  async function loseDeal(lostReasonId: string) {
+  async function loseDeal(lostReasonId: string, note: string) {
     "use server"
-    return updateDealStage(dealId, "lost", { lostReasonId })
+    return updateDealStage(dealId, "lost", { lostReasonId, note })
   }
 
   const followUp = deal.next_follow_up_date
@@ -118,6 +118,7 @@ export default async function DealDetailPage({
         flow={DEAL_FLOW}
         status={deal.stage}
         transition={transitionDeal}
+        record={{ recordType: "deal", recordId: deal.id }}
         commands={{
           ...(projectCount ? {} : { create_project: `/projects/new?dealId=${deal.id}&clientId=${deal.client_id}` }),
           lose: ({ label, variant }) => (

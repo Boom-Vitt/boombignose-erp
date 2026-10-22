@@ -1,3 +1,4 @@
+import { invoiceDisplayNumber } from "@/lib/documents/numbering"
 import { readAll } from "@/lib/supabase/read-all"
 import { can } from "@/lib/permissions"
 import { markBillPaid } from "@/app/(app)/purchases/actions"
@@ -62,6 +63,7 @@ const COST_CATEGORY_LABEL: Record<Enums<"cost_category">, string> = {
   infra: "Infrastructure",
   marketing: "Marketing",
   salary: "Salary",
+  inventory: "Inventory",
   other: "Other",
 }
 
@@ -84,7 +86,7 @@ export default async function FinancePage({
       readAll((from, to) => supabase
         .from("invoices")
         .select(
-          "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
+          "id, number, issued_snapshot_id, amount_satang, total_satang, vat_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
         )
         .eq("org_id", ctx.orgId)
         .order("issue_date", { ascending: false }).order("id").range(from, to)),
@@ -92,7 +94,7 @@ export default async function FinancePage({
       readAll((from, to) => supabase
         .from("costs")
         .select(
-          "id, category, amount_satang, incurred_on, vendor, project_id, projects(name), vendor_id, purchase_order_id, bill_number, bill_date, due_date, paid_at"
+          "id, category, amount_satang, incurred_on, vendor, project_id, projects(name), vendor_id, purchase_order_id, expense_claim_id, bill_number, bill_date, due_date, paid_at"
         )
         .eq("org_id", ctx.orgId)
         .order("incurred_on", { ascending: false }).order("id").range(from, to)),
@@ -123,6 +125,7 @@ export default async function FinancePage({
     const paid = paidByInvoice.get(inv.id) ?? 0
     return {
       ...inv,
+      number: invoiceDisplayNumber(inv),
       paid_satang: paid,
       outstanding: outstandingSatang(inv.amount_satang, paid),
       effectiveStatus: deriveInvoiceStatus(inv, paid, today),
@@ -142,7 +145,8 @@ export default async function FinancePage({
   }))
   const unpaidSatang = unpaidTotal(invoicesWithPaid)
   const openCount = unpaidCount(invoicesWithPaid)
-  const revenueSatang = revenueForMonth(payments, month)
+  const revenueSatang = revenueForMonth(invoices, month)
+  const cashReceivedSatang = sumSatang(payments.filter(payment => monthKey(payment.paid_at) === month).map(payment => payment.amount_satang))
   const costsSatang = costsForMonth(costs, month)
   // MRR is derived from active subscriptions (source of truth) for consistency
   // with the dashboard.
@@ -176,18 +180,24 @@ export default async function FinancePage({
           hint={`${openCount} open invoice${openCount === 1 ? "" : "s"}`}
         />
         <StatCard
-          label="Verified cash this month"
+          label="Revenue this month"
           value={formatTHB(revenueSatang)}
           icon={TrendingUp}
           tone="positive"
-          hint="Payments received"
+          hint="Pre-VAT · Issued invoices"
         />
         <StatCard
-          label="Costs this month"
+          label="Verified cash this month"
+          value={formatTHB(cashReceivedSatang)}
+          icon={TrendingUp}
+          hint="Verified receipts received this month"
+        />
+        <StatCard
+          label="Operating costs this month"
           value={formatTHB(costsSatang)}
           icon={Flame}
           tone="negative"
-          hint="Costs incurred"
+          hint="Excludes inventory asset bills"
         />
         <StatCard
           label="Monthly recurring forecast"
@@ -343,12 +353,12 @@ export default async function FinancePage({
                           {c.incurred_on}
                         </TableCell>
                         <TableCell>{c.vendor_id ? <Link className="underline" href={`/vendors/${c.vendor_id}`}>{c.vendor ?? "Vendor"}</Link> : c.vendor ?? "—"}</TableCell>
-                        <TableCell>{c.purchase_order_id ? <Link className="underline" href={`/purchases/${c.purchase_order_id}`}>{c.bill_number}</Link> : c.bill_number ?? "—"}</TableCell>
+                        <TableCell>{c.expense_claim_id ? <Link className="underline" href={`/expenses/${c.expense_claim_id}`}>{c.bill_number}</Link> : c.purchase_order_id ? <Link className="underline" href={`/purchases/${c.purchase_order_id}`}>{c.bill_number}</Link> : c.bill_number ?? "—"}</TableCell>
                         <TableCell className={c.vendor_id && !c.paid_at && c.due_date && c.due_date < today ? "text-destructive" : ""}>{c.due_date ?? "—"}</TableCell>
-                        <TableCell>{c.vendor_id ? c.paid_at ? `Paid ${todayISO(new Date(c.paid_at))}` : <div className="space-y-1"><span>Unpaid</span>{can(ctx.role, "purchase:manage") && <PurchaseAction action={markBillPaid.bind(null, c.id)} label="Mark paid" />}</div> : "—"}</TableCell>
+                        <TableCell>{c.expense_claim_id ? c.paid_at ? `Reimbursed ${todayISO(new Date(c.paid_at))}` : "Awaiting reimbursement" : c.vendor_id ? c.paid_at ? `Paid ${todayISO(new Date(c.paid_at))}` : <div className="space-y-1"><span>Unpaid</span>{can(ctx.role, "purchase:manage") && <PurchaseAction action={markBillPaid.bind(null, c.id)} label="Mark paid" />}</div> : "—"}</TableCell>
                         <TableCell>{c.projects?.name ?? "—"}</TableCell>
                         <TableCell className="text-right">
-                          {!c.vendor_id && !c.purchase_order_id && <DeleteCostButton
+                          {!c.vendor_id && !c.purchase_order_id && !c.expense_claim_id && <DeleteCostButton
                             id={c.id}
                             label={`${COST_CATEGORY_LABEL[c.category]} cost`}
                           />}

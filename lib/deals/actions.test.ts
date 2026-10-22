@@ -5,7 +5,7 @@ const AFTER = "6a2f0c1d-5b3e-4c7a-8d9e-0f1a2b3c4d5e"
 const REASON = "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
 const CLIENT = "1d2c3b4a-5f6e-4d7c-8b9a-0f1e2d3c4b5a"
 
-const { db, writeAudit, ctx } = vi.hoisted(() => ({
+const { db, writeAudit, logRecordNote, ctx } = vi.hoisted(() => ({
   db: {
     before: null as { title: string } | null,
     rpc: vi.fn(),
@@ -13,12 +13,14 @@ const { db, writeAudit, ctx } = vi.hoisted(() => ({
     update: vi.fn(),
   },
   writeAudit: vi.fn(),
+  logRecordNote: vi.fn(async () => ({})),
   ctx: { orgId: "org-1", userId: "user-1", role: "member" },
 }))
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ctx, requireCapability: () => {} }))
 vi.mock("@/lib/audit", () => ({ writeAudit }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }))
+vi.mock("@/lib/record-history/actions", () => ({ logRecordNote }))
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     rpc: db.rpc,
@@ -73,6 +75,11 @@ describe("updateDealStage", () => {
       action: "stage_changed",
       meta: { from: "proposal", to: "lost", lostReasonId: REASON },
     }))
+  })
+
+  it("keeps a lost deal's closing note in its record history", async () => {
+    expect(await updateDealStage(DEAL, "lost", { lostReasonId: REASON, note: "  Went in-house  " })).toEqual({})
+    expect(logRecordNote).toHaveBeenCalledWith({ recordType: "deal", recordId: DEAL, body: "Lost: Went in-house" })
   })
 
   it("reorders within a column without an audit entry", async () => {

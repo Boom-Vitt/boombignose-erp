@@ -49,11 +49,11 @@ export function ChangeStageSelect({
     setValue(stage)
   }
 
-  function save(nextStage: Enums<"deal_stage">, prev: Enums<"deal_stage">, lostReasonId?: string) {
+  function save(nextStage: Enums<"deal_stage">, prev: Enums<"deal_stage">, lost?: { lostReasonId: string; note: string }) {
     setValue(nextStage)
     return new Promise<{ error?: string }>((done) =>
       startTransition(async () => {
-        const res = await updateDealStage(dealId, nextStage, { lostReasonId }).catch(() => ({
+        const res = await updateDealStage(dealId, nextStage, lost).catch(() => ({
           error: "Couldn't reach the server. Please try again.",
         }))
         done(res)
@@ -97,8 +97,8 @@ export function ChangeStageSelect({
         dealTitle={dealTitle}
         reasons={lostReasons}
         canManage={canManageReasons}
-        onConfirm={async (lostReasonId) => {
-          const res = await save("lost", value, lostReasonId)
+        onConfirm={async (lostReasonId, note) => {
+          const res = await save("lost", value, { lostReasonId, note })
           if (!res.error) setAskingReason(false)
           return res
         }}

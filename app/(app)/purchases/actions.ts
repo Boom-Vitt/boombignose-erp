@@ -6,7 +6,8 @@ import { redirect } from "next/navigation"
 import { requireCapability, requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { writeAudit } from "@/lib/audit"
-import { LineInput, PurchaseInput, ReceiptInput } from "@/lib/purchasing/schema"
+import { LineInput, PurchaseInput, ReceiptInput, ReturnInput } from "@/lib/purchasing/schema"
+import { receivePurchaseStock } from "@/lib/purchasing/receive"
 import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { applyReceipt, purchaseTotal } from "@/lib/purchasing/quantities"
 import { serviceAmountSatang } from "@/lib/workflows/service"
@@ -66,7 +67,7 @@ export async function removePurchaseLine(orderId: string, lineId: string): Promi
 export async function transitionPurchase(id: string, status: Enums<"purchase_status">): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
-  if (!z.guid().safeParse(id).success || !z.enum(["confirmed", "cancelled"]).safeParse(status).success) return { error: "Invalid purchase transition" }
+  if (!z.guid().safeParse(id).success || !z.enum(["confirmed", "closed", "cancelled"]).safeParse(status).success) return { error: "Invalid purchase transition" }
   const db = await createClient()
   const { error } = await db.rpc("transition_purchase_order", { p_org_id: ctx.orgId, p_order_id: id, p_status: status })
   if (error) return { error: error.message }
@@ -74,20 +75,37 @@ export async function transitionPurchase(id: string, status: Enums<"purchase_sta
   return {}
 }
 
-export async function receivePurchase(id: string, input: unknown): Promise<{ error?: string }> {
+export async function receivePurchase(id: string, input: unknown, warehouseId?: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
   const parsed = ReceiptInput.safeParse(input)
-  if (!z.guid().safeParse(id).success || !parsed.success) return { error: "Invalid receipt" }
+  if (!z.guid().safeParse(id).success || !parsed.success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success)) return { error: "Invalid receipt" }
   const db = await createClient()
   let receipt
   try {
     const lines = await readAllOrThrow((from, to) => db.from("purchase_order_items").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("id").range(from, to))
     receipt = applyReceipt(lines, parsed.data)
   } catch (error) { return { error: error instanceof Error ? error.message : "Invalid receipt" } }
-  const { error } = await db.rpc("receive_purchase_order", { p_org_id: ctx.orgId, p_order_id: id, p_lines: receipt })
+  const { error } = await receivePurchaseStock(db, ctx.orgId, id, receipt, warehouseId)
   if (error) return { error: error.message }
   refresh(id)
+  revalidatePath("/inventory", "layout")
+  revalidatePath("/products", "layout")
+  return {}
+}
+
+export async function returnPurchase(id: string, input: unknown, warehouseId?: string): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "purchase:manage")
+  requireCapability(ctx, "inventory:manage")
+  const lines = ReturnInput.safeParse(input)
+  if (!z.guid().safeParse(id).success || !lines.success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success)) return { error: "Invalid return" }
+  const db = await createClient()
+  const { error } = await db.rpc("return_purchase_order", { p_org_id: ctx.orgId, p_order_id: id, p_lines: lines.data, ...(warehouseId ? { p_warehouse_id: warehouseId } : {}) })
+  if (error) return { error: error.message }
+  refresh(id)
+  revalidatePath("/inventory", "layout")
+  revalidatePath("/products", "layout")
   return {}
 }
 

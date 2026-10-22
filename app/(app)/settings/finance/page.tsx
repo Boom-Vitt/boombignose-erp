@@ -1,0 +1,22 @@
+import Link from "next/link"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
+import { PageHeader } from "@/components/page-header"
+import { Card, CardContent } from "@/components/ui/card"
+import { FinanceLockForm } from "./finance-lock-form"
+
+export const dynamic = "force-dynamic"
+
+export default async function FinanceSettingsPage() {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "settings:manage") }
+  catch { return <p>Only owners and admins can change finance settings.</p> }
+  const supabase = await createClient()
+  const { data, error } = await supabase.from("org_settings").select("lock_date").eq("org_id", ctx.orgId).maybeSingle()
+  if (error) throw new Error("Finance settings unavailable")
+  return <div className="space-y-6">
+    <PageHeader title="Finance settings" description="Close a financial period after reviewing its documents and receipts." breadcrumbs={[{ label: "Settings", href: "/settings" }]} />
+    <Card className="max-w-2xl"><CardContent><FinanceLockForm orgId={ctx.orgId} lockDate={data?.lock_date ?? ""} /></CardContent></Card>
+    <Link href="/finance/business-profile" className="text-sm underline">Business profile and VAT settings</Link>
+  </div>
+}

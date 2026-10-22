@@ -92,8 +92,8 @@ export function DealsBoard({
           dealTitle={losing.title}
           reasons={lostReasons}
           canManage={canManageReasons}
-          onConfirm={async (lostReasonId) => {
-            const res = await updateDealStage(losing.id, "lost", { after: losing.after, lostReasonId })
+          onConfirm={async (lostReasonId, note) => {
+            const res = await updateDealStage(losing.id, "lost", { after: losing.after, lostReasonId, note })
             if (!res.error) {
               losing.settle({})
               setLosing(null)

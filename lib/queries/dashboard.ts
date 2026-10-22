@@ -1,7 +1,7 @@
-import { readAll } from "@/lib/supabase/read-all"
+import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { currentMonthKey, lastNMonths, todayISO, isPastDue, startOfDayInstant } from "@/lib/dates"
+import { currentMonthKey, monthKey, lastNMonths, todayISO, isPastDue, startOfDayInstant } from "@/lib/dates"
 import {
   revenueForMonth,
   costsForMonth,
@@ -35,6 +35,7 @@ export type DashboardData = {
   monthlyRevenueSatang: number
   revenueHistory: { month: string; revenueSatang: number }[]
   monthlyBurnSatang: number
+  monthlyCogsSatang: number
   netBurnSatang: number
   runwayMonths: number | null
   pipelineSatang: number
@@ -90,14 +91,15 @@ export async function getDashboardData(): Promise<DashboardData> {
     quotesRes,
     timeEntriesRes,
     newClientsRes,
+    cogs,
   ] = await Promise.all([
     readAll((from, to) => supabase.from("deals").select("stage,value_satang,probability").eq("org_id", ctx.orgId).order("id").range(from, to)),
     readAll((from, to) => supabase
       .from("invoices")
-      .select("id,status,amount_satang,is_recurring,recurring_interval,due_date")
+      .select("id,status,amount_satang,total_satang,vat_satang,issue_date,is_recurring,recurring_interval,due_date")
       .eq("org_id", ctx.orgId).order("id").range(from, to)),
     readAll((from, to) => supabase.from("payments").select("invoice_id,amount_satang,paid_at").eq("org_id", ctx.orgId).eq("verification_state", "verified").order("id").range(from, to)),
-    readAll((from, to) => supabase.from("costs").select("amount_satang,incurred_on").eq("org_id", ctx.orgId).order("id").range(from, to)),
+    readAll((from, to) => supabase.from("costs").select("category,amount_satang,incurred_on").eq("org_id", ctx.orgId).order("id").range(from, to)),
     readAll((from, to) => supabase.from("projects").select("status").eq("org_id", ctx.orgId).order("id").range(from, to)),
     readAll((from, to) => supabase.from("activities").select("id,body,type,due_date,done").eq("org_id", ctx.orgId).order("id").range(from, to)),
     supabase
@@ -127,6 +129,9 @@ export async function getDashboardData(): Promise<DashboardData> {
       .eq("org_id", ctx.orgId)
       .gte("created_at", startOfDayInstant(`${month}-01`))
       .lt("created_at", startOfDayInstant(nextMonthStart(month))),
+    readAllOrThrow((from, to) => supabase.from("monthly_inventory_cogs")
+      .select("month,amount_satang").eq("org_id", ctx.orgId).eq("month", `${month}-01`)
+      .order("month").range(from, to)),
   ])
 
   if ([dealsRes, invoicesRes, paymentsRes, costsRes, projectsRes, activitiesRes,
@@ -173,10 +178,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   const billableValueThisMonthSatang = billableValueSatang(timeEntries)
   const utilizationThisMonth = utilization(timeEntries)
 
-  const monthlyRevenueSatang = revenueForMonth(payments, month)
+  const monthlyRevenueSatang = revenueForMonth(invoices, month)
   const computedBurn = costsForMonth(costs, month)
   const monthlyBurnSatang = settings?.monthly_burn_satang ?? computedBurn
-  const net = netBurnSatang(monthlyBurnSatang, monthlyRevenueSatang)
+  const cashReceived = sumSatang(payments.filter((p) => monthKey(p.paid_at) === month).map((p) => p.amount_satang))
+  const net = netBurnSatang(monthlyBurnSatang, cashReceived)
   const cashSatang = settings?.cash_balance_satang ?? 0
 
   const followUpsDueToday = activities
@@ -191,9 +197,10 @@ export async function getDashboardData(): Promise<DashboardData> {
     monthlyRevenueSatang,
     revenueHistory: lastNMonths(6, month).map((month) => ({
       month,
-      revenueSatang: revenueForMonth(payments, month),
+      revenueSatang: revenueForMonth(invoices, month),
     })),
     monthlyBurnSatang,
+    monthlyCogsSatang: sumSatang(cogs.map((row) => row.amount_satang)),
     netBurnSatang: net,
     runwayMonths: runwayMonths(cashSatang, net),
     pipelineSatang: pipelineValue(deals),

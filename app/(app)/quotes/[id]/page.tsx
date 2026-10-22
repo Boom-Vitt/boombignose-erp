@@ -178,6 +178,7 @@ export default async function QuoteDetailPage({
         flow={QUOTE_FLOW}
         status={quote.status}
         transition={transitionQuote}
+        record={{ recordType: "quote", recordId: quote.id }}
         commands={
           canConvert
             ? { convert: (props) => <ConvertQuoteButton quoteId={quote.id} orgId={ctx.orgId} {...props} /> }

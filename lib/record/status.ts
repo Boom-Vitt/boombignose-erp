@@ -21,6 +21,7 @@ export type Tone = "neutral" | "info" | "success" | "warning" | "danger"
 
 /** One label and tone per status value, shared by every enum that uses the value. */
 export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }> = {
+  closed: { label: "Closed", tone: "success" },
   confirmed: { label: "Confirmed", tone: "info" },
   received: { label: "Received", tone: "success" },
   billed: { label: "Billed", tone: "success" },
@@ -56,10 +57,11 @@ export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }>
 }
 
 /** Steps a page performs with its own control instead of a plain status change. */
-export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "reject" | "lose"
+export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "deliver" | "reject" | "lose"
 
 export type FlowAction<S extends string> =
-  | { label: string; to: S }
+  /** `confirm` asks before a destructive move; `reason` also asks why and keeps it in the record history. */
+  | { label: string; to: S; confirm?: string; reason?: true }
   | { label: string; command: FlowCommand }
 
 export type DocumentFlow<S extends string> = {
@@ -71,7 +73,8 @@ export type DocumentFlow<S extends string> = {
   next: Record<S, { primary?: FlowAction<S>; secondary?: readonly FlowAction<S>[] }>
 }
 
-// Losing a deal needs a reason, so the deal page opens a dialog instead of changing the stage.
+// Losing a deal needs a reason from the workspace's list, so the deal page opens its own dialog
+// (confirm, reason, optional note) instead of a plain stage change.
 const LOSE_DEAL = { label: "Mark lost", command: "lose" } as const
 
 export const QUOTE_FLOW: DocumentFlow<QuoteStatus> = {
@@ -80,7 +83,7 @@ export const QUOTE_FLOW: DocumentFlow<QuoteStatus> = {
     draft: { primary: { label: "Mark sent", to: "sent" } },
     sent: {
       primary: { label: "Accept", to: "accepted" },
-      secondary: [{ label: "Decline", to: "declined" }],
+      secondary: [{ label: "Decline", to: "declined", confirm: "The quote closes as declined and can no longer be accepted.", reason: true }],
     },
     accepted: { primary: { label: "Create project and draft invoice", command: "convert" } },
     declined: {},
@@ -95,10 +98,10 @@ export const INVOICE_FLOW: DocumentFlow<InvoiceStatus> = {
   on: { partially_paid: "sent", overdue: "sent" },
   next: {
     draft: { primary: { label: "Issue invoice", command: "issue" } },
-    sent: { primary: { label: "Record payment", command: "pay" } },
-    partially_paid: { primary: { label: "Record payment", command: "pay" } },
-    overdue: { primary: { label: "Record payment", command: "pay" } },
-    paid: {},
+    sent: { primary: { label: "Record payment", command: "pay" }, secondary: [{ label: "Deliver", command: "deliver" }] },
+    partially_paid: { primary: { label: "Record payment", command: "pay" }, secondary: [{ label: "Deliver", command: "deliver" }] },
+    overdue: { primary: { label: "Record payment", command: "pay" }, secondary: [{ label: "Deliver", command: "deliver" }] },
+    paid: { secondary: [{ label: "Deliver", command: "deliver" }] },
     cancelled: {},
   },
 }
@@ -135,11 +138,13 @@ export const PROJECT_FLOW: DocumentFlow<ProjectStatus> = {
     support: {},
     paused: {
       primary: { label: "Resume", to: "in_progress" },
-      secondary: [{ label: "Cancel project", to: "cancelled" }],
+      secondary: [{ label: "Cancel project", to: "cancelled", confirm: "The project closes as cancelled and cannot be resumed." }],
     },
     cancelled: {},
   },
 }
+
+const CANCEL_SUBSCRIPTION = { label: "Cancel subscription", to: "cancelled", confirm: "No more invoices are generated until it is activated again." } as const
 
 export const SUBSCRIPTION_FLOW: DocumentFlow<SubscriptionStatus> = {
   stages: ["active"],
@@ -147,12 +152,12 @@ export const SUBSCRIPTION_FLOW: DocumentFlow<SubscriptionStatus> = {
     active: {
       secondary: [
         { label: "Pause", to: "paused" },
-        { label: "Cancel subscription", to: "cancelled" },
+        CANCEL_SUBSCRIPTION,
       ],
     },
     paused: {
       primary: { label: "Activate", to: "active" },
-      secondary: [{ label: "Cancel subscription", to: "cancelled" }],
+      secondary: [CANCEL_SUBSCRIPTION],
     },
     cancelled: { primary: { label: "Activate", to: "active" } },
   },
@@ -184,12 +189,16 @@ export function statusBar<S extends string>(
   }
 }
 
+const CANCEL_PURCHASE = { label: "Cancel", to: "cancelled", confirm: "The purchase order closes as cancelled and cannot be confirmed again." } as const
+
 export const PURCHASE_FLOW: DocumentFlow<Enums<"purchase_status">> = {
   stages: ["draft", "sent", "confirmed", "received", "billed"],
+  on: { closed: "received" },
   next: {
-    draft: { primary: { label: "Send RFQ", command: "send_rfq" }, secondary: [{ label: "Confirm", to: "confirmed" }, { label: "Cancel", to: "cancelled" }] },
-    sent: { primary: { label: "Confirm", to: "confirmed" }, secondary: [{ label: "Cancel", to: "cancelled" }] },
-    confirmed: { primary: { label: "Receive", command: "receive" }, secondary: [{ label: "Create bill", command: "bill" }, { label: "Cancel", to: "cancelled" }] },
+    draft: { primary: { label: "Send RFQ", command: "send_rfq" }, secondary: [{ label: "Confirm", to: "confirmed" }, CANCEL_PURCHASE] },
+    sent: { primary: { label: "Confirm", to: "confirmed" }, secondary: [CANCEL_PURCHASE] },
+    confirmed: { primary: { label: "Receive", command: "receive" }, secondary: [{ label: "Create bill", command: "bill" }, { label: "Close remainder", to: "closed" }, CANCEL_PURCHASE] },
+    closed: { primary: { label: "Create bill", command: "bill" } },
     received: { primary: { label: "Create bill", command: "bill" } },
     billed: {},
     cancelled: {},

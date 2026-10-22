@@ -60,6 +60,6 @@ it("asks for a lost reason instead of marking the deal lost straight away", asyn
   expect(reasonDialog.props.open).toBe(true)
   expect(updateDealStage).not.toHaveBeenCalled()
 
-  await reasonDialog.props.onConfirm("reason-1")
-  expect(updateDealStage).toHaveBeenCalledWith("deal-a", "lost", { lostReasonId: "reason-1" })
+  await reasonDialog.props.onConfirm("reason-1", "Went in-house")
+  expect(updateDealStage).toHaveBeenCalledWith("deal-a", "lost", { lostReasonId: "reason-1", note: "Went in-house" })
 })

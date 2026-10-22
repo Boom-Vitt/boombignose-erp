@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
+import { useGuardedForm } from "@/components/record/record-guard"
 
 import { bahtToSatang, formatTHB } from "@/lib/money"
 import { expectedRevenue, STAGE_PROBABILITY } from "@/lib/metrics/pipeline"
@@ -93,6 +94,16 @@ export function DealForm({
       ...defaultValues,
     },
   })
+  const onSubmit = useGuardedForm(form, async (values) => {
+    const res = await action(values)
+    // On success the action redirects; only an error returns here.
+    if (res?.error) {
+      toast.error(res.error)
+      return false
+    }
+    toast.success("Saved")
+    return true
+  })
 
   const [stage, valueBaht, probability] = useWatch({ control: form.control, name: ["stage", "valueBaht", "probability"] })
   const closed = stage === "won" || stage === "lost"
@@ -104,16 +115,7 @@ export function DealForm({
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(async (values) => {
-          const res = await action(values)
-          // On success the action redirects; only an error returns here.
-          if (res?.error) {
-            toast.error(res.error)
-            return
-          }
-          toast.success("Saved")
-          router.refresh()
-        })}
+        onSubmit={onSubmit}
         className="space-y-5"
       >
         <FormField

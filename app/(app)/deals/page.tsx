@@ -14,7 +14,7 @@ import {
   weightedPipelineValue,
   type DealStage,
 } from "@/lib/metrics/pipeline"
-import { facetLabel, matchesFacets, parseFacets, serializeFacets, type SearchParams } from "@/lib/search-facets"
+import { facetLabel, facetValues, matchesFacets, parseFacets, serializeFacets, type SearchParams } from "@/lib/search-facets"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
@@ -94,7 +94,7 @@ export default async function DealsPage({
 
   // When a stage is selected, only show that column.
   const visibleColumns = config.status
-    ? COLUMNS.filter((col) => col.id === config.status)
+    ? COLUMNS.filter((col) => facetValues(config.status).includes(col.id))
     : COLUMNS
 
   const ownerLabel = (owner: string | null) => (owner && ownerName.get(owner)) || null

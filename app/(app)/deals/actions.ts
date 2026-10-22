@@ -8,6 +8,7 @@ import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
+import { logRecordNote } from "@/lib/record-history/actions"
 
 const STAGES = [
   "lead",
@@ -149,12 +150,14 @@ const StageMove = z.object({
   /** Board drops: the card it lands after; null or omitted puts it at the top of the column. */
   after: z.guid().nullish(),
   lostReasonId: z.guid().optional(),
+  /** Optional closing note for a lost deal, kept in its record history. */
+  note: z.string().trim().max(2000).optional(),
 })
 
 export async function updateDealStage(
   id: string,
   stage: string,
-  place: { after?: string | null; lostReasonId?: string } = {}
+  place: { after?: string | null; lostReasonId?: string; note?: string } = {}
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   const parsed = StageMove.safeParse({ id, stage, ...place })
@@ -188,6 +191,10 @@ export async function updateDealStage(
       summary: `Moved deal "${before.title}" from ${from} → ${m.stage}`,
       meta: { from, to: m.stage, ...(m.lostReasonId ? { lostReasonId: m.lostReasonId } : {}) },
     })
+  }
+  if (m.stage === "lost" && m.note) {
+    const logged = await logRecordNote({ recordType: "deal", recordId: id, body: `Lost: ${m.note}` })
+    if (logged.error) return { error: "The deal is marked lost, but the note was not saved. Add it from the deal page." }
   }
 
   revalidatePath("/deals")
