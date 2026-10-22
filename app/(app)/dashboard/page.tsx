@@ -17,7 +17,7 @@ import { getDashboardData } from "@/lib/queries/dashboard"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
 
@@ -34,6 +34,7 @@ function runwayLabel(months: number | null): { value: string; hint: string; tone
 export default async function DashboardPage() {
   const d = await getDashboardData()
   const runway = runwayLabel(d.runwayMonths)
+  const maxRevenue = Math.max(...d.revenueHistory.map((row) => row.revenueSatang))
 
   return (
     <div className="space-y-6">
@@ -107,6 +108,44 @@ export default async function DashboardPage() {
           hint="In delivery or support"
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle id="revenue-history-title">รายได้ 6 เดือนล่าสุด</CardTitle>
+          <CardDescription>
+            ยอดรับชำระที่ยืนยันแล้ว รวมเดือนปัจจุบัน · เวลาไทย (Asia/Bangkok)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <figure
+            aria-labelledby="revenue-history-title"
+            tabIndex={0}
+            className="overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <ol className="grid min-w-[36rem] grid-cols-6 gap-4">
+              {d.revenueHistory.map(({ month, revenueSatang }) => (
+                <li key={month} className="space-y-2 text-center">
+                  <div className="text-xs font-medium tabular-nums sm:text-sm">
+                    {formatTHB(revenueSatang)}
+                  </div>
+                  <div aria-hidden="true" className="flex h-40 items-end justify-center border-b">
+                    <div
+                      className="w-full max-w-16 rounded-t bg-primary"
+                      style={{ height: `${maxRevenue > 0 ? (revenueSatang / maxRevenue) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <time dateTime={month} className="text-muted-foreground text-xs">
+                    {month}
+                  </time>
+                </li>
+              ))}
+            </ol>
+          </figure>
+          {maxRevenue === 0 && (
+            <p className="text-muted-foreground mt-4 text-sm">ยังไม่มีรายได้ในช่วง 6 เดือนนี้</p>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

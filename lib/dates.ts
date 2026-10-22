@@ -19,6 +19,22 @@ export function currentMonthKey(now: Date = new Date(), tz: string = APP_TZ): st
   return monthKey(now, tz)
 }
 
+/** The last `n` calendar month keys ('YYYY-MM'), oldest first, ending at `current`. */
+export function lastNMonths(n: number, current: string): string[] {
+  const [y, m] = current.split("-").map(Number)
+  const out: string[] = []
+  for (let i = n - 1; i >= 0; i--) {
+    let mm = m - i
+    let yy = y
+    while (mm <= 0) {
+      mm += 12
+      yy -= 1
+    }
+    out.push(`${yy}-${String(mm).padStart(2, "0")}`)
+  }
+  return out
+}
+
 /** True when an ISO date (YYYY-MM-DD) is strictly before today. Null → false. */
 export function isPastDue(dueISO: string | null, todayISOStr: string): boolean {
   if (!dueISO) return false

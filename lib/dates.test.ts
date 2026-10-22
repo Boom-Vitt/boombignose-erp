@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { todayISO, monthKey, currentMonthKey, isPastDue, daysUntil } from "@/lib/dates"
+import { todayISO, monthKey, currentMonthKey, lastNMonths, isPastDue, daysUntil } from "@/lib/dates"
 
 describe("dates in Asia/Bangkok (UTC+7)", () => {
   it("formats today, rolling over the date at +7", () => {
@@ -17,6 +17,15 @@ describe("dates in Asia/Bangkok (UTC+7)", () => {
 
   it("currentMonthKey agrees with monthKey", () => {
     expect(currentMonthKey(new Date("2026-03-10T05:00:00Z"))).toBe("2026-03")
+  })
+
+  it("lists six calendar months oldest first across a year boundary", () => {
+    expect(lastNMonths(6, "2026-02")).toEqual([
+      "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02",
+    ])
+    expect(lastNMonths(6, "2026-10")).toEqual([
+      "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10",
+    ])
   })
 
   it("isPastDue compares ISO date strings", () => {
