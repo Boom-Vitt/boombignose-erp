@@ -11,6 +11,12 @@ describe("record history boundary validation", () => {
     expect(ScheduleInput.safeParse({ ...activity, dueDate: "2026-02-30" }).success).toBe(false)
     expect(ScheduleInput.safeParse({ ...activity, owner: "" }).success).toBe(false)
   })
+  it("accepts database ids that are not RFC 9562 shaped, like the seeded demo records", () => {
+    const seeded = { recordType: "client", recordId: "c0000000-0000-0000-0000-000000000001" }
+    expect(NoteInput.safeParse({ ...seeded, body: "hello" }).success).toBe(true)
+    const activity = { ...seeded, type: "call", owner: "b0000000-0000-0000-0000-000000000001", summary: "Call buyer", dueDate: "2026-02-28" }
+    expect(ScheduleInput.safeParse(activity).success).toBe(true)
+  })
   it("enforces the 10 MB boundary, MIME allowlist, and safe filenames", () => {
     const file = { name: "scope.pdf", type: "application/pdf", size: MAX_ATTACHMENT_SIZE }
     expect(AttachmentInput.safeParse(file).success).toBe(true)
