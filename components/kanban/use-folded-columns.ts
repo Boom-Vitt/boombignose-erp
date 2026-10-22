@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react"
 
 import { parseFolded } from "@/lib/kanban"
 
-// Last write per key for this tab, so folding still works when storage throws (private mode, quota).
+// Writes that storage refused (private mode, quota), so folding still works in this tab.
 const memory = new Map<string, string>()
 const listeners = new Set<() => void>()
 
@@ -40,11 +40,11 @@ export function useFoldedColumns(
     const next = new Set(folded)
     if (!next.delete(id)) next.add(id)
     const value = JSON.stringify([...next])
-    memory.set(storageKey, value)
     try {
       window.localStorage.setItem(storageKey, value)
+      memory.delete(storageKey)
     } catch {
-      // Storage unavailable: the in-memory copy keeps this tab consistent.
+      memory.set(storageKey, value)
     }
     for (const l of listeners) l()
   }

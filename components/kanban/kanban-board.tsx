@@ -1,6 +1,6 @@
 "use client"
 
-import { useId, useOptimistic, useRef, useState, useTransition } from "react"
+import { useEffect, useId, useOptimistic, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronsLeftRight, ChevronsRightLeft, Plus, X } from "lucide-react"
 import { toast } from "sonner"
@@ -74,6 +74,21 @@ export function KanbanBoard<S extends string>({
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<S | null>(null)
   const [creatingIn, setCreatingIn] = useState<S | null>(null)
+  // Moves, folds and closing quick create unmount the focused control; refocus its replacement.
+  const refocus = useRef<string[]>([])
+  useEffect(() => {
+    const target = refocus.current
+      .map((selector) => document.querySelector<HTMLElement>(selector))
+      .find(Boolean)
+    if (!target) return
+    refocus.current = []
+    target.focus()
+  })
+
+  function fold(id: S) {
+    refocus.current = [folded.has(id) ? `[data-fold="${id}"]` : `[data-unfold="${id}"]`]
+    toggleFold(id)
+  }
 
   function move(id: string, to: S) {
     const card = shown.find((c) => c.id === id)
@@ -121,7 +136,7 @@ export function KanbanBoard<S extends string>({
               key={group.id}
               group={group}
               highlighted={over === group.id}
-              onUnfold={() => toggleFold(group.id)}
+              onUnfold={() => fold(group.id)}
               {...dropProps(group.id)}
             />
           ) : (
@@ -144,6 +159,7 @@ export function KanbanBoard<S extends string>({
                     size="icon-xs"
                     aria-label={`Quick create in ${group.label}`}
                     aria-expanded={creatingIn === group.id}
+                    data-create={group.id}
                     onClick={() => setCreatingIn(creatingIn === group.id ? null : group.id)}
                   >
                     <Plus />
@@ -154,7 +170,8 @@ export function KanbanBoard<S extends string>({
                     variant="ghost"
                     size="icon-xs"
                     aria-label={`Fold ${group.label}`}
-                    onClick={() => toggleFold(group.id)}
+                    data-fold={group.id}
+                    onClick={() => fold(group.id)}
                   >
                     <ChevronsRightLeft />
                   </Button>
@@ -170,7 +187,10 @@ export function KanbanBoard<S extends string>({
                   <QuickCreate
                     stage={group.id}
                     config={quickCreate}
-                    onClose={() => setCreatingIn(null)}
+                    onClose={() => {
+                      refocus.current = [`[data-create="${group.id}"]`]
+                      setCreatingIn(null)
+                    }}
                   />
                 ) : null}
                 {group.cards.length === 0 && creatingIn !== group.id ? (
@@ -188,7 +208,11 @@ export function KanbanBoard<S extends string>({
                       setDragging(null)
                       setOver(null)
                     }}
-                    onMove={(to) => move(card.id, to)}
+                    onMove={(to) => {
+                      // Keyboard/touch path: follow the card, or its folded column.
+                      refocus.current = [`[data-card="${card.id}"] [data-move]`, `[data-unfold="${to}"]`]
+                      move(card.id, to)
+                    }}
                   />
                 ))}
               </div>
@@ -215,6 +239,7 @@ function FoldedColumn<S extends string>({
       <button
         type="button"
         onClick={onUnfold}
+        data-unfold={group.id}
         aria-label={`Unfold ${group.label} (${group.cards.length})`}
         className={cn(
           "text-muted-foreground hover:bg-muted hover:text-foreground flex min-h-48 w-10 flex-col items-center gap-2 rounded-lg bg-muted/40 py-3 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",

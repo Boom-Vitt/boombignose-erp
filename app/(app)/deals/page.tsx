@@ -81,7 +81,11 @@ export default async function DealsPage({
       .from("activities")
       .select("deal_id,due_date")
       .eq("org_id", ctx.orgId)
-      .eq("done", false),
+      .eq("done", false)
+      .not("deal_id", "is", null)
+      .not("due_date", "is", null)
+      // Earliest first, so a capped response still keeps the dates that drive the dots.
+      .order("due_date", { ascending: true }),
   ])
 
   const allDeals = dealsRes.data ?? []

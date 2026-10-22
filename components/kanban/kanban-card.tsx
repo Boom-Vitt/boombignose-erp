@@ -50,7 +50,7 @@ export function KanbanCard<S extends string>({
         onDragStart()
       }}
       onDragEnd={onDragEnd}
-      data-testid="kanban-card"
+      data-card={card.id}
       className={cn(
         "group/card relative cursor-grab rounded-lg border bg-card p-3 text-card-foreground shadow-xs transition-colors hover:border-ring active:cursor-grabbing",
         dragging && "opacity-50"
@@ -98,6 +98,7 @@ export function KanbanCard<S extends string>({
               variant="ghost"
               size="icon-xs"
               aria-label={`Move "${card.title}" to…`}
+              data-move
               className="absolute top-2 right-2 z-10"
             />
           }
