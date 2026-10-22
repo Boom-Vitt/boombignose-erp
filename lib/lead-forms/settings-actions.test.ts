@@ -96,3 +96,10 @@ it("disables a form with both form ID and org filters", async () => {
   expect(state.equals).toHaveBeenCalledWith("id", "b6000000-0000-4000-8000-000000000020")
   expect(state.equals).toHaveBeenCalledWith("org_id", "workspace-a")
 })
+
+it("disables a form whose seed-shaped ID is not an RFC UUID", async () => {
+  const form = new FormData()
+  form.set("id", "40000000-0000-0000-0000-000000000001")
+  await expect(disableLeadForm(form)).rejects.toThrow(/^REDIRECT \/settings\/lead-forms$/)
+  expect(state.equals).toHaveBeenCalledWith("id", "40000000-0000-0000-0000-000000000001")
+})

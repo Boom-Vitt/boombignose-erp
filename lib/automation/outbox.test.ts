@@ -91,4 +91,12 @@ describe("at-least-once outbox delivery", () => {
     expect((await deliverOutbox(client, { url: "http://127.0.0.1:55599", secret: "test" }, sink)).failed).toBe(1)
     expect(persisted).toEqual({ p_event_id: eventId, p_lease_token: lease1, p_error: "HTTP 503" })
   })
+  it("delivers claims whose seed event and org ids lack RFC 9562 version bits", async () => {
+    const seed = { ...envelope, id: "70000000-0000-0000-0000-000000000001", org_id: "a0000000-0000-0000-0000-000000000001" }
+    const client = database(name => name === "claim_outbound_events" ? [seed] : true)
+    const bodies: unknown[] = []
+    const sink: typeof fetch = async (_url, init) => { bodies.push(JSON.parse(String(init?.body))); return new Response(null, { status: 204 }) }
+    expect((await deliverOutbox(client, { url: "http://127.0.0.1:55599", secret: "local-secret" }, sink)).delivered).toBe(1)
+    expect(bodies).toEqual([{ version: 1, eventId: seed.id, orgId: seed.org_id, type: "followup.due", payload: { title: "Call client" } }])
+  })
 })

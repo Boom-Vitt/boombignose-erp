@@ -37,4 +37,12 @@ describe("subscription occurrence command", () => {
     })
     await expect(billing.generateSubscriptionOccurrence(client, orgId, subId, "2026-07-02")).rejects.toThrow("invoice display number conflict")
   })
+  it("returns the seed invoice id although it lacks RFC 9562 version bits", async () => {
+    const seedInvoice = "f0000000-0000-0000-0000-000000000001"
+    const client = createClient<Database>("http://127.0.0.1:55501", "test-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async () => Response.json(seedInvoice) },
+    })
+    expect(await billing.generateSubscriptionOccurrence(client, "a0000000-0000-0000-0000-000000000001", "80000000-0000-0000-0000-000000000001", "2026-07-02")).toBe(seedInvoice)
+  })
 })

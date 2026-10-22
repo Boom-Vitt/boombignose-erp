@@ -218,6 +218,13 @@ it('an inactive deal cannot create an activity in the active workspace', async (
  expect(await addActivity({dealId:id,type:'note',body:'Wrong workspace'})).toEqual({error:'Deal not found in the active workspace'})
  expect(activities).toHaveLength(0)
 })
+it('an activity can be added to a deal whose seed-shaped id is not an RFC UUID', async () => {
+ const id = '20000000-0000-0000-0000-000000000001'
+ const activities: Record<string,unknown>[] = []
+ state.client = databaseFixture({deals:[{id,org_id:'A',client_id:'client-A'}],activities})
+ expect(await addActivity({dealId:id,type:'note',body:'Seeded'})).toEqual({})
+ expect(activities).toEqual([expect.objectContaining({org_id:'A',deal_id:id,client_id:'client-A'})])
+})
 it('a failed dashboard query cannot report invented zero balances', async () => {
  const client = state.client as ReturnType<typeof databaseFixture>
  state.client = {from: (table:string) => table === 'costs'

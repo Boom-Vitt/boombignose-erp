@@ -11,9 +11,12 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.client }))
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }))
 vi.mock("@/lib/audit", () => ({ writeAudit: async () => undefined }))
-import { generateInvoiceNow, createSubscription, updateSubscription, setSubscriptionStatus } from "@/app/(app)/finance/subscription-actions"
+import { generateInvoiceNow, createSubscription, updateSubscription, setSubscriptionStatus, deleteSubscription } from "@/app/(app)/finance/subscription-actions"
 
 const subId = "11111111-1111-4111-8111-111111111111"
+const seedSubId = "80000000-0000-0000-0000-000000000001"
+const seedClientId = "c0000000-0000-0000-0000-000000000001"
+const seedProjectId = "e0000000-0000-0000-0000-000000000001"
 const input = { id: subId, name: "Retainer", client_id: "33333333-3333-4333-8333-333333333333", amountBaht: 100, interval: "monthly" as const }
 
 beforeEach(() => {
@@ -57,5 +60,32 @@ describe("subscription action boundaries", () => {
   it("rejects unsafe money before a subscription write", async () => {
     expect(await updateSubscription({ ...input, amountBaht: Number.MAX_SAFE_INTEGER })).toEqual({ error: "Invalid input" })
     expect(state.calls).toEqual([])
+  })
+})
+
+describe("seed-shaped ids", () => {
+  it("accepts a seed project id in the optional project select", async () => {
+    await createSubscription({ ...input, project_id: seedProjectId })
+    expect(state.calls).toEqual([{ url: expect.stringContaining("/rest/v1/subscriptions"), body: expect.objectContaining({ project_id: seedProjectId }) }])
+  })
+  it("accepts a seed client id on create", async () => {
+    await createSubscription({ ...input, client_id: seedClientId })
+    expect(state.calls).toEqual([{ url: expect.stringContaining("/rest/v1/subscriptions"), body: expect.objectContaining({ client_id: seedClientId }) }])
+  })
+  it("accepts seed subscription and client ids on update", async () => {
+    await updateSubscription({ ...input, id: seedSubId, client_id: seedClientId })
+    expect(state.calls).toEqual([{ url: expect.stringContaining(`id=eq.${seedSubId}`), body: expect.objectContaining({ client_id: seedClientId }) }])
+  })
+  it("accepts a seed subscription id on status change", async () => {
+    await setSubscriptionStatus({ id: seedSubId, status: "paused" })
+    expect(state.calls).toEqual([{ url: expect.stringContaining(`id=eq.${seedSubId}`), body: { status: "paused" } }])
+  })
+  it("accepts a seed subscription id on delete", async () => {
+    await deleteSubscription({ id: seedSubId })
+    expect(state.calls).toEqual([{ url: expect.stringContaining(`id=eq.${seedSubId}`), body: null }])
+  })
+  it("accepts a seed subscription id on manual generation", async () => {
+    expect(await generateInvoiceNow({ id: seedSubId, occurrence: "2026-07-02" })).toEqual({})
+    expect(state.calls).toEqual([expect.objectContaining({ body: expect.objectContaining({ p_subscription_id: seedSubId }) })])
   })
 })

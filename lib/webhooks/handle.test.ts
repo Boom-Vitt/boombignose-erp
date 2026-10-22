@@ -53,4 +53,16 @@ describe("authenticated inbound event receipts", () => {
     }
     expect(state.requests).toEqual([])
   })
+  it("acknowledges a seed tenant and event id that lack RFC 9562 version bits", async () => {
+    const seedOrg = "a0000000-0000-0000-0000-000000000001"
+    const seedEvent = "70000000-0000-0000-0000-000000000001"
+    state.client = createClient<Database>("http://127.0.0.1:55501", "test-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (_url, init) => { state.requests.push(JSON.parse(String(init?.body))); return Response.json({ eventId: seedEvent, duplicate: false }) } },
+    })
+    const response = await followup(request("local-secret", { orgId: seedOrg, payload: {} }))
+    expect(await response.json()).toEqual({ ok: true, event: "followup", eventId: seedEvent, duplicate: false })
+    expect(response.status).toBe(200)
+    expect(state.requests).toEqual([expect.objectContaining({ p_org_id: seedOrg })])
+  })
 })

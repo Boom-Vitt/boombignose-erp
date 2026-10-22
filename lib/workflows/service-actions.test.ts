@@ -46,6 +46,17 @@ describe("quote conversion command", () => {
     expect(fixture.from).not.toHaveBeenCalled()
   })
 
+  it("converts the seeded quote whose ID is not an RFC UUID", async () => {
+    const seededQuoteId = "90000000-0000-0000-0000-000000000001"
+    fixture.rpc.mockResolvedValue({ data: invoiceId, error: null })
+    await expect(convertQuoteToInvoice({ id: seededQuoteId, key })).rejects.toThrow(
+      `redirect:/finance/invoices/${invoiceId}`
+    )
+    expect(fixture.rpc).toHaveBeenCalledWith("convert_accepted_quote", {
+      p_org_id: fixture.ctx.orgId, p_quote_id: seededQuoteId, p_key: key,
+    })
+  })
+
   it("keeps the caller key unchanged on retries", async () => {
     fixture.rpc.mockResolvedValue({ data: invoiceId, error: null })
     for (let attempt = 0; attempt < 2; attempt++) {
