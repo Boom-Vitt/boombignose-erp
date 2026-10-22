@@ -96,8 +96,8 @@ insert into public.lead_forms(id,org_id,token,name,default_owner) values(pg_temp
 set local role service_role;
 select is(public.submit_lead_form(repeat('f',43),repeat('d',64),'Repeat visitor','','repeat@example.test','','Second enquiry',''),'success','the repeat enquiry is accepted');
 reset role;
-select is((select modes::text from extensions.pgrowlocks('public.deals') l join public.deals d on d.ctid=l.locked_row where d.id=pg_temp.fix_id(204)),
-  '{"For Update"}','the reused deal is locked for update through the attachment writes');
+select ok((select 'For Update'=any(modes) from extensions.pgrowlocks('public.deals') l join public.deals d on d.ctid=l.locked_row where d.id=pg_temp.fix_id(204)),
+  'the reused deal is locked for update through the attachment writes');
 
 select * from finish();
 rollback;

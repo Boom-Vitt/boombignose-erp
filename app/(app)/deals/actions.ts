@@ -8,7 +8,6 @@ import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { bahtToSatang } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
-import { logRecordNote } from "@/lib/record-history/actions"
 
 const STAGES = [
   "lead",
@@ -134,7 +133,10 @@ export async function updateDeal(
     .eq("org_id", ctx.orgId)
     .select("id")
 
-  if (error) return { error: error.message }
+  if (error) {
+    if (error.message.includes("quotes_deal_client_fkey")) return { error: QUOTED_CLIENT }
+    return { error: error.message }
+  }
   if (!updated.length) return { error: GONE }
 
   revalidatePath("/deals")
@@ -143,6 +145,7 @@ export async function updateDeal(
 }
 
 const GONE = "This deal no longer exists. Refresh to see the latest pipeline."
+const QUOTED_CLIENT = "This deal has quotes for its current client. Unlink them before changing the client."
 
 const StageMove = z.object({
   id: z.guid(),
@@ -180,6 +183,7 @@ export async function updateDealStage(
     p_stage: m.stage,
     p_after_id: m.after ?? null,
     p_lost_reason_id: m.lostReasonId ?? null,
+    p_note: m.stage === "lost" && m.note ? `Lost: ${m.note}` : null,
   })
   if (error) return { error: error.code === "P0002" ? GONE : error.message }
 
@@ -191,10 +195,6 @@ export async function updateDealStage(
       summary: `Moved deal "${before.title}" from ${from} → ${m.stage}`,
       meta: { from, to: m.stage, ...(m.lostReasonId ? { lostReasonId: m.lostReasonId } : {}) },
     })
-  }
-  if (m.stage === "lost" && m.note) {
-    const logged = await logRecordNote({ recordType: "deal", recordId: id, body: `Lost: ${m.note}` })
-    if (logged.error) return { error: "The deal is marked lost, but the note was not saved. Add it from the deal page." }
   }
 
   revalidatePath("/deals")
@@ -211,32 +211,15 @@ export async function deleteDeal(id: string): Promise<{ error?: string }> {
   }
 
   const supabase = await createSupabaseClient()
-  // Read the title before deletion so the audit summary can name the deal.
-  const { data: before } = await supabase
-    .from("deals")
-    .select("title")
-    .eq("id", id)
-    .eq("org_id", ctx.orgId)
-    .maybeSingle()
-
-  // Detach activities so the deal can be removed without FK errors.
-  await supabase
-    .from("activities")
-    .update({ deal_id: null })
-    .eq("deal_id", id)
-    .eq("org_id", ctx.orgId)
-  const { error } = await supabase
-    .from("deals")
-    .delete()
-    .eq("id", id)
-    .eq("org_id", ctx.orgId)
-  if (error) return { error: error.message }
+  // Moves the deal's activities to its client and deletes it in one transaction; returns the title.
+  const { data: title, error } = await supabase.rpc("delete_deal", { p_org_id: ctx.orgId, p_deal_id: id })
+  if (error) return { error: error.code === "P0002" ? GONE : error.message }
 
   await writeAudit(ctx, {
     entity: "deal",
     entityId: id,
     action: "deleted",
-    summary: before ? `Deleted deal "${before.title}"` : "Deleted a deal",
+    summary: `Deleted deal "${title}"`,
   })
 
   revalidatePath("/deals")

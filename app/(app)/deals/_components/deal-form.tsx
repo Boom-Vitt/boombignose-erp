@@ -109,7 +109,8 @@ export function DealForm({
   const closed = stage === "won" || stage === "lost"
   const expected = expectedRevenue({
     value_satang: bahtToSatang(Math.max(Number(valueBaht) || 0, 0)),
-    probability: Math.min(Math.max(Number(probability) || 0, 0), 100),
+    // Rounded: the preview runs on every keystroke, before validation rejects a decimal.
+    probability: Math.round(Math.min(Math.max(Number(probability) || 0, 0), 100)),
   })
 
   return (

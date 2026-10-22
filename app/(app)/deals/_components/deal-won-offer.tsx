@@ -11,7 +11,7 @@ export async function DealWonOffer({ quoteId }: { quoteId: string }) {
   const supabase = await createClient()
   const { data: quote } = await supabase
     .from("quotes")
-    .select("status, deal:deals!quotes_deal_tenant_fkey(id,title,stage)")
+    .select("status, deal:deals!quotes_deal_client_fkey(id,title,stage)")
     .eq("org_id", ctx.orgId)
     .eq("id", quoteId)
     .maybeSingle()
