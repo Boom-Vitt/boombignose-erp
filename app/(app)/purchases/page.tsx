@@ -3,7 +3,7 @@ import { z } from "zod"
 import { requireOrgContext } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { createClient } from "@/lib/supabase/server"
-import { allPurchasingRows } from "@/lib/purchasing/pagination"
+import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { purchaseTotal } from "@/lib/purchasing/quantities"
 import { parseFacets, matchesFacets, facetLabel, type SearchParams } from "@/lib/search-facets"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
@@ -24,8 +24,8 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
   const vendorId = z.uuid().safeParse(params.vendor)
   const db = await createClient()
   const [orders, lines, savedViews] = await Promise.all([
-    allPurchasingRows((from, to) => db.from("purchase_orders").select("*,vendors(name)").eq("org_id", ctx.orgId).order("order_date", { ascending: false }).order("id").range(from, to)),
-    allPurchasingRows((from, to) => db.from("purchase_order_items").select("purchase_order_id,quantity,unit_cost_satang").eq("org_id", ctx.orgId).order("id").range(from, to)),
+    readAllOrThrow((from, to) => db.from("purchase_orders").select("*,vendors(name)").eq("org_id", ctx.orgId).order("order_date", { ascending: false }).order("id").range(from, to)),
+    readAllOrThrow((from, to) => db.from("purchase_order_items").select("purchase_order_id,quantity,unit_cost_satang").eq("org_id", ctx.orgId).order("id").range(from, to)),
     getFacetSavedViews("purchases"),
   ])
   const byOrder = new Map<string, typeof lines>()

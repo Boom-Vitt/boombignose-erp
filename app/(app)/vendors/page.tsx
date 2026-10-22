@@ -2,7 +2,7 @@ import Link from "next/link"
 import { requireOrgContext } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { createClient } from "@/lib/supabase/server"
-import { allPurchasingRows } from "@/lib/purchasing/pagination"
+import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { parseFacets, matchesFacets, type SearchParams } from "@/lib/search-facets"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
 import { monthKey } from "@/lib/dates"
@@ -18,7 +18,7 @@ export default async function VendorsPage({ searchParams }: { searchParams: Prom
   const config = parseFacets(await searchParams, "vendors")
   const db = await createClient()
   const [vendors, savedViews] = await Promise.all([
-    allPurchasingRows((from, to) => db.from("vendors").select("*").eq("org_id", ctx.orgId).order("name").order("id").range(from, to)),
+    readAllOrThrow((from, to) => db.from("vendors").select("*").eq("org_id", ctx.orgId).order("name").order("id").range(from, to)),
     getFacetSavedViews("vendors"),
   ])
   const rows = vendors.filter(v => matchesFacets(config, { text: `${v.name} ${v.tax_id ?? ""} ${v.email ?? ""}`, status: v.active ? "active" : "archived", date: v.created_at, owner: null }, ctx.userId))

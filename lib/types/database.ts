@@ -83,14 +83,14 @@ isOneToOne: false
                   ]
                 },"activities": {
                   Row: {
-                    "body": string | null,"client_id": string | null,"created_at": string,"deal_id": string | null,"done": boolean,"due_date": string | null,"id": string,"org_id": string,"owner": string | null,"type": Database["public"]['Enums']["activity_type"],"updated_at": string,"record_type": Database["public"]["Enums"]["record_type"] | null,"record_id": string | null,"completed_at": string | null
+                    "body": string | null,"client_id": string | null,"created_at": string,"deal_id": string | null,"done": boolean,"due_date": string | null,"id": string,"org_id": string,"owner": string | null,"type": Database["public"]['Enums']["activity_type"],"updated_at": string,"record_type": Database["public"]["Enums"]["record_type"] | null,"record_id": string | null,"completed_at": string | null,"completed_by": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id": string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null
+                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id": string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null,"completed_by"?: string | null
                   }
                   Update: {
-                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id"?: string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null
+                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id"?: string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null,"completed_by"?: string | null
                   }
                   Relationships: [
                     {
@@ -1140,7 +1140,28 @@ isOneToOne: false
       }
 }
           Views: {
-            [_ in never]: never
+            deal_next_activity: {
+              Row: { org_id: string | null; deal_id: string | null; next_due_date: string | null; open_count: number | null }
+              Relationships: []
+            }
+            "client_balances": {
+              Row: {
+                "client_id": string | null,"invoiced_satang": number | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null
+              }
+              Relationships: []
+            }
+            "invoice_balances": {
+              Row: {
+                "amount_satang": number | null,"client_id": string | null,"invoice_id": string | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null,"status": Database["public"]["Enums"]["invoice_status"] | null
+              }
+              Relationships: []
+            }
+            "project_time_totals": {
+              Row: {
+                "minutes": number | null,"org_id": string | null,"project_id": string | null
+              }
+              Relationships: []
+            }
           }
           Functions: {
             "accept_integration_event":

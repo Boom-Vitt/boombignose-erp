@@ -9,7 +9,7 @@ vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => state.ctx, require
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.client }))
 vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
-import { attachRecordFile, completeRecordActivity, logRecordNote, recordAttachmentUrl, scheduleRecordActivity } from "./actions"
+import { attachRecordFile, completeRecordActivity, logRecordNote, recordAttachmentUrl, scheduleRecordActivity, loadRecordHistoryPage } from "./actions"
 
 const recordId = "10000000-0000-4000-8000-000000000003"
 const activityId = "10000000-0000-4000-8000-000000000004"
@@ -50,6 +50,11 @@ it("saves trimmed notes under the active org and authenticated author", async ()
   expect(tables.record_notes).toEqual([{ org_id: state.ctx.orgId, record_type: "quote", record_id: recordId, author: state.ctx.userId, body: "Team context" }])
   expect(state.capability).toHaveBeenCalledWith(state.ctx, "record:write")
 })
+it("blames the record, not the note, when the target id is invalid", async () => {
+  expect(await logRecordNote({ ...ref, recordId: "not-an-id", body: "Context" })).toEqual({ error: "This record is not available. Reload the page and try again." })
+  expect(await logRecordNote({ ...ref, body: "  " })).toEqual({ error: "Enter a note of 1 to 20,000 characters." })
+  expect(tables.record_notes).toBeUndefined()
+})
 it("rejects missing active-workspace targets before mutation", async () => {
   tables.quotes[0].org_id = "foreign"
   await expect(logRecordNote({ ...ref, body: "Context" })).rejects.toThrow("Record not found")
@@ -69,7 +74,7 @@ it("schedules for a current workspace member and rejects foreign assignees", asy
 })
 it("marks only a stored activity in the active org done and scopes the update", async () => {
   expect(await completeRecordActivity(activityId)).toEqual({})
-  expect(updates).toEqual([{ table: "activities", values: { done: true } }])
+  expect(updates).toEqual([{ table: "activities", values: { done: true, completed_by: state.ctx.userId, completed_at: expect.any(String) } }])
   expect(filters).toEqual(expect.arrayContaining([
     { table: "activities", key: "org_id", value: state.ctx.orgId }, { table: "activities", key: "id", value: activityId }, { table: "activities", key: "done", value: false },
   ]))
@@ -109,4 +114,10 @@ it("signs only active-org downloads for one minute with attachment disposition",
   tables.record_attachments[0].org_id = "foreign"
   expect(await recordAttachmentUrl(activityId)).toHaveProperty("error")
   expect(state.signed).not.toHaveBeenCalled()
+})
+
+it("rejects forged or malformed timeline cursors before querying history", async () => {
+  expect(await loadRecordHistoryPage({ ...ref, cursor: { at: "2026-10-23T10:00:00Z", id: "note:forged),or(org_id.neq.any)" } })).toHaveProperty("error")
+  expect(await loadRecordHistoryPage({ ...ref, cursor: { at: "yesterday", id: `note:${activityId}` } })).toHaveProperty("error")
+  expect(filters).toHaveLength(0)
 })

@@ -6,7 +6,9 @@ import { revalidatePath } from "next/cache"
 import { requireCapability, requireOrgContext } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
 import { createClient } from "@/lib/supabase/server"
-import { AttachmentInput, NoteInput, RecordInput, ScheduleInput } from "./input"
+import { AttachmentInput, NoteInput, RecordInput, ScheduleInput, TimelinePageInput } from "./input"
+import { recordTimelinePage } from "./queries"
+import type { TimelinePage } from "./timeline"
 import { RECORD_TABLES, recordHref, type RecordRef } from "./model"
 
 async function writableRecord(ref: RecordRef) {
@@ -24,7 +26,7 @@ function refresh(ref: RecordRef) {
 }
 export async function logRecordNote(input: unknown): Promise<{ error?: string }> {
   const parsed = NoteInput.safeParse(input)
-  if (!parsed.success) return { error: "Enter a note of 1 to 20,000 characters." }
+  if (!parsed.success) return { error: parsed.error.issues.some(issue => issue.path[0] === "body") ? "Enter a note of 1 to 20,000 characters." : "This record is not available. Reload the page and try again." }
   const ref = parsed.data
   const { ctx, supabase } = await writableRecord(ref)
   const { error } = await supabase.from("record_notes").insert({ org_id: ctx.orgId, record_type: ref.recordType, record_id: ref.recordId, author: ctx.userId, body: ref.body })
@@ -53,7 +55,7 @@ export async function completeRecordActivity(input: unknown): Promise<{ error?: 
   const supabase = await createClient()
   const { data: activity, error: readError } = await supabase.from("activities").select("record_type,record_id,done").eq("org_id", ctx.orgId).eq("id", parsed.data).maybeSingle()
   if (readError || !activity) return { error: "Activity not found in the active workspace." }
-  const { error } = await supabase.from("activities").update({ done: true }).eq("org_id", ctx.orgId).eq("id", parsed.data).eq("done", false)
+  const { error } = await supabase.from("activities").update({ done: true, completed_by: ctx.userId, completed_at: new Date().toISOString() }).eq("org_id", ctx.orgId).eq("id", parsed.data).eq("done", false)
   if (error) return { error: "Unable to complete the activity. Please try again." }
   if (activity.record_type && activity.record_id) refresh({ recordType: activity.record_type, recordId: activity.record_id })
   else { revalidatePath("/activities"); revalidatePath("/", "layout") }
@@ -92,4 +94,12 @@ export async function recordAttachmentUrl(input: unknown): Promise<{ url?: strin
   const result = await supabase.storage.from("record-attachments").createSignedUrl(data.path, 60, { download: data.filename })
   if (result.error) return { error: "Unable to download the attachment." }
   return { url: result.data.signedUrl }
+}
+
+export async function loadRecordHistoryPage(input: unknown): Promise<{ page?: TimelinePage; error?: string }> {
+  const parsed = TimelinePageInput.safeParse(input)
+  if (!parsed.success) return { error: "Invalid history page." }
+  try {
+    return { page: await recordTimelinePage(parsed.data, parsed.data.cursor) }
+  } catch { return { error: "Unable to load older history. Please try again." } }
 }

@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test"
 import { createClient } from "@supabase/supabase-js"
 import { readFileSync } from "node:fs"
 import { randomUUID } from "node:crypto"
+import { community } from "./edition"
 
 const env = Object.fromEntries(readFileSync(".env.local","utf8").trim().split("\n").map(line=>[line.slice(0,line.indexOf("=")),line.slice(line.indexOf("=")+1)]))
 const isolation=JSON.parse(readFileSync(".local-stack/isolation.json","utf8"))
@@ -9,6 +10,7 @@ if(env.NEXT_PUBLIC_SUPABASE_URL!==`http://127.0.0.1:${isolation.api}`) throw new
 const admin=createClient(env.NEXT_PUBLIC_SUPABASE_URL,env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false}})
 
 test("customer report stays pending until owner verifies actual receipt",async({page})=>{
+  test.skip(community, "The client portal is Pro-only (BBN_EDITION=pro)")
   const org=randomUUID(), email=`erp-${randomUUID()}@example.invalid`, password=`Local-${randomUUID()}!`, token=randomUUID()+randomUUID()
   const user=await admin.auth.admin.createUser({email,password,email_confirm:true})
   expect(user.error).toBeNull()

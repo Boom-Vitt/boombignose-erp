@@ -28,6 +28,12 @@ const doc: PrintableDocument = {
 }
 
 describe("renderDocumentHtml", () => {
+  it("prints a billing unit next to the quantity and escapes untrusted units", () => {
+    const line = { ...doc.items[0], unit: 'hour <img src=x onerror="alert(1)">' }
+    const html = renderDocumentHtml({ ...doc, items: [line] })
+    expect(html).toContain('<td class="num">2 hour &lt;img src=x onerror=&quot;alert(1)&quot;&gt;</td>')
+    expect(html).not.toContain('<img src=x')
+  })
   it("renders a full standalone html document", () => {
     const html = renderDocumentHtml(doc)
     expect(html.startsWith("<!doctype html>")).toBe(true)

@@ -43,7 +43,7 @@ export default async function DealDetailPage({
 
   if (!deal) notFound()
 
-  const [{ data: client }, { data: activities }, { data: projects }] = await Promise.all([
+  const [{ data: client }, { data: activities }, projectsRes, quotesRes] = await Promise.all([
     supabase.from("clients").select("id,name").eq("org_id", ctx.orgId).eq("id", deal.client_id).maybeSingle(),
     supabase
       .from("activities")
@@ -52,14 +52,16 @@ export default async function DealDetailPage({
       .eq("deal_id", id)
       .order("done", { ascending: true })
       .order("created_at", { ascending: false }),
-    supabase.from("projects").select("id").eq("org_id", ctx.orgId).eq("deal_id", id),
+    supabase.from("projects").select("id", { count: "exact" }).eq("org_id", ctx.orgId).eq("deal_id", id).limit(1),
+    // Quotes carry no deal link; they reach a deal through its projects.
+    supabase
+      .from("quotes")
+      .select("id, projects!quotes_project_id_fkey_tenant!inner(deal_id)", { count: "exact" })
+      .eq("org_id", ctx.orgId)
+      .eq("projects.deal_id", id)
+      .limit(1),
   ])
-  // Quotes carry no deal link; they reach a deal through its projects.
-  const projectIds = (projects ?? []).map((p) => p.id)
-  const { data: quotes } = projectIds.length
-    ? await supabase.from("quotes").select("id").eq("org_id", ctx.orgId).in("project_id", projectIds)
-    : { data: [] }
-  const quoteIds = (quotes ?? []).map((q) => q.id)
+  const projectCount = projectsRes.count ?? 0
 
   const dealId = deal.id
   async function transitionDeal(to: Enums<"deal_stage">) {
@@ -92,14 +94,14 @@ export default async function DealDetailPage({
           {
             label: "Quotes",
             icon: FileSignature,
-            count: quoteIds.length,
-            href: recordHref(quoteIds, (quoteId) => `/quotes/${quoteId}`, "/quotes"),
+            count: quotesRes.count ?? 0,
+            href: recordHref(quotesRes, (quoteId) => `/quotes/${quoteId}`, "/quotes"),
           },
           {
             label: "Projects",
             icon: FolderKanban,
-            count: projectIds.length,
-            href: recordHref(projectIds, (projectId) => `/projects/${projectId}`, "/projects"),
+            count: projectCount,
+            href: recordHref(projectsRes, (projectId) => `/projects/${projectId}`, "/projects"),
           },
         ]}
       />
@@ -109,7 +111,7 @@ export default async function DealDetailPage({
         status={deal.stage}
         transition={transitionDeal}
         commands={
-          projectIds.length
+          projectCount
             ? {}
             : { create_project: `/projects/new?dealId=${deal.id}&clientId=${deal.client_id}` }
         }

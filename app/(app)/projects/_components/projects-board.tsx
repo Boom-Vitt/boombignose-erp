@@ -9,11 +9,13 @@ type ProjectStatus = Enums<"project_status">
 
 export function ProjectsBoard({
   columns,
+  moveTargets,
   cards,
   today,
   storageKey,
 }: {
   columns: KanbanColumn<ProjectStatus>[]
+  moveTargets?: KanbanColumn<ProjectStatus>[]
   cards: KanbanCard<ProjectStatus>[]
   today: string
   storageKey: string
@@ -22,6 +24,7 @@ export function ProjectsBoard({
     <KanbanBoard
       label="Projects board"
       columns={columns}
+      moveTargets={moveTargets}
       cards={cards}
       today={today}
       storageKey={storageKey}

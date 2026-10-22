@@ -6,6 +6,7 @@ import {
   groupCards,
   initials,
   moveCard,
+  movedCardFocus,
   parseFolded,
   type KanbanCard,
   type KanbanColumn,
@@ -79,6 +80,34 @@ describe("moveCard (optimistic stage move)", () => {
   it("is a no-op for the current stage or an unknown card", () => {
     expect(moveCard(cards, "a", "lead")).toBe(cards)
     expect(moveCard(cards, "missing", "won")).toBe(cards)
+  })
+})
+
+describe("movedCardFocus (keyboard Move to…)", () => {
+  const optimistic = moveCard(cards, "a", "proposal")
+
+  it("follows the card into its new column while the move is pending", () => {
+    expect(movedCardFocus("a", optimistic, { pending: true, focusLost: true })).toEqual({
+      selectors: ['[data-card="a"] [data-move]', '[data-unfold="proposal"]'],
+      followId: "a",
+    })
+  })
+
+  it("refocuses the card back in its old column after a rejected move, then stops following", () => {
+    expect(movedCardFocus("a", cards, { pending: false, focusLost: true })).toEqual({
+      selectors: ['[data-card="a"] [data-move]', '[data-unfold="lead"]'],
+      followId: null,
+    })
+  })
+
+  it("leaves focus alone when it was kept or moved elsewhere", () => {
+    expect(movedCardFocus("a", optimistic, { pending: false, focusLost: false })).toEqual({ selectors: [], followId: null })
+    expect(movedCardFocus("a", optimistic, { pending: true, focusLost: false })).toEqual({ selectors: [], followId: "a" })
+  })
+
+  it("does nothing without a followed card that still exists", () => {
+    expect(movedCardFocus(null, cards, { pending: true, focusLost: true })).toEqual({ selectors: [], followId: null })
+    expect(movedCardFocus("missing", cards, { pending: true, focusLost: true })).toEqual({ selectors: [], followId: null })
   })
 })
 

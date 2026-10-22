@@ -40,7 +40,7 @@ test("deals board filters to a single stage via the URL", async ({ page }) => {
   await page.goto("/deals?stage=won")
   // When filtered, only the selected stage's column renders.
   await expect(page.getByText("Won", { exact: true }).first()).toBeVisible()
-  await expect(page.getByText("Lead", { exact: true })).toHaveCount(0)
+  await expect(page.getByRole("region", { name: "Deals board" }).getByText("Lead", { exact: true })).toHaveCount(0)
 })
 
 test("signup enforces the password policy and gates submit", async ({ page }) => {

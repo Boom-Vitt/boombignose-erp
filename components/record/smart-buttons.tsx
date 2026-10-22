@@ -12,9 +12,12 @@ export type SmartButton = {
   nextStep?: boolean
 }
 
+/** A `count: "exact"` read: the true total, even past the API row cap, and at least its first row. */
+type Linked = { count: number | null; data: { id: string }[] | null }
+
 /** One linked record opens it; several open the place that lists them. */
-export function recordHref(ids: string[], one: (id: string) => string, many: string) {
-  return ids.length === 1 ? one(ids[0]) : many
+export function recordHref({ count, data }: Linked, one: (id: string) => string, many: string) {
+  return count === 1 && data?.[0] ? one(data[0].id) : many
 }
 
 export function SmartButtons({ buttons }: { buttons: SmartButton[] }) {

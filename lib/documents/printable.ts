@@ -10,6 +10,7 @@ import { formatTHB, type Satang } from "@/lib/money"
 export type DocLineItem = {
   description: string
   quantity: number
+  unit?: string | null
   unit_price_satang: Satang
   amount_satang: Satang
 }
@@ -66,7 +67,7 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
     .map(
       (it) => `<tr>
       <td>${escapeHtml(it.description)}</td>
-      <td class="num">${escapeHtml(fmtQty(it.quantity))}</td>
+      <td class="num">${escapeHtml(fmtQty(it.quantity))}${it.unit ? ` ${escapeHtml(it.unit)}` : ""}</td>
       <td class="num">${escapeHtml(formatTHB(it.unit_price_satang))}</td>
       <td class="num">${escapeHtml(formatTHB(it.amount_satang))}</td>
     </tr>`

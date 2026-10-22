@@ -1,3 +1,6 @@
+// PostgREST max_rows (supabase/config.toml): a list read never returns more rows than this.
+const MAX_ROWS = 1000
+
 /** A small PostgREST result fixture; filtering changes the rows observed by real pages. */
 export function databaseFixture(tables: Record<string, Record<string, unknown>[]>) {
   return {
@@ -5,10 +8,12 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
       let rows = [...(tables[table] ?? [])]
       let single = false
       let countDeals = false
+      let embedClient = false
       const dealFilters: [string, readonly unknown[]][] = []
       const query = {
         select: (columns = '') => {
           countDeals = columns.includes('deals(count)')
+          embedClient = columns.includes('client:clients(')
           return query
         },
         insert: (row: Record<string, unknown>) => {
@@ -51,6 +56,7 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
         },
         order: () => query,
         limit: (value: number) => { rows = rows.slice(0, value); return query },
+        range: (from: number, to: number) => { rows = rows.slice(from, to + 1); return query },
         maybeSingle: () => { single = true; return query },
         then: (resolve: (result: unknown) => unknown, reject?: (error: unknown) => unknown) => {
           const data = countDeals ? rows.map((row) => ({
@@ -59,7 +65,10 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
               deal.org_id === row.org_id && deal.client_id === row.id &&
               dealFilters.every(([key, values]) => values.includes(deal[key]))
             ).length }],
-          })) : rows
+          })) : embedClient ? rows.slice(0, MAX_ROWS).map((row) => ({
+            ...row,
+            client: (tables.clients ?? []).find((client) => client.id === row.client_id) ?? null,
+          })) : rows.slice(0, MAX_ROWS)
           return Promise.resolve({ data: single ? data[0] ?? null : data, count: rows.length, error: null }).then(resolve, reject)
         },
       }
