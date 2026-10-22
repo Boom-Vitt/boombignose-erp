@@ -142,10 +142,10 @@ export const SUBSCRIPTION_FLOW: DocumentFlow<SubscriptionStatus> = {
       ],
     },
     paused: {
-      primary: { label: "Resume", to: "active" },
+      primary: { label: "Activate", to: "active" },
       secondary: [{ label: "Cancel subscription", to: "cancelled" }],
     },
-    cancelled: { primary: { label: "Reactivate", to: "active" } },
+    cancelled: { primary: { label: "Activate", to: "active" } },
   },
 }
 

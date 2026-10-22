@@ -45,10 +45,6 @@ export function StatusBar<S extends RecordStatus>({
   commands?: Partial<Record<FlowCommand, CommandHandler>>
 }) {
   const bar = statusBar(flow, status, (a) => ("to" in a ? !!transition : !!commands[a.command]))
-  const actions = [
-    ...(bar.primary ? [{ action: bar.primary, variant: "default" as const }] : []),
-    ...bar.secondary.map((action) => ({ action, variant: "outline" as const })),
-  ]
 
   function render(action: FlowAction<S>, variant: Variant) {
     if ("to" in action) {
@@ -75,9 +71,10 @@ export function StatusBar<S extends RecordStatus>({
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-2 sm:flex-row sm:flex-wrap sm:items-center">
-      {actions.length ? (
+      {bar.primary || bar.secondary.length ? (
         <div className="flex flex-wrap items-center gap-2">
-          {actions.map(({ action, variant }) => render(action, variant))}
+          {bar.primary ? render(bar.primary, "default") : null}
+          {bar.secondary.map((action) => render(action, "outline"))}
         </div>
       ) : null}
       <div className="flex min-w-0 items-center gap-2 sm:ml-auto">

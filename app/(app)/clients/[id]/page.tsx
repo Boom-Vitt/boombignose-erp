@@ -90,6 +90,8 @@ export default async function ClientDetailPage({
   const invoiceIds = invoices.map((invoice) => invoice.id)
   const projectIds = (projectsRes.data ?? []).map((p) => p.id)
 
+  // shortcut: the id list rides in the URL, so a client with several hundred invoices
+  // fails the read and the balance hides; move to an RPC or join if clients get that big.
   const paymentsRes = invoiceIds.length
     ? await supabase
         .from("payments")
