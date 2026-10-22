@@ -1,10 +1,67 @@
 import { beforeEach, expect, it, vi } from "vitest"
-import { databaseFixture } from "@/lib/supabase/__tests__/tenant-fixture"
+
 const state = vi.hoisted(() => ({ client: {} as unknown, ctx: { orgId: "A", userId: "me", role: "owner" } }))
 vi.mock("react", () => ({ cache: (fn: unknown) => fn }))
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => state.ctx }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.client }))
-import { myActivities, recordHistory } from "./queries"
+import { myActivities, myActivityCounts, recordHistory, recordTimelinePage } from "./queries"
+
+type Row = Record<string, unknown>
+function databaseFixture(tables: Record<string, Row[]>) {
+  return {
+    from(table: string) {
+      let rows = [...(tables[table] ?? [])]
+      let start = 0
+      let end = 999
+      let countOnly = false
+      let exactCount = false
+      const orders: { key: string; ascending: boolean; nullsFirst: boolean }[] = []
+      const query = {
+        select: (_columns: string, options?: { head?: boolean; count?: string }) => { countOnly = options?.head === true; exactCount = options?.count === "exact"; return query },
+        eq: (key: string, value: unknown) => { rows = rows.filter(row => row[key] === value); return query },
+        lt: (key: string, value: string) => { rows = rows.filter(row => row[key] != null && String(row[key]) < value); return query },
+        lte: (key: string, value: string) => { rows = rows.filter(row => row[key] != null && String(row[key]) <= value); return query },
+        gt: (key: string, value: string) => { rows = rows.filter(row => row[key] != null && String(row[key]) > value); return query },
+        order: (key: string, options: { ascending?: boolean; nullsFirst?: boolean } = {}) => { orders.push({ key, ascending: options.ascending ?? true, nullsFirst: options.nullsFirst ?? false }); return query },
+        range: (from: number, to: number) => { start = from; end = to; return query },
+        limit: (limit: number) => { end = start + limit - 1; return query },
+        or: (expression: string) => {
+          const single = expression.match(/^(\w+)\.(lt|lte)\.(.+)$/)
+          if (single && !expression.includes(",")) {
+            const [, key, operator, value] = single
+            rows = rows.filter(row => operator === "lt" ? String(row[key]) < value : String(row[key]) <= value)
+            return query
+          }
+          const match = expression.match(/^(\w+)\.lt\.([^,]+),and\(\1\.eq\.([^,]+),id\.gt\.([^)]+)\)$/)
+          if (!match) throw new Error(`Unsupported test filter ${expression}`)
+          const [, key, before, equal, id] = match
+          rows = rows.filter(row => String(row[key]) < before || String(row[key]) === equal && String(row.id) > id)
+          return query
+        },
+        then: (resolve: (result: unknown) => unknown, reject?: (reason: unknown) => unknown) => {
+          rows.sort((a, b) => {
+            for (const order of orders) {
+              const left = a[order.key], right = b[order.key]
+              if (left == null || right == null) {
+                if (left == null && right == null) continue
+                return (left == null ? -1 : 1) * (order.nullsFirst ? 1 : -1)
+              }
+              const compared = String(left).localeCompare(String(right))
+              if (compared) return compared * (order.ascending ? 1 : -1)
+            }
+            return 0
+          })
+          return Promise.resolve({ data: countOnly ? null : rows.slice(start, Math.min(end + 1, start + 1000)), count: exactCount ? rows.length : null, error: null }).then(resolve, reject)
+        },
+      }
+      return query
+    },
+  }
+}
+function fixture(tables: Record<string, Row[]>) {
+  state.client = { rpc: async () => ({ data: [], error: null }), ...databaseFixture(tables) }
+}
+function id(index: number) { return `a2000000-0000-4000-8000-${String(index).padStart(12, "0")}` }
 
 beforeEach(() => {
   state.ctx.role = "owner"
@@ -44,4 +101,74 @@ it("preserves the staff-only audit restriction for workspace members", async () 
 it("reports read failures instead of showing an empty history", async () => {
   state.client = { from: () => { throw new Error("database unavailable") } }
   await expect(myActivities()).rejects.toThrow("database unavailable")
+})
+
+it("keeps planned activities visible after one thousand earlier completed activities", async () => {
+  const old = Array.from({ length: 1100 }, (_, index) => ({ id: id(index), org_id: "A", record_type: "quote", record_id: "q", owner: "me", done: true, type: "call", due_date: "2000-01-01", completed_at: "2026-01-01T00:00:00Z" }))
+  fixture({ activities: [...old, { ...old[0], id: "open-new", done: false, due_date: "2026-12-01" }] })
+  expect((await recordHistory({ recordType: "quote", recordId: "q" })).planned.map(activity => activity.id)).toEqual(["open-new"])
+})
+it("loads all personal open activities beyond the API's one thousand row cap", async () => {
+  fixture({ activities: Array.from({ length: 1205 }, (_, index) => ({ id: id(index), org_id: "A", owner: "me", done: false, due_date: "2026-01-01" })) })
+  expect(await myActivities()).toHaveLength(1205)
+})
+it("computes exact personal counts independent of returned data rows", async () => {
+  const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" })
+  fixture({ activities: [
+    ...Array.from({ length: 1205 }, (_, index) => ({ id: id(index), org_id: "A", owner: "me", done: false, due_date: "2000-01-01" })),
+    { id: "today", org_id: "A", owner: "me", done: false, due_date: day },
+    { id: "future", org_id: "A", owner: "me", done: false, due_date: "2999-01-01" },
+    { id: "no-date", org_id: "A", owner: "me", done: false, due_date: null },
+    { id: "done", org_id: "A", owner: "me", done: true, due_date: day },
+    { id: "foreign", org_id: "B", owner: "me", done: false, due_date: day },
+  ] })
+  expect(await myActivityCounts()).toEqual({ overdue: 1205, today: 1, future: 1 })
+})
+it("pages all four timeline sources newest first without losing equal-time ties", async () => {
+  const at = "2026-10-23T10:00:00.123456+00:00"
+  const source = Array.from({ length: 1055 }, (_, index) => ({ id: id(index), org_id: "A", record_type: "quote", record_id: "q", created_at: at }))
+  fixture({
+    record_notes: source.map(row => ({ ...row, body: "Note", author: "author" })),
+    record_attachments: source.slice(0, 4).map(row => ({ ...row, filename: "scope.pdf", uploaded_by: "uploader" })),
+    activities: source.slice(0, 4).map(row => ({ ...row, done: true, type: "call", completed_at: at, completed_by: "completer" })),
+    audit_log: source.slice(0, 4).map(row => ({ ...row, entity: "quote", entity_id: "q", summary: "Changed", action: "updated" })),
+  })
+  const ref = { recordType: "quote" as const, recordId: "q" }
+  const first = await recordTimelinePage(ref)
+  expect(first.timeline).toHaveLength(50)
+  expect(first.nextCursor).not.toBeNull()
+  const all = [...first.timeline]
+  let cursor = first.nextCursor
+  while (cursor) {
+    const page = await recordTimelinePage(ref, cursor)
+    expect(page.timeline.length).toBeLessThanOrEqual(50)
+    all.push(...page.timeline)
+    cursor = page.nextCursor
+  }
+  expect(all).toHaveLength(1067)
+  expect(new Set(all.map(entry => entry.id)).size).toBe(all.length)
+  expect(all.map(entry => entry.id)).toEqual([...all.map(entry => entry.id)].sort())
+})
+it("starts history with the newest notes beyond the API cap", async () => {
+  fixture({ record_notes: Array.from({ length: 1205 }, (_, index) => ({ id: id(index), org_id: "A", record_type: "quote", record_id: "q", body: `Note ${index}`, created_at: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString() })) })
+  const history = await recordHistory({ recordType: "quote", recordId: "q" })
+  expect(history.timeline[0].text).toBe("Note 1204")
+  expect(history.timeline).toHaveLength(50)
+})
+it("keeps microsecond cursor boundaries exact while newer notes arrive", async () => {
+  const notes = Array.from({ length: 130 }, (_, index) => ({
+    id: id(index), org_id: "A", record_type: "quote", record_id: "q", body: `Note ${index}`,
+    created_at: `2026-10-23T10:00:00.${String(index).padStart(6, "0")}+00:00`,
+  }))
+  fixture({ record_notes: notes })
+  const ref = { recordType: "quote" as const, recordId: "q" }
+  const first = await recordTimelinePage(ref)
+  expect(first.timeline[0].text).toBe("Note 129")
+  expect(first.nextCursor?.at).toBe("2026-10-23T10:00:00.000080+00:00")
+  notes.unshift({ ...notes[0], id: id(9999), body: "Just arrived", created_at: "2026-10-23T11:00:00.000000+00:00" })
+  const second = await recordTimelinePage(ref, first.nextCursor!)
+  const third = await recordTimelinePage(ref, second.nextCursor!)
+  const all = [...first.timeline, ...second.timeline, ...third.timeline]
+  expect(third.nextCursor).toBeNull()
+  expect(all.map(entry => entry.text)).toEqual(Array.from({ length: 130 }, (_, index) => `Note ${129 - index}`))
 })
