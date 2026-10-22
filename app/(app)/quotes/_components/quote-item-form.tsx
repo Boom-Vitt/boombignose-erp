@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
@@ -20,8 +20,12 @@ import { Button } from "@/components/ui/button"
 
 import { addQuoteItem } from "../actions"
 import { serviceMoneyInput, serviceQuantityInput } from "@/lib/workflows/service"
+import { ProductLineInput } from "@/lib/products/schema"
+import { productToLineValues, type ProductOption } from "@/lib/products/snapshot"
+import { ProductPicker } from "../../products/_components/product-picker"
 
 const Schema = z.object({
+  ...ProductLineInput.shape,
   description: z.string().min(1, "Description is required"),
   quantity: serviceQuantityInput,
   unitPriceBaht: serviceMoneyInput,
@@ -29,7 +33,11 @@ const Schema = z.object({
 
 type Values = z.infer<typeof Schema>
 
-export function QuoteItemForm({ quoteId }: { quoteId: string }) {
+export function QuoteItemForm({ quoteId, products = [], canManageProducts = false }: {
+  quoteId: string
+  products?: ProductOption[]
+  canManageProducts?: boolean
+}) {
   const router = useRouter()
   const form = useForm<z.input<typeof Schema>, unknown, Values>({
     resolver: zodResolver(Schema),
@@ -37,8 +45,11 @@ export function QuoteItemForm({ quoteId }: { quoteId: string }) {
       description: "",
       quantity: 1,
       unitPriceBaht: 0,
+      product_id: null,
+      unit: "piece",
     },
   })
+  const selectedProductId = useWatch({ control: form.control, name: "product_id" })
 
   return (
     <Form {...form}>
@@ -50,11 +61,21 @@ export function QuoteItemForm({ quoteId }: { quoteId: string }) {
             return
           }
           toast.success("Item added")
-          form.reset({ description: "", quantity: 1, unitPriceBaht: 0 })
+          form.reset({ description: "", quantity: 1, unitPriceBaht: 0, product_id: null, unit: "piece" })
           router.refresh()
         })}
-        className="grid items-start gap-3 sm:grid-cols-[1fr_auto_auto_auto]"
+        className="grid items-start gap-3 sm:grid-cols-[1fr_auto_auto_auto_auto]"
       >
+        <div className="sm:col-span-full">
+          <ProductPicker products={products} value={selectedProductId} canManage={canManageProducts} onChange={product => {
+            if (!product) { form.setValue("product_id", null); return }
+            const values = productToLineValues(product)
+            form.setValue("product_id", values.product_id)
+            form.setValue("description", values.description, { shouldValidate: true })
+            form.setValue("unitPriceBaht", values.unitPriceBaht, { shouldValidate: true })
+            form.setValue("unit", values.unit, { shouldValidate: true })
+          }} />
+        </div>
         <FormField
           control={form.control}
           name="description"
@@ -90,6 +111,11 @@ export function QuoteItemForm({ quoteId }: { quoteId: string }) {
               <FormMessage />
             </FormItem>
           )}
+        />
+        <FormField
+          control={form.control}
+          name="unit"
+          render={({ field }) => <FormItem className="sm:w-24"><FormLabel>Unit</FormLabel><FormControl><Input {...field} value={field.value ?? ""} maxLength={40} /></FormControl><FormMessage /></FormItem>}
         />
         <FormField
           control={form.control}

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
+import { ProductLineInput } from "@/lib/products/schema"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
@@ -210,6 +211,7 @@ export async function deleteQuote(
 // ---------------------------------------------------------------------------
 
 const AddQuoteItem = z.object({
+  ...ProductLineInput.shape,
   quote_id: z.string().min(1),
   description: z.string().trim().min(1, "Description is required"),
   quantity: serviceQuantityInput,
@@ -250,10 +252,18 @@ export async function addQuoteItem(
     .eq("org_id", ctx.orgId)
 
   const unitPriceSatang = serviceAmountSatang(d.unitPriceBaht)
+  if (d.product_id) {
+    const { data: product, error: productError } = await supabase.from("products").select("id")
+      .eq("org_id", ctx.orgId).eq("id", d.product_id).eq("active", true).maybeSingle()
+    if (productError) return { error: productError.message }
+    if (!product) return { error: "Product unavailable. Choose an active product or a free-text line." }
+  }
   const { error } = await supabase.from("quote_items").insert({
     org_id: ctx.orgId,
     quote_id: d.quote_id,
     description: d.description,
+    product_id: d.product_id ?? null,
+    unit: d.unit ?? null,
     quantity: d.quantity,
     unit_price_satang: unitPriceSatang,
     amount_satang: serviceLineAmount(d.quantity, unitPriceSatang),

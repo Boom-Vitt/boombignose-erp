@@ -2,12 +2,15 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { moneyInput, invoiceLineAmount } from "@/lib/payments/input"
 import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
+import { ProductLineInput } from "@/lib/products/schema"
+import { productToLineValues, type ProductOption } from "@/lib/products/snapshot"
+import { ProductPicker } from "../../products/_components/product-picker"
 
 import {
   Form,
@@ -38,6 +41,7 @@ export type InvoiceItemRow = {
 }
 
 const Schema = z.object({
+  ...ProductLineInput.shape,
   description: z.string().min(1, "Description is required"),
   quantity: z.string().refine(v => { try { invoiceLineAmount(v, 0); return true } catch { return false } }, "Positive quantity, up to three decimals"),
   unitPriceBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter an exact THB amount"),
@@ -51,6 +55,8 @@ export function InvoiceItemsEditor({
   addAction,
   deleteAction,
   locked = false,
+  products = [],
+  canManageProducts = false,
 }: {
   invoiceId: string
   items: InvoiceItemRow[]
@@ -59,10 +65,14 @@ export function InvoiceItemsEditor({
     description: string
     quantity: string
     unitPriceBaht: string
+    product_id?: string | null
+    unit?: string | null
   }) => Promise<{ error?: string }>
   deleteAction: (input: { id: string }) => Promise<{ error?: string }>
   /** When true (invoice paid), render items read-only: no add row, no delete. */
   locked?: boolean
+  products?: ProductOption[]
+  canManageProducts?: boolean
 }) {
   const router = useRouter()
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -72,8 +82,11 @@ export function InvoiceItemsEditor({
       description: "",
       quantity: "1",
       unitPriceBaht: "0.00",
+      product_id: null,
+      unit: "piece",
     },
   })
+  const selectedProductId = useWatch({ control: form.control, name: "product_id" })
 
   async function onDelete(id: string) {
     setDeletingId(id)
@@ -151,11 +164,21 @@ export function InvoiceItemsEditor({
               return
             }
             toast.success("Line item added")
-            form.reset({ description: "", quantity: "1", unitPriceBaht: "0.00" })
+            form.reset({ description: "", quantity: "1", unitPriceBaht: "0.00", product_id: null, unit: "piece" })
             router.refresh()
           })}
-          className="grid gap-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-start"
+          className="grid gap-4 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-start"
         >
+          <div className="sm:col-span-full">
+            <ProductPicker products={products} value={selectedProductId} canManage={canManageProducts} onChange={product => {
+              if (!product) { form.setValue("product_id", null); return }
+              const values = productToLineValues(product)
+              form.setValue("product_id", values.product_id)
+              form.setValue("description", values.description, { shouldValidate: true })
+              form.setValue("unitPriceBaht", values.unitPriceBaht, { shouldValidate: true })
+              form.setValue("unit", values.unit, { shouldValidate: true })
+            }} />
+          </div>
           <FormField
             control={form.control}
             name="description"
@@ -192,6 +215,11 @@ export function InvoiceItemsEditor({
                 <FormMessage />
               </FormItem>
             )}
+          />
+          <FormField
+            control={form.control}
+            name="unit"
+            render={({ field }) => <FormItem className="sm:w-24"><FormLabel>Unit</FormLabel><FormControl><Input {...field} value={field.value ?? ""} maxLength={40} /></FormControl><FormMessage /></FormItem>}
           />
           <FormField
             control={form.control}

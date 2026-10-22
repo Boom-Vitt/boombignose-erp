@@ -34,6 +34,8 @@ import {
 
 import { updateInvoice } from "../../actions"
 import { addInvoiceItem, deleteInvoiceItem } from "../../invoice-items-actions"
+import { activeProductOptions } from "@/lib/products/queries"
+import { can } from "@/lib/permissions"
 import {
   InvoiceForm,
   type InvoiceFormValues,
@@ -101,7 +103,7 @@ export default async function InvoiceDetailPage({
       .maybeSingle(),
     supabase
       .from("invoice_items")
-      .select("id, description, quantity, unit_price_satang, amount_satang").eq("org_id", ctx.orgId)
+      .select("id, description, quantity, unit_price_satang, amount_satang, unit").eq("org_id", ctx.orgId)
       .eq("invoice_id", id)
       .order("position", { ascending: true }),
     supabase
@@ -159,7 +161,7 @@ export default async function InvoiceDetailPage({
   const itemRows: InvoiceItemRow[] = (itemsRes.data ?? []).map((it) => ({
     id: it.id,
     description: it.description,
-    quantity: String(Number(it.quantity)),
+    quantity: `${Number(it.quantity)}${it.unit ? ` ${it.unit}` : ""}`,
     unitPrice: formatTHB(it.unit_price_satang),
     amount: formatTHB(it.amount_satang),
   }))
@@ -259,6 +261,8 @@ export default async function InvoiceDetailPage({
             <CardContent>
               <InvoiceItemsEditor
                 invoiceId={invoice.id}
+                products={await activeProductOptions()}
+                canManageProducts={can(ctx.role, "product:manage")}
                 items={itemRows}
                 addAction={addInvoiceItem}
                 deleteAction={removeInvoiceItem}
