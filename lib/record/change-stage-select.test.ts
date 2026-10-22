@@ -15,6 +15,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock("@/app/(app)/deals/actions", () => ({ updateDealStage: vi.fn(async () => ({ error: "Not allowed" })) }))
 
+import { updateDealStage } from "@/app/(app)/deals/actions"
 import { ChangeStageSelect } from "@/app/(app)/deals/_components/change-stage-select"
 import type { Enums } from "@/lib/types/database"
 
@@ -23,23 +24,42 @@ function render(stage: Enums<"deal_stage">) {
   do {
     hooks.index = 0
     hooks.dirty = false
-    element = ChangeStageSelect({ dealId: "deal-a", stage })
+    element = ChangeStageSelect({
+      dealId: "deal-a",
+      dealTitle: "Deal A",
+      stage,
+      lostReasons: [{ id: "reason-1", name: "No budget" }],
+      canManageReasons: false,
+    })
   } while (hooks.dirty)
-  return element
+  const [select, reasonDialog] = element.props.children
+  return { select, reasonDialog }
 }
 
 beforeEach(() => {
   hooks.slots = []
+  vi.clearAllMocks()
 })
 
 it("follows a stage changed elsewhere, such as the status bar", () => {
-  expect(render("lead").props.value).toBe("lead")
-  expect(render("contacted").props.value).toBe("contacted")
+  expect(render("lead").select.props.value).toBe("lead")
+  expect(render("contacted").select.props.value).toBe("contacted")
 })
 
 it("reverts a rejected choice to the current stage", async () => {
-  render("lead").props.onValueChange("won")
-  expect(render("lead").props.value).toBe("won")
+  render("lead").select.props.onValueChange("won")
+  expect(render("lead").select.props.value).toBe("won")
   await hooks.task
-  expect(render("lead").props.value).toBe("lead")
+  expect(render("lead").select.props.value).toBe("lead")
+})
+
+it("asks for a lost reason instead of marking the deal lost straight away", async () => {
+  render("lead").select.props.onValueChange("lost")
+  const { select, reasonDialog } = render("lead")
+  expect(select.props.value).toBe("lead")
+  expect(reasonDialog.props.open).toBe(true)
+  expect(updateDealStage).not.toHaveBeenCalled()
+
+  await reasonDialog.props.onConfirm("reason-1")
+  expect(updateDealStage).toHaveBeenCalledWith("deal-a", "lost", { lostReasonId: "reason-1" })
 })

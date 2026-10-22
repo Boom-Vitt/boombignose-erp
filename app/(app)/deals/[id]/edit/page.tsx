@@ -20,16 +20,17 @@ export default async function EditDealPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [{ data: deal }, { data: clients }] = await Promise.all([
+  const [{ data: deal }, { data: clients }, { data: lostReasons }] = await Promise.all([
     supabase
       .from("deals")
       .select(
-        "id,client_id,title,stage,value_satang,expected_close_date,next_follow_up_date,source,notes"
+        "id,client_id,title,stage,value_satang,probability,lost_reason_id,expected_close_date,next_follow_up_date,source,notes"
       )
       .eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
     supabase.from("clients").select("id,name").eq("org_id", ctx.orgId).order("name"),
+    supabase.from("deal_lost_reasons").select("id,name").eq("org_id", ctx.orgId).eq("active", true).order("name"),
   ])
 
   if (!deal) notFound()
@@ -39,6 +40,8 @@ export default async function EditDealPage({
     title: deal.title,
     stage: deal.stage,
     valueBaht: satangToBaht(deal.value_satang),
+    probability: deal.probability,
+    lostReasonId: deal.lost_reason_id ?? "",
     expectedCloseDate: deal.expected_close_date ?? "",
     nextFollowUpDate: deal.next_follow_up_date ?? "",
     source: deal.source ?? "",
@@ -59,6 +62,7 @@ export default async function EditDealPage({
         <CardContent>
           <DealForm
             clients={clients ?? []}
+            lostReasons={lostReasons ?? []}
             action={action}
             defaultValues={defaultValues}
             submitLabel="Save changes"
