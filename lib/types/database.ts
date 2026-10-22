@@ -557,16 +557,16 @@ isOneToOne: false
                   ]
                 },"org_settings": {
                   Row: {
-"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
+"lock_date": string | null,"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
                     "business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
+"lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
-"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
+"lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Relationships: [
@@ -1224,17 +1224,11 @@ isOneToOne: false
 "provision_workspace":
 { Args: { "p_key": string,"p_name": string }; Returns: string
                            },
-"reconcile_legacy_payment":
-{ Args: { "p_amount_satang": number,"p_key": string,"p_legacy_payment_id": string,"p_org_id": string,"p_reference": string }; Returns: string
-                           },
 "reconcile_legacy_payment_with_evidence":
 { Args: { "p_amount_satang": number,"p_key": string,"p_legacy_payment_id": string,"p_method": Database["public"]['Enums']["payment_method"],"p_org_id": string,"p_paid_on": string,"p_reference": string }; Returns: string
                            },
-"review_payment_claim":
-{ Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_org_id": string,"p_reference": string }; Returns: string
-                           },
 "review_payment_claim_with_evidence":
-{ Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_method": Database["public"]['Enums']["payment_method"],"p_org_id": string,"p_paid_on": string,"p_reference": string }; Returns: string
+{ Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_method": Database["public"]['Enums']["payment_method"] | null,"p_org_id": string,"p_paid_on": string | null,"p_reference": string }; Returns: string
                            },
 "submit_internal_payment_claim":
 { Args: { "p_amount_satang": number,"p_invoice_id": string,"p_key": string,"p_org_id": string,"p_reference": string }; Returns: string
@@ -1245,6 +1239,8 @@ isOneToOne: false
 "update_business_profile":
 { Args: { "p_business_address": string,"p_legal_name": string,"p_org_id": string,"p_tax_id": string,"p_tax_status": string }; Returns: undefined
                            }
+            cancel_draft_invoice: { Args: { p_org_id: string; p_invoice_id: string }; Returns: undefined }
+            update_finance_lock_date: { Args: { p_org_id: string; p_lock_date: string | null }; Returns: undefined }
             update_tax_business_profile: { Args: { p_org_id: string; p_legal_name: string; p_business_address: string; p_tax_id: string; p_vat_registered: boolean; p_vat_rate_bps: number; p_prices_include_vat: boolean; p_branch_label: string }; Returns: undefined }
             claim_purchase_rfq: { Args: { p_org_id: string; p_order_id: string }; Returns: Json }
             finish_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_error?: string | null }; Returns: undefined }
