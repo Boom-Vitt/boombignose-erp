@@ -3,15 +3,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { OrgContext } from "@/lib/auth"
 import { requireOrgContext } from "@/lib/auth"
-import { createClient } from "@/lib/supabase/server"
 import { databaseFixture } from "@/lib/supabase/__tests__/tenant-fixture"
 import AuditPage from "@/app/(app)/audit/page"
+
+const { createClient } = vi.hoisted(() => ({
+  createClient: vi.fn<() => Promise<ReturnType<typeof databaseFixture>>>(),
+}))
 
 vi.mock("@/lib/auth", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/auth")>(),
   requireOrgContext: vi.fn(),
 }))
-vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }))
+vi.mock("@/lib/supabase/server", () => ({ createClient }))
 
 const context: OrgContext = {
   userId: "user-a",
@@ -24,12 +27,12 @@ const context: OrgContext = {
 beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(requireOrgContext).mockResolvedValue({ ...context })
-  vi.mocked(createClient).mockResolvedValue(databaseFixture({
+  createClient.mockResolvedValue(databaseFixture({
     audit_log: [
       { id: "entry-a", org_id: "org-a", entity: "deal", action: "created", summary: "ACTIVE_WORKSPACE_ACTIVITY", created_at: "2026-10-01T00:00:00Z" },
       { id: "entry-b", org_id: "org-b", entity: "deal", action: "created", summary: "OTHER_WORKSPACE_ACTIVITY", created_at: "2026-10-01T00:00:00Z" },
     ],
-  }) as Awaited<ReturnType<typeof createClient>>)
+  }))
 })
 
 describe("audit page access", () => {
