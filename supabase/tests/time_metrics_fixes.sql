@@ -30,7 +30,7 @@ select results_eq(case when to_regclass('public.member_cost_rates') is null then
  $$select cost_rate_satang from public.memberships where org_id='d4100000-0000-4000-8000-000000000010'$$ else
  $$select cost_rate_satang from public.member_cost_rates where org_id='d4100000-0000-4000-8000-000000000010'$$ end,
  $$select 0::bigint where false$$,'member cannot select any individual cost rate');
-select is((select labour_cost_satang from public.project_labour_totals where project_id='d4100000-0000-4000-8000-000000000030'),3028::bigint,'member still sees complete project labour aggregate');
+select is((select count(*) from public.project_labour_totals where project_id='d4100000-0000-4000-8000-000000000030'),0::bigint,'member reads no project labour aggregate');
 select throws_ok($$update public.time_entries set user_id=null where id='d4100000-0000-4000-8000-000000000040'$$,'P0001','Time author is immutable','member cannot forge author null-out');
 select throws_ok($$select public.set_member_cost_rate('d4100000-0000-4000-8000-000000000010','d4100000-0000-4000-8000-000000000002',1)$$,'P0001','Only staff may set cost rates','member cannot change even own rate');
 select set_config('request.jwt.claims','{"role":"authenticated","sub":"d4100000-0000-4000-8000-000000000001"}',true);

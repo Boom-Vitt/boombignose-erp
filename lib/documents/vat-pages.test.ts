@@ -7,9 +7,9 @@ import { WithholdingForm } from "@/app/(app)/finance/_components/withholding-for
 import { StatCard } from "@/components/stat-card"
 import { formatTHB } from "@/lib/money"
 
-const state = vi.hoisted(() => ({ client: {} as unknown }))
+const state = vi.hoisted(() => ({ client: {} as unknown, role: "owner" }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.client }))
-vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "A", userId: "user", role: "owner" }) }))
+vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "A", userId: "user", role: state.role }) }))
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("Not found") } }))
 vi.mock("@edition", () => ({
   getInvoiceAccounting: async () => ({ connected: false, sync: null }),
@@ -29,7 +29,7 @@ function elements(node: ReactNode): ReactElement[] {
   return [node, ...elements(node.props.children)]
 }
 
-beforeEach(() => { state.client = databaseFixture({ invoices: [header], payments, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100 }] }) })
+beforeEach(() => { state.role = "owner"; state.client = databaseFixture({ invoices: [header], payments, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100 }] }) })
 
 it("invoice detail keeps tax totals, SQL net balance, and a payment count beyond the row cap", async () => {
   const page = await InvoicePage({ params: Promise.resolve({ id: "invoice" }) })
@@ -82,4 +82,18 @@ it("shows labour cost and loss even before a project has invoices or expenses", 
     expect.objectContaining({ label: "Cost incl. labour", value: formatTHB(1500) }),
     expect.objectContaining({ label: "Profit", value: formatTHB(-1500) }),
   ]))
+})
+
+it("members see project hours but no labour cost or profit", async () => {
+  state.role = "member"
+  state.client = databaseFixture({
+    projects: [{ id: "project", org_id: "A", name: "Project", status: "in_progress" }],
+    invoices: [{ id: "invoice", org_id: "A", project_id: "project", number: "INV-1", status: "sent", total_satang: 5000, vat_satang: 0, amount_satang: 5000 }],
+    time_entries: [{ id: "time", org_id: "A", project_id: "project", minutes: 90, billable: false, rate_satang: null }],
+    project_time_totals: [{ org_id: "A", project_id: "project", minutes: 90 }],
+    project_labour_totals: [{ org_id: "A", project_id: "project", labour_cost_satang: 1500 }],
+  })
+  const cards = elements(await ProjectPage({ params: Promise.resolve({ id: "project" }) })).filter(node => node.type === StatCard).map(node => node.props as { label: string; value: string })
+  expect(cards).toContainEqual(expect.objectContaining({ label: "Hours logged", value: "1.5h" }))
+  for (const label of ["Revenue", "Cost incl. labour", "Profit", "Margin"]) expect(cards.map(card => card.label)).not.toContain(label)
 })

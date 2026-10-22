@@ -80,11 +80,14 @@ export function useGuardedForm<V extends FieldValues, O>(
   const [, startRefresh] = useHeldTransition()
   const dirty = form.formState.isDirty
   async function commit(values: O) {
-    // Edits typed while the save is in flight stay dirty.
-    const sent = form.getValues()
+    // getValues() is shallow, so nested edits typed during the save would otherwise rewrite `sent`.
+    const sent = structuredClone(form.getValues())
     const saved = (await onValid(values)) === true
     if (saved) {
+      // The sent values become the baseline; edits typed while the save was in flight stay, and stay dirty.
+      const latest = form.getValues()
       form.reset(sent)
+      form.reset(latest, { keepDefaultValues: true })
       startRefresh(() => router.refresh())
     }
     return saved
