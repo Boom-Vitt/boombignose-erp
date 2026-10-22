@@ -90,8 +90,10 @@ test("quote dialog creates deposits and partial invoices, releases a cancelled d
   await f.signIn(owner)
   const quoteUrl = `/quotes/${quote.id}`
   await page.goto(quoteUrl)
+  await page.getByLabel("Notes", { exact: true }).fill("Header saved before acceptance")
   await page.getByRole("button", { name: "Accept", exact: true }).click()
   await expect.poll(async () => ok(await admin.from("quotes").select("accepted_at").eq("id", quote.id).single()).accepted_at).not.toBeNull()
+  expect(ok(await admin.from("quotes").select("notes").eq("id", quote.id).single()).notes).toBe("Header saved before acceptance")
 
   await page.keyboard.press("ControlOrMeta+k")
   const palette = page.getByRole("dialog", { name: "Command palette" })
