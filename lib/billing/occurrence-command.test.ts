@@ -35,4 +35,11 @@ describe("manual occurrence retry persistence", () => {
     store.setItem = () => { throw new Error("Storage unavailable") }
     expect(() => beginInvoiceRequest(store, org, sub, "2026-07-02")).toThrow("Storage unavailable")
   })
+  it("persists a request for the seed org and subscription, whose ids lack RFC 9562 version bits", () => {
+    const store = storage()
+    const seedOrg = "a0000000-0000-0000-0000-000000000001"
+    const seedSub = "80000000-0000-0000-0000-000000000001"
+    expect(beginInvoiceRequest(store, seedOrg, seedSub, "2026-07-02")).toEqual({ orgId: seedOrg, subscriptionId: seedSub, occurrence: "2026-07-02" })
+    expect(readInvoiceRequest(store, seedOrg, seedSub)?.occurrence).toBe("2026-07-02")
+  })
 })

@@ -15,6 +15,7 @@ export type RecordStatus =
   | SubscriptionStatus
   | TaskStatus
   | Enums<"purchase_status">
+  | Enums<"expense_status">
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger"
 
@@ -23,6 +24,9 @@ export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }>
   confirmed: { label: "Confirmed", tone: "info" },
   received: { label: "Received", tone: "success" },
   billed: { label: "Billed", tone: "success" },
+  submitted: { label: "Submitted", tone: "info" },
+  approved: { label: "Approved", tone: "success" },
+  rejected: { label: "Rejected", tone: "danger" },
   draft: { label: "Draft", tone: "neutral" },
   sent: { label: "Sent", tone: "info" },
   accepted: { label: "Accepted", tone: "success" },
@@ -52,7 +56,7 @@ export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }>
 }
 
 /** Steps a page performs with its own control instead of a plain status change. */
-export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "deliver"
+export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "deliver" | "reject"
 
 export type FlowAction<S extends string> =
   | { label: string; to: S }
@@ -188,5 +192,17 @@ export const PURCHASE_FLOW: DocumentFlow<Enums<"purchase_status">> = {
     received: { primary: { label: "Create bill", command: "bill" } },
     billed: {},
     cancelled: {},
+  },
+}
+
+/** Every action is shown to everyone here; lib/expenses/flow.ts narrows it to what the viewer may do. */
+export const EXPENSE_FLOW: DocumentFlow<Enums<"expense_status">> = {
+  stages: ["draft", "submitted", "approved", "paid"],
+  next: {
+    draft: { primary: { label: "Submit", to: "submitted" } },
+    submitted: { primary: { label: "Approve", to: "approved" }, secondary: [{ label: "Reject", command: "reject" }, { label: "Withdraw", to: "draft" }] },
+    approved: { primary: { label: "Mark paid", to: "paid" }, secondary: [{ label: "Reject", command: "reject" }] },
+    rejected: { primary: { label: "Reopen", to: "draft" } },
+    paid: {},
   },
 }

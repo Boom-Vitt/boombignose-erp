@@ -121,3 +121,11 @@ it("rejects forged or malformed timeline cursors before querying history", async
   expect(await loadRecordHistoryPage({ ...ref, cursor: { at: "yesterday", id: `note:${activityId}` } })).toHaveProperty("error")
   expect(filters).toHaveLength(0)
 })
+it("completes activities and signs attachments whose ids lack RFC 9562 version bits", async () => {
+  const [seedActivity, seedAttachment] = ["40000000-0000-0000-0000-000000000001", "40000000-0000-0000-0000-000000000002"]
+  tables.activities[0].id = seedActivity
+  tables.record_attachments = [{ id: seedAttachment, org_id: state.ctx.orgId, path: "private/path", filename: "scope.txt" }]
+  expect(await completeRecordActivity(seedActivity)).toEqual({})
+  expect(filters).toEqual(expect.arrayContaining([{ table: "activities", key: "id", value: seedActivity }]))
+  expect(await recordAttachmentUrl(seedAttachment)).toEqual({ url: "https://storage.example.invalid/signed" })
+})

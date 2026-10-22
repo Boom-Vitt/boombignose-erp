@@ -28,7 +28,7 @@ function nullableText(v: string | null | undefined): string | null {
 }
 
 const DealInput = z.object({
-  clientId: z.string().uuid("Pick a client"),
+  clientId: z.guid("Pick a client"),
   title: z.string().min(1, "Title is required"),
   stage: z.enum(STAGES),
   valueBaht: z.coerce.number().min(0, "Value can't be negative"),
@@ -220,7 +220,7 @@ export async function deleteDeal(id: string): Promise<{ error?: string }> {
 }
 
 const ActivityInput = z.object({
-  dealId: z.string().uuid(),
+  dealId: z.guid(),
   type: z.enum(ACTIVITY_TYPES),
   body: z.string().optional(),
   dueDate: z.string().optional(),

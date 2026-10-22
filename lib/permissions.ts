@@ -26,6 +26,7 @@ export type Capability =
   | "inventory:manage"
   | "purchase:manage"
   | "product:manage"
+  | "expense:approve" // approve, reject and pay other people's expense claims
   | "record:write"
 
 const ALL_STAFF: Role[] = ["owner", "admin"]
@@ -52,6 +53,7 @@ export const CAPABILITY_ROLES: Record<Capability, Role[]> = {
   "inventory:manage": ALL_STAFF,
   "purchase:manage": ALL_STAFF,
   "product:manage": ALL_STAFF,
+  "expense:approve": ALL_STAFF,
   "record:write": ["owner", "admin", "member"],
 }
 

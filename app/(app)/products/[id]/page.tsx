@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic"
 export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const ctx = await requireOrgContext()
-  if (!z.uuid().safeParse(id).success) notFound()
+  if (!z.guid().safeParse(id).success) notFound()
   const supabase = await createClient()
   const { data: product, error } = await supabase.from("products").select("*").eq("org_id", ctx.orgId).eq("id", id).maybeSingle()
   if (error) throw new Error(error.message)

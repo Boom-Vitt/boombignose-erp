@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic"
 
 export default async function InventoryPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams
-  const warehouse = z.uuid().safeParse(params.warehouse).data
-  const product = z.uuid().safeParse(params.product).data
+  const warehouse = z.guid().safeParse(params.warehouse).data
+  const product = z.guid().safeParse(params.product).data
   const { products, warehouses } = await inventoryData(warehouse, product)
   return <div className="space-y-6">
     <PageHeader title="Inventory" description="On hand and perpetual moving-average stock value." />

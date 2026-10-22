@@ -19,7 +19,7 @@ function slugify(value: string): string {
 
 const TemplateInput = z.object({
   name: z.string().min(1, "Name is required"),
-  categoryId: z.string().uuid().optional().nullable(),
+  categoryId: z.guid().optional().nullable(),
   description: z.string().optional().nullable(),
   internalValueBaht: z.coerce.number().min(0).optional().nullable(),
   priceBaht: z.coerce.number().min(0).optional().nullable(),

@@ -32,7 +32,7 @@ export async function createLeadForm(form: FormData): Promise<void> {
 export async function disableLeadForm(form: FormData): Promise<void> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "settings:manage")
-  const parsed = z.uuid().safeParse(form.get("id"))
+  const parsed = z.guid().safeParse(form.get("id"))
   if (!parsed.success) redirect("/settings/lead-forms?error=invalid")
   const supabase = await createClient() as SupabaseClient<LeadFormsDatabase>
   const { data, error } = await supabase.from("lead_forms").update({ enabled: false })

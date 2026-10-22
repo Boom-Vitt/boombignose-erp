@@ -16,6 +16,7 @@ import {
   Compass,
   type LucideIcon,
   Package,
+  Wallet,
 } from "lucide-react"
 
 export type NavItem = {
@@ -41,6 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Projects", href: "/projects", icon: FolderKanban },
   { title: "Timesheets", href: "/timesheets", icon: Clock },
   { title: "Finance", href: "/finance", icon: Receipt },
+  { title: "Expenses", href: "/expenses", icon: Wallet },
   { title: "Reports", href: "/reports", icon: BarChart3 },
   { title: "Calendar", href: "/calendar", icon: CalendarDays },
   { title: "Templates", href: "/templates", icon: Sparkles },

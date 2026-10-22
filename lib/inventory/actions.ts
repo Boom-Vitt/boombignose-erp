@@ -29,7 +29,7 @@ export async function saveWarehouse(input: unknown): Promise<{ error?: string }>
 export async function deleteWarehouse(id: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "inventory:manage")
-  if (!z.uuid().safeParse(id).success) return { error: "Invalid warehouse" }
+  if (!z.guid().safeParse(id).success) return { error: "Invalid warehouse" }
   const db = await createClient()
   const { error } = await db.rpc("delete_warehouse", { p_org_id: ctx.orgId, p_id: id })
   if (error) return { error: error.code === "23503" ? "This warehouse has stock history. Deactivate it instead." : error.message }
@@ -53,7 +53,7 @@ export async function adjustStock(input: unknown): Promise<{ error?: string }> {
 export async function deliverInvoice(id: string, warehouseId?: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "inventory:manage")
-  if (!z.uuid().safeParse(id).success || (warehouseId !== undefined && !z.uuid().safeParse(warehouseId).success)) return { error: "Invalid delivery" }
+  if (!z.guid().safeParse(id).success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success)) return { error: "Invalid delivery" }
   const db = await createClient()
   const { error } = await db.rpc("deliver_invoice", { p_org_id: ctx.orgId, p_invoice_id: id, ...(warehouseId ? { p_warehouse_id: warehouseId } : {}) })
   if (error) return { error: error.message }
@@ -81,7 +81,7 @@ export async function createReplenishment(vendorId: string): Promise<{ error?: s
   const ctx = await requireOrgContext()
   requireCapability(ctx, "inventory:manage")
   requireCapability(ctx, "purchase:manage")
-  if (!z.uuid().safeParse(vendorId).success) return { error: "Invalid vendor" }
+  if (!z.guid().safeParse(vendorId).success) return { error: "Invalid vendor" }
   const db = await createClient()
   const { data, error } = await db.rpc("create_replenishment_rfq", { p_org_id: ctx.orgId, p_vendor_id: vendorId })
   if (error) return { error: error.message }

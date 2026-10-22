@@ -385,7 +385,7 @@ export async function updateBusinessProfile(input: z.input<typeof BusinessProfil
   return {}
 }
 
-const Withholding = z.object({ invoiceId: z.uuid(), rateBps: z.number().refine(value => [0, 100, 200, 300, 500].includes(value)) })
+const Withholding = z.object({ invoiceId: z.guid(), rateBps: z.number().refine(value => [0, 100, 200, 300, 500].includes(value)) })
 export async function updateInvoiceWithholding(input: z.input<typeof Withholding>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try { requireCapability(ctx, "payment:verify") } catch { return { error: "Only owners and admins can edit withholding." } }

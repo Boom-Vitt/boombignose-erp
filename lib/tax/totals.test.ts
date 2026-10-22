@@ -55,4 +55,15 @@ describe("document tax totals", () => {
     expect(() => calculateTax([line(1)], 2)).toThrow("Discount")
     expect(() => calculateTax([line(1)], 0, false, 400)).toThrow("WHT")
   })
+  // Same cases and expectations as supabase/tests/vat_wht_fixes.sql, so SQL and TypeScript cannot drift.
+  it.each([
+    ["inclusive VAT at 9999 bps rounds once", [{ amount_satang: 1_999_900_000_000_001, tax_rate_bps: 9999 }], 0, true, 0, { subtotalSatang: 1_999_900_000_000_001, baseSatang: 1_000_000_000_000_001, vatSatang: 999_900_000_000_000, totalSatang: 1_999_900_000_000_001, whtSatang: 0, amountDueSatang: 1_999_900_000_000_001, vatByRate: [{ rateBps: 9999, baseSatang: 1_000_000_000_000_001, vatSatang: 999_900_000_000_000 }] }],
+    ["discount floors stay exact across three rates", [{ amount_satang: 10_000_000_000_003, tax_rate_bps: 0 }, { amount_satang: 10_000_000_000_002, tax_rate_bps: 700 }, { amount_satang: 10_000_000_000_002, tax_rate_bps: 1000 }], 15_000_000_000_002, false, 300, { subtotalSatang: 30_000_000_000_007, baseSatang: 15_000_000_000_005, vatSatang: 850_000_000_000, totalSatang: 15_850_000_000_005, whtSatang: 450_000_000_000, amountDueSatang: 15_400_000_000_005, vatByRate: [{ rateBps: 0, baseSatang: 5_000_000_000_002, vatSatang: 0 }, { rateBps: 700, baseSatang: 5_000_000_000_001, vatSatang: 350_000_000_000 }, { rateBps: 1000, baseSatang: 5_000_000_000_002, vatSatang: 500_000_000_000 }] }],
+    ["inclusive VAT half-up tie", [{ amount_satang: 1, tax_rate_bps: 10000 }], 0, true, 0, { subtotalSatang: 1, baseSatang: 0, vatSatang: 1, totalSatang: 1, whtSatang: 0, amountDueSatang: 1, vatByRate: [{ rateBps: 10000, baseSatang: 0, vatSatang: 1 }] }],
+    ["WHT half-up tie", [{ amount_satang: 50, tax_rate_bps: 0 }], 0, false, 100, { subtotalSatang: 50, baseSatang: 50, vatSatang: 0, totalSatang: 50, whtSatang: 1, amountDueSatang: 49, vatByRate: [{ rateBps: 0, baseSatang: 50, vatSatang: 0 }] }],
+    ["max safe inclusive amount with WHT", [{ amount_satang: 9_007_199_254_740_991, tax_rate_bps: 700 }], 0, true, 500, { subtotalSatang: 9_007_199_254_740_991, baseSatang: 8_417_943_228_729_898, vatSatang: 589_256_026_011_093, totalSatang: 9_007_199_254_740_991, whtSatang: 420_897_161_436_495, amountDueSatang: 8_586_302_093_304_496, vatByRate: [{ rateBps: 700, baseSatang: 8_417_943_228_729_898, vatSatang: 589_256_026_011_093 }] }],
+    ["near-total discount at max safe subtotal", [{ amount_satang: 9_007_199_254_740_990, tax_rate_bps: 0 }, { amount_satang: 1, tax_rate_bps: 9999 }], 9_007_199_254_740_989, true, 300, { subtotalSatang: 9_007_199_254_740_991, baseSatang: 2, vatSatang: 0, totalSatang: 2, whtSatang: 0, amountDueSatang: 2, vatByRate: [{ rateBps: 0, baseSatang: 2, vatSatang: 0 }, { rateBps: 9999, baseSatang: 0, vatSatang: 0 }] }],
+  ] as const)("agrees with the SQL helper: %s", (_label, lines, discount, inclusive, wht, expected) => {
+    expect(calculateTax(lines, discount, inclusive, wht)).toEqual({ ...expected, discountSatang: discount })
+  })
 })

@@ -33,9 +33,9 @@ const ViewConfig = z
     q: z.string().max(200).optional(),
     period: z.enum(["this_month", "last_month", "this_quarter", "this_year"]).optional(),
     mine: z.literal("1").optional(),
-    warehouse: z.uuid().optional(),
-    product: z.uuid().optional(),
-    sourceId: z.uuid().optional(),
+    warehouse: z.guid().optional(),
+    product: z.guid().optional(),
+    sourceId: z.guid().optional(),
     groupBy: z.enum(["status", "client", "month", "industry", "source", "project", "stage", "owner", "vendor"]).optional(),
   })
   .strict()
@@ -73,7 +73,7 @@ export async function createSavedView(
   return {}
 }
 
-const DeleteSavedViewInput = z.object({ id: z.string().uuid() })
+const DeleteSavedViewInput = z.object({ id: z.guid() })
 
 export async function deleteSavedView(
   id: string

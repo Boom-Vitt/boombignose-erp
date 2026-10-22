@@ -12,7 +12,7 @@ import { renderRFQEmail } from "@/lib/purchasing/rfq"
 export async function sendPurchaseRFQ(id: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
-  if (!z.uuid().safeParse(id).success) return { error: "Invalid purchase" }
+  if (!z.guid().safeParse(id).success) return { error: "Invalid purchase" }
   if (!isEmailConfigured()) return { error: "Email is not configured. Print the RFQ or configure email delivery." }
   const db = await createClient()
   const claim = await db.rpc("claim_purchase_rfq", { p_org_id: ctx.orgId, p_order_id: id })

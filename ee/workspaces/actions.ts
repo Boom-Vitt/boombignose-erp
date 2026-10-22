@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server"
 import { activateWorkspace } from "@/lib/supabase/workspace-session"
 
 // ── Switch active org ───────────────────────────────────────────────────────
-const SetActiveOrg = z.object({ orgId: z.string().uuid() })
+const SetActiveOrg = z.object({ orgId: z.guid() })
 
 export async function setActiveOrg(
   input: z.input<typeof SetActiveOrg>

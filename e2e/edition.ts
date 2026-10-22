@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs"
+import { loadEnvConfig } from "@next/env"
 
-// Mirrors next.config.ts at build time: the shell value wins, then .env.local, then community.
-const local = readFileSync(".env.local", "utf8").match(/^BBN_EDITION=(.*)$/m)?.[1]
-export const community = (process.env.BBN_EDITION ?? local ?? "community") !== "pro"
+// Resolve BBN_EDITION as `next build` does for next.config.ts: Next's own .env loading (the shell wins), then community.
+loadEnvConfig(process.cwd(), false, { info: () => {}, error: console.error })
+const edition = process.env.BBN_EDITION ?? "community"
+if (edition !== "community" && edition !== "pro") throw new Error(`BBN_EDITION must be community or pro, got ${JSON.stringify(edition)}`)
+export const community = edition === "community"

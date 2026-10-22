@@ -4,6 +4,8 @@ import { databaseFixture, pageContent } from "@/lib/supabase/__tests__/tenant-fi
 import { DocumentTotals } from "@/components/document-totals"
 import { SmartButtons } from "@/components/record/smart-buttons"
 import { WithholdingForm } from "@/app/(app)/finance/_components/withholding-form"
+import { StatCard } from "@/components/stat-card"
+import { formatTHB } from "@/lib/money"
 
 const state = vi.hoisted(() => ({ client: {} as unknown }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.client }))
@@ -16,6 +18,7 @@ vi.mock("@edition", () => ({
 import InvoicePage from "@/app/(app)/finance/invoices/[id]/page"
 import QuotePage from "@/app/(app)/quotes/[id]/page"
 import FinancePage from "@/app/(app)/finance/page"
+import ProjectPage from "@/app/(app)/projects/[id]/page"
 
 const header = { id: "invoice", org_id: "A", client_id: "buyer", number: "VAT-1", status: "draft", amount_satang: 1040000, subtotal_satang: 1000000, discount_satang: 0, vat_satang: 70000, total_satang: 1070000, wht_satang: 30000, wht_rate_bps: 300, tax_breakdown: [], prices_include_vat: false, version: 1 }
 const payments = Array.from({ length: 1501 }, (_, n) => ({ id: `payment-${n}`, org_id: "A", invoice_id: "invoice", amount_satang: 100, verification_state: "verified", paid_at: "2026-10-23" }))
@@ -58,4 +61,12 @@ it("Finance keeps vendor bill metadata beyond the row cap alongside net receivab
   expect(content).toContain("/purchases/purchase")
   expect(content).toContain("Mark paid")
   expect(content).toContain("8,899.00")
+})
+
+it("project profit counts every invoice and cost beyond the row cap, before WHT", async () => {
+  const invoices = Array.from({ length: 1001 }, (_, n) => ({ id: `invoice-${n}`, org_id: "A", project_id: "project", number: `INV-${n}`, status: "sent", total_satang: 100, vat_satang: 0, amount_satang: 97 }))
+  const costs = Array.from({ length: 1001 }, (_, n) => ({ id: `cost-${n}`, org_id: "A", project_id: "project", amount_satang: 50 }))
+  state.client = databaseFixture({ projects: [{ id: "project", org_id: "A", name: "Project", status: "in_progress", client_id: "buyer" }], invoices, costs })
+  const cards = elements(await ProjectPage({ params: Promise.resolve({ id: "project" }) })).filter(node => node.type === StatCard).map(node => node.props as { label: string; value: string })
+  expect(cards).toEqual(expect.arrayContaining([["Revenue", 100_100], ["Cost", 50_050], ["Profit", 50_050]].map(([label, satang]) => expect.objectContaining({ label, value: formatTHB(satang as number) }))))
 })

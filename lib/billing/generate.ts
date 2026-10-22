@@ -18,7 +18,7 @@ export async function generateSubscriptionOccurrence(
     p_org_id: orgId, p_subscription_id: subscriptionId, p_occurrence: occurrence,
   })
   if (error) throw new Error(error.message)
-  const parsed = z.uuid().safeParse(data)
+  const parsed = z.guid().safeParse(data)
   if (!parsed.success) throw new Error("Invalid subscription command result")
   return parsed.data
 }

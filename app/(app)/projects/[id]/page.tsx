@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
 import { projectProfit } from "@/lib/metrics/projects"
@@ -98,8 +99,8 @@ export default async function ProjectDetailPage({
     { data: tasksData, count: taskCount },
     { count: doneTaskCount },
     { data: milestonesData },
-    { data: invoicesData, count: invoiceCount },
-    { data: costsData },
+    invoicesData,
+    costsData,
     { data: timeData },
     { data: timeTotal },
     { data: sourceQuotes, count: quoteCount },
@@ -126,12 +127,15 @@ export default async function ProjectDetailPage({
       .order("done", { ascending: true })
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true }),
-    supabase
+    readAllOrThrow((from, to) => supabase
       .from("invoices")
-      .select("id, number, status, amount_satang, source_quote_id, source_milestone_id", { count: "exact" })
+      .select("id, number, status, amount_satang, total_satang, vat_satang, source_quote_id, source_milestone_id")
       .eq("org_id", ctx.orgId)
-      .eq("project_id", id),
-    supabase.from("costs").select("amount_satang").eq("org_id", ctx.orgId).eq("project_id", id),
+      .eq("project_id", id)
+      .order("created_at")
+      .order("id")
+      .range(from, to)),
+    readAllOrThrow((from, to) => supabase.from("costs").select("id, amount_satang").eq("org_id", ctx.orgId).eq("project_id", id).order("id").range(from, to)),
     supabase
       .from("time_entries")
       .select("project_id, minutes, billable, rate_satang")
@@ -166,15 +170,17 @@ export default async function ProjectDetailPage({
     done: boolean
     source_quote_id: string | null
   }>
-  const invoices = (invoicesData ?? []) as Array<{
+  const invoices = invoicesData as Array<{
     id: string
     number: string
     status: Enums<"invoice_status">
     amount_satang: number
+    total_satang: number
+    vat_satang: number
     source_quote_id: string | null
     source_milestone_id: string | null
   }>
-  const costs = (costsData ?? []) as Array<{ amount_satang: number }>
+  const costs = costsData as Array<{ amount_satang: number }>
   const names = await profileNames(supabase, [
     p.owner,
     ...tasks.map((t) => t.assignee),
@@ -235,9 +241,9 @@ export default async function ProjectDetailPage({
           {
             label: "Invoices",
             icon: ReceiptText,
-            count: invoiceCount ?? 0,
-            href: invoiceCount
-              ? recordHref({ count: invoiceCount, data: invoicesData }, (invoiceId) => `/finance/invoices/${invoiceId}`, "#billing")
+            count: invoices.length,
+            href: invoices.length
+              ? recordHref({ count: invoices.length, data: invoices }, (invoiceId) => `/finance/invoices/${invoiceId}`, "#billing")
               : "/finance/invoices/new",
             nextStep: p.status === "delivered" || p.status === "support",
           },

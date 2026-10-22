@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   search: "", role: "owner",
   ranges: [] as Array<[number, number]>, limit: 0,
   orders: [] as string[],
+  product: { id: "a5000000-0000-0000-0000-000000000001", name: "CRM automation build", sku: "CRM-BUILD", description: null, type: "service", unit: "project", list_price_satang: 15000000, cost_satang: 9000000, tax_rate_bps: 0, is_stockable: false, active: true },
   rows: [] as Array<{ id: string; name: string; sku: null; type: string; unit: string; list_price_satang: number; active: boolean }>,
 }))
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: state.orgId, role: state.role }), requireCapability: vi.fn() }))
@@ -17,12 +18,15 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: () 
     limit: (limit: number) => { state.limit = limit; return chain },
     eq: (key: string, value: unknown) => { state.filters.push([key, value]); return chain },
     or: (value: string) => { state.search = value; return chain },
+    maybeSingle: async () => ({ data: state.product, error: null }),
     then: (resolve: (value: unknown) => unknown) => resolve({ data: state.rows, error: null }),
   }
   return chain
 } }) }))
 
 import ProductsPage from "@/app/(app)/products/page"
+import ProductDetailPage from "@/app/(app)/products/[id]/page"
+import EditProductPage from "@/app/(app)/products/[id]/edit/page"
 import { activeProductOptions } from "./queries"
 
 beforeEach(() => { state.filters = []; state.search = ""; state.ranges = []; state.limit = 0; state.orders = []; state.rows = [] })
@@ -87,5 +91,17 @@ describe("catalog list and picker queries", () => {
     expect(await activeProductOptions()).toEqual([])
     expect(state.filters).toEqual([["org_id", state.orgId], ["active", true]])
     expect(state.limit).toBe(20)
+  })
+})
+
+describe("product routes", () => {
+  it("opens a seed-shaped product id on the detail page", async () => {
+    await ProductDetailPage({ params: Promise.resolve({ id: state.product.id }) })
+    expect(state.filters).toContainEqual(["id", state.product.id])
+  })
+
+  it("opens a seed-shaped product id on the edit page", async () => {
+    await EditProductPage({ params: Promise.resolve({ id: state.product.id }) })
+    expect(state.filters).toContainEqual(["id", state.product.id])
   })
 })
