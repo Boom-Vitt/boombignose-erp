@@ -23,6 +23,14 @@ export type PrintableDocument = {
   orgName: string
   sellerAddress?: string | null
   sellerTaxId?: string | null
+  sellerBranch?: string | null
+  buyerBranch?: string | null
+  vatSatang?: Satang
+  vatByRate?: { rateBps: number; vatSatang: number }[]
+  whtSatang?: Satang
+  whtRateBps?: number
+  amountDueSatang?: Satang
+  pricesIncludeVat?: boolean
   buyerAddress?: string | null
   buyerTaxId?: string | null
   clientName: string
@@ -76,12 +84,7 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
 
   const emptyRow = `<tr><td colspan="4" class="muted">No line items.</td></tr>`
 
-  const discountLine =
-    doc.discountSatang && doc.discountSatang > 0
-      ? `<div class="total-row"><span>ส่วนลด / Discount</span><span class="num">−${escapeHtml(
-          formatTHB(doc.discountSatang)
-        )}</span></div>`
-      : ""
+  const discountLine = `<div class="total-row"><span>ส่วนลด / Discount</span><span class="num">${escapeHtml(formatTHB(doc.discountSatang ? -doc.discountSatang : 0))}</span></div>`
 
   const notesBlock = doc.notes
     ? `<div class="notes"><div class="meta-label">Notes</div><p>${escapeHtml(
@@ -133,6 +136,8 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
     <div class="meta">
       ${metaRow("ผู้ขาย / Seller address", doc.sellerAddress)}
       ${metaRow("เลขผู้เสียภาษีผู้ขาย / Seller tax ID", doc.sellerTaxId)}
+      ${metaRow("Seller branch", doc.sellerBranch)}
+      ${metaRow("Buyer branch", doc.buyerBranch)}
       ${metaRow("เลขที่ / Number", doc.number)}
       ${metaRow("ลูกค้า / Bill to", doc.clientName)}
       ${metaRow("ที่อยู่ลูกค้า / Buyer address", doc.buyerAddress)}
@@ -161,9 +166,13 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
         formatTHB(doc.subtotalSatang)
       )}</span></div>
       ${discountLine}
+      ${(doc.vatByRate?.filter(rate => rate.rateBps > 0).length ? doc.vatByRate.filter(rate => rate.rateBps > 0).map(rate => `<div class="total-row"><span>VAT ${rate.rateBps / 100}%</span><span class="num">${escapeHtml(formatTHB(rate.vatSatang))}</span></div>`).join("") : `<div class="total-row"><span>VAT</span><span class="num">${escapeHtml(formatTHB(doc.vatSatang ?? 0))}</span></div>`)}
       <div class="total-row grand"><span>รวมทั้งสิ้น / Total</span><span class="num">${escapeHtml(
         formatTHB(doc.totalSatang)
       )}</span></div>
+      <div class="total-row"><span>WHT ${(doc.whtRateBps ?? 0) / 100}%</span><span class="num">${escapeHtml(formatTHB(-(doc.whtSatang ?? 0)))}</span></div>
+      <div class="total-row grand"><span>Amount due</span><span class="num">${escapeHtml(formatTHB(doc.amountDueSatang ?? doc.totalSatang))}</span></div>
+      ${doc.pricesIncludeVat ? '<p>Entered prices and discounts include VAT.</p>' : ""}
       ${doc.verifiedPaidSatang !== undefined ? `<div class="total-row"><span>รับเงินที่ตรวจสอบแล้ว / Verified receipts</span><span class="num">${escapeHtml(formatTHB(doc.verifiedPaidSatang))}</span></div>` : ""}
       ${doc.outstandingSatang !== undefined ? `<div class="total-row"><span>ยอดคงค้าง / Outstanding</span><span class="num">${escapeHtml(formatTHB(doc.outstandingSatang))}</span></div>` : ""}
     </div>

@@ -16,6 +16,7 @@ import type { ExternalInvoicePayload } from "@/ee/accounting/provider"
 export type InvoiceForMapping = {
   number: string
   amount_satang: number
+  total_satang?: number
   status: string
   issue_date: string | null
   due_date: string | null
@@ -40,7 +41,7 @@ export function invoiceToExternalPayload(
     issueDate: invoice.issue_date,
     dueDate: invoice.due_date,
     currency: "THB",
-    totalBaht: satangToBaht(invoice.amount_satang),
+    totalBaht: satangToBaht(invoice.total_satang ?? invoice.amount_satang),
     status: invoice.status,
   }
 }

@@ -27,3 +27,21 @@ export const LineInput = z.object({
   unitCostBaht: serviceMoneyInput,
 })
 export const ReceiptInput = z.array(z.object({ id: z.uuid(), received_quantity: z.number().finite().nonnegative() })).min(1)
+
+export const RFQClaim = z.object({
+  delivery_key: z.uuid(),
+  snapshot: z.object({
+    to: z.email(),
+    number: z.string().min(1),
+    vendorName: z.string().min(1),
+    orderDate: z.iso.date(),
+    expectedDate: z.iso.date().nullable(),
+    notes: z.string().nullable(),
+    lines: z.array(z.object({
+      description: z.string().min(1),
+      quantity: serviceQuantityInput,
+      unit: z.string().min(1),
+      unit_cost_satang: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    })).min(1),
+  }),
+})

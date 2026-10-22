@@ -46,3 +46,41 @@ SQL and browser runtime checks have not run here. `pnpm exec playwright test e2e
 ## Open issues and next steps
 
 Apply the migration before using these routes, then run the SQL and browser tests on the integration stack. Review enum/type additions together with sibling tracks when merging. RFQ printing reuses the quote printable renderer and supports browser Save as PDF. RFQ delivery reuses the existing email sender and includes every escaped line, quantity, cost, total and notes in the email body so external suppliers do not need workspace access; real email delivery was not exercised. The internal printable route stays authenticated. No inventory stock moves are written in this wave.
+
+## Fix round 1, 2026-10-23
+
+The coordinator confirmed the original migration and its 44 purchasing assertions pass on the integration database. This round adds `20261024090500_purchasing_fixes.sql`; the applied `20261024090000_purchasing.sql` is unchanged.
+
+The child-line guard now permits privileged cascade deletion when its parent PO has already been removed, preserving ordinary tenant, staff and draft guards. `supabase/tests/purchasing_fixes.sql` adds 54 assertions for PO deletion, organization cascade, claim/finish permissions, invalid recipients, immutable snapshots, one delivery authorization, delivery outcomes and a 1,001-line RFQ snapshot.
+
+RFQ sending now claims the draft and changes it to sent inside a database transaction. The PO lock serializes the claim with line edits; a vendor lock freezes recipient details while a SQL aggregate captures every ordered line. The saved snapshot and delivery key are returned only to the winner. Concurrent or subsequent requests receive no authorization and do not call the email sender. The sender passes the saved key in the provider's `Idempotency-Key` header, following [Resend's documented API](https://resend.com/docs/dashboard/emails/idempotency-keys). The action stores delivery completion or a bounded error. A failed or interrupted delivery keeps the RFQ frozen and visible for administrative verification; this round deliberately adds no automatic retry. Resend retains idempotency keys for 24 hours, so recovery must verify the original outcome before any further delivery attempt.
+
+Vendor/PO bills and Finance costs both format `paid_at` through `todayISO(new Date(paid_at))`. A payment at `2026-10-23T18:00:00Z` now displays `Paid 2026-10-24` on both rendered surfaces.
+
+Per coordinator direction, merge commit `fd8e703` brings `odoo-parity` into this worker branch. Its purchasing queries already use the shared `readAllOrThrow` helper from `lib/supabase/read-all.ts`; the deleted purchasing pager stays deleted. No separate paging loop was added.
+
+Fail-first commit `5954873` recorded the action/provider/date regressions before the fix. The decisive results were:
+
+```text
+Before
+expected "vi.fn()" to be called 1 times, but got 2 times
+expected rendered payment text to contain Paid 2026-10-24; received Paid 2026-10-23
+Test Files  3 failed (3)
+Tests  7 failed | 4 passed (11)
+
+After, the same focused files
+Test Files  3 passed (3)
+Tests  11 passed (11)
+
+Final source gates
+pnpm lint: $ eslint; exit 0
+pnpm typecheck: $ tsc --noEmit; exit 0
+pnpm test: Test Files 111 passed (111); Tests 774 passed (774); Duration 7.71s; exit 0
+pnpm build: Compiled successfully in 8.6s; Finished TypeScript in 7.7s
+Generating static pages using 17 workers (22/22) in 215ms
+ƒ Proxy (Middleware)
+ƒ (Dynamic) server-rendered on demand
+exit 0
+```
+
+The new SQL assertions have not run in this worker. The coordinator must apply the new migration and execute both purchasing SQL files on integration, including the cascade regression that fails against the original guard. Browser and real email delivery were not run here; the concurrency and date regressions execute the real server action and rendered components with mocked I/O. No Supabase or Docker service was started.

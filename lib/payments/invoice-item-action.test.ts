@@ -3,7 +3,7 @@ const { from, insert, update, ctx } = vi.hoisted(() => ({
   from: vi.fn(), insert: vi.fn(), update: vi.fn(),
   ctx: { orgId: "active-org", role: "owner" },
 }))
-vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ctx, requireRole: () => {} }))
+vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ctx, requireRole: () => {}, requireCapability: () => {} }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from }) }))
 vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))

@@ -32,9 +32,12 @@ export function configToQueryString(config: ViewConfig): string {
   return params.toString()
 }
 
-/** Same as above but with a leading `?`, or "" when there are no filters. */
-export function configToHref(path: string, config: ViewConfig): string {
-  const qs = configToQueryString(config)
+/**
+ * Same as above but with a leading `?`, or "" when there are no filters. `params`
+ * are page-owned, non-filter params (such as the active view) appended after the filters.
+ */
+export function configToHref(path: string, config: ViewConfig, params: Record<string, string> = {}): string {
+  const qs = [configToQueryString(config), new URLSearchParams(params).toString()].filter(Boolean).join("&")
   return qs ? `${path}?${qs}` : path
 }
 

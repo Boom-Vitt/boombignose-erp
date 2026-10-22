@@ -20,7 +20,7 @@ export default async function EditClientPage({
   const supabase = await createClient()
   const { data: client } = await supabase
     .from("clients")
-    .select("id, name, industry, source, notes")
+    .select("id, name, industry, source, notes, tax_id, branch_label")
     .eq("org_id", ctx.orgId)
     .eq("id", id)
     .maybeSingle()
@@ -53,6 +53,8 @@ export default async function EditClientPage({
             submitLabel="Save changes"
             defaultValues={{
               name: client.name,
+              tax_id: client.tax_id ?? "",
+              branch_label: client.branch_label ?? "",
               industry: client.industry ?? "",
               source: client.source ?? "",
               notes: client.notes ?? "",

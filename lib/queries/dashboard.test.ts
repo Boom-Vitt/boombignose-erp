@@ -5,6 +5,8 @@ vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org" })
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (table: string) => {
   const filters: [string, unknown][] = []
   const chain = {
+    range: () => chain,
+    order: () => chain,
     select: () => chain,
     eq: (key: string, value: unknown) => { filters.push([key, value]); return chain },
     gte: () => chain, lt: () => chain, in: () => chain,

@@ -40,6 +40,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
       receive: "#receive",
       ...(billable ? { bill: ({ label, variant }: { label: string; variant: "default" | "outline" }) => <PurchaseAction action={createPurchaseBill.bind(null, id)} label={label} variant={variant} /> } : {}),
     } : {}} />
+    {order.rfq_delivery_key && <p role="status" className="rounded-lg border p-3 text-sm">{order.rfq_delivered_at ? "RFQ delivery accepted." : order.rfq_delivery_error ? `RFQ delivery failed: ${order.rfq_delivery_error}. This order is frozen; print the RFQ or verify delivery with an administrator.` : "RFQ delivery claimed. Verify its outcome before recovery; it will not be sent again automatically."}</p>}
     <SmartButtons buttons={[
       { label: "Bills", icon: Receipt, href: "#bills", count: bills.length, nextStep: true },
       { label: "Vendor", icon: Users, href: `/vendors/${order.vendor_id}`, count: 1, value: order.vendors?.name },
