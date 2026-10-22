@@ -132,6 +132,42 @@ test("quote dialog creates deposits and partial invoices, releases a cancelled d
   expect(ok(await admin.from("quote_items").select("invoiced_quantity").eq("id", line.id).single()).invoiced_quantity).toBe(4)
 })
 
+test("Accept stops over notes typed while its save is pending, then accepts once they are saved", async ({ fixtures: f, page }) => {
+  const owner = await f.user()
+  const workspace = await f.workspace("accept during save", owner)
+  const client = ok(await admin.from("clients").insert({ org_id: workspace.id, name: f.name("accept buyer") }).select("id").single())
+  const quote = ok(await owner.api.from("quotes").insert({ org_id: workspace.id, client_id: client.id, number: f.name("accept quote") }).select("id").single())
+  expect((await owner.api.from("quote_items").insert({ org_id: workspace.id, quote_id: quote.id, description: "Agreed service", quantity: 1, unit_price_satang: 10000 })).error).toBeNull()
+  expect((await owner.api.from("quotes").update({ status: "sent" }).eq("id", quote.id)).error).toBeNull()
+  await f.signIn(owner)
+  await page.goto(`/quotes/${quote.id}`)
+  let release = () => {}
+  const held = new Promise<void>(resolve => (release = resolve))
+  let reached = () => {}
+  const saveSent = new Promise<void>(resolve => (reached = resolve))
+  await page.route(`**/quotes/${quote.id}`, async route => {
+    if (route.request().method() === "POST" && route.request().postData()?.includes("Saved by Accept")) {
+      reached()
+      await held
+    }
+    await route.continue()
+  })
+  const notes = page.getByLabel("Notes", { exact: true })
+  await notes.fill("Saved by Accept")
+  await page.getByRole("button", { name: "Accept", exact: true }).click()
+  await saveSent
+  await notes.fill("Typed during the save")
+  release()
+  await expect(page.getByText("Nothing ran because some of your changes are not saved yet. Save them, then try again.", { exact: true })).toBeVisible()
+  const saved = async () => ok(await admin.from("quotes").select("status,notes").eq("id", quote.id).single())
+  expect(await saved()).toEqual({ status: "sent", notes: "Saved by Accept" })
+  await expect(notes).toHaveValue("Typed during the save")
+
+  await page.getByRole("button", { name: "Accept", exact: true }).click()
+  await expect.poll(async () => (await saved()).status).toBe("accepted")
+  expect((await saved()).notes).toBe("Typed during the save")
+})
+
 test("a committed quote deposit survives a lost response and refresh with its exact request", async ({ fixtures: f, page }) => {
   const owner = await f.user()
   const workspace = await f.workspace("deposit recovery", owner)

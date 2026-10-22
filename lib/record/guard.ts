@@ -1,4 +1,4 @@
-/** A header form on a record page. `save` resolves false when the edits were not saved. */
+/** A header form on a record page. `save` resolves false when any of its edits remain unsaved. */
 export type GuardedForm = { dirty: boolean; save: () => Promise<boolean> }
 type GuardState = { busy: boolean; dirty: boolean }
 type RunResult = "done" | "busy" | "unsaved"
