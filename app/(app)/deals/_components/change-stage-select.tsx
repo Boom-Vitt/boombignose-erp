@@ -33,7 +33,13 @@ export function ChangeStageSelect({
 }) {
   const router = useRouter()
   const [value, setValue] = useState<Enums<"deal_stage">>(stage)
+  const [shownStage, setShownStage] = useState(stage)
   const [isPending, startTransition] = useTransition()
+  // The status bar can move the stage too, so follow the refreshed prop.
+  if (stage !== shownStage) {
+    setShownStage(stage)
+    setValue(stage)
+  }
 
   return (
     <Select
