@@ -35,6 +35,14 @@ const INTERVAL_LABEL: Record<Enums<"recurring_interval">, string> = {
   yearly: "Yearly",
 }
 
+const SUBSCRIPTION_DETAIL_FLOW = {
+  ...SUBSCRIPTION_FLOW,
+  next: {
+    ...SUBSCRIPTION_FLOW.next,
+    paused: { ...SUBSCRIPTION_FLOW.next.paused, primary: undefined },
+  },
+}
+
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="space-y-1">
@@ -143,7 +151,7 @@ export default async function SubscriptionDetailPage({
       />
       <StatusBar
         label="Subscription status"
-        flow={SUBSCRIPTION_FLOW}
+        flow={SUBSCRIPTION_DETAIL_FLOW}
         status={sub.status}
         transition={canManage ? transitionSubscription : undefined}
       />
