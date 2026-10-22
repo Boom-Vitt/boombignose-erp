@@ -21,15 +21,14 @@ export function searchTerm(raw: unknown): string | null {
   return term.length >= MIN_TERM ? term : null
 }
 
-/** ILIKE pattern that matches `term` anywhere, with `%`, `_` and `\` taken literally. */
-export function containsPattern(term: string): string {
-  return `%${term.replace(/[\\%_]/g, "\\$&")}%`
-}
-
-/** PostgREST `or` filter; the quoted value keeps commas, dots and parentheses in the term literal. */
+/**
+ * PostgREST `or` filter matching `term` anywhere, case-insensitively, every character literal.
+ * PostgREST turns each `*` in a like/ilike value into `%`, so this uses a regex whose `***=` prefix
+ * makes the rest a literal string. The quoted value keeps commas, dots and parentheses literal too.
+ */
 export function orFilter(columns: readonly string[], term: string): string {
-  const value = JSON.stringify(containsPattern(term))
-  return columns.map((column) => `${column}.ilike.${value}`).join(",")
+  const value = JSON.stringify(`***=${term}`)
+  return columns.map((column) => `${column}.imatch.${value}`).join(",")
 }
 
 /** One query per searchable record type, or none when the term is too short. */

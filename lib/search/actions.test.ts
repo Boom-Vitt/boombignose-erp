@@ -7,6 +7,8 @@ const state = vi.hoisted(() => ({
   role: "member",
   records: {} as Record<string, unknown>,
   filters: [] as unknown[][],
+  searchAllowed: true,
+  rpc: [] as string[],
 }))
 const mocks = vi.hoisted(() => ({
   setQuoteStatus: vi.fn(async () => ({})),
@@ -15,6 +17,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: ORG, role: state.role }) }))
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    rpc: async (fn: string) => {
+      state.rpc.push(fn)
+      return { data: state.searchAllowed, error: null }
+    },
     from: (table: string) => {
       const chain = {
         select: () => chain, order: () => chain, limit: () => chain, range: () => chain,
@@ -38,6 +44,8 @@ beforeEach(() => {
   state.role = "member"
   state.records = {}
   state.filters = []
+  state.searchAllowed = true
+  state.rpc = []
   vi.clearAllMocks()
 })
 
@@ -77,5 +85,18 @@ describe("palette server actions", () => {
     await searchRecords("acme")
     const tables = ["clients", "deals", "quotes", "invoices", "projects", "products"]
     expect(state.filters.filter(([, key]) => key === "org_id")).toEqual(tables.map((t) => [t, "org_id", ORG]))
+  })
+
+  it("takes a per-user search slot before the fan-out and stops when none is left", async () => {
+    state.searchAllowed = false
+    expect(await searchRecords("acme")).toEqual({ hits: [], error: expect.stringMatching(/too many searches/i) })
+    expect(state.rpc).toEqual(["take_search_slot"])
+    expect(state.filters).toEqual([])
+  })
+
+  it("spends no slot or query on a term shorter than two characters", async () => {
+    expect(await searchRecords("a")).toEqual({ hits: [] })
+    expect(state.rpc).toEqual([])
+    expect(state.filters).toEqual([])
   })
 })

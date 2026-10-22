@@ -22,11 +22,15 @@ import { paletteActions, recordFromPath, type PaletteAction, type StatusRecordRe
 export type SearchHit = { type: SearchType; id: string; title: string; detail: string | null; href: string }
 
 /** Up to five matches per record type in the caller's org, by name or number. */
-export async function searchRecords(raw: string): Promise<SearchHit[]> {
+export async function searchRecords(raw: string): Promise<{ hits: SearchHit[]; error?: string }> {
   const queries = searchQueries(raw)
-  if (!queries.length) return []
+  if (!queries.length) return { hits: [] }
   const ctx = await requireOrgContext()
   const supabase = await createClient()
+  // The client debounce is advisory; this per-user budget bounds the fan-out below for direct callers.
+  const { data: allowed, error: slotError } = await supabase.rpc("take_search_slot")
+  if (slotError) throw new Error(slotError.message)
+  if (!allowed) return { hits: [], error: "Too many searches. Wait a minute and try again." }
   const results = await Promise.all(
     queries.map(async ({ type, table, columns, filter, limit }) => {
       const { data, error } = await supabase
@@ -46,7 +50,7 @@ export async function searchRecords(raw: string): Promise<SearchHit[]> {
       }))
     })
   )
-  return results.flat()
+  return { hits: results.flat() }
 }
 
 const PAGE = 1000
