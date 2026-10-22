@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { AttachmentInput, MAX_ATTACHMENT_SIZE, NoteInput, ScheduleInput, TimelinePageInput } from "./input"
+import { AttachmentInput, CompleteInput, MAX_ATTACHMENT_SIZE, NoteInput, ScheduleInput, TimelinePageInput, UpdateActivityInput } from "./input"
 const ref = { recordType: "quote", recordId: "10000000-0000-4000-8000-000000000001" }
 describe("record history boundary validation", () => {
   it("validates trimmed notes, typed targets and real calendar dates", () => {
@@ -29,5 +29,20 @@ describe("record history boundary validation", () => {
     expect(AttachmentInput.safeParse({ ...file, type: "image/svg+xml" }).success).toBe(false)
     expect(AttachmentInput.safeParse({ ...file, type: "text/html" }).success).toBe(false)
     expect(AttachmentInput.safeParse({ ...file, name: "../scope.pdf" }).success).toBe(false)
+  })
+  it("accepts a plain activity id or an object with a trimmed note and a next activity", () => {
+    const id = ref.recordId
+    const next = { type: "call", dueDate: "2026-11-02", owner: id, summary: "  Call back  " }
+    expect(CompleteInput.parse(id)).toEqual({ id })
+    expect(CompleteInput.parse({ id, feedback: "  done  ", next })).toEqual({ id, feedback: "done", next: { ...next, summary: "Call back" } })
+    expect(CompleteInput.safeParse({ id, feedback: "x".repeat(2001) }).success).toBe(false)
+    expect(CompleteInput.safeParse({ id, next: { ...next, dueDate: "2026-02-30" } }).success).toBe(false)
+    expect(CompleteInput.safeParse("not-an-id").success).toBe(false)
+  })
+  it("validates an activity edit with the same field rules as scheduling", () => {
+    const edit = { id: ref.recordId, type: "email", dueDate: "2026-11-02", owner: ref.recordId, summary: "  Send recap  " }
+    expect(UpdateActivityInput.parse(edit).summary).toBe("Send recap")
+    expect(UpdateActivityInput.safeParse({ ...edit, type: "sms" }).success).toBe(false)
+    expect(UpdateActivityInput.safeParse({ ...edit, summary: " " }).success).toBe(false)
   })
 })

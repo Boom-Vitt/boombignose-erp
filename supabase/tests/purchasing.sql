@@ -13,9 +13,9 @@ insert into public.memberships(org_id,user_id,role) values
 insert into public.vendors(id,org_id,name,payment_terms_days) values
  ('b6000000-0000-4000-8000-000000000020','b6000000-0000-4000-8000-000000000010','Test supplier',14),
  ('b6000000-0000-4000-8000-000000000021','b6000000-0000-4000-8000-000000000011','Other supplier',30);
-insert into public.products(id,org_id,name,cost_satang) values
- ('b6000000-0000-4000-8000-000000000030','b6000000-0000-4000-8000-000000000010','Test product',101),
- ('b6000000-0000-4000-8000-000000000031','b6000000-0000-4000-8000-000000000011','Other product',202);
+insert into public.products(id,org_id,name,unit,cost_satang) values
+ ('b6000000-0000-4000-8000-000000000030','b6000000-0000-4000-8000-000000000010','Test product','day',101),
+ ('b6000000-0000-4000-8000-000000000031','b6000000-0000-4000-8000-000000000011','Other product','piece',202);
 insert into public.purchase_orders(id,org_id,number,vendor_id) values
  ('b6000000-0000-4000-8000-000000000050','b6000000-0000-4000-8000-000000000011','PO-2026-001','b6000000-0000-4000-8000-000000000021');
 insert into public.purchase_order_items(org_id,purchase_order_id,description,quantity,unit_cost_satang) values
@@ -45,21 +45,21 @@ select throws_ok($$insert into public.purchase_order_items(org_id,purchase_order
 select throws_ok($$update public.purchase_order_items set received_quantity=2.5 where id='b6000000-0000-4000-8000-000000000040'$$,'42501',null,'receipt cannot bypass command');
 select lives_ok($$select public.transition_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'confirmed')$$,'confirm draft PO');
 select throws_ok($$delete from public.purchase_order_items where id='b6000000-0000-4000-8000-000000000040'$$,'P0001','Only draft purchase lines are editable','confirmed snapshot cannot be deleted');
-update public.products set name='Repriced',cost_satang=999,unit='hour',active=false where id='b6000000-0000-4000-8000-000000000030';
+update public.products set name='Repriced',cost_satang=999,active=false where id='b6000000-0000-4000-8000-000000000030';
 select is((select description||':'||unit||':'||unit_cost_satang from public.purchase_order_items),'Agreed product:day:101','catalog edits preserve agreed snapshot');
-select lives_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","received_quantity":1.25}]')$$,'partial receipt accepted');
+select lives_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","previous_received_quantity":0,"received_quantity":1.25}]')$$,'partial receipt accepted');
 select is((select status::text from public.purchase_orders where id=current_setting('test.purchase')::uuid),'confirmed','partial receipt leaves order open');
-select lives_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","received_quantity":1.25}]')$$,'receipt retry idempotent');
+select lives_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","previous_received_quantity":1.25,"received_quantity":1.25}]')$$,'receipt retry idempotent');
 select is((select received_quantity from public.purchase_order_items),1.250::numeric,'retry does not add twice');
-select throws_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","received_quantity":3}]')$$,'P0001','Invalid cumulative receipt quantity','overreceipt rejected');
-select throws_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","received_quantity":1}]')$$,'P0001','Invalid cumulative receipt quantity','backward receipt rejected');
+select throws_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","previous_received_quantity":1.25,"received_quantity":3}]')$$,'P0001','Invalid cumulative receipt quantity','overreceipt rejected');
+select throws_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","previous_received_quantity":1.25,"received_quantity":1}]')$$,'P0001','Invalid cumulative receipt quantity','backward receipt rejected');
 select throws_ok($$select public.transition_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'cancelled')$$,'P0001','Invalid purchase transition','received evidence cannot be cancelled');
 select set_config('test.bill',public.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid)::text,true);
 select is((select amount_satang from public.costs where id=current_setting('test.bill')::uuid),126::bigint,'partial bill uses received cost');
 select is(public.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid),current_setting('test.bill')::uuid,'bill retry returns previous bill');
 select is((select count(*)::int from public.costs),1,'retry does not duplicate money out');
 select is((select due_date-bill_date from public.costs),14,'bill inherits vendor payment terms');
-select lives_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","received_quantity":2.5}]')$$,'remaining receipt accepted after partial bill');
+select lives_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","previous_received_quantity":1.25,"received_quantity":2.5}]')$$,'remaining receipt accepted after partial bill');
 select is((select status::text from public.purchase_orders where id=current_setting('test.purchase')::uuid),'received','full receipt marks received');
 select public.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid);
 select is((select sum(amount_satang)::bigint from public.costs),253::bigint,'incremental bills equal exact full cost');

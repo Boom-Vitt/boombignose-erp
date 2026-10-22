@@ -16,8 +16,8 @@ export function quoteTransitionError(
   today: string
 ): string | null {
   if (to === "converted") return "Use quote conversion to create the linked records."
-  if (to === "accepted" && validUntil && validUntil < today) return "This quote has expired."
   if (from === to) return null
+  if (to === "accepted" && validUntil && validUntil < today) return "This quote has expired."
   if (from === "draft" && to === "sent") return null
   if (from === "sent" && ["accepted", "declined", "expired"].includes(to)) return null
   return `Cannot change a ${from} quote to ${to}.`
@@ -63,18 +63,3 @@ export const serviceMoneyInput = z.union([z.string(), z.number()]).refine((value
 export const serviceQuantityInput = z.union([z.string(), z.number()]).refine((value) => {
   try { serviceLineAmount(value, 0); return true } catch { return false }
 }, "Enter a positive quantity with up to three decimals").transform(Number)
-
-/** Storage survives a refreshed page after an uncertain transport result. */
-export function quoteConversionKey(
-  storage: Pick<Storage, "getItem" | "setItem">,
-  scope: string,
-  newKey: () => string
-): string {
-  const storageKey = `quote-conversion:${scope}`
-  let previous: string | null = null
-  try { previous = storage.getItem(storageKey) } catch { /* Storage may be disabled. */ }
-  if (previous && z.uuid().safeParse(previous).success) return previous
-  const key = newKey()
-  try { storage.setItem(storageKey, key) } catch { /* The caller retains the key in memory. */ }
-  return key
-}

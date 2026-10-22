@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(34);
+select plan(36);
 
 insert into auth.users(id,email,email_confirmed_at) values
   ('b5000000-0000-4000-8000-000000000001','synthetic-product-owner@example.invalid',now()),
@@ -36,7 +36,8 @@ select throws_ok($$insert into public.quote_items(org_id,quote_id,product_id,des
 select throws_ok($$insert into public.invoice_items(org_id,invoice_id,product_id,description,quantity,unit_price_satang) values ('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000050','b5000000-0000-4000-8000-000000000021','Forged',1,1)$$,'23503',null,'invoice product reference cannot cross workspace');
 insert into public.quote_items(org_id,quote_id,product_id,description,quantity,unit,unit_price_satang) values ('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000040','b5000000-0000-4000-8000-000000000020','Agreed training',2.5,'day',101);
 insert into public.invoice_items(org_id,invoice_id,product_id,description,quantity,unit,unit_price_satang) values ('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000050','b5000000-0000-4000-8000-000000000020','Agreed training',2.5,'day',101);
-update public.products set name='Renamed training',description='New description',unit='hour',list_price_satang=999,active=false where id='b5000000-0000-4000-8000-000000000020';
+select throws_ok($$update public.products set unit='hour' where id='b5000000-0000-4000-8000-000000000020'$$,'P0001','Product unit is locked by document lines','referenced product unit cannot invalidate accepted terms');
+update public.products set name='Renamed training',description='New description',list_price_satang=999,active=false where id='b5000000-0000-4000-8000-000000000020';
 select is((select description||':'||unit||':'||unit_price_satang||':'||amount_satang from public.quote_items where quote_id='b5000000-0000-4000-8000-000000000040'),'Agreed training:day:101:253','quote snapshot and exact half-up math survive catalog edit/archive');
 select is((select description||':'||unit||':'||unit_price_satang||':'||amount_satang from public.invoice_items where invoice_id='b5000000-0000-4000-8000-000000000050'),'Agreed training:day:101:253','invoice snapshot survives catalog edit/archive');
 select throws_ok($$insert into public.products(org_id,sku,name) values ('b5000000-0000-4000-8000-000000000010','TRAINING','Archived duplicate')$$,'23505',null,'archived products retain their SKU');
@@ -54,7 +55,7 @@ update public.quotes set status='accepted' where id='b5000000-0000-4000-8000-000
 select lives_ok($$select public.convert_accepted_quote('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000040','b5000000-0000-4000-8000-000000000060')$$,'conversion accepts archived product with agreed snapshot');
 select is((select item.product_id::text||':'||item.unit||':'||item.unit_price_satang||':'||item.amount_satang from public.invoice_items item join public.invoices invoice on invoice.org_id=item.org_id and invoice.id=item.invoice_id where invoice.source_quote_id='b5000000-0000-4000-8000-000000000040'),'b5000000-0000-4000-8000-000000000020:day:101:253','conversion carries agreed product/unit/price without repricing');
 
-insert into public.products(id,org_id,name) values ('b5000000-0000-4000-8000-000000000022','b5000000-0000-4000-8000-000000000010','Disposable draft reference');
+insert into public.products(id,org_id,name,unit) values ('b5000000-0000-4000-8000-000000000022','b5000000-0000-4000-8000-000000000010','Disposable draft reference','day');
 update public.invoice_items set product_id='b5000000-0000-4000-8000-000000000022' where invoice_id='b5000000-0000-4000-8000-000000000050';
 delete from public.products where id='b5000000-0000-4000-8000-000000000022';
 select is((select product_id from public.invoice_items where invoice_id='b5000000-0000-4000-8000-000000000050'),null::uuid,'product removal clears only nullable reference');
@@ -67,7 +68,7 @@ insert into public.invoice_items(org_id,invoice_id,description,quantity,unit_pri
 select lives_ok($$select public.issue_invoice('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000050',(select version from public.invoices where id='b5000000-0000-4000-8000-000000000050'),'b5000000-0000-4000-8000-000000000061')$$,'invoice with unit and unitless lines issues');
 select is((select snapshot->'lines'->0->>'unit' from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'day','issued snapshot retains agreed billing unit');
 select is((select snapshot->'lines'->1->'unit' from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'null'::jsonb,'issued snapshot retains nullable legacy unit');
-update public.products set unit='month' where id='b5000000-0000-4000-8000-000000000020';
+select throws_ok($$update public.products set unit='month' where id='b5000000-0000-4000-8000-000000000020'$$,'P0001','Product unit is locked by document lines','issued and accepted units remain locked in the catalog');
 select is((select snapshot->'lines'->0->>'unit' from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'day','catalog edits cannot rewrite issued billing unit');
 select is((select snapshot->'document'->>'totalSatang' from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'353','unit retention preserves exact issued money');
 select is(public.issue_invoice('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000050',(select source_version from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'b5000000-0000-4000-8000-000000000061'),(select issued_snapshot_id from public.invoices where id='b5000000-0000-4000-8000-000000000050'),'issued retry returns the same unit snapshot');

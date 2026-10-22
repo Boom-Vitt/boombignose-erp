@@ -64,3 +64,29 @@ it("retains recovery when a returned RPC error could follow a committed count", 
   expect(acknowledgeCountCommand(store, "org/user", first, { error: "Fetch failed after commit" })).toBe(false)
   expect(readPendingCount(store, "org/user")?.key).toBe(first)
 })
+
+it("retains a count unit cost across reload and rejects a changed retry cost", () => {
+  const store = storage()
+  const command = prepareCountCommand(store, "org/user", { ...details, unit_cost_satang: 12500 }, () => first)
+  expect(readPendingCount(store, "org/user")).toEqual({ ...command, unit_cost_satang: 12500 })
+  expect(() => prepareCountCommand(store, "org/user", { ...details, unit_cost_satang: 12600 }, () => next)).toThrow("saved count")
+})
+
+it("releases only a key-matched definitive count rejection so a missing cost can be corrected", () => {
+  const store = storage()
+  prepareCountCommand(store, "org/user", { ...details, unit_cost_satang: null }, () => first)
+  const rejection = { error: "Unit cost required when increasing stock from zero or below", rejected: true as const }
+  expect(acknowledgeCountCommand(store, "org/user", next, rejection)).toBe(false)
+  expect(readPendingCount(store, "org/user")?.key).toBe(first)
+  expect(acknowledgeCountCommand(store, "org/user", first, rejection)).toBe(true)
+  expect(readPendingCount(store, "org/user")).toBeNull()
+  expect(prepareCountCommand(store, "org/user", { ...details, unit_cost_satang: 12500 }, () => next)).toMatchObject({ key: next, unit_cost_satang: 12500 })
+})
+it("retains the exact missing-cost payload after an unknown or transport failure", () => {
+  const store = storage()
+  const command = prepareCountCommand(store, "org/user", { ...details, unit_cost_satang: null }, () => first)
+  for (const error of ["Could not confirm request", "TypeError: Failed to fetch"]) {
+    expect(acknowledgeCountCommand(store, "org/user", first, { error })).toBe(false)
+    expect(readPendingCount(store, "org/user")).toEqual(command)
+  }
+})

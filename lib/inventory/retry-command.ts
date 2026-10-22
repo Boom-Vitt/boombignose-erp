@@ -28,8 +28,8 @@ export function prepareCountCommand(store: BrowserStore | null, scope: string, d
   return command
 }
 
-export function acknowledgeCountCommand(store: BrowserStore | null, scope: string, key: string, response: { error?: string }): boolean {
-  if (response.error !== undefined) return false
+export function acknowledgeCountCommand(store: BrowserStore | null, scope: string, key: string, response: { error?: string; rejected?: true }): boolean {
+  if (response.error !== undefined && !response.rejected) return false
   try {
     const pending = readPendingCount(store, scope)
     if (!pending) return true

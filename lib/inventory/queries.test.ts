@@ -13,11 +13,11 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: stat
   }
   return builder
 } }) }))
-import { inventoryData } from "./queries"
+import { inventoryData, invoiceStockData } from "./queries"
 
 const org = "b8200000-0000-4000-8000-000000000010"
 const id = "b8200000-0000-4000-8000-000000000030"
-const product = { id, org_id: org, name: "Product", sku: null, description: null, unit: "piece", type: "goods", is_stockable: true, active: true, list_price_satang: 200, cost_satang: 100, tax_rate_bps: 0, reorder_min: 5, reorder_qty: 10, default_vendor_id: null, created_at: "2026-10-23", updated_at: "2026-10-23" }
+const product = { id, org_id: org, name: "Product", sku: null, description: null, unit: "piece", type: "goods", is_stockable: true, active: true, list_price_satang: 200, cost_satang: 100, tax_rate_bps: 0, on_order: 0, reserved_quantity: 0, reorder_min: 5, reorder_qty: 10, default_vendor_id: null, created_at: "2026-10-23", updated_at: "2026-10-23" }
 
 beforeEach(() => {
   state.org = org; state.rows = { products: [product] }; state.fail = ""; state.mutate = false; state.ranges = []
@@ -56,4 +56,14 @@ it("accepts the PostgreSQL UUID format used by the seeded demo organization", as
   state.snapshot = { products: [{ ...product, org_id: state.org, quantity: 0, value_satang: 0 }], balances: [] }
   const result = await inventoryData()
   expect(result.products[0].org_id).toBe(state.org)
+})
+
+it("reads complete issued stock lines and delivery evidence past the API cap", async () => {
+  state.rows.invoice_stock_lines = Array.from({ length: 1001 }, (_, index) => ({ id: `line-${index}`, delivered_quantity: 1, returned_quantity: 0 }))
+  state.rows.stock_moves = Array.from({ length: 1001 }, (_, index) => ({ id: `move-${index}`, kind: "delivery", source_line_id: `line-${index}` }))
+  const result = await invoiceStockData(id)
+  expect(result.lines).toHaveLength(1001)
+  expect(result.moves).toHaveLength(1001)
+  expect(state.ranges).toContainEqual(["invoice_stock_lines", 1000, 1999])
+  expect(state.ranges).toContainEqual(["stock_moves", 1000, 1999])
 })

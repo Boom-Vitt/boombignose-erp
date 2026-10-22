@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 
@@ -11,6 +11,7 @@ import {
   FormControl,
   FormField,
   FormItem,
+  FormDescription,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
@@ -24,6 +25,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
+import { useGuardedForm } from "@/components/record/record-guard"
+
+import { bahtToSatang, formatTHB } from "@/lib/money"
+import { expectedRevenue, STAGE_PROBABILITY } from "@/lib/metrics/pipeline"
+import type { LostReason } from "./lost-reason-dialog"
 
 const STAGES = [
   { value: "lead", label: "Lead" },
@@ -48,21 +54,25 @@ const Schema = z.object({
     "lost",
   ]),
   valueBaht: z.coerce.number().min(0, "Value can't be negative"),
+  probability: z.coerce.number().int("Use a whole percent").min(0, "Probability is 0 to 100").max(100, "Probability is 0 to 100"),
+  lostReasonId: z.string().optional(),
   expectedCloseDate: z.string().optional(),
   nextFollowUpDate: z.string().optional(),
   source: z.string().optional(),
   notes: z.string().optional(),
-})
+}).refine((d) => d.stage !== "lost" || !!d.lostReasonId, { message: "Pick a lost reason", path: ["lostReasonId"] })
 
 export type DealFormValues = z.infer<typeof Schema>
 
 export function DealForm({
   clients,
+  lostReasons,
   action,
   defaultValues,
   submitLabel = "Save deal",
 }: {
   clients: { id: string; name: string }[]
+  lostReasons: LostReason[]
   action: (values: DealFormValues) => Promise<{ error?: string }>
   defaultValues?: Partial<DealFormValues>
   submitLabel?: string
@@ -75,6 +85,8 @@ export function DealForm({
       title: "",
       stage: "lead",
       valueBaht: 0,
+      probability: STAGE_PROBABILITY[defaultValues?.stage ?? "lead"],
+      lostReasonId: "",
       expectedCloseDate: "",
       nextFollowUpDate: "",
       source: "",
@@ -82,20 +94,28 @@ export function DealForm({
       ...defaultValues,
     },
   })
+  const onSubmit = useGuardedForm(form, async (values) => {
+    const res = await action(values)
+    // On success the action redirects; only an error returns here.
+    if (res?.error) {
+      toast.error(res.error)
+      return false
+    }
+    toast.success("Saved")
+    return true
+  })
+
+  const [stage, valueBaht, probability] = useWatch({ control: form.control, name: ["stage", "valueBaht", "probability"] })
+  const closed = stage === "won" || stage === "lost"
+  const expected = expectedRevenue({
+    value_satang: bahtToSatang(Math.max(Number(valueBaht) || 0, 0)),
+    probability: Math.min(Math.max(Number(probability) || 0, 0), 100),
+  })
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(async (values) => {
-          const res = await action(values)
-          // On success the action redirects; only an error returns here.
-          if (res?.error) {
-            toast.error(res.error)
-            return
-          }
-          toast.success("Saved")
-          router.refresh()
-        })}
+        onSubmit={onSubmit}
         className="space-y-5"
       >
         <FormField
@@ -151,7 +171,11 @@ export function DealForm({
                 <Select
                   items={STAGES.map((s) => ({ value: s.value, label: s.label }))}
                   value={field.value}
-                  onValueChange={(value) => field.onChange(value)}
+                  onValueChange={(value) => {
+                    field.onChange(value)
+                    // A new stage brings its default win probability, as the database does.
+                    if (value) form.setValue("probability", STAGE_PROBABILITY[value as DealFormValues["stage"]])
+                  }}
                 >
                   <FormControl>
                     <SelectTrigger className="w-full">
@@ -195,6 +219,67 @@ export function DealForm({
               </FormItem>
             )}
           />
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="probability"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Probability (%)</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={100}
+                    step={1}
+                    disabled={closed}
+                    name={field.name}
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                    value={(field.value ?? "") as number | string}
+                    onChange={field.onChange}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {closed ? "Won and lost deals are 100% and 0%." : `Expected revenue ${formatTHB(expected)}`}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {stage === "lost" ? (
+            <FormField
+              control={form.control}
+              name="lostReasonId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Lost reason</FormLabel>
+                  <Select
+                    items={lostReasons.map((r) => ({ value: r.id, label: r.name }))}
+                    value={field.value || null}
+                    onValueChange={(value) => field.onChange(value ?? "")}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Why was it lost?" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {lostReasons.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2">

@@ -32,13 +32,14 @@ beforeEach(() => {
   const date = `${currentMonthKey()}-05`
   state.client = databaseFixture({
     clients: ['A','B'].map(org_id => ({ id: `client-${org_id}`, org_id, name: `CLIENT_${org_id}`, created_at: '2026-10-01' })),
-    deals: ['A','B'].map(org_id => ({ id: `deal-${org_id}`, org_id, title: `DEAL_${org_id}`, stage: 'lead', value_satang: org_id === 'A' ? 100 : 999, client_id: `client-${org_id}`, created_at: '2026-10-01' })),
+    deals: ['A','B'].map(org_id => ({ id: `deal-${org_id}`, org_id, title: `DEAL_${org_id}`, stage: 'lead', probability: 10, sequence: 0, value_satang: org_id === 'A' ? 100 : 999, client_id: `client-${org_id}`, created_at: '2026-10-01' })),
     activities: ['A','B'].map(org_id => ({ id: `activity-${org_id}`, org_id, body: `ACTIVITY_${org_id}`, type: 'note', client_id: 'client-A', deal_id: 'deal-A', done: false, due_date: '2026-10-01' })),
     contacts: ['A','B'].map(org_id => ({ id: `contact-${org_id}`, org_id, name: `CONTACT_${org_id}`, client_id: 'client-A' })),
     org_settings: ['A','B'].map(org_id => ({ org_id, cash_balance_satang: org_id === 'A' ? 500 : 800 })),
     invoices: ['A','B'].map(org_id => ({id:`invoice-${org_id}`,org_id,status:'sent',amount_satang:org_id==='A'?1000:3000,total_satang:org_id==='A'?1070:3210,vat_satang:org_id==='A'?70:210,issue_date:date,due_date:'2000-01-01',is_recurring:true,recurring_interval:'monthly'})),
     payments: ['A','B'].map(org_id => ({org_id,invoice_id:`invoice-${org_id}`,amount_satang:org_id==='A'?100:500,paid_at:date,verification_state:'verified'})).concat([{org_id:'A',invoice_id:'invoice-A',amount_satang:777,paid_at:date,verification_state:'legacy_unverified'}]),
     costs: ['A','B'].map(org_id => ({org_id,amount_satang:org_id==='A'?300:900,incurred_on:date})),
+    monthly_inventory_cogs: ['A','B'].map(org_id => ({org_id, month: `${currentMonthKey()}-01`, amount_satang: org_id === 'A' ? 200 : 700})),
     subscriptions: ['A','B'].map(org_id => ({org_id,status:'active',amount_satang:org_id==='A'?600:1800,interval:'monthly'})),
     time_entries: ['A','B'].map(org_id => ({org_id,project_id:`project-${org_id}`,minutes:org_id==='A'?60:180,billable:true,rate_satang:100,work_date:date})),
     projects: [{ org_id: 'A', status: 'in_progress' },{ org_id: 'B', status: 'in_progress' }],
@@ -70,7 +71,7 @@ describe('active workspace business reads', () => {
     const busy = Array.from({ length: 1000 }, (_, i) => `deal-busy-${i}`)
     state.client = databaseFixture({
       clients: [{ id: 'client-A', org_id: 'A', name: 'CLIENT_A' }],
-      deals: [{ id: 'deal-A', org_id: 'A', title: 'DEAL_A', stage: 'lead', value_satang: 100, client_id: 'client-A', next_follow_up_date: '2026-12-31', created_at: '2026-10-01' }],
+      deals: [{ id: 'deal-A', org_id: 'A', title: 'DEAL_A', stage: 'lead', probability: 10, sequence: 0, value_satang: 100, client_id: 'client-A', next_follow_up_date: '2026-12-31', created_at: '2026-10-01' }],
       activities: [...busy, 'deal-A'].map((deal_id) => ({ org_id: 'A', deal_id, done: false, due_date: deal_id === 'deal-A' ? '2026-01-15' : '2026-01-01' })),
       deal_next_activity: [...busy, 'deal-A'].map((deal_id) => ({ org_id: 'A', deal_id, next_due_date: deal_id === 'deal-A' ? '2026-01-15' : '2026-01-01', open_count: 1 })),
     })
@@ -80,7 +81,7 @@ describe('active workspace business reads', () => {
 
   it('boards list every deal and project past the 1,000-row cap, so column counts and sums are complete', async () => {
     state.client = databaseFixture({
-      deals: Array.from({ length: 1001 }, (_, i) => ({ id: `deal-${i}`, org_id: 'A', title: `DEAL_${i}`, stage: 'lead', value_satang: 1, client_id: 'client-A', created_at: '2026-10-01' })),
+      deals: Array.from({ length: 1001 }, (_, i) => ({ id: `deal-${i}`, org_id: 'A', title: `DEAL_${i}`, stage: 'lead', probability: 10, sequence: 0, value_satang: 1, client_id: 'client-A', created_at: '2026-10-01' })),
       projects: Array.from({ length: 1001 }, (_, i) => ({ id: `project-${i}`, org_id: 'A', name: `PROJECT_${i}`, status: 'in_progress' })),
     })
     expect(pageContent(await DealsPage({ searchParams: Promise.resolve({}) }))).toContain('DEAL_1000')
@@ -149,6 +150,7 @@ describe('active workspace business reads', () => {
     expect(a.revenueHistory).toHaveLength(6)
     expect(a.revenueHistory[5]).toEqual({ month: currentMonthKey(), revenueSatang: a.monthlyRevenueSatang })
     expect(a.monthlyBurnSatang).toBe(300)
+    expect(a.monthlyCogsSatang).toBe(200)
     expect(a.unpaidSatang).toBe(900)
     expect(a.unpaidInvoiceCount).toBe(1)
     expect(a.overdueInvoiceCount).toBe(1)
@@ -163,6 +165,7 @@ describe('active workspace business reads', () => {
     expect(b.openQuotesValueSatang).toBe(1000)
     expect(b.cashSatang).toBe(800)
     expect(b.monthlyRevenueSatang).toBe(3000)
+    expect(b.monthlyCogsSatang).toBe(700)
     expect(b.revenueHistory[5]).toEqual({ month: currentMonthKey(), revenueSatang: b.monthlyRevenueSatang })
     expect(b.unpaidSatang).toBe(2500)
     expect(b.mrrSatang).toBe(1800)

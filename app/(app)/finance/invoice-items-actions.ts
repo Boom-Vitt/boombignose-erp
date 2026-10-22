@@ -47,14 +47,16 @@ export async function addInvoiceItem(
     return { error: "This invoice is paid and locked" }
   }
 
-  // Position = current item count (org-scoped, this invoice).
-  const { count, error: countErr } = await supabase
+  const { data: lastItem, error: positionError } = await supabase
     .from("invoice_items")
-    .select("id", { count: "exact", head: true })
+    .select("position")
     .eq("invoice_id", d.invoice_id)
     .eq("org_id", ctx.orgId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  if (countErr) return { error: countErr.message }
+  if (positionError) return { error: positionError.message }
 
   let taxRate = d.tax_rate_bps
   const unitPriceSatang = moneyInput(d.unitPriceBaht)
@@ -82,7 +84,7 @@ export async function addInvoiceItem(
     quantity: Number(d.quantity),
     unit_price_satang: unitPriceSatang,
     amount_satang: amount,
-    position: count ?? 0,
+    position: (lastItem?.position ?? -1) + 1,
   })
 
   if (insErr) return { error: insErr.message }

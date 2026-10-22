@@ -43,7 +43,7 @@ beforeEach(() => { state.queries = [] })
 describe("service pages select only the active organization", () => {
   const pages: Array<[string, () => Promise<unknown>]> = [
     ["quote list", () => QuotesPage()],
-    ["new quote choices", () => NewQuotePage()],
+    ["new quote choices", () => NewQuotePage({ searchParams: Promise.resolve({ dealId: "deal-id" }) })],
     ["quote detail, lines and choices", () => QuoteDetailPage({ params: Promise.resolve({ id: "quote-id" }) })],
     ["project list", () => ProjectsPage({ searchParams: Promise.resolve({}) })],
     ["project board", () => ProjectsPage({ searchParams: Promise.resolve({ view: "board" }) })],

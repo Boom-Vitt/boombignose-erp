@@ -2,7 +2,7 @@ import { sumSatang, type Satang } from "@/lib/money"
 import type { Enums } from "@/lib/types/database"
 
 export type DealStage = Enums<"deal_stage">
-export type DealLike = { stage: DealStage; value_satang: number }
+export type DealLike = { stage: DealStage; value_satang: number; probability: number }
 
 /** Stages considered "open" pipeline (not yet won or lost). */
 export const OPEN_STAGES: readonly DealStage[] = [
@@ -13,14 +13,17 @@ export const OPEN_STAGES: readonly DealStage[] = [
   "negotiation",
 ]
 
-/** Default win-probability per stage, used for weighted pipeline. */
+/**
+ * Default win probability (whole percent) a deal takes when it enters a stage. Mirrors
+ * private.deal_stage_probability in the CRM migration, which applies it on every write.
+ */
 export const STAGE_PROBABILITY: Record<DealStage, number> = {
-  lead: 0.1,
-  contacted: 0.2,
-  discovery: 0.3,
-  proposal: 0.5,
-  negotiation: 0.7,
-  won: 1,
+  lead: 10,
+  contacted: 20,
+  discovery: 30,
+  proposal: 50,
+  negotiation: 70,
+  won: 100,
   lost: 0,
 }
 
@@ -33,12 +36,14 @@ export function pipelineValue(deals: DealLike[]): Satang {
   return sumSatang(deals.filter((d) => isOpenStage(d.stage)).map((d) => d.value_satang))
 }
 
-/** Probability-weighted value of open deals. */
+/** Expected revenue: value x the deal's win probability, rounded per deal so sums stay exact. */
+export function expectedRevenue(d: Pick<DealLike, "value_satang" | "probability">): Satang {
+  return Math.round((d.value_satang * d.probability) / 100)
+}
+
+/** Expected revenue of open deals. */
 export function weightedPipelineValue(deals: DealLike[]): Satang {
-  const total = deals
-    .filter((d) => isOpenStage(d.stage))
-    .reduce((acc, d) => acc + d.value_satang * STAGE_PROBABILITY[d.stage], 0)
-  return Math.round(total)
+  return sumSatang(deals.filter((d) => isOpenStage(d.stage)).map(expectedRevenue))
 }
 
 /** Total value of won deals. */

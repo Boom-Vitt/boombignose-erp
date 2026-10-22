@@ -17,6 +17,8 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (ta
   state.queries.push(query)
   const chain = {
     select: () => chain,
+    order: () => chain,
+    limit: () => chain,
     eq: (key: string, value: unknown) => { query.filters.push([key, value]); return chain },
     maybeSingle: async () => ({ data: table === "products" ? (state.available ? { id: productId } : null) : { status: state.status }, error: null }),
     insert: async (row: Record<string, unknown>) => { state.inserted.push(row); return { error: null } },

@@ -8,6 +8,7 @@ import { todayISO } from "@/lib/dates"
 import { formatTHB, satangToBaht } from "@/lib/money"
 import type { Enums } from "@/lib/types/database"
 import { SUBSCRIPTION_FLOW } from "@/lib/record/status"
+import { activeProductOptions } from "@/lib/products/queries"
 
 import { PageHeader } from "@/components/page-header"
 import { StatusBar } from "@/components/record/status-bar"
@@ -34,6 +35,14 @@ const INTERVAL_LABEL: Record<Enums<"recurring_interval">, string> = {
   yearly: "Yearly",
 }
 
+const SUBSCRIPTION_DETAIL_FLOW = {
+  ...SUBSCRIPTION_FLOW,
+  next: {
+    ...SUBSCRIPTION_FLOW.next,
+    paused: { ...SUBSCRIPTION_FLOW.next.paused, primary: undefined },
+  },
+}
+
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="space-y-1">
@@ -52,11 +61,11 @@ export default async function SubscriptionDetailPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [subRes, clientsRes, projectsRes, occurrencesRes] = await Promise.all([
+  const [subRes, clientsRes, projectsRes, occurrencesRes, products] = await Promise.all([
     supabase
       .from("subscriptions")
       .select(
-        "id, name, amount_satang, interval, status, start_date, next_run_date, last_generated_on, auto_generate, notes, client_id, project_id, clients(name), projects(name)"
+        "id, name, amount_satang, interval, status, start_date, next_run_date, last_generated_on, auto_generate, notes, client_id, project_id, product_id, unit, tax_rate_bps, wht_rate_bps, prices_include_vat, clients(name), projects(name)"
       )
       .eq("id", id)
       .eq("org_id", ctx.orgId)
@@ -69,6 +78,7 @@ export default async function SubscriptionDetailPage({
       .eq("org_id", ctx.orgId)
       .eq("subscription_id", id)
       .limit(1),
+    activeProductOptions(),
   ])
 
   const sub = subRes.data
@@ -93,6 +103,11 @@ export default async function SubscriptionDetailPage({
     interval: sub.interval,
     start_date: sub.start_date,
     notes: sub.notes ?? "",
+    product_id: sub.product_id,
+    unit: sub.unit ?? "period",
+    tax_rate_bps: sub.tax_rate_bps,
+    wht_rate_bps: sub.wht_rate_bps,
+    prices_include_vat: sub.prices_include_vat,
   }
 
   // Bind the subscription id into a real server action so the "use client"
@@ -136,7 +151,7 @@ export default async function SubscriptionDetailPage({
       />
       <StatusBar
         label="Subscription status"
-        flow={SUBSCRIPTION_FLOW}
+        flow={SUBSCRIPTION_DETAIL_FLOW}
         status={sub.status}
         transition={canManage ? transitionSubscription : undefined}
       />
@@ -154,6 +169,8 @@ export default async function SubscriptionDetailPage({
             <Field label="Project" value={sub.projects?.name ?? "—"} />
             <Field label="Start date" value={sub.start_date} />
             <Field label="Next run" value={sub.next_run_date} />
+            <Field label="VAT rate" value={`${sub.tax_rate_bps / 100}%`} />
+            <Field label="Withholding tax" value={`${sub.wht_rate_bps / 100}%`} />
             <Field
               label="Last generated"
               value={sub.last_generated_on ?? "—"}
@@ -189,6 +206,7 @@ export default async function SubscriptionDetailPage({
           <SubscriptionForm
             clients={clients}
             projects={projects}
+            products={products}
             defaultValues={defaultValues}
             submitLabel="Save changes"
             action={saveSubscription}

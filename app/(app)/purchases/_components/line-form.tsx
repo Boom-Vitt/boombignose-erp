@@ -39,7 +39,7 @@ export function PurchaseLineForm({ orderId, products }: { orderId: string; produ
     <div className="grid gap-3 sm:grid-cols-4">
       <div className="space-y-2 sm:col-span-2"><Label htmlFor="description">Description</Label><Input id="description" name="description" maxLength={4000} required value={description} onChange={e => setDescription(e.target.value)} /></div>
       <div className="space-y-2"><Label htmlFor="quantity">Quantity</Label><Input id="quantity" name="quantity" type="number" min="0.001" step="0.001" required defaultValue="1" /></div>
-      <div className="space-y-2"><Label htmlFor="unit">Unit</Label><Input id="unit" name="unit" maxLength={40} required value={unit} onChange={e => setUnit(e.target.value)} /></div>
+      <div className="space-y-2"><Label htmlFor="unit">Unit</Label><Input id="unit" name="unit" maxLength={40} required readOnly={productId !== null} value={unit} onChange={e => setUnit(e.target.value)} /></div>
       <div className="space-y-2"><Label htmlFor="unitCostBaht">Unit cost (THB)</Label><Input id="unitCostBaht" name="unitCostBaht" inputMode="decimal" required value={cost} onChange={e => setCost(e.target.value)} /></div>
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

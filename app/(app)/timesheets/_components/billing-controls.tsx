@@ -34,7 +34,7 @@ export function BillTimeForm({ projects }: { projects: Option[] }) {
         <SelectContent>{projects.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
       </Select>
     </div>
-    <Button disabled={pending || !project}>Bill time</Button>
+    <Button type="submit" disabled={pending || !project}>Bill time</Button>
     <p className="text-muted-foreground basis-full text-xs">Adds unbilled time with an hourly rate to a new draft. Review tax rates before issuing.</p>
   </form>
 }
@@ -65,7 +65,7 @@ export function MemberCostRateForm({ members }: { members: (Option & { rate: num
       <Label htmlFor={`${id}-rate`}>Labour cost (THB/hour)</Label>
       <Input key={`${member}-${members.find(m => m.value === member)?.rate}`} id={`${id}-rate`} name="rate" inputMode="decimal" required defaultValue={satangToBahtString(members.find(m => m.value === member)?.rate ?? 0)} />
     </div>
-    <Button variant="outline" disabled={pending || !member}>Save cost rate</Button>
+    <Button type="submit" variant="outline" disabled={pending || !member}>Save cost rate</Button>
     <p className="text-muted-foreground basis-full text-xs">Project profit applies the current member rate to all logged time, including non-billable time.</p>
   </form>
 }

@@ -63,6 +63,7 @@ const COST_CATEGORY_LABEL: Record<Enums<"cost_category">, string> = {
   infra: "Infrastructure",
   marketing: "Marketing",
   salary: "Salary",
+  inventory: "Inventory",
   other: "Other",
 }
 
@@ -192,11 +193,11 @@ export default async function FinancePage({
           hint="Verified receipts received this month"
         />
         <StatCard
-          label="Costs this month"
+          label="Operating costs this month"
           value={formatTHB(costsSatang)}
           icon={Flame}
           tone="negative"
-          hint="Costs incurred"
+          hint="Excludes inventory asset bills"
         />
         <StatCard
           label="Monthly recurring forecast"

@@ -73,8 +73,9 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
   const supabase = await createClient()
   const month = currentMonthKey()
   const today = todayISO()
+  const staff = can(ctx.role, "settings:manage")
 
-  const [entriesRes, projectsRes, membersRes] = await Promise.all([
+  const [entriesRes, projectsRes, membersRes, ratesRes] = await Promise.all([
     readAll((from, to) => supabase
       .from("time_entries")
       .select("id, work_date, minutes, billable, rate_satang, project_id, user_id, notes, invoice_id, invoices(status, number), projects(name)")
@@ -83,10 +84,13 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
     readAll((from, to) => supabase
       .from("projects").select("id, name").eq("org_id", ctx.orgId).order("name").order("id").range(from, to)),
     readAll((from, to) => supabase
-      .from("memberships").select("user_id,cost_rate_satang").eq("org_id", ctx.orgId).order("id").range(from, to)),
+      .from("memberships").select("user_id").eq("org_id", ctx.orgId).order("id").range(from, to)),
+    staff ? readAll((from, to) => supabase
+      .from("member_cost_rates").select("user_id,cost_rate_satang").eq("org_id", ctx.orgId).order("user_id").range(from, to))
+      : { data: [], error: null },
   ])
 
-  if (entriesRes.error || projectsRes.error || membersRes.error) throw new Error("Timesheets unavailable. Please reload.")
+  if (entriesRes.error || projectsRes.error || membersRes.error || ratesRes.error) throw new Error("Timesheets unavailable. Please reload.")
   const allEntries = (entriesRes.data ?? []) as EntryRow[]
   const projects = (projectsRes.data ?? []) as Array<{ id: string; name: string }>
 
@@ -102,8 +106,8 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
     .from("profiles").select("id, full_name").order("id").range(from, to))
   if (profilesError) throw new Error("Time-entry users unavailable. Please reload.")
   for (const profile of profiles ?? []) if (profile.full_name) nameById.set(profile.id, profile.full_name)
-  const staff = can(ctx.role, "settings:manage")
-  const members = (membersRes.data ?? []).map(member => ({ value: member.user_id, label: nameById.get(member.user_id) ?? "Member", rate: member.cost_rate_satang }))
+  const rateById = new Map((ratesRes.data ?? []).map(rate => [rate.user_id, rate.cost_rate_satang]))
+  const members = (membersRes.data ?? []).map(member => ({ value: member.user_id, label: nameById.get(member.user_id) ?? "Member", rate: rateById.get(member.user_id) ?? 0 }))
 
   const entries = allEntries.filter((e) => matchesFacets(config, {
     text: `${e.projects?.name ?? ""} ${e.user_id ? nameById.get(e.user_id) ?? "" : ""}`,

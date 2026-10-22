@@ -10,8 +10,10 @@ import {
   type FlowCommand,
   type RecordStatus,
 } from "@/lib/record/status"
+import type { RecordRef } from "@/lib/record-history/model"
 import { StatusBadge } from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
+import { RecordActionGroup } from "./record-guard"
 import { TransitionButton } from "./transition-button"
 
 type Variant = "default" | "outline"
@@ -34,6 +36,7 @@ export function StatusBar<S extends RecordStatus>({
   status,
   transition,
   commands = {},
+  record,
 }: {
   /** Accessible name of the stage list, e.g. "Quote status". */
   label: string
@@ -43,6 +46,8 @@ export function StatusBar<S extends RecordStatus>({
   transition?: (to: S) => Promise<{ error?: string }>
   /** Handlers for the commands this page can offer to this user. */
   commands?: Partial<Record<FlowCommand, CommandHandler>>
+  /** Where a destructive move keeps its reason; without it the move only asks to confirm. */
+  record?: RecordRef
 }) {
   const bar = statusBar(flow, status, (a) => ("to" in a ? !!transition : !!commands[a.command]))
 
@@ -55,6 +60,9 @@ export function StatusBar<S extends RecordStatus>({
           to={action.to}
           transition={transition!}
           variant={variant}
+          confirm={action.confirm}
+          reason={action.reason}
+          record={record}
         />
       )
     }
@@ -72,10 +80,10 @@ export function StatusBar<S extends RecordStatus>({
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-2 sm:flex-row sm:flex-wrap sm:items-center">
       {bar.primary || bar.secondary.length ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <RecordActionGroup className="flex flex-wrap items-center gap-2">
           {bar.primary ? render(bar.primary, "default") : null}
           {bar.secondary.map((action) => render(action, "outline"))}
-        </div>
+        </RecordActionGroup>
       ) : null}
       <div className="flex min-w-0 items-center gap-2 sm:ml-auto">
         {bar.side ? <StatusBadge status={bar.side} /> : null}

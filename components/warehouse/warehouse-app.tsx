@@ -118,6 +118,7 @@ export function WarehouseApp() {
           <span className="text-lg font-bold tracking-tight">BoomBigNose</span>
           <span className="hidden rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 sm:inline">Campus</span>
         </div>
+        {/* form-submit: implicit (single search input, Enter submits) */}
         <form onSubmit={onSearch} className="relative hidden max-w-md flex-1 md:block">
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" aria-hidden />
           <input

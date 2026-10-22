@@ -1,4 +1,5 @@
 import { sumSatang, type Satang } from "@/lib/money"
+import { expectedRevenue } from "@/lib/metrics/pipeline"
 
 /** One board column, keyed by the record's stage/status enum value. */
 export type KanbanColumn<S extends string = string> = {
@@ -17,11 +18,15 @@ export type KanbanCard<S extends string = string> = {
   owner: string | null
   /** YYYY-MM-DD of the next open activity, if any. */
   due: string | null
+  /** Win probability in whole percent, for boards that weigh their amounts. */
+  probability?: number
 }
 
 export type KanbanGroup<S extends string = string> = KanbanColumn<S> & {
   cards: KanbanCard<S>[]
   sumSatang: Satang
+  /** Sum of amount x probability; null when no card in the column carries a probability. */
+  expectedSatang: Satang | null
 }
 
 /** Buckets cards into columns (column order, card order kept). Cards in an unknown stage are dropped. */
@@ -31,27 +36,69 @@ export function groupCards<S extends string>(
 ): KanbanGroup<S>[] {
   return columns.map((column) => {
     const inColumn = cards.filter((c) => c.stage === column.id)
+    const weighted = inColumn.filter((c) => c.probability !== undefined)
     return {
       ...column,
       cards: inColumn,
       sumSatang: sumSatang(inColumn.map((c) => c.amountSatang ?? 0)),
+      expectedSatang: weighted.length
+        ? sumSatang(weighted.map((c) => expectedRevenue({ value_satang: c.amountSatang ?? 0, probability: c.probability! })))
+        : null,
     }
   })
 }
 
+const columnIds = <S extends string>(cards: readonly KanbanCard<S>[], stage: S) =>
+  cards.filter((c) => c.stage === stage).map((c) => c.id)
+
 /**
- * Optimistic stage move. Pure: the input list is never mutated, so dropping the
- * optimistic layer (server rejected the move) renders the untouched list again.
+ * Optimistic move: the card goes right after `after` in column `to`, or to the top of it when
+ * `after` is null or no longer there (the server's move_deal does the same). Pure: the input list
+ * is never mutated, so dropping the optimistic layer renders the untouched list again.
  */
 export function moveCard<S extends string>(
   cards: readonly KanbanCard<S>[],
   id: string,
-  to: S
+  to: S,
+  after: string | null = null
 ): readonly KanbanCard<S>[] {
   const card = cards.find((c) => c.id === id)
-  if (!card || card.stage === to) return cards
-  // Moved cards go to the top of the target column, like a fresh drop.
-  return [{ ...card, stage: to }, ...cards.filter((c) => c.id !== id)]
+  if (!card) return cards
+  const rest = cards.filter((c) => c.id !== id)
+  const anchor = after === null ? -1 : rest.findIndex((c) => c.id === after && c.stage === to)
+  const top = rest.findIndex((c) => c.stage === to)
+  const at = anchor >= 0 ? anchor + 1 : Math.max(top, 0)
+  const next = [...rest.slice(0, at), { ...card, stage: to }, ...rest.slice(at)]
+  const unchanged = card.stage === to && columnIds(next, to).join() === columnIds(cards, to).join()
+  return unchanged ? cards : next
+}
+
+/**
+ * The card a drop lands after: the hovered card on its lower half, else the one above it. A card
+ * never lands after itself; that slot means "where it already is", so it keeps its predecessor.
+ */
+export function afterForDrop(ids: readonly string[], overId: string, below: boolean, dragged?: string): string | null {
+  const before = (id: string) => ids[ids.indexOf(id) - 1] ?? null
+  const after = below ? overId : before(overId)
+  return after !== null && after === dragged ? before(after) : after
+}
+
+/** `after` for a one-step keyboard reorder; undefined when the card is already at that edge. */
+export function reorderAfter(ids: readonly string[], id: string, direction: "up" | "down"): string | null | undefined {
+  const i = ids.indexOf(id)
+  if (i < 0) return undefined
+  if (direction === "up") return i === 0 ? undefined : (ids[i - 2] ?? null)
+  return i === ids.length - 1 ? undefined : ids[i + 1]
+}
+
+/** Runs async tasks strictly one at a time in call order; a failure only rejects its own caller. */
+export function serialQueue() {
+  let tail: Promise<unknown> = Promise.resolve()
+  return <T>(task: () => Promise<T>): Promise<T> => {
+    const run = tail.then(task)
+    tail = run.catch(() => undefined)
+    return run
+  }
 }
 
 /**
@@ -74,9 +121,26 @@ export function movedCardFocus<S extends string>(
 }
 
 export type DueState = "overdue" | "today" | "planned"
+/** A card's next-activity state, "none" when it has no open activity. */
+export type ActivityState = DueState | "none"
 
 export function dueState(due: string, today: string): DueState {
   return due < today ? "overdue" : due === today ? "today" : "planned"
+}
+
+export const activityState = (card: KanbanCard, today: string): ActivityState =>
+  card.due ? dueState(card.due, today) : "none"
+
+export function activityCounts(cards: readonly KanbanCard[], today: string): Record<ActivityState, number> {
+  const counts = { overdue: 0, today: 0, planned: 0, none: 0 }
+  for (const card of cards) counts[activityState(card, today)]++
+  return counts
+}
+
+/** True when any quick-create field holds non-blank text, so Escape must not silently drop it. */
+export function hasTypedInput(entries: Iterable<[string, FormDataEntryValue]>): boolean {
+  for (const [, value] of entries) if (typeof value === "string" && value.trim() !== "") return true
+  return false
 }
 
 /** Earliest of the given YYYY-MM-DD dates, ignoring nulls. */
