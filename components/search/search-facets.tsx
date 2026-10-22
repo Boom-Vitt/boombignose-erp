@@ -98,7 +98,6 @@ export function SearchFacets({ list, config, savedViews, params = {} }: {
                 className="flex"
                 render={<Link href={href(key, value)} />}
                 aria-current={isActive(key, value) ? "true" : undefined}
-                aria-pressed={isActive(key, value)}
               >
                 {label}
               </Button>

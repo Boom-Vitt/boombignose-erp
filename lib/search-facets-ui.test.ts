@@ -14,7 +14,6 @@ function panelLink(html: string, label: string) {
   return {
     href: attributes.match(/href="([^"]*)"/)?.[1],
     current: attributes.match(/aria-current="([^"]*)"/)?.[1],
-    pressed: attributes.match(/aria-pressed="([^"]*)"/)?.[1],
   }
 }
 
@@ -61,11 +60,11 @@ describe("multi-value status controls", () => {
     expect(panelLink(two, "Accepted").href).toBe("/quotes?status=draft%2Csent%2Caccepted&amp;period=this_month")
     expect(panelLink(renderFacets({}), "Sent").href).toBe("/quotes?status=sent")
   })
-  it("marks every selected status as current and pressed", () => {
+  it("marks every selected status as current", () => {
     const html = renderFacets({ status: "draft,sent", mine: "1" })
-    for (const label of ["Draft", "Sent"]) expect(panelLink(html, label)).toMatchObject({ current: "true", pressed: "true" })
-    expect(panelLink(html, "Accepted")).toMatchObject({ current: undefined, pressed: "false" })
-    expect(panelLink(html, "My records")).toMatchObject({ current: "true", pressed: "true" })
+    for (const label of ["Draft", "Sent"]) expect(panelLink(html, label)).toMatchObject({ current: "true" })
+    expect(panelLink(html, "Accepted")).toMatchObject({ current: undefined })
+    expect(panelLink(html, "My records")).toMatchObject({ current: "true" })
   })
   it("shows one chip per group and removes the whole status group at once", () => {
     const html = renderFacets({ q: "Acme", status: "draft,sent", mine: "1", groupBy: "client" })
