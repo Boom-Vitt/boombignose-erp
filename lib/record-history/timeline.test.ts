@@ -9,6 +9,11 @@ const activity: Tables<"activities"> = { ...base, id: "same", owner: "assignee",
 const audit: Tables<"audit_log"> = { org_id: "org", id: "same", created_at: "2026-10-22T11:00:00Z", actor_id: "author", actor_email: null, entity: "quote", entity_id: "record", action: "status_changed", summary: "Status changed", meta: { from: "sent", to: "accepted" } }
 
 describe("record timeline", () => {
+  it("attributes completion to the completing actor rather than the assignee", () => {
+    const completed = { ...activity, owner: "alice", completed_by: "bob" }
+    expect(mergeTimeline({ notes: [], attachments: [], activities: [completed], audits: [] })[0].actor).toBe("bob")
+    expect(mergeTimeline({ notes: [], attachments: [], activities: [{ ...completed, completed_by: null }], audits: [] })[0].actor).toBeNull()
+  })
   it("merges all four sources newest first and leaves input unchanged", () => {
     const input = { notes: [note], attachments: [attachment], activities: [activity, { ...activity, id: "open", done: false }], audits: [audit] }
     const snapshot = structuredClone(input)
