@@ -78,3 +78,21 @@ describe("deal and project facets", () => {
     expect(state.inserts).toHaveLength(2)
   })
 })
+
+it("keeps inventory selectors and saved-view links alongside page-owned view params", async () => {
+  state.pathname = "/inventory/moves"
+  const warehouse = "b8100000-0000-4000-8000-000000000001"
+  const product = "b8100000-0000-4000-8000-000000000002"
+  const config = { status: "delivery", warehouse, product }
+  const html = renderToStaticMarkup(createElement(SearchFacets, {
+    list: "inventory", config, params: { view: "list" },
+    selectors: [{ key: "warehouse", label: "Warehouse", options: [{ id: warehouse, name: "Main" }] }, { key: "product", label: "Product", options: [{ id: product, name: "Goods" }] }],
+    savedViews: [{ id: "stock", name: "Stock", config }],
+  }))
+  expect(html.match(/name="warehouse"/g)).toHaveLength(1)
+  expect(html.match(/name="product"/g)).toHaveLength(1)
+  expect(html).toContain('name="view" value="list"')
+  expect(html).toContain(`href="/inventory/moves?status=delivery&amp;product=${product}&amp;view=list"`)
+  expect(html).toContain(`href="/inventory/moves?status=delivery&amp;warehouse=${warehouse}&amp;product=${product}&amp;view=list"`)
+  expect(await createSavedView({ module: "inventory", name: "Stock", config })).toEqual({})
+})
