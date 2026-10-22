@@ -45,12 +45,12 @@ it("unpaid invoice draft still exposes the WHT selector after the balance-view m
   expect(elements(page).find(node => node.type === WithholdingForm)?.props).toMatchObject({ invoiceId: "invoice", rate: 300 })
 })
 
-it("quote detail keeps VAT totals and the true linked count when only one linked id is fetched", async () => {
+it("quote detail keeps VAT totals and the complete linked invoice count", async () => {
   state.client = databaseFixture({ quotes: [{ ...header, id: "quote", project_id: "project", valid_until: null }], invoices: Array.from({ length: 1001 }, (_, n) => ({ id: `invoice-${n}`, org_id: "A", source_quote_id: "quote" })) })
   const page = await QuotePage({ params: Promise.resolve({ id: "quote" }) })
   const nodes = elements(page)
   expect(nodes.find(node => node.type === DocumentTotals)?.props).toMatchObject({ vat: 70000, total: 1070000 })
-  expect(nodes.find(node => node.type === SmartButtons)?.props).toMatchObject({ buttons: expect.arrayContaining([expect.objectContaining({ label: "Invoices", count: 1001, href: "/projects/project#billing" })]) })
+  expect(nodes.find(node => node.type === SmartButtons)?.props).toMatchObject({ buttons: expect.arrayContaining([expect.objectContaining({ label: "Invoices", count: 1001, href: "#invoices" })]) })
 })
 
 it("Finance keeps vendor bill metadata beyond the row cap alongside net receivables", async () => {

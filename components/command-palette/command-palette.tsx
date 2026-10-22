@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react"
-import { unstable_rethrow, usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { ArrowRight, Plus, Search, Zap } from "lucide-react"
 import { toast } from "sonner"
 
@@ -10,8 +10,6 @@ import { paletteCommands } from "@/lib/search/commands"
 import { SEARCH_SOURCES, searchTerm } from "@/lib/search/query"
 import { recordFromPath, type PaletteAction } from "@/lib/search/record-actions"
 import { recordActions, runRecordAction, searchRecords, type SearchHit } from "@/lib/search/actions"
-import { quoteConversionKey } from "@/lib/workflows/service"
-import { convertQuoteToInvoice } from "@/app/(app)/quotes/actions"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -30,7 +28,7 @@ const SEARCH_DELAY_MS = 250
 const noSubscribe = () => () => {}
 const isApple = () => /Mac|iPhone|iPad/.test(navigator.userAgent)
 
-export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
+export function CommandPalette({ role }: { role: Role; orgId: string }) {
   const router = useRouter()
   const pathname = usePathname()
   const commands = useMemo(() => paletteCommands(role), [role])
@@ -46,7 +44,6 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
   const latest = useRef("")
   const actionsRequest = useRef(0)
   const touched = useRef(false)
-  const fallbackKeys = useRef(new Map<string, string>())
 
   function changeOpen(next: boolean) {
     setOpen(next)
@@ -137,23 +134,9 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
     }
     const quoteId = recordFromPath(pathname)?.id
     if (action.command !== "convert" || !quoteId) return
-    // Same key scope as ConvertQuoteButton, so a retry from either place recovers the same invoice.
-    const scope = `${orgId}:${quoteId}`
-    let key: string
-    try {
-      key = quoteConversionKey(window.sessionStorage, scope, () => crypto.randomUUID())
-    } catch {
-      // Storage is blocked; keep one key per quote for this session so a retry still recovers.
-      key = fallbackKeys.current.get(scope) ?? crypto.randomUUID()
-      fallbackKeys.current.set(scope, key)
-    }
-    try {
-      const res = await convertQuoteToInvoice({ id: quoteId, key })
-      if (res?.error) toast.error(res.error)
-    } catch (error) {
-      unstable_rethrow(error)
-      toast.error("The conversion result could not be confirmed. Retry to recover the same invoice.")
-    }
+    const invoiceControl = document.getElementById("create-invoice")
+    if (invoiceControl) invoiceControl.click()
+    else go(`/quotes/${quoteId}#invoices`)
   }
 
   return (

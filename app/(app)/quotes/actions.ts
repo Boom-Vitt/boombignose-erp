@@ -3,14 +3,12 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
-import { readAll } from "@/lib/supabase/read-all"
 import { ProductLineInput } from "@/lib/products/schema"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
-import { nextDocumentNumber } from "@/lib/documents/numbering"
 import {
   quoteTransitionError,
   quoteIsEditable,
@@ -71,23 +69,15 @@ export async function createQuote(
 
   const supabase = await createSupabaseClient()
 
-  // Auto-generate the quote number when none was provided. Scans the org's
-  // existing numbers for the current year and continues the running counter.
-  // Manual numbers are used verbatim; a rare unique(org_id, number) collision
-  // surfaces as the DB error below, exactly as before.
   let number = d.number
   if (!number) {
     const year = Number(todayISO().slice(0, 4))
-    const { data: existing, error: numberError } = await readAll((from, to) => supabase
-      .from("quotes")
-      .select("number")
-      .eq("org_id", ctx.orgId).order("id").range(from, to))
+    const { data: reserved, error: numberError } = await supabase.rpc("reserve_document_number", {
+      p_org_id: ctx.orgId, p_kind: "quote", p_year: year,
+    })
     if (numberError) return { error: numberError.message }
-    number = nextDocumentNumber(
-      "QUO",
-      (existing ?? []).map((r) => r.number),
-      year
-    )
+    if (!reserved) return { error: "Could not reserve a quote number. Please retry." }
+    number = reserved
   }
 
   const { data, error } = await supabase
@@ -138,6 +128,7 @@ export async function updateQuote(
   input: z.input<typeof UpdateQuote>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  requireCapability(ctx, "record:write")
   const parsed = UpdateQuote.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
@@ -248,12 +239,15 @@ export async function addQuoteItem(
     return { error: "This quote is locked" }
   }
 
-  // Next position = current item count (stable append order).
-  const { count } = await supabase
+  const { data: lastItem, error: positionError } = await supabase
     .from("quote_items")
-    .select("id", { count: "exact", head: true })
+    .select("position")
     .eq("quote_id", d.quote_id)
     .eq("org_id", ctx.orgId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (positionError) return { error: positionError.message }
 
   let taxRate = d.tax_rate_bps
   const unitPriceSatang = serviceAmountSatang(d.unitPriceBaht)
@@ -279,7 +273,7 @@ export async function addQuoteItem(
     quantity: d.quantity,
     unit_price_satang: unitPriceSatang,
     amount_satang: serviceLineAmount(d.quantity, unitPriceSatang),
-    position: count ?? 0,
+    position: (lastItem?.position ?? -1) + 1,
   })
 
   if (error) return { error: error.message }
@@ -295,6 +289,7 @@ export async function deleteQuoteItem(
   input: z.input<typeof DeleteQuoteItem>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  requireCapability(ctx, "record:write")
   const parsed = DeleteQuoteItem.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
 
@@ -349,9 +344,15 @@ export async function setQuoteStatus(
   input: z.input<typeof SetQuoteStatus>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  requireCapability(ctx, "record:write")
   const parsed = SetQuoteStatus.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
+
+  if (d.status === "accepted") {
+    try { requireCapability(ctx, "quote:convert") }
+    catch { return { error: "Only owners and admins can accept quotes." } }
+  }
 
   const supabase = await createSupabaseClient()
   const { data: current, error: readError } = await supabase
@@ -394,7 +395,16 @@ export async function setQuoteStatus(
 // Convert to invoice (owner/admin only)
 // ---------------------------------------------------------------------------
 
-const ConvertQuote = z.object({ id: z.guid(), key: z.uuid() })
+const ConvertQuote = z.object({
+  id: z.guid(),
+  key: z.uuid(),
+  lines: z.array(z.object({ quote_item_id: z.guid(), quantity: serviceQuantityInput })).min(1).optional(),
+  depositSatang: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  depositBps: z.number().int().min(1).max(10000).optional(),
+}).refine((input) => [input.lines, input.depositSatang, input.depositBps].filter((value) => value !== undefined).length <= 1,
+  "Choose quantities or one deposit mode")
+  .refine((input) => !input.lines || new Set(input.lines.map((line) => line.quote_item_id)).size === input.lines.length,
+    "Each quote line can only be selected once")
 
 export async function convertQuoteToInvoice(
   input: z.input<typeof ConvertQuote>
@@ -413,6 +423,9 @@ export async function convertQuoteToInvoice(
     p_org_id: ctx.orgId,
     p_quote_id: parsed.data.id,
     p_key: parsed.data.key,
+    ...(parsed.data.lines ? { p_lines: parsed.data.lines } : {}),
+    ...(parsed.data.depositSatang !== undefined ? { p_deposit_satang: parsed.data.depositSatang } : {}),
+    ...(parsed.data.depositBps !== undefined ? { p_deposit_bps: parsed.data.depositBps } : {}),
   })
   if (error) return { error: error.message }
   if (!invoiceId) return { error: "Conversion did not return an invoice. Retry this request." }
@@ -423,4 +436,22 @@ export async function convertQuoteToInvoice(
   revalidatePath("/projects")
   revalidatePath("/finance")
   redirect(`/finance/invoices/${invoiceId}`)
+}
+
+const CancelQuoteInvoice = z.object({ quoteId: z.guid(), invoiceId: z.guid() })
+
+export async function cancelQuoteInvoice(input: z.input<typeof CancelQuoteInvoice>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "quote:convert") }
+  catch { return { error: "Only owners and admins can cancel quote invoices." } }
+  const parsed = CancelQuoteInvoice.safeParse(input)
+  if (!parsed.success) return { error: "Invalid input" }
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.rpc("cancel_quote_invoice", { p_org_id: ctx.orgId, p_invoice_id: parsed.data.invoiceId })
+  if (error) return { error: error.message }
+  revalidatePath(`/quotes/${parsed.data.quoteId}`)
+  revalidatePath("/quotes")
+  revalidatePath(`/finance/invoices/${parsed.data.invoiceId}`)
+  revalidatePath("/finance")
+  return {}
 }

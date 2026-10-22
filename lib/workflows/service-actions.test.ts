@@ -134,6 +134,8 @@ describe("service action amount boundaries", () => {
     const chain = {
       select: () => chain,
       eq: () => chain,
+      order: () => chain,
+      limit: () => chain,
       maybeSingle: async () => ({ data: { status: "draft" }, error: null }),
       insert: async (row: Record<string, unknown>) => { inserted = row; return { error: null } },
       then: (resolve: (value: unknown) => unknown) => resolve({ count: 0, error: null }),

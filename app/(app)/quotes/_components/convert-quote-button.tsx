@@ -15,11 +15,17 @@ export function ConvertQuoteButton({
   orgId,
   label,
   variant,
+  request,
+  revision,
+  disabled,
 }: {
   quoteId: string
   orgId: string
   label: string
   variant: "default" | "outline"
+  request?: Omit<Parameters<typeof convertQuoteToInvoice>[0], "id" | "key">
+  revision?: string
+  disabled?: boolean
 }) {
   const [pending, startTransition] = useTransition()
   const conversionRequest = useRef<{ scope: string; key: string } | null>(null)
@@ -27,7 +33,7 @@ export function ConvertQuoteButton({
   function convert() {
     startTransition(async () => {
       // Keep the same command identity after an error or an uncertain response.
-      const scope = `${orgId}:${quoteId}`
+      const scope = `${orgId}:${quoteId}${revision ? `:${revision}:${JSON.stringify(request ?? {})}` : ""}`
       if (conversionRequest.current?.scope !== scope) {
         let key: string
         try {
@@ -38,7 +44,7 @@ export function ConvertQuoteButton({
         conversionRequest.current = { scope, key }
       }
       try {
-        const res = await convertQuoteToInvoice({ id: quoteId, key: conversionRequest.current.key })
+        const res = await convertQuoteToInvoice({ id: quoteId, key: conversionRequest.current.key, ...request })
         // On success the action redirects; only errors return here.
         if (res?.error) toast.error(res.error)
       } catch (error) {
@@ -49,7 +55,7 @@ export function ConvertQuoteButton({
   }
 
   return (
-    <Button size="sm" variant={variant} disabled={pending} onClick={convert}>
+    <Button size="sm" variant={variant} disabled={pending || disabled} onClick={convert}>
       <FileOutput /> {label}
     </Button>
   )

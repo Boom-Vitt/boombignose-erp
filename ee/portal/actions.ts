@@ -19,30 +19,11 @@ import { paymentAmount } from "@/lib/payments/input"
 
 const TokenSchema = z.string().trim().min(1)
 
-type ResolvedClient = { id: string; org_id: string }
-
-/**
- * Resolve an enabled portal token to its owning client, or null. Never leaks
- * whether a token existed; callers surface a generic "unavailable" error.
- */
-async function resolveClient(
-  supabase: ReturnType<typeof createAdminClient>,
-  token: string
-): Promise<ResolvedClient | null> {
-  const { data, error } = await supabase
-    .from("clients")
-    .select("id, org_id")
-    .eq("portal_token", token)
-    .eq("portal_enabled", true)
-    .maybeSingle()
-
-  if (error || !data) return null
-  return data
-}
-
 const AcceptQuote = z.object({
   token: TokenSchema,
-  quoteId: z.string().min(1),
+  quoteId: z.guid(),
+  name: z.string().trim().min(1).max(200),
+  email: z.string().trim().max(320).pipe(z.email()),
 })
 
 export async function portalAcceptQuote(
@@ -50,25 +31,14 @@ export async function portalAcceptQuote(
 ): Promise<{ error?: string }> {
   const parsed = AcceptQuote.safeParse(input)
   if (!parsed.success) return { error: "Invalid request" }
-  const { token, quoteId } = parsed.data
+  const { token, quoteId, name, email } = parsed.data
 
-  const supabase = createAdminClient()
-  const client = await resolveClient(supabase, token)
-  if (!client) return { error: "This portal is unavailable." }
-
-  // Only a 'sent' quote that belongs to THIS client can be accepted. The
-  // client_id + status filters make the update a no-op for anything else.
-  const { data, error } = await supabase
-    .from("quotes")
-    .update({ status: "accepted" })
-    .eq("id", quoteId)
-    .eq("client_id", client.id)
-    .eq("org_id", client.org_id)
-    .eq("status", "sent")
-    .select("id")
+  const { data, error } = await createAdminClient().rpc("accept_portal_quote", {
+    p_token: token, p_quote_id: quoteId, p_name: name, p_email: email,
+  })
 
   if (error) return { error: "Could not accept this quote." }
-  if (!data || data.length === 0) {
+  if (!data) {
     return { error: "This quote can no longer be accepted." }
   }
 

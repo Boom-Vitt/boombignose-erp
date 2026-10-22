@@ -14,7 +14,7 @@ beforeEach(() => {
   insert.mockResolvedValue({ error: null })
   from.mockImplementation(() => {
     const query = {
-      select: () => query, eq: () => query, update, insert,
+      select: () => query, eq: () => query, order: () => query, limit: () => query, update, insert,
       maybeSingle: async () => ({ data: { status: "draft" }, error: null }),
       then: (resolve: (v: object) => void) => resolve({ count: 0, data: [{ amount_satang: 215 }], error: null }),
     }

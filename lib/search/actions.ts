@@ -80,14 +80,19 @@ async function recordContext(ctx: OrgContext, { type, id }: StatusRecordRef): Pr
     case "quote": {
       const { data } = await supabase
         .from("quotes")
-        .select("status, valid_until")
+        .select("status")
         .eq("org_id", ctx.orgId)
         .eq("id", id)
         .maybeSingle()
       if (!data) return null
-      const canConvert = can(ctx.role, "quote:convert") && (!data.valid_until || data.valid_until >= todayISO())
+      const canConvert = can(ctx.role, "quote:convert")
+      const flow = { ...QUOTE_FLOW, next: { ...QUOTE_FLOW.next,
+        sent: { ...QUOTE_FLOW.next.sent, primary: canConvert ? QUOTE_FLOW.next.sent.primary : undefined },
+        accepted: { primary: { label: "Create draft invoice", command: "convert" as const } },
+        converted: { primary: { label: "Create draft invoice", command: "convert" as const } },
+      } }
       return {
-        actions: paletteActions(QUOTE_FLOW, data.status, true, canConvert ? { convert: true } : {}),
+        actions: paletteActions(flow, data.status, can(ctx.role, "record:write"), canConvert ? { convert: true } : {}),
         transition: (to) => setQuoteStatus({ id, status: to as Parameters<typeof setQuoteStatus>[0]["status"] }),
       }
     }
