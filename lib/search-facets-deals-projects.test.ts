@@ -1,9 +1,19 @@
-import { createElement } from "react"
+import { createElement, type ReactElement, type ReactNode } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const state = vi.hoisted(() => ({ inserts: [] as unknown[] }))
-vi.mock("next/navigation", () => ({ usePathname: () => "/projects" }))
+const state = vi.hoisted(() => ({ inserts: [] as unknown[], pathname: "/projects" }))
+vi.mock("next/navigation", () => ({ usePathname: () => state.pathname }))
+// The real menu portals its items only while open; render them inline so saved-view links are visible.
+vi.mock("@/components/ui/dropdown-menu", async () => {
+  const { createElement } = await import("react")
+  const Inline = ({ children, render }: { children?: ReactNode; render?: ReactElement }) =>
+    render ?? createElement("div", null, children)
+  return {
+    DropdownMenu: Inline, DropdownMenuTrigger: Inline, DropdownMenuContent: Inline,
+    DropdownMenuLabel: Inline, DropdownMenuItem: Inline, DropdownMenuSeparator: Inline,
+  }
+})
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org", userId: "me" }) }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: () => ({
@@ -14,7 +24,7 @@ import { SearchFacets } from "@/components/search/search-facets"
 import { createSavedView } from "@/app/(app)/views/actions"
 import { matchesFacets, parseFacets, serializeFacets } from "./search-facets"
 
-beforeEach(() => { state.inserts = [] })
+beforeEach(() => { state.inserts = []; state.pathname = "/projects" })
 
 describe("deal and project facets", () => {
   it("reads legacy deal stage links and saved views as the stage filter", () => {
@@ -47,6 +57,20 @@ describe("deal and project facets", () => {
     expect(html).toContain('href="/projects?status=review&amp;mine=1&amp;view=board"')
     expect(html).toContain('name="view" value="board"')
     expect(html).toContain("Period uses the deadline.")
+  })
+  it("keeps the deals list and the projects board on saved-view links", () => {
+    state.pathname = "/deals"
+    const deals = renderToStaticMarkup(createElement(SearchFacets, {
+      list: "deals", config: {}, params: { view: "list" },
+      savedViews: [{ id: "v1", name: "By stage", config: { q: "bot", groupBy: "stage" } }],
+    }))
+    expect(deals).toContain('href="/deals?q=bot&amp;groupBy=stage&amp;view=list"')
+    state.pathname = "/projects"
+    const projects = renderToStaticMarkup(createElement(SearchFacets, {
+      list: "projects", config: { status: "review" }, params: { view: "board" },
+      savedViews: [{ id: "v2", name: "In review", config: { status: "review" } }],
+    }))
+    expect(projects).toContain('href="/projects?status=review&amp;view=board"')
   })
   it("saves project views and deal views grouped by owner or stage", async () => {
     expect(await createSavedView({ module: "projects", name: "Mine", config: { status: "review", groupBy: "owner" } })).toEqual({})
