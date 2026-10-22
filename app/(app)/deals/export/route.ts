@@ -3,47 +3,37 @@ import { requireOrgContext } from "@/lib/auth"
 import { satangToBaht } from "@/lib/money"
 import { toCsv } from "@/lib/export/csv"
 import { todayISO } from "@/lib/dates"
-import { Constants } from "@/lib/types/database"
-
-const DEAL_STAGES = Constants.public.Enums.deal_stage
+import { matchesFacets, parseFacets } from "@/lib/search-facets"
+import { dealFacetRow } from "../_lib/deal-facets"
 
 /**
- * GET /deals/export[?stage=…&q=…]
- * Org-scoped deal export. Value column is baht (satang ÷ 100). Filters mirror the
- * Deals page: `stage` (exact) and `q` (case-insensitive title search), so an
- * export from a filtered view contains exactly the visible deals.
+ * GET /deals/export[?status=…&q=…&period=…&mine=1]
+ * Org-scoped deal export. Value column is baht (satang ÷ 100). Filters are the
+ * Deals page facets (legacy `stage` included), so an export from a filtered
+ * view contains exactly the visible deals.
  */
 export async function GET(request: Request) {
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const params = new URL(request.url).searchParams
-  const stage = params.get("stage") ?? ""
-  const q = (params.get("q") ?? "").trim()
-  const stageFilter = (DEAL_STAGES as readonly string[]).includes(stage)
-    ? stage
-    : null
+  const config = parseFacets(new URL(request.url).searchParams, "deals")
 
   const [dealsRes, clientsRes] = await Promise.all([
-    (() => {
-      let query = supabase
-        .from("deals")
-        .select(
-          "title, stage, value_satang, client_id, expected_close_date, next_follow_up_date"
-        )
-        .eq("org_id", ctx.orgId)
-        .order("created_at", { ascending: false })
-      if (stageFilter) {
-        query = query.eq("stage", stageFilter as (typeof DEAL_STAGES)[number])
-      }
-      if (q) query = query.ilike("title", `%${q}%`)
-      return query
-    })(),
+    supabase
+      .from("deals")
+      .select(
+        "title, stage, value_satang, client_id, owner, expected_close_date, next_follow_up_date"
+      )
+      .eq("org_id", ctx.orgId)
+      .order("created_at", { ascending: false }),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId),
   ])
 
-  const deals = dealsRes.data ?? []
   const clientName = new Map((clientsRes.data ?? []).map((c) => [c.id, c.name]))
+  const now = new Date()
+  const deals = (dealsRes.data ?? []).filter((d) =>
+    matchesFacets(config, dealFacetRow(d, clientName.get(d.client_id)), ctx.userId, now)
+  )
 
   const headers = [
     "Title",
