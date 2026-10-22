@@ -50,6 +50,11 @@ it("saves trimmed notes under the active org and authenticated author", async ()
   expect(tables.record_notes).toEqual([{ org_id: state.ctx.orgId, record_type: "quote", record_id: recordId, author: state.ctx.userId, body: "Team context" }])
   expect(state.capability).toHaveBeenCalledWith(state.ctx, "record:write")
 })
+it("blames the record, not the note, when the target id is invalid", async () => {
+  expect(await logRecordNote({ ...ref, recordId: "not-an-id", body: "Context" })).toEqual({ error: "This record is not available. Reload the page and try again." })
+  expect(await logRecordNote({ ...ref, body: "  " })).toEqual({ error: "Enter a note of 1 to 20,000 characters." })
+  expect(tables.record_notes).toBeUndefined()
+})
 it("rejects missing active-workspace targets before mutation", async () => {
   tables.quotes[0].org_id = "foreign"
   await expect(logRecordNote({ ...ref, body: "Context" })).rejects.toThrow("Record not found")

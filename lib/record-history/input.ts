@@ -1,12 +1,12 @@
 import { z } from "zod"
 import { RECORD_TYPES } from "./model"
 
-export const RecordInput = z.object({ recordType: z.enum(RECORD_TYPES), recordId: z.uuid() })
+export const RecordInput = z.object({ recordType: z.enum(RECORD_TYPES), recordId: z.guid() })
 export const NoteInput = RecordInput.extend({ body: z.string().trim().min(1).max(20000) })
 export const ScheduleInput = RecordInput.extend({
   type: z.enum(["call", "email", "meeting", "follow_up", "note"]),
   dueDate: z.iso.date(),
-  owner: z.uuid(),
+  owner: z.guid(),
   summary: z.string().trim().min(1).max(2000),
 })
 export const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
