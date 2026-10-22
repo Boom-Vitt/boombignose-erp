@@ -550,11 +550,11 @@ isOneToOne: false
                   }
                   ComputedFields: never
                   Insert: {
-"vat_registered"?: boolean,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
+"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
-"vat_registered"?: boolean,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
+"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Relationships: [
