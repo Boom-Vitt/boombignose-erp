@@ -6,6 +6,7 @@ import { Mail } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useRecordGuard } from "@/components/record/record-guard"
 
 import { sendQuoteEmail } from "../email-actions"
 
@@ -17,14 +18,15 @@ import { sendQuoteEmail } from "../email-actions"
 export function EmailQuoteButton({ quoteId }: { quoteId: string }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const { busy, run } = useRecordGuard()
 
   return (
     <Button
       variant="outline"
       size="sm"
-      disabled={pending}
+      disabled={pending || busy}
       onClick={() =>
-        startTransition(async () => {
+        startTransition(() => run(async () => {
           const res = await sendQuoteEmail(quoteId)
           if (res.reason === "not_configured") {
             toast.warning(
@@ -38,7 +40,7 @@ export function EmailQuoteButton({ quoteId }: { quoteId: string }) {
           }
           toast.success("Quote emailed to the client")
           router.refresh()
-        })
+        }))
       }
     >
       <Mail /> {pending ? "Sending…" : "Email quote"}

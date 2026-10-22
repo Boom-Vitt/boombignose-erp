@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { useGuardedForm } from "@/components/record/record-guard"
 
 import { serviceMoneyInput } from "@/lib/workflows/service"
 
@@ -65,20 +66,22 @@ export function QuoteForm({
     resolver: zodResolver(Schema),
     defaultValues,
   })
+  const onSubmit = useGuardedForm(form, async (values) => {
+    const res = await action(values)
+    if (res?.error) {
+      toast.error(res.error)
+      return false
+    }
+    // createQuote redirects on success (no return); update returns {}.
+    toast.success("Quote saved")
+    router.refresh()
+    return true
+  })
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(async (values) => {
-          const res = await action(values)
-          if (res?.error) {
-            toast.error(res.error)
-            return
-          }
-          // createQuote redirects on success (no return); update returns {}.
-          toast.success("Quote saved")
-          router.refresh()
-        })}
+        onSubmit={onSubmit}
         className="space-y-5"
       >
         <div className="grid gap-5 sm:grid-cols-2">
