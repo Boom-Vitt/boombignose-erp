@@ -69,3 +69,47 @@ The coordinator must apply the migration to its integration database and execute
 After configuring the authorized isolated integration environment, run `pnpm e2e -- inventory.spec.ts`. The browser test creates its own stockable product, receives a PO, issues and delivers an invoice, checks quantity changes and records a physical count. The second test uses concurrent delivery RPC requests for two invoices competing over one unit, then concurrent retries of the winning invoice, and asserts exactly one delivery. Both runtime tests remain NOT VERIFIED here.
 
 Synthetic opening seed moves use adjustment source references so they never link to unrelated commercial documents. Transfers have enum kinds but no transfer UI/RPC in this track. No screenshots were required. No push, merge or external publication was performed.
+
+
+## Integration round, 2026-10-23
+
+Merged the requested `odoo-parity` head `7ccf5d9` into `odoo-w3a-inventory` as merge commit `c2fc34a`. Resolved all six conflicts with both behaviors retained:
+
+- The invoice detail page retains `DocumentTotals`, WHT selection and per-line tax rates, plus Deliver and Deliveries. Payments use the upstream separate exact-count query.
+- Purchasing receipt actions keep the optional warehouse and atomic stock receipt hook while reading lines through `readAllOrThrow`. Upstream frozen RFQ claims, cascade-delete handling and Bangkok paid dates remain intact.
+- Saved-view module and grouping allowlists include both inventory and projects/stage/owner options.
+- SearchFacets accepts inventory selectors and page-owned params together. Filter links, search hidden inputs and saved-view links preserve the active view, while selector fields appear only once. The added rendered-component regression covers this combined contract and inventory saved-view creation.
+- Database types include VAT settings and tax columns, RFQ claim fields/RPCs, inventory tables/views/RPCs and the negative-stock flag.
+
+The deleted `lib/purchasing/pagination.ts` and its test remain deleted. A repository search found no old pager imports or `allPurchasingRows` references. Inventory continues to use the shared `readAll` helper. Independent read-only review compared all six resolutions with both Git index stages and approved the resolution; it did not claim SQL/browser runtime validation.
+
+The coordinator then supplied upstream commit `b676bf6`, which renames search throttle to `20261024140000_search_throttle.sql` and adds a migration-prefix uniqueness test. That follow-up merged without conflicts. Inventory retains its reserved `20261024120000_inventory.sql` version.
+
+Final integration gates:
+
+```text
+pnpm lint: exit 0
+$ eslint
+
+pnpm typecheck: exit 0
+$ tsc --noEmit
+
+pnpm test: exit 0
+ Test Files  118 passed (118)
+      Tests  819 passed (819)
+   Start at  03:20:36
+   Duration  5.72s (transform 12.62s, setup 0ms, import 71.49s, tests 2.58s, environment 6ms)
+```
+
+`pnpm build` exited 0 and reported `✓ Compiled successfully in 7.8s`. Its final lines were:
+
+```text
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+`git diff --check` passed and no conflict markers or unmerged entries remain. No SQL or browser runtime tests were executed, and no Supabase or Docker startup was performed. The coordinator applies the migration and runs `supabase/tests/inventory.sql` and `e2e/inventory.spec.ts` on the integration database after worker completion.

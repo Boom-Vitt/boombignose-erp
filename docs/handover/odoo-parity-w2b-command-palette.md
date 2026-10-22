@@ -37,7 +37,7 @@ What it protects against is a user, or a script holding a user's session, using 
 - `app/(app)/layout.tsx` gets one import and one mount line in the header.
 - `components/ui/command.tsx` moves `CommandDialog`'s sr-only title and description inside `DialogContent`. This is outside the ownership list. Base-ui renders a title placed outside the popup in place, so "Command palette" sat as a hidden heading in the top bar on every page. The palette is the only `CommandDialog` user.
 - `e2e/command-palette.spec.ts` is new.
-- `supabase/migrations/20261024110000_search_throttle.sql` and `supabase/tests/search_throttle.sql` add the throttle (fix round 1).
+- `supabase/migrations/20261024140000_search_throttle.sql` and `supabase/tests/search_throttle.sql` add the throttle (fix round 1).
 
 The pure logic lives in `lib/search/` rather than `components/command-palette/`, because Vitest only collects `lib/**/*.test.ts`.
 
