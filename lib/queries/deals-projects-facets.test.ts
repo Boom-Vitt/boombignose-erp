@@ -103,6 +103,15 @@ describe("project facets", () => {
     expect(html).not.toContain("Project ip1")
     expect(html).toContain('href="/projects?view=board"')
   })
+  it("shows the board columns of every selected status", async () => {
+    state.tables.projects = [project("rev1", "review", "2026-10-30"), project("ip1", "in_progress", null), project("del1", "delivered", null)]
+    const html = await render(ProjectsPage, "/projects", { view: "board", status: "review,in_progress" })
+    for (const label of ["Review", "In progress"]) expect(html).toContain(`aria-label="${label}"`)
+    for (const label of ["Not started", "Delivered"]) expect(html).not.toContain(`aria-label="${label}"`)
+    expect(html).toContain("Project rev1")
+    expect(html).toContain("Project ip1")
+    expect(html).not.toContain("Project del1")
+  })
   it("groups the list by deadline month with undated projects apart", async () => {
     const html = await render(ProjectsPage, "/projects", { groupBy: "month" })
     expect(html).toContain(">2026-10</span>")
