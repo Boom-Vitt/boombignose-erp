@@ -13,6 +13,7 @@ import {
 } from "@/lib/metrics/pipeline"
 import { facetLabel, matchesFacets, parseFacets, serializeFacets, type SearchParams } from "@/lib/search-facets"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
+import { fetchAllRows } from "@/lib/queries/fetch-all-rows"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
@@ -54,14 +55,15 @@ export default async function DealsPage({
   const view = params.view === "list" ? "list" : "board"
   const facetQuery = serializeFacets(config, "deals")
 
-  const [dealsRes, clientsRes, savedViews, activitiesRes] = await Promise.all([
-    supabase
+  const [allDeals, clientsRes, savedViews, activitiesRes] = await Promise.all([
+    fetchAllRows(() => supabase
       .from("deals")
       .select(
-        "id,title,stage,value_satang,client_id,owner,expected_close_date,next_follow_up_date,created_at"
+        "id,title,stage,value_satang,client_id,owner,expected_close_date,next_follow_up_date,created_at,client:clients(name)"
       )
       .eq("org_id", ctx.orgId)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .order("id")),
     supabase.from("clients").select("id,name").eq("org_id", ctx.orgId),
     getFacetSavedViews("deals"),
     supabase
@@ -75,9 +77,7 @@ export default async function DealsPage({
       .order("due_date", { ascending: true }),
   ])
 
-  const allDeals = dealsRes.data ?? []
   const clients = clientsRes.data ?? []
-  const clientName = new Map(clients.map((c) => [c.id, c.name]))
   const ownerName = await profileNames(supabase, allDeals.map((d) => d.owner))
   const nextActivity = new Map<string, string | null>()
   for (const a of activitiesRes.data ?? []) {
@@ -86,7 +86,7 @@ export default async function DealsPage({
 
   const now = new Date()
   const deals = allDeals.filter((d) =>
-    matchesFacets(config, dealFacetRow(d, clientName.get(d.client_id)), ctx.userId, now)
+    matchesFacets(config, dealFacetRow(d, d.client?.name), ctx.userId, now)
   )
 
   // When a stage is selected, only show that column.
@@ -97,7 +97,7 @@ export default async function DealsPage({
   const ownerLabel = (owner: string | null) => (owner && ownerName.get(owner)) || null
   const groups: Record<string, (d: (typeof deals)[number]) => { key: string; label: string }> = {
     stage: (d) => ({ key: d.stage, label: facetLabel(d.stage) }),
-    client: (d) => ({ key: d.client_id, label: clientName.get(d.client_id) ?? "Unassigned" }),
+    client: (d) => ({ key: d.client_id, label: d.client?.name ?? "Unassigned" }),
     owner: (d) => ({ key: d.owner ?? "", label: ownerLabel(d.owner) ?? "Unassigned" }),
     month: (d) => ({ key: d.expected_close_date?.slice(0, 7) ?? "", label: d.expected_close_date?.slice(0, 7) ?? "No close date" }),
   }
@@ -116,7 +116,7 @@ export default async function DealsPage({
     title: d.title,
     href: `/deals/${d.id}`,
     amountSatang: d.value_satang,
-    client: clientName.get(d.client_id) ?? null,
+    client: d.client?.name ?? null,
     owner: ownerLabel(d.owner),
     due: earliestDate([d.next_follow_up_date, nextActivity.get(d.id) ?? null]),
   }))
@@ -200,7 +200,7 @@ export default async function DealsPage({
                           {d.title}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{clientName.get(d.client_id) ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">{d.client?.name ?? "—"}</TableCell>
                       <TableCell>{facetLabel(d.stage)}</TableCell>
                       <TableCell className="text-muted-foreground">{ownerLabel(d.owner) ?? "—"}</TableCell>
                       <TableCell className="text-muted-foreground">{d.expected_close_date ?? "—"}</TableCell>

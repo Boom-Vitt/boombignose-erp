@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 import type { Enums } from "@/lib/types/database"
 import { matchesFacets, parseFacets, serializeFacets, type SearchParams } from "@/lib/search-facets"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
+import { fetchAllRows } from "@/lib/queries/fetch-all-rows"
 import { SearchFacets } from "@/components/search/search-facets"
 import { GroupedTableRows } from "@/components/search/grouped-table-rows"
 import { deadlineMeta } from "./_lib/dates"
@@ -68,17 +69,18 @@ export default async function ProjectsPage({
   const view = params.view === "board" ? "board" : "list"
   const facetQuery = serializeFacets(config, "projects")
 
-  const [{ data: projects }, savedViews] = await Promise.all([
-    supabase
+  const [projects, savedViews] = await Promise.all([
+    fetchAllRows(() => supabase
       .from("projects")
       .select("id, name, status, deadline, owner, client_id, budget_satang, client:clients(name)")
       .eq("org_id", ctx.orgId)
       .order("deadline", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .order("id")),
     getFacetSavedViews("projects"),
   ])
 
-  const allRows = (projects ?? []) as Array<{
+  const allRows = projects as Array<{
     id: string
     name: string
     status: ProjectStatus

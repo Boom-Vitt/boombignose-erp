@@ -7,13 +7,17 @@ vi.mock("next/navigation", () => ({ usePathname: () => state.pathname, useRouter
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org", userId: "me" }) }))
 vi.mock("@/lib/queries/saved-views", () => ({ getFacetSavedViews: async () => [] }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (table: string) => {
+  let [from, to] = [0, 999]
   const query = {
     select: () => query,
     eq: () => query,
     not: () => query,
     in: () => query,
     order: () => query,
-    then: (resolve: (result: unknown) => unknown) => resolve({ data: state.tables[table] ?? [], error: null }),
+    range: (start: number, end: number) => { [from, to] = [start, end]; return query },
+    // Like PostgREST, never return more than 1,000 rows per request.
+    then: (resolve: (result: unknown) => unknown) =>
+      resolve({ data: (state.tables[table] ?? []).slice(from, Math.min(to, from + 999) + 1), error: null }),
   }
   return query
 } }) }))
@@ -22,7 +26,7 @@ import DealsPage from "@/app/(app)/deals/page"
 import ProjectsPage from "@/app/(app)/projects/page"
 
 const deal = (id: string, stage: string, owner: string, close: string | null) => ({
-  id, title: `Deal ${id}`, stage, value_satang: 100, client_id: "c1", owner,
+  id, title: `Deal ${id}`, stage, value_satang: 100, client_id: "c1", client: { name: "Acme" }, owner,
   expected_close_date: close, next_follow_up_date: null, created_at: "2026-10-01T00:00:00Z",
 })
 const project = (id: string, status: string, deadline: string | null) => ({
@@ -54,6 +58,12 @@ describe("deal facets", () => {
     expect(html).not.toContain("Deal lead1")
     expect(html).not.toContain('aria-label="Lead"')
     expect(html).toContain('href="/deals/export?status=won"')
+  })
+  it("finds a deal beyond the API's first 1,000 rows", async () => {
+    state.tables.deals = [...Array.from({ length: 1000 }, (_, i) => deal(`x${i}`, "lead", "other", null)), deal("target", "proposal", "me", null)]
+    const html = await render(DealsPage, "/deals", { q: "Deal target" })
+    expect(html).toContain("Deal target")
+    expect(html).not.toContain("No matching deals")
   })
   it("narrows the board to my deals in the expected close period", async () => {
     const html = await render(DealsPage, "/deals", { mine: "1", period: "this_month" })

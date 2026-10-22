@@ -4,6 +4,7 @@ import { satangToBaht } from "@/lib/money"
 import { toCsv } from "@/lib/export/csv"
 import { todayISO } from "@/lib/dates"
 import { matchesFacets, parseFacets } from "@/lib/search-facets"
+import { fetchAllRows } from "@/lib/queries/fetch-all-rows"
 import { dealFacetRow } from "../_lib/deal-facets"
 
 /**
@@ -18,22 +19,16 @@ export async function GET(request: Request) {
 
   const config = parseFacets(new URL(request.url).searchParams, "deals")
 
-  const [dealsRes, clientsRes] = await Promise.all([
-    supabase
-      .from("deals")
-      .select(
-        "title, stage, value_satang, client_id, owner, expected_close_date, next_follow_up_date"
-      )
-      .eq("org_id", ctx.orgId)
-      .order("created_at", { ascending: false }),
-    supabase.from("clients").select("id, name").eq("org_id", ctx.orgId),
-  ])
-
-  const clientName = new Map((clientsRes.data ?? []).map((c) => [c.id, c.name]))
   const now = new Date()
-  const deals = (dealsRes.data ?? []).filter((d) =>
-    matchesFacets(config, dealFacetRow(d, clientName.get(d.client_id)), ctx.userId, now)
-  )
+  const deals = (await fetchAllRows(() => supabase
+    .from("deals")
+    .select(
+      "title, stage, value_satang, owner, expected_close_date, next_follow_up_date, client:clients(name)"
+    )
+    .eq("org_id", ctx.orgId)
+    .order("created_at", { ascending: false })
+    .order("id"))
+  ).filter((d) => matchesFacets(config, dealFacetRow(d, d.client?.name), ctx.userId, now))
 
   const headers = [
     "Title",
@@ -45,7 +40,7 @@ export async function GET(request: Request) {
   ]
   const rows = deals.map((d) => [
     d.title,
-    clientName.get(d.client_id) ?? "",
+    d.client?.name ?? "",
     d.stage,
     satangToBaht(d.value_satang),
     d.expected_close_date ?? "",
