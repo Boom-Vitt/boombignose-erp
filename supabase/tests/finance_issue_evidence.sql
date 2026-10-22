@@ -8,7 +8,7 @@ insert into invoices(id,org_id,client_id,number,status) values('b9000000-0000-40
 insert into invoice_items(org_id,invoice_id,description,quantity,unit_price_satang) values('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000004','Synthetic service',1,101);
 select set_config('request.jwt.claims','{"role":"authenticated","sub":"b9000000-0000-4000-8000-000000000001"}',true);
 set local role authenticated;
-select throws_ok($$update invoices set status='sent' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Invoice issuance requires the issue command','direct draft issuance denied');
+select throws_ok($$update invoices set status='sent' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Payable state requires issue command','direct draft issuance denied');
 select throws_ok($$insert into invoices(org_id,client_id,number,status) values('b9000000-0000-4000-8000-000000000002','b9000000-0000-4000-8000-000000000003','Forged sent','sent')$$,'P0001','New invoice must be draft','direct sent creation denied');
 select throws_ok($$update invoices set status='overdue' where id='b9000000-0000-4000-8000-000000000004'$$,'P0001','Payable state requires issue command','draft cannot bypass issue through overdue');
 reset role;

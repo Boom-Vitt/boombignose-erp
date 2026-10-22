@@ -31,6 +31,7 @@ before(async () => {
     if (role === "owner") owner = api
     else member = api
   }
+  ok(await owner.rpc("update_business_profile", { p_org_id: orgs[0], p_legal_name: "Synthetic security seller", p_business_address: "Synthetic address", p_tax_id: null, p_tax_status: "not_registered" }))
   client = ok(await admin.from("clients").insert({ org_id: orgs[0], name: "Synthetic customer", portal_token: token, portal_enabled: true }).select().single())
   foreignClient = ok(await admin.from("clients").insert({ org_id: orgs[1], name: "Other workspace" }).select().single())
 })
@@ -45,13 +46,20 @@ after(async () => {
   for (const user of users) await admin.auth.admin.deleteUser(user)
 })
 async function invoice(amount = 10000, status = "sent") {
-  return ok(await admin.from("invoices").insert({ org_id: orgs[0], client_id: client.id, number: randomUUID(), amount_satang: amount, status }).select().single())
+  const draft = ok(await admin.from("invoices").insert({ org_id: orgs[0], client_id: client.id, number: randomUUID(), amount_satang: amount, status: "draft" }).select().single())
+  if (status === "cancelled") ok(await owner.rpc("cancel_draft_invoice", { p_org_id: orgs[0], p_invoice_id: draft.id }))
+  else if (status !== "draft") {
+    ok(await owner.from("invoice_items").insert({ org_id: orgs[0], invoice_id: draft.id, description: "Synthetic service", unit_price_satang: amount }))
+    const current = ok(await owner.from("invoices").select("version").eq("id", draft.id).single())
+    ok(await owner.rpc("issue_invoice", { p_org_id: orgs[0], p_invoice_id: draft.id, p_expected_version: current.version, p_key: randomUUID() }))
+  }
+  return ok(await admin.from("invoices").select().eq("id", draft.id).single())
 }
 async function claim(inv, amount = inv.amount_satang, key = randomUUID()) {
   return ok(await admin.rpc("submit_payment_claim", { p_token: token, p_invoice_id: inv.id, p_amount_satang: amount, p_reference: "Customer report", p_key: key }))
 }
 function review(claimId, amount, key, decision = "verified", ref = "bank-statement-test") {
-  return { p_org_id: orgs[0], p_claim_id: claimId, p_amount_satang: amount, p_reference: ref, p_key: key, p_decision: decision }
+  return { p_org_id: orgs[0], p_claim_id: claimId, p_amount_satang: amount, p_reference: ref, p_key: key, p_decision: decision, p_paid_on: decision === "verified" ? "2025-01-31" : null, p_method: decision === "verified" ? "transfer" : null }
 }
 test("member cannot insert settlement or forge invoice paid via direct API", async () => {
   const inv = await invoice()
@@ -75,8 +83,8 @@ test("portal retries record only one pending claim with no cash effect", async (
 })
 test("only owner/admin can verify; concurrent retry creates one allocation and audit", async () => {
   const inv = await invoice(), c = await claim(inv,4000), key = randomUUID()
-  assert.ok((await member.rpc("review_payment_claim",review(c,4000,key))).error)
-  const responses = await Promise.all([owner.rpc("review_payment_claim",review(c,4000,key)),owner.rpc("review_payment_claim",review(c,4000,key))])
+  assert.ok((await member.rpc("review_payment_claim_with_evidence",review(c,4000,key))).error)
+  const responses = await Promise.all([owner.rpc("review_payment_claim_with_evidence",review(c,4000,key)),owner.rpc("review_payment_claim_with_evidence",review(c,4000,key))])
   assert.equal(ok(responses[0]),ok(responses[1]))
   const payments = ok(await admin.from("payments").select().eq("invoice_id",inv.id))
   assert.equal(payments.length,1)
@@ -85,13 +93,13 @@ test("only owner/admin can verify; concurrent retry creates one allocation and a
   assert.equal(ok(await admin.from("audit_log").select().eq("entity_id",payments[0].id).eq("action","payment_verified")).length,1)
   assert.equal(ok(await owner.from("invoices").select("status").eq("id",inv.id).single()).status,"partially_paid")
   const c2 = await claim(inv,6000)
-  ok(await owner.rpc("review_payment_claim",review(c2,6000,randomUUID())))
+  ok(await owner.rpc("review_payment_claim_with_evidence",review(c2,6000,randomUUID())))
   assert.equal(ok(await owner.from("invoices").select("status").eq("id",inv.id).single()).status,"paid")
-  assert.ok((await owner.rpc("review_payment_claim",review(c,4001,key))).error)
+  assert.ok((await owner.rpc("review_payment_claim_with_evidence",review(c,4001,key))).error)
 })
 test("rejection leaves cash unchanged and disabled/wrong tokens cannot claim", async () => {
   const inv = await invoice(), c = await claim(inv)
-  ok(await owner.rpc("review_payment_claim",review(c,0,randomUUID(),"rejected","No matching bank receipt")))
+  ok(await owner.rpc("review_payment_claim_with_evidence",review(c,0,randomUUID(),"rejected","No matching bank receipt")))
   assert.equal(ok(await admin.from("payments").select().eq("invoice_id",inv.id)).length,0)
   const args = {p_token:randomUUID(),p_invoice_id:inv.id,p_amount_satang:10000,p_reference:"test",p_key:randomUUID()}
   assert.ok((await admin.rpc("submit_payment_claim",args)).error)
@@ -105,14 +113,14 @@ test("draft/cancelled, excessive and unsafe amounts fail without partial settlem
     assert.ok((await admin.rpc("submit_payment_claim",{p_token:token,p_invoice_id:inv.id,p_amount_satang:1,p_reference:"test",p_key:randomUUID()})).error)
   }
   const inv = await invoice(), c = await claim(inv)
-  for (const amount of [10001,0,-1,"9007199254740992"]) assert.ok((await owner.rpc("review_payment_claim",review(c,amount,randomUUID()))).error)
+  for (const amount of [10001,0,-1,"9007199254740992"]) assert.ok((await owner.rpc("review_payment_claim_with_evidence",review(c,amount,randomUUID()))).error)
   assert.equal(ok(await admin.from("payments").select().eq("invoice_id",inv.id)).length,0)
   assert.equal(ok(await admin.from("payment_claims").select("status").eq("id",c).single()).status,"pending")
 })
-test("different retry key resolving a pending claim cannot later identify a different request",async()=>{
-  const inv=await invoice(), c=await claim(inv), alias=randomUUID()
-  assert.equal(await claim(inv,10000,alias),c)
-  ok(await owner.rpc("review_payment_claim",review(c,0,randomUUID(),"rejected","No bank match")))
+test("distinct transfer keys reserve separate claims and remain bound to their requests",async()=>{
+  const inv=await invoice(20000), c=await claim(inv,10000), alias=randomUUID()
+  assert.notEqual(await claim(inv,10000,alias),c)
+  ok(await owner.rpc("review_payment_claim_with_evidence",review(c,0,randomUUID(),"rejected","No bank match")))
   const second=await invoice()
   assert.ok((await admin.rpc("submit_payment_claim",{p_token:token,p_invoice_id:second.id,p_amount_satang:10000,p_reference:"Customer report",p_key:alias})).error)
 })
@@ -121,11 +129,11 @@ test("direct member cannot forge a trusted payment verification audit",async()=>
 })
 test("verified invoice lines cannot mutate and a fully settled invoice cannot become overdue",async()=>{
   const inv=await invoice(), c=await claim(inv,4000)
-  ok(await owner.rpc("review_payment_claim",review(c,4000,randomUUID())))
+  ok(await owner.rpc("review_payment_claim_with_evidence",review(c,4000,randomUUID())))
   assert.ok((await owner.from("invoice_items").insert({org_id:orgs[0],invoice_id:inv.id,description:"Changed charge",quantity:1,unit_price_satang:50000,amount_satang:50000})).error)
-  assert.equal(ok(await admin.from("invoice_items").select().eq("invoice_id",inv.id)).length,0)
+  assert.equal(ok(await admin.from("invoice_items").select().eq("invoice_id",inv.id)).length,1)
   const c2=await claim(inv,6000)
-  ok(await owner.rpc("review_payment_claim",review(c2,6000,randomUUID())))
+  ok(await owner.rpc("review_payment_claim_with_evidence",review(c2,6000,randomUUID())))
   assert.ok((await owner.from("invoices").update({status:"overdue"}).eq("id",inv.id)).error)
 })
 test("pending customer claim prevents reassignment to another customer",async()=>{
@@ -138,8 +146,21 @@ test("pending customer claim prevents reassignment to another customer",async()=
   assert.equal(ok(await admin.from("invoices").select("client_id").eq("id",inv.id).single()).client_id,client.id)
 })
 test("line mutation and authoritative header total commit together before settlement",async()=>{
-  const inv=await invoice()
+  const inv=await invoice(10000,"draft")
   ok(await owner.from("invoice_items").insert({org_id:orgs[0],invoice_id:inv.id,description:"Actual line",quantity:1,unit_price_satang:9000,amount_satang:1}))
   assert.equal(ok(await owner.from("invoices").select("amount_satang").eq("id",inv.id).single()).amount_satang,9000)
   assert.equal(ok(await owner.from("invoice_items").select("amount_satang").eq("invoice_id",inv.id).single()).amount_satang,9000)
+})
+
+
+test("concurrent distinct claims cannot over-reserve the open balance",async()=>{
+  const inv=await invoice()
+  const report=key=>admin.rpc("submit_payment_claim",{p_token:token,p_invoice_id:inv.id,p_amount_satang:6000,p_reference:"Synthetic separate transfer",p_key:key})
+  const results=await Promise.all([report(randomUUID()),report(randomUUID())])
+  assert.equal(results.filter(result=>!result.error).length,1)
+  assert.equal(results.filter(result=>result.error).length,1)
+  const pending = await admin.from("payment_claims").select("id",{head:true,count:"exact"}).eq("invoice_id",inv.id).eq("status","pending")
+  assert.equal(pending.error,null)
+  assert.equal(pending.count,1)
+  assert.equal(ok(await admin.from("payment_claims").select("amount_satang").eq("invoice_id",inv.id).eq("status","pending").single()).amount_satang,6000)
 })

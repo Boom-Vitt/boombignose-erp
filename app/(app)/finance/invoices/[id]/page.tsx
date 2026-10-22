@@ -1,3 +1,5 @@
+import { invoiceDisplayNumber } from "@/lib/documents/numbering"
+import { CancelDraftButton } from "../../_components/cancel-draft-button"
 import { readAll } from "@/lib/supabase/read-all"
 import { DocumentTotals } from "@/components/document-totals"
 import { WithholdingForm } from "../../_components/withholding-form"
@@ -155,7 +157,6 @@ export default async function InvoiceDetailPage({
     client_id: invoice.client_id,
     project_id: invoice.project_id ?? "",
     number: invoice.number,
-    status: invoice.status,
     issue_date: invoice.issue_date ?? "",
     due_date: invoice.due_date ?? "",
     amountBaht: satangToBahtString(invoice.amount_satang),
@@ -192,7 +193,7 @@ export default async function InvoiceDetailPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={invoice.number}
+        title={invoiceDisplayNumber(invoice)}
         description={invoice.clients?.name ?? "Invoice"}
         breadcrumbs={[{ label: "Finance", href: "/finance" }]}
       >
@@ -250,7 +251,7 @@ export default async function InvoiceDetailPage({
       />
 
       <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. VAT and withholding are document calculations only, not a legal tax system, accounting ledger, filing service or e-Tax Invoice. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
-      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></CardContent></Card> : null}
+      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /><CancelDraftButton invoiceId={invoice.id} /></CardContent></Card> : null}
       {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

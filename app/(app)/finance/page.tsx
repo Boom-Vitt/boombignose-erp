@@ -1,3 +1,4 @@
+import { invoiceDisplayNumber } from "@/lib/documents/numbering"
 import { readAll } from "@/lib/supabase/read-all"
 import { can } from "@/lib/permissions"
 import { markBillPaid } from "@/app/(app)/purchases/actions"
@@ -84,7 +85,7 @@ export default async function FinancePage({
       readAll((from, to) => supabase
         .from("invoices")
         .select(
-          "id, number, amount_satang, total_satang, vat_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
+          "id, number, issued_snapshot_id, amount_satang, total_satang, vat_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
         )
         .eq("org_id", ctx.orgId)
         .order("issue_date", { ascending: false }).order("id").range(from, to)),
@@ -123,6 +124,7 @@ export default async function FinancePage({
     const paid = paidByInvoice.get(inv.id) ?? 0
     return {
       ...inv,
+      number: invoiceDisplayNumber(inv),
       paid_satang: paid,
       outstanding: outstandingSatang(inv.amount_satang, paid),
       effectiveStatus: deriveInvoiceStatus(inv, paid, today),

@@ -1,13 +1,4 @@
-/**
- * Auto-numbering for documents (quotes/invoices).
- *
- * Numbers follow the shape `PREFIX-YEAR-NNN`, e.g. `INV-2026-007`, where NNN is a
- * per-year running counter zero-padded to at least three digits. Numbering is a
- * pure function of the existing numbers so it can be unit-tested and called from
- * server actions after loading the org's current numbers. This suggests a display
- * number only; database uniqueness/transactional commands decide allocation.
- * Never use this display number as the identity of a retried business command.
- */
+/** Quote numbering suggestions only. Issued invoice numbers are allocated by issue_invoice in PostgreSQL. */
 
 /** Zero-pad a positive integer to at least three digits. 1 → "001", 1000 → "1000". */
 function padCounter(n: number): string {
@@ -22,7 +13,6 @@ function padCounter(n: number): string {
  * the prefix/year shape (different prefix, different year, free-form text) are ignored.
  * When nothing matches, numbering starts at 1 → `PREFIX-YEAR-001`.
  *
- * @example nextDocumentNumber("INV", ["INV-2026-006"], 2026) // "INV-2026-007"
  * @example nextDocumentNumber("QUO", [], 2026)               // "QUO-2026-001"
  */
 export function nextDocumentNumber(
@@ -48,4 +38,14 @@ export function nextDocumentNumber(
   }
 
   return `${prefix}-${year}-${padCounter(max + 1)}`
+}
+
+
+/** Draft labels never allocate an issued document number. */
+export function invoiceDisplayNumber(invoice: { id: string; number: string; issued_snapshot_id: string | null }): string {
+  return invoice.issued_snapshot_id ? invoice.number : `DRAFT-${invoice.id.slice(0, 8)}`
+}
+
+export function isIssuedInvoiceNumber(number: string): boolean {
+  return /^INV-[0-9]{4}-[0-9]+$/i.test(number.trim())
 }

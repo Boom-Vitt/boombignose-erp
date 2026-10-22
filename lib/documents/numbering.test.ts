@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { nextDocumentNumber } from "./numbering"
+import { nextDocumentNumber, invoiceDisplayNumber, isIssuedInvoiceNumber } from "./numbering"
 
 describe("nextDocumentNumber", () => {
   it("starts at 001 when there are no existing numbers", () => {
@@ -65,4 +65,15 @@ describe("nextDocumentNumber", () => {
     expect(() => nextDocumentNumber("INV", [], NaN)).toThrow()
     expect(() => nextDocumentNumber("INV", [], 2026.5)).toThrow()
   })
+})
+
+
+it("labels an unissued invoice by identity without allocating a series number", () => {
+  expect(invoiceDisplayNumber({ id: "12345678-abcd-4000-8000-000000000001", number: "internal reference", issued_snapshot_id: null })).toBe("DRAFT-12345678")
+  expect(invoiceDisplayNumber({ id: "12345678-abcd-4000-8000-000000000001", number: "INV-2026-000001", issued_snapshot_id: "snapshot" })).toBe("INV-2026-000001")
+})
+
+it("reserves every numeric invoice series spelling for issuance", () => {
+  for (const number of ["INV-2026-001", "INV-2026-000001", " inv-2026-12 "]) expect(isIssuedInvoiceNumber(number)).toBe(true)
+  for (const number of ["DRAFT-12345678", "Customer reference", "INV-QUO-2026-001"]) expect(isIssuedInvoiceNumber(number)).toBe(false)
 })
