@@ -1,7 +1,8 @@
 "use client"
 
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
@@ -22,10 +23,12 @@ import { Button } from "@/components/ui/button"
 import { serviceMoneyInput } from "@/lib/workflows/service"
 
 import { SelectField, type Option } from "./form-fields"
+import type { DealOption } from "@/app/(app)/deals/_lib/deal-options"
 
 const Schema = z.object({
   client_id: z.string().min(1, "Choose a client"),
   project_id: z.string().optional(),
+  deal_id: z.string().optional(),
   number: z.string().optional(),
   issue_date: z.string().optional(),
   valid_until: z.string().optional(),
@@ -40,6 +43,7 @@ export type QuoteFormSubmitValues = Values
 export type QuoteFormValues = {
   client_id: string
   project_id: string
+  deal_id: string
   number: string
   issue_date: string
   valid_until: string
@@ -50,12 +54,14 @@ export type QuoteFormValues = {
 export function QuoteForm({
   clients,
   projects,
+  deals,
   defaultValues,
   submitLabel,
   action,
 }: {
   clients: Option[]
   projects: Option[]
+  deals: DealOption[]
   defaultValues: QuoteFormValues
   submitLabel: string
   action: (values: Values) => Promise<{ error?: string } | void>
@@ -65,6 +71,12 @@ export function QuoteForm({
     resolver: zodResolver(Schema),
     defaultValues,
   })
+  // A quote can only link to a deal of its own client, so a client change drops a foreign deal.
+  const clientId = useWatch({ control: form.control, name: "client_id" })
+  useEffect(() => {
+    const dealId = form.getValues("deal_id")
+    if (dealId && !deals.some((d) => d.value === dealId && d.clientId === clientId)) form.setValue("deal_id", "")
+  }, [clientId, deals, form])
 
   return (
     <Form {...form}>
@@ -96,6 +108,15 @@ export function QuoteForm({
             optional
             noneLabel="No project"
             description="Optional — link to a project."
+          />
+          <SelectField
+            name="deal_id"
+            label="Deal"
+            placeholder="No deal"
+            options={deals.filter((d) => d.clientId === clientId)}
+            optional
+            noneLabel="No deal"
+            description="Optional — the deal this quote is for."
           />
         </div>
 

@@ -12,17 +12,26 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createQuote } from "../actions"
 import { QuoteForm, type QuoteFormValues } from "../_components/quote-form"
 import type { Option } from "../_components/form-fields"
+import { dealOptions } from "@/app/(app)/deals/_lib/deal-options"
 
 export const dynamic = "force-dynamic"
 
-export default async function NewQuotePage() {
+export default async function NewQuotePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ clientId?: string; dealId?: string }>
+}) {
   const ctx = await requireOrgContext()
   const supabase = await createClient()
+  const q = await searchParams
 
-  const [clientsRes, projectsRes] = await Promise.all([
+  const [clientsRes, projectsRes, deals] = await Promise.all([
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
+    dealOptions(supabase, ctx.orgId, q.dealId),
   ])
+  // Prefill from a deal's "Quotes" button; an id that isn't one of this org's deals is ignored.
+  const prefillDeal = deals.find((d) => d.value === q.dealId)
 
   const clients: Option[] = (clientsRes.data ?? []).map((c) => ({
     value: c.id,
@@ -34,8 +43,9 @@ export default async function NewQuotePage() {
   }))
 
   const defaultValues: QuoteFormValues = {
-    client_id: "",
+    client_id: prefillDeal?.clientId ?? "",
     project_id: "",
+    deal_id: prefillDeal?.value ?? "",
     number: "",
     issue_date: todayISO(),
     valid_until: "",
@@ -59,6 +69,7 @@ export default async function NewQuotePage() {
           <QuoteForm
             clients={clients}
             projects={projects}
+            deals={deals}
             defaultValues={defaultValues}
             submitLabel="Create quote"
             action={createQuote}

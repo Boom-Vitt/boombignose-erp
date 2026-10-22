@@ -54,6 +54,7 @@ const optionalDate = z
 const CreateQuote = z.object({
   client_id: z.string().min(1, "Client is required"),
   project_id: optionalId,
+  deal_id: optionalId,
   number: optionalString,
   issue_date: optionalDate,
   valid_until: optionalDate,
@@ -96,6 +97,7 @@ export async function createQuote(
       org_id: ctx.orgId,
       client_id: d.client_id,
       project_id: d.project_id,
+      deal_id: d.deal_id,
       number,
       status: "draft",
       issue_date: d.issue_date ?? undefined,
@@ -125,6 +127,7 @@ const UpdateQuote = z.object({
   id: z.string().min(1),
   client_id: z.string().min(1, "Client is required"),
   project_id: optionalId,
+  deal_id: optionalId,
   // The shared form marks number optional (create auto-numbers). On edit the
   // field is prefilled, so a blank number simply leaves the stored one untouched.
   number: optionalString,
@@ -158,6 +161,7 @@ export async function updateQuote(
     .update({
       client_id: d.client_id,
       project_id: d.project_id,
+      deal_id: d.deal_id,
       ...(d.number ? { number: d.number } : {}),
       issue_date: d.issue_date ?? undefined,
       valid_until: d.valid_until,
