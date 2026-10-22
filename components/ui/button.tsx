@@ -6,7 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -52,10 +52,16 @@ function Button({
   const classes = cn(buttonVariants({ variant, size, className }))
   // `render` swaps in a link (Next.js <Link>/<a>). Base UI Button would force
   // role="button" on it, so render it as a plain styled link instead.
+  // Links have no disabled state, so a disabled one leaves the tab order and swallows activation.
   const link = useRender({
     render,
     enabled: render !== undefined,
-    props: { ...props, "data-slot": "button", className: classes },
+    props: {
+      ...props,
+      ...(props.disabled && { "aria-disabled": true, tabIndex: -1, onClick: (event: React.MouseEvent) => event.preventDefault() }),
+      "data-slot": "button",
+      className: classes,
+    },
   })
   return link ?? <ButtonPrimitive data-slot="button" className={classes} {...props} />
 }
