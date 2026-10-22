@@ -84,7 +84,7 @@ export default async function FinancePage({
       readAll((from, to) => supabase
         .from("invoices")
         .select(
-          "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
+          "id, number, amount_satang, total_satang, vat_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
         )
         .eq("org_id", ctx.orgId)
         .order("issue_date", { ascending: false }).order("id").range(from, to)),
@@ -142,7 +142,8 @@ export default async function FinancePage({
   }))
   const unpaidSatang = unpaidTotal(invoicesWithPaid)
   const openCount = unpaidCount(invoicesWithPaid)
-  const revenueSatang = revenueForMonth(payments, month)
+  const revenueSatang = revenueForMonth(invoices, month)
+  const cashReceivedSatang = sumSatang(payments.filter(payment => monthKey(payment.paid_at) === month).map(payment => payment.amount_satang))
   const costsSatang = costsForMonth(costs, month)
   // MRR is derived from active subscriptions (source of truth) for consistency
   // with the dashboard.
@@ -176,11 +177,17 @@ export default async function FinancePage({
           hint={`${openCount} open invoice${openCount === 1 ? "" : "s"}`}
         />
         <StatCard
-          label="Verified cash this month"
+          label="Revenue this month"
           value={formatTHB(revenueSatang)}
           icon={TrendingUp}
           tone="positive"
-          hint="Payments received"
+          hint="Pre-VAT · Issued invoices"
+        />
+        <StatCard
+          label="Verified cash this month"
+          value={formatTHB(cashReceivedSatang)}
+          icon={TrendingUp}
+          hint="Verified receipts received this month"
         />
         <StatCard
           label="Costs this month"

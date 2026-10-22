@@ -523,13 +523,16 @@ isOneToOne: false
                   ]
                 },"memberships": {
                   Row: {
+                    "cost_rate_satang": number,
                     "created_at": string,"id": string,"org_id": string,"role": Database["public"]['Enums']["role_enum"],"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
+                    "cost_rate_satang"?: number,
                     "created_at"?: string,"id"?: string,"org_id": string,"role"?: Database["public"]['Enums']["role_enum"],"updated_at"?: string,"user_id": string
                   }
                   Update: {
+                    "cost_rate_satang"?: number,
                     "created_at"?: string,"id"?: string,"org_id"?: string,"role"?: Database["public"]['Enums']["role_enum"],"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
@@ -1094,18 +1097,30 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"time_billing_requests": {
+                  Row: { org_id: string; key: string; project_id: string; invoice_id: string | null }
+                  Insert: { org_id: string; key: string; project_id: string; invoice_id?: string | null }
+                  Update: { org_id?: string; key?: string; project_id?: string; invoice_id?: string | null }
+                  Relationships: []
                 },"time_entries": {
                   Row: {
+                    "invoice_id": string | null,"invoice_item_id": string | null,
                     "billable": boolean,"created_at": string,"id": string,"minutes": number,"notes": string | null,"org_id": string,"project_id": string,"rate_satang": number | null,"task_id": string | null,"updated_at": string,"user_id": string | null,"work_date": string
                   }
                   ComputedFields: never
                   Insert: {
+                    "invoice_id"?: string | null,"invoice_item_id"?: string | null,
                     "billable"?: boolean,"created_at"?: string,"id"?: string,"minutes": number,"notes"?: string | null,"org_id": string,"project_id": string,"rate_satang"?: number | null,"task_id"?: string | null,"updated_at"?: string,"user_id"?: string | null,"work_date"?: string
                   }
                   Update: {
+                    "invoice_id"?: string | null,"invoice_item_id"?: string | null,
                     "billable"?: boolean,"created_at"?: string,"id"?: string,"minutes"?: number,"notes"?: string | null,"org_id"?: string,"project_id"?: string,"rate_satang"?: number | null,"task_id"?: string | null,"updated_at"?: string,"user_id"?: string | null,"work_date"?: string
                   }
                   Relationships: [
+                    { foreignKeyName: "time_entries_invoice_item_tenant_fkey"; columns: ["org_id", "invoice_item_id"]; isOneToOne: false; referencedRelation: "invoice_items"; referencedColumns: ["org_id", "id"] },
+
+                    { foreignKeyName: "time_entries_invoice_tenant_fkey"; columns: ["org_id", "invoice_id"]; isOneToOne: false; referencedRelation: "invoices"; referencedColumns: ["org_id", "id"] },
+
                     {
       foreignKeyName: "time_entries_org_id_fkey"
       columns: ["org_id"]
@@ -1212,6 +1227,10 @@ isOneToOne: false
               }
               Relationships: []
             }
+            "project_labour_totals": {
+              Row: { org_id: string | null; project_id: string | null; labour_cost_satang: number | null }
+              Relationships: []
+            }
             "project_time_totals": {
               Row: {
                 "minutes": number | null,"org_id": string | null,"project_id": string | null
@@ -1226,6 +1245,9 @@ isOneToOne: false
             deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string }; Returns: undefined }
             adjust_stock: { Args: { p_org_id: string; p_product_id: string; p_warehouse_id: string; p_count: number; p_reason: string; p_key: string }; Returns: string | null }
             create_replenishment_rfq: { Args: { p_org_id: string; p_vendor_id: string }; Returns: string }
+            "bill_project_time": { Args: { p_org_id: string; p_project_id: string; p_key: string }; Returns: string }
+            "set_member_cost_rate": { Args: { p_org_id: string; p_user_id: string; p_rate_satang: number }; Returns: undefined }
+
             "accept_integration_event":
 { Args: { "p_event_type": string,"p_key": string,"p_org_id": string,"p_payload": Json }; Returns: Json
                            },

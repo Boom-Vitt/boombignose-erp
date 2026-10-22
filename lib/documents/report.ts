@@ -37,7 +37,7 @@ function fmtHours(hours: number): string {
 
 function renderRevenueTable(revenue: Pivot): string {
   if (revenue.rowKeys.length === 0) {
-    return `<p class="muted">No payments in this range.</p>`
+    return `<p class="muted">No issued invoices in this range.</p>`
   }
 
   const head = `<tr>
@@ -169,7 +169,7 @@ export function renderReportHtml(data: ReportData): string {
 
     <div class="stats">
       <div class="stat">
-        <div class="label">Verified cash received</div>
+        <div class="label">Revenue before VAT</div>
         <div class="value">${escapeHtml(formatTHB(data.totalRevenueSatang))}</div>
       </div>
       <div class="stat">
@@ -182,7 +182,7 @@ export function renderReportHtml(data: ReportData): string {
       </div>
     </div>
 
-    <h2>Verified cash by client × month</h2>
+    <h2>Issued revenue by client × month</h2>
     ${renderRevenueTable(data.revenue)}
 
     <h2>Hours by project</h2>
