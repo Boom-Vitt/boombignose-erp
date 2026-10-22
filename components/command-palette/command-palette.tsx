@@ -45,6 +45,7 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const latest = useRef("")
   const actionsRequest = useRef(0)
+  const touched = useRef(false)
   const fallbackKeys = useRef(new Map<string, string>())
 
   function changeOpen(next: boolean) {
@@ -56,14 +57,15 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
     setSearching(false)
     setActions([])
     setSelected(`go ${commands.goTo[0]?.title}`)
+    touched.current = false
     // A late answer for an earlier opening is dropped.
     const request = ++actionsRequest.current
     if (!next || !recordFromPath(pathname)) return
     recordActions(pathname).then((loaded) => {
       if (request !== actionsRequest.current) return
       setActions(loaded)
-      // Highlight the next step, as the StatusBar's primary button, unless the user already typed.
-      if (loaded[0] && !latest.current) setSelected(`action ${loaded[0].label}`)
+      // Highlight the next step, as the StatusBar's primary button.
+      if (loaded[0] && !touched.current) setSelected(`action ${loaded[0].label}`)
     }, () => {})
   }
 
@@ -80,7 +82,13 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
     return () => document.removeEventListener("keydown", listener)
   }, [])
 
+  // Once the user types, arrows or points, a late Actions answer must not move the selection under them.
+  function touch() {
+    touched.current = true
+  }
+
   function changeQuery(value: string) {
+    touch()
     setQuery(value)
     clearTimeout(timer.current)
     const term = searchTerm(value)
@@ -93,13 +101,15 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
     setSearching(true)
     timer.current = setTimeout(async () => {
       let found: SearchHit[] = []
+      let failure: string | undefined
       try {
-        found = await searchRecords(term)
+        ;({ hits: found, error: failure } = await searchRecords(term))
       } catch {
-        if (latest.current === term) toast.error("Record search failed. Try again.")
+        failure = "Record search failed. Try again."
       }
       // A newer query owns the results.
       if (latest.current !== term) return
+      if (failure) toast.error(failure)
       setHits(found)
       setSearching(false)
     }, SEARCH_DELAY_MS)
@@ -167,9 +177,15 @@ export function CommandPalette({ role, orgId }: { role: Role; orgId: string }) {
         title="Command palette"
         description="Go to a module, create a record, search records, or run an action on this record."
       >
-        <Command label="Search commands and records" loop value={selected} onValueChange={setSelected}>
+        <Command
+          label="Search commands and records"
+          loop
+          value={selected}
+          onValueChange={setSelected}
+          onKeyDown={touch}
+        >
           <CommandInput placeholder="Type a command or search…" value={query} onValueChange={changeQuery} />
-          <CommandList>
+          <CommandList onPointerMove={touch}>
             <CommandEmpty>{searching ? "Searching…" : "No results."}</CommandEmpty>
             {actions.length ? (
               <CommandGroup heading="Actions">
