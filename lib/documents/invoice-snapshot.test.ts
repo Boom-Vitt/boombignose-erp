@@ -55,3 +55,52 @@ it("prints VAT-registered issued totals, tax IDs, branches and the collectible b
   for (const field of ["vatSatang", "whtSatang", "amountDueSatang"]) expect(() => invoiceSnapshotDocument({ ...issued, document: { ...issued.document, [field]: 1 } }, "sent", 0)).toThrow("Invalid issued snapshot totals")
   expect(invoiceSnapshotDocument({ ...issued, seller: { ...issued.seller, vatRegistered: false } }, "sent", 0).kind).toBe("Invoice")
 })
+
+const legacySnapshot = {
+  ...snapshot,
+  kind: "legacy_operational_invoice",
+  seller: { ...snapshot.seller, vatRegistered: true },
+  document: {
+    ...snapshot.document,
+    subtotalSatang: 30000, discountSatang: 2000, totalSatang: 29000,
+    vatSatang: 1000, whtSatang: 3000, whtRateBps: 300, amountDueSatang: 26000,
+    vatByRate: [{ rateBps: 700, baseSatang: 25000, vatSatang: 1750 }],
+  },
+}
+
+it("preserves adopted legacy headers and tax breakdown independently of priced lines", () => {
+  const doc = invoiceSnapshotDocument(legacySnapshot, "partially_paid", 6000)
+  expect(doc).toMatchObject({
+    kind: "Invoice", number: "INV-FROZEN", issueDate: "2026-01-01", dueDate: "2026-02-01",
+    subtotalSatang: 30000, discountSatang: 2000, totalSatang: 29000,
+    vatSatang: 1000, whtSatang: 3000, whtRateBps: 300, amountDueSatang: 26000,
+    vatByRate: legacySnapshot.document.vatByRate, outstandingSatang: 20000,
+    items: [{ description: "งานเดิม", quantity: 1, unit_price_satang: 10001, amount_satang: 10001 }],
+  })
+})
+
+it("renders adopted legacy invoices without inventing lines or changing their totals", () => {
+  const doc = invoiceSnapshotDocument({ ...legacySnapshot, lines: [] }, "sent", 0)
+  expect(doc.items).toEqual([])
+  expect(doc.amountDueSatang).toBe(26000)
+  expect(renderDocumentHtml(doc)).toContain("No line items.")
+})
+
+it("keeps ordinary snapshots strict and rejects unknown kinds", () => {
+  for (const kind of [undefined, "operational_invoice"]) {
+    expect(() => invoiceSnapshotDocument({ ...snapshot, kind, lines: [] }, "sent", 0)).toThrow()
+    expect(() => invoiceSnapshotDocument({ ...legacySnapshot, kind }, "sent", 0)).toThrow("Invalid issued snapshot totals")
+  }
+  expect(() => invoiceSnapshotDocument({ ...snapshot, kind: "unknown" }, "sent", 0)).toThrow()
+})
+
+it.each([
+  { ...legacySnapshot, document: { ...legacySnapshot.document, amountDueSatang: Number.MAX_SAFE_INTEGER + 1 } },
+  { ...legacySnapshot, lines: [{ ...snapshot.lines[0], amountSatang: 0.5 }] },
+  { ...legacySnapshot, document: { ...legacySnapshot.document, vatByRate: [{ rateBps: 700, vatSatang: -1 }] } },
+  { ...legacySnapshot, document: { ...legacySnapshot.document, vatByRate: [{ rateBps: 700, baseSatang: Number.MAX_SAFE_INTEGER + 1, vatSatang: 1 }] } },
+  { ...legacySnapshot, document: { ...legacySnapshot.document, vatByRate: [{ rateBps: 10001, vatSatang: 1 }] } },
+  { ...legacySnapshot, document: { ...legacySnapshot.document, vatByRate: {} } },
+])("rejects unsafe or malformed adopted legacy money and tax breakdowns (%#)", (value) => {
+  expect(() => invoiceSnapshotDocument(value, "sent", 0)).toThrow()
+})

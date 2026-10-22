@@ -6,7 +6,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc, from
 vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }))
-import { issueInvoice, updateBusinessProfile, updateInvoiceWithholding } from "@/app/(app)/finance/actions"
+import { adoptLegacyInvoice, issueInvoice, updateBusinessProfile, updateInvoiceWithholding } from "@/app/(app)/finance/actions"
 const key = "00000000-0000-4000-8000-000000000002"
 const invoiceId = "00000000-0000-0000-0000-000000000001"
 beforeEach(() => { vi.clearAllMocks(); gate.mockImplementation(() => {}); rpc.mockResolvedValue({ data: "snapshot", error: null }) })
@@ -20,6 +20,29 @@ it("nonstaff and invalid versions cannot dispatch issuance", async () => {
   gate.mockImplementation(() => { throw new Error("denied") })
   expect((await issueInvoice({ invoiceId, expectedVersion: 4, key })).error).toBeTruthy()
   expect(rpc).not.toHaveBeenCalled()
+})
+it("legacy adoption sends the trimmed reason, version and retry key to one org-scoped command", async () => {
+  expect(await adoptLegacyInvoice({ invoiceId, expectedVersion: 4, key, reason: "  Confirmed against the original invoice  " })).toEqual({})
+  expect(gate).toHaveBeenCalledExactlyOnceWith({ orgId, role: "owner" }, "payment:verify")
+  expect(rpc).toHaveBeenCalledExactlyOnceWith("adopt_legacy_invoice", { p_org_id: orgId, p_invoice_id: invoiceId, p_expected_version: 4, p_key: key, p_reason: "Confirmed against the original invoice" })
+  expect(from).not.toHaveBeenCalled()
+})
+it("legacy adoption rejects invalid reasons, versions and keys before dispatch", async () => {
+  const input = { invoiceId, expectedVersion: 4, key, reason: "Reviewed original invoice" }
+  for (const reason of ["", "   ", "x".repeat(1001)]) expect((await adoptLegacyInvoice({ ...input, reason })).error).toBeTruthy()
+  for (const expectedVersion of [-1, 0, 1.5, 2147483648]) expect((await adoptLegacyInvoice({ ...input, expectedVersion })).error).toBeTruthy()
+  expect((await adoptLegacyInvoice({ ...input, key: "invalid" })).error).toBeTruthy()
+  expect(rpc).not.toHaveBeenCalled()
+})
+it("nonstaff cannot adopt a legacy invoice", async () => {
+  gate.mockImplementation(() => { throw new Error("denied") })
+  expect((await adoptLegacyInvoice({ invoiceId, expectedVersion: 4, key, reason: "Reviewed original invoice" })).error).toBeTruthy()
+  expect(gate).toHaveBeenCalledExactlyOnceWith({ orgId, role: "owner" }, "payment:verify")
+  expect(rpc).not.toHaveBeenCalled()
+})
+it("legacy adoption returns command errors so unchanged details can be retried", async () => {
+  rpc.mockResolvedValue({ error: { message: "Invoice version changed" } })
+  expect(await adoptLegacyInvoice({ invoiceId, expectedVersion: 4, key, reason: "Reviewed original invoice" })).toEqual({ error: "Invoice version changed" })
 })
 it("profile validation matches the database contract before dispatch", async () => {
   for (const value of [{ legalName: "Company", address: "Address", taxId: "", taxStatus: "registered" as const }, { legalName: "Company", address: "Address", taxId: "123", taxStatus: "unknown" as const }, { legalName: "Company", address: "A".repeat(1001), taxId: "", taxStatus: "unknown" as const }]) {

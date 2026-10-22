@@ -129,3 +129,14 @@ node --test e2e/payment-security.api.test.mjs
 The four browser skips are the existing Pro-only portal payment, workspace switching, additional workspace provisioning and accounting tests. The direct payment API suite also passes same-key review retries and competing distinct claim reservations. `git diff --check` and the local memory reader check pass. No screenshots were required. Logs remain local under ignored `.audit/`.
 
 The SQL fixture correction is commit `eff4272`. The inventory fixture and this handover follow in a separate commit. There are no open failures on this integrated revision. The future W4-b correction and W4-c conversion contracts above still apply when those sibling tracks merge. No secrets or local stack configuration are committed.
+
+
+## Upgrade safety round, 2026-10-23 (in progress)
+
+Merged `odoo-parity` at `c8be5f7`. The two review blockers are product upgrade bugs: retained payable invoices lack a legal snapshot adoption path, and retained issued numbers can collide with an absent/stale counter. The draft search finding is also a product bug, fixed in commit `81841f9` by separating the stored reference from its display label. These are distinct from the fixture-only integration corrections above.
+
+New migration `20261025090500_finance_integrity_upgrade.sql` adds audited staff-only adoption with expected version, reason and retry identity, without reissuing, repricing or rewriting receipts. It introduces explicit legacy snapshots, reconciles INV/PO/EXP counters to retained high-water marks and adds locked invoice collision skipping. The parser preserves legacy stored totals and empty lines while ordinary issued snapshots remain strict. The action/form expose adoption to authorized staff.
+
+Observed red evidence: `.audit/upgrade-red.log` fails missing adoption; `.audit/numbering-red.log` reproduces `invoices_org_id_number_key` with the old issue function inside a rolled-back transaction; the draft reference and parser/action unit tests each failed before their changes. Focused final unit run currently passes 35 tests; `.audit/numbering-green.log` passes retained-collision allocation.
+
+Pending: W4-c owns `private.guard_commercial_customer`, whose recomputation prevents preserving mismatched historical totals. Coordinator sequenced ownership transfer after W4-c lands: merge the integration branch, then retain its complete final guard body in `20261025100500_legacy_invoice_guard.sql` with a narrow legacy preservation branch. The upgrade SQL tests that depend on this guard are not yet passing; `.audit/upgrade-before-shared-guard.log` records the expected blocker. Full final SQL, browser and four gates remain required.
