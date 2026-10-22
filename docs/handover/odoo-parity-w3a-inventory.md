@@ -113,3 +113,44 @@ pnpm test: exit 0
 ```
 
 `git diff --check` passed and no conflict markers or unmerged entries remain. No SQL or browser runtime tests were executed, and no Supabase or Docker startup was performed. The coordinator applies the migration and runs `supabase/tests/inventory.sql` and `e2e/inventory.spec.ts` on the integration database after worker completion.
+
+## Review fix round 1, 2026-10-23
+
+Regression commits `a31378e` and `18fa9c4` precede implementation commit `ad5d3dc`. The applied `20261024120000_inventory.sql` is unchanged; its Git blob hash remains `4b6749b3dc262e8161bc68b6f583c61572fb0fb7` against `6b08477`.
+
+- New migration `20261024120500_inventory_fixes.sql` locks a product's unit after stock history, retaining the existing stockable-product guard. `lib/products/actions.ts` translates the database error into a friendly form message. Ordinary edits and unit changes before the first move remain allowed.
+- `lib/inventory/retry-command.ts`, the count form and its page persist the complete pending command in sessionStorage under organization/user scope before posting. Reload restores the payload and Retry saved count action. Changed payloads cannot reuse the pending key; thrown failures and returned errors retain it. A successful server acknowledgment clears it. If browser storage is unavailable, posting is refused with a message so an unrecoverable command is never sent.
+- Inventory queries now read quantities, values, product metadata and balance rows through one stable, security-invoker `inventory_snapshot` RPC. Its single database statement aggregates balances without offset paging or API row caps. Warehouses and vendors still use the shared pager. The query schema and public database type are updated; database UUID validation accepts PostgreSQL IDs used by the demo seed.
+- Incoming moves may reduce an existing deficit after negative stock is disabled. Outgoing moves that leave stock negative are still refused. The existing product-lock and moving-average paths are preserved.
+- `e2e/inventory.spec.ts` explicitly fills Unit with `piece`, checks the unit-lock form error, and simulates a committed count whose response is lost. It reloads, receives two more units, retries the saved count and expects seven units with exactly one count move.
+
+The local failing-before evidence reproduced a shifted-page total of `1.002` instead of `1.001`, raw product-unit errors, replacement of a pending command key after reload, acceptance of an edited pending payload, posting without usable storage, and clearing a key on a returned transport error. A final review regression reproduced rejection of the seeded demo organization UUID. The final targeted run passed all 19 tests across queries, product actions and count recovery. SQL-only invariants have pgTAP regressions in `supabase/tests/inventory_fixes.sql`; their failing/passing runtime status is not claimed here.
+
+Independent read-only review approved the final source patch, including the UUID and ambiguous-response corrections. No new dependency was added. Final local gates all exited 0:
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+ Test Files  119 passed (119)
+      Tests  828 passed (828)
+   Start at  03:38:14
+   Duration  4.14s (transform 7.30s, setup 0ms, import 50.70s, tests 2.33s, environment 7ms)
+```
+
+`pnpm build` reported `✓ Compiled successfully in 3.5s`, included all five inventory routes, and ended with:
+
+```text
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+`git diff --check` passed. The coordinator must apply the new fix migration after the original inventory migration, run both `supabase/tests/inventory.sql` and `supabase/tests/inventory_fixes.sql`, then run `e2e/inventory.spec.ts` on the integration database. These SQL/browser checks remain unexecuted here; no Supabase or Docker stack was started. SessionStorage recovery lasts for the current browser tab session, as requested; closing that session discards its recovery data.
