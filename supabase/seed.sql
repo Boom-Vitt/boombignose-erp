@@ -226,3 +226,27 @@ on conflict(id) do nothing;
 insert into public.document_counters(org_id,kind,year,value)
 values('a0000000-0000-0000-0000-000000000001','PO',extract(year from current_date)::integer,2)
 on conflict(org_id,kind,year) do update set value=greatest(document_counters.value,excluded.value);
+
+-- One submitted expense claim from the first seeded member, waiting on the owner.
+insert into public.expense_claims(id,org_id,number,employee,title,status,submitted_at)
+select 'a8000000-0000-4000-8000-000000000001',m.org_id,'EXP-'||extract(year from current_date)::text||'-001',m.user_id,'Client workshop travel','submitted',now()
+from public.memberships m
+where m.org_id=(select org_id from public.vendors where id='a6000000-0000-4000-8000-000000000001') and m.role='member'
+order by m.user_id limit 1
+on conflict(id) do nothing;
+insert into public.expense_lines(id,org_id,claim_id,spent_on,category,description,amount_satang,project_id,position)
+select v.id,c.org_id,c.id,current_date-2,'other',v.description,v.amount,
+  case when v.rebill then (select p.id from public.projects p where p.org_id=c.org_id order by p.created_at,p.id limit 1) end,v.position
+from public.expense_claims c,
+  (values ('a8100000-0000-4000-8000-000000000001'::uuid,'Taxi to client workshop',35000,true,0),
+          ('a8100000-0000-4000-8000-000000000002'::uuid,'Workshop lunch',84000,false,1)) v(id,description,amount,rebill,position)
+where c.id='a8000000-0000-4000-8000-000000000001'
+on conflict(id) do nothing;
+insert into public.activities(org_id,record_type,record_id,owner,type,due_date,body)
+select c.org_id,'expense_claim',c.id,m.user_id,'follow_up',current_date,'Review expense claim '||c.number
+from public.expense_claims c join public.memberships m on m.org_id=c.org_id and m.role in ('owner','admin') and m.user_id<>c.employee
+where c.id='a8000000-0000-4000-8000-000000000001'
+  and not exists(select 1 from public.activities a where a.record_type='expense_claim' and a.record_id=c.id);
+insert into public.document_counters(org_id,kind,year,value)
+select org_id,'EXP',extract(year from current_date)::integer,1 from public.expense_claims where id='a8000000-0000-4000-8000-000000000001'
+on conflict(org_id,kind,year) do update set value=greatest(document_counters.value,excluded.value);
