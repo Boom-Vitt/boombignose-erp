@@ -110,6 +110,7 @@ export default async function DealDetailPage({
         flow={DEAL_FLOW}
         status={deal.stage}
         transition={transitionDeal}
+        record={{ recordType: "deal", recordId: deal.id }}
         commands={
           projectCount
             ? {}
