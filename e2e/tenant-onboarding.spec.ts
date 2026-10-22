@@ -2,6 +2,7 @@ import { test as base, expect, type Page } from "@playwright/test"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
+import { community } from "./edition"
 
 const isolation = JSON.parse(readFileSync(".local-stack/isolation.json", "utf8"))
 const env = Object.fromEntries(readFileSync(".env.local", "utf8").trim().split("\n").filter(line => line.includes("=")).map(line => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]))
@@ -79,6 +80,7 @@ const test = base.extend<{ fixtures: Fixtures }>({
 })
 
 test("switching two actual memberships fences dashboard, clients, deals and exports", async ({ fixtures: f, page, context }) => {
+  test.skip(community, "The workspace switcher is Pro-only (BBN_EDITION=pro)")
   page.on("pageerror", error => console.error("QA switcher client error:", error.stack ?? error.message))
   const actor = await f.user()
   const a = await f.workspace("workspace A", actor)
@@ -127,6 +129,7 @@ test("switching two actual memberships fences dashboard, clients, deals and expo
 })
 
 test("a zero-membership account reaches onboarding and provisions one owner workspace", async ({ fixtures: f, page, context }) => {
+  test.skip(community, "Provisioning an additional workspace is Pro-only (BBN_EDITION=pro)")
   const actor = await f.user()
   expect(ok(await admin.from("memberships").select("id").eq("user_id", actor.id))).toHaveLength(0)
   await f.signIn(actor)

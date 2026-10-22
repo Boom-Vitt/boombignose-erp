@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test"
 import { createClient } from "@supabase/supabase-js"
 import { loginDemo } from "./auth"
+import { community } from "./edition"
 
 /**
  * V2 Batch 2 smoke: accounting sync scaffold (connect → sync → sync-map row) and
@@ -20,6 +21,7 @@ const ALL = "00000000-0000-0000-0000-000000000000"
 test("accounting: connect a provider then sync an invoice records a synced map row", async ({
   page,
 }) => {
+  test.skip(community, "Accounting integrations are Pro-only (BBN_EDITION=pro)")
   test.setTimeout(90_000) // dev server compiles routes/actions lazily on first hit
   const a = admin()
   // Clean slate so the connect/sync flow is deterministic.
