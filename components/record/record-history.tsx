@@ -1,9 +1,11 @@
 import { todayISO } from "@/lib/dates"
 import { recordHistory } from "@/lib/record-history/queries"
 import { ACTIVITY_LABELS, type RecordRef } from "@/lib/record-history/model"
+import { ActivityCancel } from "./activity-cancel"
 import { ActivityComposer } from "./activity-composer"
 import { ActivityDone } from "./activity-done"
 import { ActivityDue } from "./activity-due"
+import { ActivityEdit } from "./activity-edit"
 import { ActivityTimeline } from "./activity-timeline"
 
 export async function RecordHistory(ref: RecordRef) {
@@ -20,7 +22,11 @@ export async function RecordHistory(ref: RecordRef) {
           <ActivityDue dueDate={activity.due_date} today={today} />
           <p className="text-muted-foreground text-xs">{activity.owner ? names.get(activity.owner) || "Team member" : "Unassigned"}</p>
         </div>
-        {history.canWrite ? <ActivityDone id={activity.id} /> : null}
+        {history.canWrite ? <div className="flex flex-wrap gap-2">
+          <ActivityDone id={activity.id} people={history.people} userId={history.userId} />
+          <ActivityEdit activity={activity} people={history.people} userId={history.userId} />
+          <ActivityCancel id={activity.id} />
+        </div> : null}
       </li>)}</ul> : <p className="text-muted-foreground text-sm">No planned activities.</p>}
     </section>
     <ActivityTimeline
