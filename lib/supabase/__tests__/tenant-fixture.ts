@@ -23,6 +23,10 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
           rows = rows.filter((row) => row[key] === value)
           return query
         },
+        is: (key: string, value: unknown) => {
+          rows = rows.filter((row) => value === null ? row[key] == null : row[key] === value)
+          return query
+        },
         in: (key: string, values: readonly unknown[]) => {
           if (key.startsWith('deals.')) {
             dealFilters.push([key.slice('deals.'.length), values])
@@ -60,7 +64,7 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
               dealFilters.every(([key, values]) => values.includes(deal[key]))
             ).length }],
           })) : rows.slice(0, MAX_ROWS)
-          return Promise.resolve({ data: single ? data[0] ?? null : data, error: null }).then(resolve, reject)
+          return Promise.resolve({ data: single ? data[0] ?? null : data, count: rows.length, error: null }).then(resolve, reject)
         },
       }
       return query

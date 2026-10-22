@@ -7,6 +7,8 @@ export const FACET_LISTS = {
   finance: { statuses: Constants.public.Enums.invoice_status, groups: ["status", "client", "month"] },
   clients: { statuses: [], groups: ["industry", "source", "month"] },
   timesheets: { statuses: ["billable", "non_billable"], groups: ["project", "month"] },
+  purchases: { statuses: Constants.public.Enums.purchase_status, groups: ["status", "vendor", "month"] },
+  vendors: { statuses: ["active", "archived"], groups: ["status", "month"] },
 } as const
 export type FacetList = keyof typeof FACET_LISTS
 export type FacetConfig = { q?: string; status?: string; period?: Period; mine?: "1"; groupBy?: string }
