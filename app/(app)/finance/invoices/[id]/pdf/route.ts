@@ -37,7 +37,7 @@ export async function GET(
       .maybeSingle(),
     supabase
       .from("invoice_items")
-      .select("description, quantity, unit_price_satang, amount_satang")
+      .select("description, quantity, unit_price_satang, amount_satang, unit")
       .eq("invoice_id", id)
       .eq("org_id", ctx.orgId)
       .order("position", { ascending: true }),
@@ -58,6 +58,7 @@ export async function GET(
       ? rows.map((r) => ({
           description: r.description,
           quantity: r.quantity,
+          unit: r.unit,
           unit_price_satang: r.unit_price_satang,
           amount_satang: r.amount_satang,
         }))

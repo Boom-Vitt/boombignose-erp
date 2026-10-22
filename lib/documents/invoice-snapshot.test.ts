@@ -33,3 +33,8 @@ it.each([undefined, null])("renders legacy or null-unit snapshots without invent
   const doc = invoiceSnapshotDocument({ ...snapshot, lines: [{ ...snapshot.lines[0], unit }] }, "sent", 0)
   expect(renderDocumentHtml(doc)).toContain('<td class="num">1</td>')
 })
+
+it("preserves a space-padded unit accepted by the database", () => {
+  const unit = `${" ".repeat(40)}hour${" ".repeat(40)}`
+  expect(invoiceSnapshotDocument({ ...snapshot, lines: [{ ...snapshot.lines[0], unit }] }, "sent", 0).items[0]).toMatchObject({ unit })
+})

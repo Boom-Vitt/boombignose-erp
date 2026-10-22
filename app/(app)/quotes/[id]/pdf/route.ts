@@ -28,7 +28,7 @@ export async function GET(
       .maybeSingle(),
     supabase
       .from("quote_items")
-      .select("description, quantity, unit_price_satang, amount_satang, position")
+      .select("description, quantity, unit_price_satang, amount_satang, position, unit")
       .eq("quote_id", id)
       .eq("org_id", ctx.orgId)
       .order("position", { ascending: true }),
@@ -49,6 +49,7 @@ export async function GET(
     items: (itemsRes.data ?? []).map((it) => ({
       description: it.description,
       quantity: it.quantity,
+      unit: it.unit,
       unit_price_satang: it.unit_price_satang,
       amount_satang: it.amount_satang,
     })),
