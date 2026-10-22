@@ -1,7 +1,7 @@
 <!-- BBN:HEADER:START -->
 <div align="center">
 
-<img src=".github/brand/banner.svg" width="100%" alt="BoomBigNose ERP — Open-source, AI-native Company OS (ERP)" />
+<img src=".github/brand/banner.svg" width="100%" alt="BoomBigNose ERP — AI-native Company OS: CRM, deals, projects, finance" />
 
 <a href="https://github.com/Boom-Vitt/boombignose-erp/stargazers"><img src="https://img.shields.io/github/stars/Boom-Vitt/boombignose-erp?style=flat-square&color=14b8a6&labelColor=0b1220" alt="stars" /></a>
 <a href="https://github.com/Boom-Vitt/boombignose-erp/commits/main"><img src="https://img.shields.io/github/last-commit/Boom-Vitt/boombignose-erp?style=flat-square&color=14b8a6&labelColor=0b1220" alt="last commit" /></a>
