@@ -11,9 +11,11 @@ const MODULE_PATH: Record<string, string> = {
   deals: "/deals",
   finance: "/finance",
   clients: "/clients",
+  quotes: "/quotes",
+  timesheets: "/timesheets",
 }
 
-const MODULES = ["deals", "finance", "clients"] as const
+const MODULES = ["deals", "finance", "clients", "quotes", "timesheets"] as const
 
 /**
  * Filter config persisted with a saved view. Kept to the known, URL-driven
@@ -24,7 +26,10 @@ const ViewConfig = z
   .object({
     stage: z.string().optional(),
     status: z.string().optional(),
-    q: z.string().optional(),
+    q: z.string().max(200).optional(),
+    period: z.enum(["this_month", "last_month", "this_quarter", "this_year"]).optional(),
+    mine: z.literal("1").optional(),
+    groupBy: z.enum(["status", "client", "month", "industry", "source", "project"]).optional(),
   })
   .strict()
 export type ViewConfig = z.infer<typeof ViewConfig>
@@ -37,7 +42,7 @@ const CreateSavedViewInput = z.object({
 export type CreateSavedViewInput = z.infer<typeof CreateSavedViewInput>
 
 export async function createSavedView(
-  input: CreateSavedViewInput
+  input: unknown
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   const parsed = CreateSavedViewInput.safeParse(input)

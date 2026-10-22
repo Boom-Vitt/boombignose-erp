@@ -1,0 +1,59 @@
+import { PERIODS, inPeriod, type Period } from "@/lib/periods"
+import { sumSatang } from "@/lib/money"
+import { Constants } from "@/lib/types/database"
+
+export const FACET_LISTS = {
+  quotes: { statuses: Constants.public.Enums.quote_status, groups: ["status", "client", "month"] },
+  finance: { statuses: Constants.public.Enums.invoice_status, groups: ["status", "client", "month"] },
+  clients: { statuses: [], groups: ["industry", "source", "month"] },
+  timesheets: { statuses: ["billable", "non_billable"], groups: ["project", "month"] },
+} as const
+export type FacetList = keyof typeof FACET_LISTS
+export type FacetConfig = { q?: string; status?: string; period?: Period; mine?: "1"; groupBy?: string }
+export type SearchParams = Record<string, string | string[] | undefined>
+const KEYS = ["q", "status", "period", "mine", "groupBy"] as const
+
+export function parseFacets(params: SearchParams | URLSearchParams, list: FacetList): FacetConfig {
+  const get = (key: string) => {
+    const value = params instanceof URLSearchParams ? (params.getAll(key).length === 1 ? params.get(key) : undefined) : params[key]
+    return typeof value === "string" ? value.trim() : ""
+  }
+  const config: FacetConfig = {}
+  if (get("q")) config.q = get("q").slice(0, 200)
+  if ((FACET_LISTS[list].statuses as readonly string[]).includes(get("status"))) config.status = get("status")
+  if (Object.hasOwn(PERIODS, get("period"))) config.period = get("period") as Period
+  if (get("mine") === "1") config.mine = "1"
+  if ((FACET_LISTS[list].groups as readonly string[]).includes(get("groupBy"))) config.groupBy = get("groupBy")
+  return config
+}
+
+export function serializeFacets(config: FacetConfig, list: FacetList): string {
+  const clean = parseFacets(config, list)
+  const params = new URLSearchParams()
+  for (const key of KEYS) if (clean[key]) params.set(key, clean[key]!)
+  return params.toString()
+}
+
+export function facetLabel(value: string): string {
+  return value.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
+}
+
+export function matchesFacets(config: FacetConfig, row: { text: string; status?: string; date: string; owner: string | null }, userId: string, now: Date = new Date()): boolean {
+  return (!config.q || row.text.toLowerCase().includes(config.q.toLowerCase()))
+    && (!config.status || row.status === config.status)
+    && (!config.period || inPeriod(row.date, config.period, now))
+    && (!config.mine || row.owner === userId)
+}
+
+export function groupFacetRows<T>(rows: T[], group?: (row: T) => { key: string; label: string }, amount?: (row: T) => number) {
+  const groups = new Map<string, { key: string; label: string; rows: T[] }>()
+  for (const row of rows) {
+    const value = group?.(row) ?? { key: "all", label: "" }
+    if (!groups.has(value.key)) groups.set(value.key, { ...value, rows: [] })
+    groups.get(value.key)!.rows.push(row)
+  }
+  return [...groups.values()].map((value) => ({
+    ...value,
+    totalSatang: amount ? sumSatang(value.rows.map(amount)) : undefined,
+  }))
+}

@@ -1,3 +1,8 @@
+import { SearchFacets } from "@/components/search/search-facets"
+import { GroupedTableRows } from "@/components/search/grouped-table-rows"
+import { parseFacets, matchesFacets, facetLabel, type SearchParams } from "@/lib/search-facets"
+import { getFacetSavedViews } from "@/lib/queries/saved-views"
+import { monthKey } from "@/lib/dates"
 import Link from "next/link"
 import {
   FileWarning,
@@ -27,7 +32,6 @@ import {
 } from "@/lib/metrics/invoice-status"
 import type { Enums } from "@/lib/types/database"
 
-import { Constants } from "@/lib/types/database"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
@@ -45,19 +49,8 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 import { DeleteCostButton } from "./_components/delete-cost-button"
-import { FinanceToolbar } from "./_components/finance-toolbar"
-import type { SavedView } from "@/app/(app)/views/saved-views-menu"
-import type { ViewConfig } from "@/app/(app)/views/view-config"
 
 export const dynamic = "force-dynamic"
-
-const INVOICE_STATUSES = Constants.public.Enums.invoice_status
-
-/** Pull the known filter keys out of a saved-view config row. */
-function toViewConfig(config: unknown): ViewConfig {
-  const c = (config ?? {}) as Record<string, unknown>
-  return typeof c.status === "string" ? { status: c.status } : {}
-}
 
 const COST_CATEGORY_LABEL: Record<Enums<"cost_category">, string> = {
   software: "Software",
@@ -71,26 +64,22 @@ const COST_CATEGORY_LABEL: Record<Enums<"cost_category">, string> = {
 export default async function FinancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>
+  searchParams: Promise<SearchParams>
 }) {
   const ctx = await requireOrgContext()
   const supabase = await createClient()
   const month = currentMonthKey()
   const today = todayISO()
 
-  const { status: statusParam } = await searchParams
-  const status = (INVOICE_STATUSES as readonly string[]).includes(
-    statusParam ?? ""
-  )
-    ? statusParam!
-    : ""
+  const config = parseFacets(await searchParams, "finance")
+  const now = new Date()
 
-  const [invoicesRes, paymentsRes, costsRes, viewsRes, subscriptionsRes] =
+  const [invoicesRes, paymentsRes, costsRes, savedViews, subscriptionsRes] =
     await Promise.all([
       supabase
         .from("invoices")
         .select(
-          "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name)"
+          "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
         )
         .eq("org_id", ctx.orgId)
         .order("issue_date", { ascending: false }),
@@ -102,13 +91,7 @@ export default async function FinancePage({
         )
         .eq("org_id", ctx.orgId)
         .order("incurred_on", { ascending: false }),
-      supabase
-        .from("saved_views")
-        .select("id, name, config")
-        .eq("org_id", ctx.orgId)
-        .eq("module", "finance")
-        .eq("user_id", ctx.userId)
-        .order("created_at", { ascending: true }),
+      getFacetSavedViews("finance"),
       supabase
         .from("subscriptions")
         .select("status, amount_satang, interval")
@@ -116,17 +99,11 @@ export default async function FinancePage({
         .eq("status", "active"),
     ])
 
-  if (invoicesRes.error || paymentsRes.error || costsRes.error || viewsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
+  if (invoicesRes.error || paymentsRes.error || costsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
   const invoices = invoicesRes.data ?? []
   const payments = paymentsRes.data ?? []
   const costs = costsRes.data ?? []
   const activeSubscriptions = subscriptionsRes.data ?? []
-
-  const savedViews: SavedView[] = (viewsRes.data ?? []).map((v) => ({
-    id: v.id,
-    name: v.name,
-    config: toViewConfig(v.config),
-  }))
 
   // Sum payments per invoice.
   const paidByInvoice = new Map<string, number>()
@@ -148,9 +125,9 @@ export default async function FinancePage({
   })
 
   // Status filter uses the same verified-receipt effective status as the export.
-  const filteredInvoiceRows = status
-    ? invoiceRows.filter((inv) => inv.effectiveStatus === status)
-    : invoiceRows
+  const filteredInvoiceRows = invoiceRows.filter((inv) => matchesFacets(config, {
+    text: `${inv.number} ${inv.clients?.name ?? ""}`, status: inv.effectiveStatus, date: inv.issue_date, owner: inv.clients?.owner ?? null,
+  }, ctx.userId, now))
 
   // Metrics.
   const invoicesWithPaid = invoices.map((inv) => ({
@@ -215,7 +192,12 @@ export default async function FinancePage({
         />
       </div>
 
-      <FinanceToolbar status={status} savedViews={savedViews} />
+      <SearchFacets list="finance" config={config} savedViews={savedViews} />
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" render={<Link href={config.status ? `/finance/invoices/export?status=${config.status}` : "/finance/invoices/export"} />}>Export invoices CSV</Button>
+        <Button variant="outline" size="sm" render={<Link href="/finance/costs/export" />}>Export costs CSV</Button>
+        <span className="text-xs text-muted-foreground self-center">Invoice export uses the status filter.</span>
+      </div>
 
       <Tabs defaultValue="invoices" className="gap-4">
         <TabsList>
@@ -249,7 +231,7 @@ export default async function FinancePage({
                 <EmptyState
                   icon={ReceiptText}
                   title="No matching invoices"
-                  description="No invoices match the selected status."
+                  description="No invoices match the selected filters."
                   className="border-0"
                 />
               ) : (
@@ -265,7 +247,12 @@ export default async function FinancePage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredInvoiceRows.map((inv) => (
+                    <GroupedTableRows rows={filteredInvoiceRows} colSpan={6} amount={(inv) => inv.amount_satang}
+                    group={config.groupBy ? (inv) => config.groupBy === "client"
+                      ? { key: inv.client_id, label: inv.clients?.name ?? "Unassigned" }
+                      : config.groupBy === "month" ? { key: monthKey(inv.issue_date), label: monthKey(inv.issue_date) }
+                      : { key: inv.effectiveStatus, label: facetLabel(inv.effectiveStatus) } : undefined}>
+                    {(inv) => (
                       <TableRow key={inv.id}>
                         <TableCell className="font-medium">
                           <Link
@@ -297,7 +284,7 @@ export default async function FinancePage({
                             : "—"}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )}</GroupedTableRows>
                   </TableBody>
                 </Table>
               )}

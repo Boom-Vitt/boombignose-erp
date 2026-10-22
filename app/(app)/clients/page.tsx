@@ -1,3 +1,8 @@
+import { SearchFacets } from "@/components/search/search-facets"
+import { GroupedTableRows } from "@/components/search/grouped-table-rows"
+import { parseFacets, matchesFacets, type SearchParams } from "@/lib/search-facets"
+import { getFacetSavedViews } from "@/lib/queries/saved-views"
+import { monthKey } from "@/lib/dates"
 import Link from "next/link"
 import { Users, Plus } from "lucide-react"
 
@@ -16,30 +21,32 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { formatDate } from "./_lib/format"
-import { ClientsToolbar } from "./_components/clients-toolbar"
 
 export const dynamic = "force-dynamic"
 
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<SearchParams>
 }) {
   const ctx = await requireOrgContext()
   const supabase = await createClient()
-  const { q: qParam } = await searchParams
-  const q = (qParam ?? "").trim()
+  const config = parseFacets(await searchParams, "clients")
+  const now = new Date()
+  const savedViews = await getFacetSavedViews("clients")
 
-  let query = supabase
+  const query = supabase
     .from("clients")
-    .select("id, name, industry, source, created_at, deals(count)")
+    .select("id, name, industry, source, created_at, owner, deals(count)")
     .eq("org_id", ctx.orgId)
     .in("deals.stage", OPEN_STAGES)
     .order("name", { ascending: true })
-  if (q) query = query.ilike("name", `%${q}%`)
 
-  const { data: clients } = await query
-  const hasClients = (clients?.length ?? 0) > 0
+  const { data, error } = await query
+  if (error) throw new Error("Clients unavailable. Please reload.")
+  const clients = (data ?? []).filter((c) => matchesFacets(config, {
+    text: c.name, date: c.created_at, owner: c.owner,
+  }, ctx.userId, now))
 
   return (
     <div className="space-y-6">
@@ -53,14 +60,14 @@ export default async function ClientsPage({
         </Button>
       </PageHeader>
 
-      {hasClients || q ? <ClientsToolbar q={q} /> : null}
+      <SearchFacets list="clients" config={config} savedViews={savedViews} />
 
-      {!clients || clients.length === 0 ? (
-        q ? (
+      {clients.length === 0 ? (
+        Object.keys(config).length ? (
           <EmptyState
             icon={Users}
             title="No matching clients"
-            description="No clients match your search. Try a different name."
+            description="No clients match the selected search and filters."
           />
         ) : (
           <EmptyState
@@ -88,7 +95,13 @@ export default async function ClientsPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {clients.map((c) => (
+              <GroupedTableRows rows={clients} colSpan={5}
+                group={config.groupBy ? (c) => {
+                  const value = config.groupBy === "month" ? monthKey(c.created_at)
+                    : config.groupBy === "industry" ? c.industry : c.source
+                  return { key: value ?? "unassigned", label: value ?? "Unassigned" }
+                } : undefined}>
+              {(c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">
                     <Link
@@ -111,7 +124,7 @@ export default async function ClientsPage({
                     {formatDate(c.created_at)}
                   </TableCell>
                 </TableRow>
-              ))}
+              )}</GroupedTableRows>
             </TableBody>
           </Table>
         </div>
