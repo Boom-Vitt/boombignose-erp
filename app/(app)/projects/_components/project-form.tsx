@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
+import { useGuardedForm } from "@/components/record/record-guard"
 
 import {
   Form,
@@ -89,15 +90,17 @@ export function ProjectForm({
       ...defaultValues,
     },
   })
+  const onSubmit = useGuardedForm(form, async (values) => {
+    const res = await action(values)
+    // On success the action redirects (throws), so we only reach here on error.
+    if (res?.error) toast.error(res.error)
+    return false
+  })
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(async (values) => {
-          const res = await action(values)
-          // On success the action redirects (throws), so we only reach here on error.
-          if (res?.error) toast.error(res.error)
-        })}
+        onSubmit={onSubmit}
         className="space-y-5"
       >
         <FormField

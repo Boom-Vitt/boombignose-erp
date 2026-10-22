@@ -3,24 +3,14 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
-import { readAll } from "@/lib/supabase/read-all"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireCapability, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { formatTHBWhole } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
 import { todayISO } from "@/lib/dates"
 import { paymentAmount, moneyInput } from "@/lib/payments/input"
-import { nextDocumentNumber } from "@/lib/documents/numbering"
-
-const INVOICE_STATUSES = [
-  "draft",
-  "sent",
-  "partially_paid",
-  "paid",
-  "overdue",
-  "cancelled",
-] as const
+import { isIssuedInvoiceNumber } from "@/lib/documents/numbering"
 
 const RECURRING_INTERVALS = ["weekly", "monthly", "quarterly", "yearly"] as const
 
@@ -59,8 +49,7 @@ const optionalDate = z
 const CreateInvoice = z.object({
   client_id: z.string().min(1, "Client is required"),
   project_id: optionalId,
-  number: optionalString,
-  status: z.enum(INVOICE_STATUSES).default("draft"),
+  number: optionalString.refine(value => !value || !isIssuedInvoiceNumber(value), "Invoice series numbers are assigned only when issuing"),
   issue_date: optionalDate,
   due_date: optionalDate,
   amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter a nonnegative THB amount with up to two decimals"),
@@ -73,7 +62,7 @@ export async function createInvoice(
   input: z.input<typeof CreateInvoice>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  try { requireRole(ctx, ["owner", "admin"]) }
+  try { requireCapability(ctx, "payment:verify") }
   catch { return { error: "Only owners and admins can manage invoices." } }
   const parsed = CreateInvoice.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
@@ -81,33 +70,18 @@ export async function createInvoice(
 
   const supabase = await createSupabaseClient()
 
-  // Auto-generate the invoice number when none was provided. Scans the org's
-  // existing numbers for the current year and continues the running counter.
-  // Manual numbers are used verbatim; a rare unique(org_id, number) collision
-  // surfaces as the DB error below, exactly as before.
-  let number = d.number
-  if (!number) {
-    const year = Number(todayISO().slice(0, 4))
-    const { data: existing, error: numberError } = await readAll((from, to) => supabase
-      .from("invoices")
-      .select("number")
-      .eq("org_id", ctx.orgId).order("id").range(from, to))
-    if (numberError) return { error: numberError.message }
-    number = nextDocumentNumber(
-      "INV",
-      (existing ?? []).map((r) => r.number),
-      year
-    )
-  }
+  const id = crypto.randomUUID()
+  const number = d.number ?? `DRAFT-${id}`
 
   const { data, error } = await supabase
     .from("invoices")
     .insert({
+      id,
       org_id: ctx.orgId,
       client_id: d.client_id,
       project_id: d.project_id,
       number,
-      status: d.status,
+      status: "draft",
       issue_date: d.issue_date ?? undefined,
       due_date: d.due_date,
       amount_satang: moneyInput(d.amountBaht),
@@ -135,10 +109,7 @@ const UpdateInvoice = z.object({
   id: z.string().min(1),
   client_id: z.string().min(1, "Client is required"),
   project_id: optionalId,
-  // The shared form marks number optional (create auto-numbers). On edit the
-  // field is prefilled, so a blank number simply leaves the stored one untouched.
-  number: optionalString,
-  status: z.enum(INVOICE_STATUSES),
+  number: optionalString.refine(value => !value || !isIssuedInvoiceNumber(value), "Invoice series numbers are assigned only when issuing"),
   issue_date: optionalDate,
   due_date: optionalDate,
   amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter a nonnegative THB amount with up to two decimals"),
@@ -151,20 +122,19 @@ export async function updateInvoice(
   input: z.input<typeof UpdateInvoice>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  try { requireRole(ctx, ["owner", "admin"]) }
+  try { requireCapability(ctx, "payment:verify") }
   catch { return { error: "Only owners and admins can manage invoices." } }
   const parsed = UpdateInvoice.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
   const d = parsed.data
 
   const supabase = await createSupabaseClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("invoices")
     .update({
       client_id: d.client_id,
       project_id: d.project_id,
       ...(d.number ? { number: d.number } : {}),
-      status: d.status,
       issue_date: d.issue_date ?? undefined,
       due_date: d.due_date,
       amount_satang: moneyInput(d.amountBaht),
@@ -174,8 +144,14 @@ export async function updateInvoice(
     })
     .eq("id", d.id)
     .eq("org_id", ctx.orgId)
+    .eq("status", "draft")
+    .is("issued_snapshot_id", null)
+    .select("id")
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!data) return { error: "Draft invoice unavailable" }
+  await writeAudit(ctx, { entity: "invoice", entityId: d.id, action: "updated", summary: "Updated invoice draft" })
 
   revalidatePath("/finance")
   revalidatePath(`/finance/invoices/${d.id}`)
@@ -214,10 +190,10 @@ export async function recordPayment(input: z.input<typeof StaffClaim>): Promise<
 }
 
 const EvidenceFields = {
-  paidOn: z.iso.date().refine(value => value <= todayISO(), "Bank date cannot be in the future").optional(),
-  method: z.enum(["transfer", "cash", "card", "promptpay", "cheque", "other"]).optional(),
+  paidOn: z.iso.date().refine(value => value <= todayISO(), "Bank date cannot be in the future"),
+  method: z.enum(["transfer", "cash", "card", "promptpay", "cheque", "other"]),
 }
-const ReconcileLegacy = StaffClaim.extend({ legacyPaymentId: z.guid(), ...EvidenceFields }).refine(value => !!value.paidOn === !!value.method, "Provide bank date and payment method together")
+const ReconcileLegacy = StaffClaim.extend({ legacyPaymentId: z.guid(), ...EvidenceFields })
 
 export async function reconcileLegacyPayment(input: z.input<typeof ReconcileLegacy>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
@@ -231,20 +207,21 @@ export async function reconcileLegacyPayment(input: z.input<typeof ReconcileLega
   catch { return { error: "Enter a valid positive THB amount with up to two decimals" } }
   const supabase = await createSupabaseClient()
   const args = { p_org_id: ctx.orgId, p_legacy_payment_id: d.legacyPaymentId, p_amount_satang: amount, p_reference: d.reference, p_key: d.key }
-  const { error } = d.paidOn && d.method
-    ? await supabase.rpc("reconcile_legacy_payment_with_evidence", { ...args, p_paid_on: d.paidOn, p_method: d.method })
-    : await supabase.rpc("reconcile_legacy_payment", args)
+  const { error } = await supabase.rpc("reconcile_legacy_payment_with_evidence", { ...args, p_paid_on: d.paidOn, p_method: d.method })
   if (error) return { error: error.message }
   revalidatePath("/finance")
   revalidatePath(`/finance/invoices/${d.invoiceId}`)
   return {}
 }
 
-const ReviewClaim = z.object({
+const ReviewClaimFields = {
   claimId: z.guid(), invoiceId: z.guid(), key: z.uuid(),
   amountBaht: z.string(), reference: z.string().trim().min(3).max(500),
-  decision: z.enum(["verified", "rejected"]), ...EvidenceFields,
-}).refine(value => !!value.paidOn === !!value.method, "Provide bank date and payment method together")
+}
+const ReviewClaim = z.discriminatedUnion("decision", [
+  z.object({ ...ReviewClaimFields, decision: z.literal("verified"), ...EvidenceFields }),
+  z.object({ ...ReviewClaimFields, decision: z.literal("rejected") }),
+])
 
 export async function reviewPaymentClaim(input: z.input<typeof ReviewClaim>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
@@ -259,9 +236,7 @@ export async function reviewPaymentClaim(input: z.input<typeof ReviewClaim>): Pr
   const supabase = await createSupabaseClient()
   // invoiceId is only used for revalidation; the DB resolves the actual claim's invoice.
   const args = { p_org_id: ctx.orgId, p_claim_id: d.claimId, p_key: d.key, p_amount_satang: amount, p_reference: d.reference, p_decision: d.decision }
-  const { error } = d.paidOn && d.method
-    ? await supabase.rpc("review_payment_claim_with_evidence", { ...args, p_paid_on: d.paidOn, p_method: d.method })
-    : await supabase.rpc("review_payment_claim", args)
+  const { error } = await supabase.rpc("review_payment_claim_with_evidence", { ...args, p_paid_on: d.decision === "verified" ? d.paidOn : null, p_method: d.decision === "verified" ? d.method : null })
   if (error) return { error: error.message }
   revalidatePath("/finance")
   revalidatePath(`/finance/invoices/${d.invoiceId}`)
@@ -348,7 +323,7 @@ export async function deleteCost(
 const IssueInvoice = z.object({ invoiceId: z.guid(), expectedVersion: z.number().int().min(1).max(2147483647), key: z.uuid() })
 export async function issueInvoice(input: z.input<typeof IssueInvoice>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  try { requireRole(ctx, ["owner", "admin"]) }
+  try { requireCapability(ctx, "payment:verify") }
   catch { return { error: "Only owners and admins can issue invoices." } }
   const parsed = IssueInvoice.safeParse(input)
   if (!parsed.success) return { error: "Invalid issue request" }
@@ -398,5 +373,36 @@ export async function updateInvoiceWithholding(input: z.input<typeof Withholding
   await writeAudit(ctx, { entity: "invoice", entityId: data.id, action: "withholding_updated", summary: "Updated invoice withholding", meta: { rateBps: parsed.data.rateBps } })
   revalidatePath(`/finance/invoices/${data.id}`)
   revalidatePath("/finance")
+  return {}
+}
+
+const CancelDraft = z.object({ invoiceId: z.guid() })
+export async function cancelDraftInvoice(input: z.input<typeof CancelDraft>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "invoice:delete") }
+  catch { return { error: "Only owners and admins can cancel drafts." } }
+  const parsed = CancelDraft.safeParse(input)
+  if (!parsed.success) return { error: "Invalid invoice" }
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.rpc("cancel_draft_invoice", { p_org_id: ctx.orgId, p_invoice_id: parsed.data.invoiceId })
+  if (error) return { error: error.message }
+  revalidatePath("/finance")
+  revalidatePath(`/finance/invoices/${parsed.data.invoiceId}`)
+  return {}
+}
+
+const FinanceLock = z.object({ expectedOrgId: z.guid(), lockDate: z.union([z.iso.date(), z.literal("")]) })
+export async function updateFinanceLockDate(input: z.input<typeof FinanceLock>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "settings:manage") }
+  catch { return { error: "Only owners and admins can change the finance lock date." } }
+  const parsed = FinanceLock.safeParse(input)
+  if (!parsed.success) return { error: "Enter a valid lock date or leave it blank." }
+  if (parsed.data.expectedOrgId !== ctx.orgId) return { error: "Workspace changed. Reload before saving." }
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.rpc("update_finance_lock_date", { p_org_id: ctx.orgId, p_lock_date: parsed.data.lockDate || null })
+  if (error) return { error: error.message }
+  revalidatePath("/settings")
+  revalidatePath("/settings/finance")
   return {}
 }

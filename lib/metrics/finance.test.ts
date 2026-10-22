@@ -13,7 +13,7 @@ import {
   unpaidCount,
   netBurnSatang,
   runwayMonths,
-  type PaymentLike,
+  type RevenueInvoice,
   type CostLike,
   type RecurringInvoiceLike,
   type InvoiceWithPaid,
@@ -21,13 +21,13 @@ import {
 } from "@/lib/metrics/finance"
 
 describe("revenueForMonth", () => {
-  const payments: PaymentLike[] = [
-    { amount_satang: 100_000, paid_at: "2026-06-10T05:00:00Z" },
-    { amount_satang: 50_000, paid_at: "2026-06-20T05:00:00Z" },
-    { amount_satang: 999, paid_at: "2026-05-31T05:00:00Z" },
+  const payments: RevenueInvoice[] = [
+    { status: "sent", total_satang: 107_000, vat_satang: 7_000, issue_date: "2026-06-10" },
+    { status: "paid", total_satang: 50_000, vat_satang: 0, issue_date: "2026-06-20" },
+    { status: "sent", total_satang: 999, vat_satang: 0, issue_date: "2026-05-31" },
   ]
 
-  it("sums payments within the target Bangkok month", () => {
+  it("sums issued invoice bases within the target month", () => {
     expect(revenueForMonth(payments, "2026-06")).toBe(150_000)
     expect(revenueForMonth(payments, "2026-05")).toBe(999)
     expect(revenueForMonth(payments, "2026-07")).toBe(0)

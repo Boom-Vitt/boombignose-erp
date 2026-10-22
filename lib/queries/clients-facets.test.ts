@@ -11,11 +11,13 @@ vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org", u
 vi.mock("@/lib/queries/saved-views", () => ({ getFacetSavedViews: async () => [] }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: () => {
   let namePattern: string | undefined
+  let [from, to] = [0, 999]
   const query = {
     select: () => query,
     eq: () => query,
     in: () => query,
     order: () => query,
+    range: (start: number, end: number) => { [from, to] = [start, end]; return query },
     ilike: (column: string, pattern: string) => {
       state.patterns.push([column, pattern])
       namePattern = pattern
@@ -24,7 +26,8 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: () 
     then: (resolve: (result: unknown) => unknown) => {
       const needle = namePattern?.slice(1, -1).replace(/\\(.)/g, "$1").toLowerCase()
       const data = state.clients.filter((client) => needle === undefined || client.name.toLowerCase().includes(needle))
-        .slice(0, 1000)
+        // Like PostgREST, never return more than 1,000 rows per request.
+        .slice(from, Math.min(to, from + 999) + 1)
         .map((client) => ({ ...client, created_at: "2026-10-01", owner: "me", deals: [{ count: 0 }] }))
       return resolve({ data, error: null })
     },
@@ -54,6 +57,13 @@ describe("client search and groups", () => {
     expect(state.patterns).toEqual([["name", "%Target%"]])
     expect(html).toContain("Z Target client")
     expect(html).not.toContain("No matching clients")
+  })
+  it("counts every client in a group and keeps the open-deal column past the API row cap", async () => {
+    state.clients = Array.from({ length: 1200 }, (_, index) => ({ id: String(index), name: `Client ${index}`, industry: "Retail", source: null }))
+    const html = await renderClients({ groupBy: "industry" })
+    expect(html).toContain("(1200)")
+    expect(html).toContain('href="/clients/1199"')
+    expect(html).toContain("Open deals")
   })
   it("escapes LIKE wildcards, backslashes and PostgREST punctuation in the server predicate", async () => {
     const name = 'Z %_\\,().:" client'

@@ -40,7 +40,6 @@ export default async function NewInvoicePage() {
     client_id: "",
     project_id: "",
     number: "",
-    status: "draft",
     issue_date: todayISO(),
     due_date: "",
     amountBaht: "0.00",

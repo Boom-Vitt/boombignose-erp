@@ -36,7 +36,7 @@ describe("renderReportHtml", () => {
     const html = renderReportHtml(buildData())
     expect(html.startsWith("<!doctype html>")).toBe(true)
     expect(html).toContain("<title>Operational report — Studio</title>")
-    expect(html).toContain("Verified cash by client × month")
+    expect(html).toContain("Issued revenue by client × month")
     expect(html).toContain("Hours by project")
   })
 
@@ -92,7 +92,7 @@ describe("renderReportHtml", () => {
         hours: hoursByProject([]),
       })
     )
-    expect(html).toContain("No payments in this range.")
+    expect(html).toContain("No issued invoices in this range.")
     expect(html).toContain("No time logged in this range.")
   })
 })

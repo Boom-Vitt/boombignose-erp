@@ -57,11 +57,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           hint="Delivered stock cost less customer returns"
         />
         <StatCard
-          label="Verified cash received"
+          label="Revenue before VAT"
           value={formatTHB(totalRevenueSatang)}
           icon={TrendingUp}
           tone="positive"
-          hint="Verified receipts in range · Bangkok month"
+          hint="Issued invoices in range · Issue month"
         />
         <StatCard
           label="Billable hours"
@@ -110,18 +110,18 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <Card><CardHeader><CardTitle>Hours by project</CardTitle></CardHeader><CardContent>
           <ReportChart title="Hours by project" unit="hours" kind={view} rows={hours.projects.map((project) => ({ label: project.project_name, value: project.totalHours }))} />
         </CardContent></Card>
-        <p className="text-sm text-muted-foreground">Revenue is verified cash received, grouped by Bangkok month. Pivot / table shows the underlying totals.</p>
+        <p className="text-sm text-muted-foreground">Revenue is issued invoice value before VAT, grouped by issue month. Pivot / table shows the underlying totals.</p>
       </div> : <>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Verified cash by client × month</CardTitle>
+          <CardTitle className="text-base">Revenue by client × month</CardTitle>
         </CardHeader>
         <CardContent>
           {revenue.rowKeys.length === 0 ? (
             <EmptyState
               icon={BarChart3}
-              title="No payments in range"
-              description="Only verified receipts appear here by client and month."
+              title="No issued invoices in range"
+              description="Issued revenue before VAT appears here by client and issue month."
               className="border-0"
             />
           ) : (

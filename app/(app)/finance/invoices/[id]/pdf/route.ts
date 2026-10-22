@@ -1,3 +1,4 @@
+import { invoiceDisplayNumber } from "@/lib/documents/numbering"
 import { readAll } from "@/lib/supabase/read-all"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
@@ -75,7 +76,7 @@ export async function GET(
 
   let doc: PrintableDocument = {
     kind: "Invoice",
-    number: invoice.number,
+    number: invoiceDisplayNumber({ ...invoice, id }),
     status: deriveInvoiceStatus(invoice, paid, todayISO()),
     orgName: ctx.orgName,
     clientName: invoice.clients?.name ?? "—",

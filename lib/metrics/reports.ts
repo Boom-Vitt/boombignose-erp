@@ -1,4 +1,5 @@
 import { sumSatang, type Satang } from "@/lib/money"
+import { hourlyValueSatang } from "./timesheets"
 
 /**
  * Pure aggregation helpers for the Reports module. Everything here is a plain
@@ -81,7 +82,7 @@ export function pivot<Row>(
   return { rowKeys, colKeys, cell, rowTotal, colTotal, grandTotal }
 }
 
-/** A single payment for the revenue pivot. Money is integer satang. */
+/** A recognized revenue row. Legacy field names carry the pre-VAT base and issue date. */
 export type ClientPayment = {
   client_name: string
   amount_satang: Satang
@@ -89,8 +90,8 @@ export type ClientPayment = {
 }
 
 /**
- * Pivot of payment satang by client (rows) × month 'YYYY-MM' (columns).
- * `monthKeyOf` maps a payment's `paid_at` to its month string, keeping this
+ * Pivot of recognized revenue by client (rows) × issue month (columns).
+ * `monthKeyOf` maps the issue date carried in `paid_at`, keeping this
  * function timezone-agnostic — the caller decides the calendar.
  */
 export function revenueByClientMonth(
@@ -184,10 +185,10 @@ export function billableValueSatang(
   billableMinutes: number,
   hourlyRateSatang: Satang
 ): Satang {
-  return Math.round((billableMinutes / 60) * hourlyRateSatang)
+  return hourlyValueSatang(billableMinutes, hourlyRateSatang)
 }
 
-/** Sum of all payment satang — a convenience total for the range StatCard. */
+/** Sum of recognized pre-VAT revenue for the range StatCard. */
 export function totalRevenueSatang(payments: ClientPayment[]): Satang {
   return sumSatang(payments.map((p) => p.amount_satang))
 }

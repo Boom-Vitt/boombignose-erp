@@ -7,6 +7,7 @@ import Link from "next/link"
 import { FileText, FilePlus2 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { readAll } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
 import { formatTHB } from "@/lib/money"
 
@@ -34,12 +35,12 @@ export default async function QuotesPage({ searchParams }: { searchParams: Promi
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  const { data, error } = await readAll((from, to) => supabase
     .from("quotes")
     .select(
       "id, number, status, total_satang, valid_until, issue_date, client_id, owner, clients(name)"
     ).eq("org_id", ctx.orgId)
-    .order("issue_date", { ascending: false })
+    .order("issue_date", { ascending: false }).order("id").range(from, to))
 
   if (error) throw new Error("Quotes unavailable. Please reload.")
   const quotes = (data ?? []).filter((q) => matchesFacets(config, {

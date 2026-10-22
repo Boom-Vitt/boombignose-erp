@@ -1,5 +1,5 @@
+import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { createClient } from "@/lib/supabase/server"
-import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { sumSatang } from "@/lib/money"
 import { requireOrgContext } from "@/lib/auth"
 import { currentMonthKey, lastNMonths, monthKey, todayISO } from "@/lib/dates"
@@ -30,8 +30,8 @@ export type ReportAggregates = {
 }
 
 /**
- * Org-scoped fetch + pure aggregation for the Reports module. Payments join to
- * invoices → clients for names; time entries join to projects for names. Only
+ * Org-scoped fetch + pure aggregation. Issued invoice bases join to
+ * clients for names; time entries join to projects for names. Only
  * rows falling inside the last {@link RANGE_MONTHS} months (by app-timezone
  * month key) are counted. Money stays in integer satang.
  */
@@ -42,13 +42,14 @@ export async function getReportData(): Promise<ReportAggregates> {
   const months = lastNMonths(RANGE_MONTHS, currentMonthKey())
   const startDate = `${months[0]}-01`
 
-  const [paymentRows, entryRows, cogs] = await Promise.all([
-    readAllOrThrow((from, to) => supabase
-      .from("payments")
-      .select("amount_satang, paid_at, invoices(clients(name))").eq("verification_state", "verified")
+  const [invoicesRes, entriesRes, cogs] = await Promise.all([
+    readAll((from, to) => supabase
+      .from("invoices")
+      .select("status, total_satang, vat_satang, issue_date, clients(name)")
       .eq("org_id", ctx.orgId)
-      .gte("paid_at", `${startDate}T00:00:00+07:00`).order("id").range(from, to)),
-    readAllOrThrow((from, to) => supabase
+      .not("status", "in", "(draft,cancelled)")
+      .gte("issue_date", startDate).order("id").range(from, to)),
+    readAll((from, to) => supabase
       .from("time_entries")
       .select("minutes, billable, work_date, projects(name)")
       .eq("org_id", ctx.orgId)
@@ -58,17 +59,18 @@ export async function getReportData(): Promise<ReportAggregates> {
       .order("month").range(from, to)),
   ])
 
+  if (invoicesRes.error || entriesRes.error) throw new Error("Operational reports unavailable. Reload before relying on totals.")
   const inRange = new Set(months)
 
-  const payments: ClientPayment[] = paymentRows
-    .filter((p) => inRange.has(monthKey(p.paid_at)))
+  const payments: ClientPayment[] = (invoicesRes.data ?? [])
+    .filter((p) => p.status !== "draft" && p.status !== "cancelled" && inRange.has(monthKey(p.issue_date)))
     .map((p) => ({
-      client_name: p.invoices?.clients?.name ?? NO_CLIENT,
-      amount_satang: p.amount_satang,
-      paid_at: p.paid_at,
+      client_name: p.clients?.name ?? NO_CLIENT,
+      amount_satang: p.total_satang - p.vat_satang,
+      paid_at: p.issue_date,
     }))
 
-  const entries: ProjectTimeEntry[] = entryRows
+  const entries: ProjectTimeEntry[] = (entriesRes.data ?? [])
     .filter((e) => inRange.has(monthKey(e.work_date)))
     .map((e) => ({
       project_name: e.projects?.name ?? NO_PROJECT,

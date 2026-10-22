@@ -17,6 +17,7 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }))
 
 import { recordPayment, reviewPaymentClaim, reconcileLegacyPayment } from "@/app/(app)/finance/actions"
 
+const evidence = { paidOn: "2025-01-31", method: "promptpay" as const }
 const input = {
   invoiceId: "00000000-0000-0000-0000-000000000001",
   amountBaht: "1.01", reference: "Bank report 101",
@@ -62,12 +63,13 @@ it("same command retry preserves its key and database evidence is authoritative"
 
 it("review rejection ignores a displayed amount and sends zero settlement", async () => {
   expect(await reviewPaymentClaim({ ...input, claimId: input.invoiceId, decision: "rejected", amountBaht: "NaN" })).toEqual({})
-  expect(rpc).toHaveBeenCalledWith("review_payment_claim", expect.objectContaining({ p_amount_satang: 0, p_decision: "rejected", p_org_id: ctx.orgId }))
+  expect(rpc).toHaveBeenCalledWith("review_payment_claim_with_evidence", expect.objectContaining({ p_amount_satang: 0, p_decision: "rejected", p_org_id: ctx.orgId, p_paid_on: null, p_method: null }))
 })
 
 it("legacy reconciliation creates a new verified receipt through one atomic command", async () => {
-  expect(await reconcileLegacyPayment({ ...input, legacyPaymentId: input.invoiceId })).toEqual({})
-  expect(rpc).toHaveBeenCalledExactlyOnceWith("reconcile_legacy_payment", {
+  expect(await reconcileLegacyPayment({ ...input, ...evidence, legacyPaymentId: input.invoiceId })).toEqual({})
+  expect(rpc).toHaveBeenCalledExactlyOnceWith("reconcile_legacy_payment_with_evidence", {
+    p_paid_on: evidence.paidOn, p_method: evidence.method,
     p_org_id: ctx.orgId, p_legacy_payment_id: input.invoiceId,
     p_amount_satang: 101, p_reference: input.reference, p_key: input.key,
   })
@@ -75,7 +77,6 @@ it("legacy reconciliation creates a new verified receipt through one atomic comm
 })
 
 it("uses bank evidence date and method when reviewing or reconciling", async () => {
-  const evidence = { paidOn: "2025-01-31", method: "promptpay" as const }
   await reviewPaymentClaim({ ...input, ...evidence, claimId: input.invoiceId, decision: "verified" })
   expect(rpc).toHaveBeenCalledWith("review_payment_claim_with_evidence", expect.objectContaining({ p_paid_on: evidence.paidOn, p_method: "promptpay", p_amount_satang: 101 }))
   await reconcileLegacyPayment({ ...input, ...evidence, legacyPaymentId: input.invoiceId })
@@ -84,7 +85,13 @@ it("uses bank evidence date and method when reviewing or reconciling", async () 
 
 it("rejects invalid or future bank dates and incomplete evidence pairs", async () => {
   for (const evidence of [{ paidOn: "2099-12-31", method: "transfer" as const }, { paidOn: "2025-02-30", method: "transfer" as const }, { paidOn: "2025-01-01" }]) {
-    expect((await reviewPaymentClaim({ ...input, ...evidence, claimId: input.invoiceId, decision: "verified" })).error).toBeTruthy()
+    expect((await reviewPaymentClaim({ ...input, ...evidence, claimId: input.invoiceId, decision: "verified" } as Parameters<typeof reviewPaymentClaim>[0])).error).toBeTruthy()
   }
+  expect(rpc).not.toHaveBeenCalled()
+})
+
+it("refuses verification and reconciliation without an explicit verified bank date", async () => {
+  expect((await reviewPaymentClaim({ ...input, claimId: input.invoiceId, decision: "verified" } as Parameters<typeof reviewPaymentClaim>[0])).error).toBeTruthy()
+  expect((await reconcileLegacyPayment({ ...input, legacyPaymentId: input.invoiceId } as Parameters<typeof reconcileLegacyPayment>[0])).error).toBeTruthy()
   expect(rpc).not.toHaveBeenCalled()
 })

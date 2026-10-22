@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Tables } from "@/lib/types/database"
-import { auditText, mergeTimeline, timelineDay } from "./timeline"
+import { auditText, mergeLoaded, mergeTimeline, timelineDay, type TimelineEntry } from "./timeline"
 
 const base = { org_id: "org", record_type: "quote" as const, record_id: "record", created_at: "2026-10-22T08:00:00Z" }
 const note: Tables<"record_notes"> = { ...base, id: "same", author: "author", body: "Internal note" }
@@ -49,5 +49,39 @@ describe("record timeline", () => {
     expect(auditText({ action: "invoice_issued", summary: null, meta: [] })).toBe("Invoice Issued")
     expect(auditText({ action: "updated", summary: "Updated scope", meta: { from: 1, to: 2 } })).toBe("Updated scope")
     expect(auditText({ action: "updated", summary: null, meta: { old_status: "partially_paid", new_status: "paid" } })).toBe("Status: Partially Paid → Paid")
+  })
+})
+
+describe("mergeLoaded", () => {
+  const entry = (n: number): TimelineEntry => ({ id: `note:${String(n).padStart(8, "0")}-0000-0000-0000-000000000000`, kind: "note", at: new Date(Date.UTC(2026, 9, 23, 0, 0, 0) - n * 60_000).toISOString(), actor: null, text: `Entry ${n}` })
+  const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => entry(from + index))
+  const cursorAfter = (last: TimelineEntry) => ({ at: last.at, id: last.id })
+  const ids = (entries: TimelineEntry[]) => entries.map(item => item.text)
+
+  it("shows the fresh first page alone when nothing older was loaded", () => {
+    const initial = { timeline: range(1, 3), nextCursor: cursorAfter(entry(3)) }
+    expect(mergeLoaded(initial, null)).toEqual({ entries: initial.timeline, cursor: initial.nextCursor })
+  })
+  it("keeps loaded older pages when a refresh adds new entries and pushes one off the first page", () => {
+    const loaded = { entries: range(1, 6), cursor: cursorAfter(entry(6)) }
+    const fresh = { timeline: [entry(0), ...range(1, 2)], nextCursor: cursorAfter(entry(2)) }
+    const merged = mergeLoaded(fresh, loaded)
+    expect(ids(merged.entries)).toEqual(["Entry 0", "Entry 1", "Entry 2", "Entry 3", "Entry 4", "Entry 5", "Entry 6"])
+    expect(merged.cursor).toEqual(loaded.cursor)
+  })
+  it("drops older pages when new entries leave a gap after the fresh first page", () => {
+    const loaded = { entries: range(1, 6), cursor: cursorAfter(entry(6)) }
+    const fresh = { timeline: range(-3, -1), nextCursor: cursorAfter(entry(-1)) }
+    expect(mergeLoaded(fresh, loaded)).toEqual({ entries: fresh.timeline, cursor: fresh.nextCursor })
+  })
+  it("shows the fresh page and its end when it now holds all history", () => {
+    const loaded = { entries: range(1, 4), cursor: cursorAfter(entry(4)) }
+    const fresh = { timeline: range(1, 3), nextCursor: null }
+    expect(mergeLoaded(fresh, loaded)).toEqual({ entries: fresh.timeline, cursor: null })
+  })
+  it("prefers the fresh copy of an entry that is on both pages", () => {
+    const loaded = { entries: range(1, 3), cursor: cursorAfter(entry(3)) }
+    const fresh = { timeline: [{ ...entry(1), text: "Edited" }], nextCursor: cursorAfter(entry(1)) }
+    expect(ids(mergeLoaded(fresh, loaded).entries)).toEqual(["Edited", "Entry 2", "Entry 3"])
   })
 })

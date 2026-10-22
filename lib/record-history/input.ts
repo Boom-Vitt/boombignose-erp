@@ -3,12 +3,19 @@ import { RECORD_TYPES } from "./model"
 
 export const RecordInput = z.object({ recordType: z.enum(RECORD_TYPES), recordId: z.guid() })
 export const NoteInput = RecordInput.extend({ body: z.string().trim().min(1).max(20000) })
-export const ScheduleInput = RecordInput.extend({
+const ActivityFieldsInput = z.object({
   type: z.enum(["call", "email", "meeting", "follow_up", "note"]),
   dueDate: z.iso.date(),
   owner: z.guid(),
   summary: z.string().trim().min(1).max(2000),
 })
+export const ScheduleInput = RecordInput.extend(ActivityFieldsInput.shape)
+export const UpdateActivityInput = ActivityFieldsInput.extend({ id: z.guid() })
+export type ActivityFields = z.infer<typeof ActivityFieldsInput>
+export const CompleteInput = z.preprocess(
+  value => typeof value === "string" ? { id: value } : value,
+  z.object({ id: z.guid(), feedback: z.string().trim().max(2000).optional(), next: ActivityFieldsInput.optional() }),
+)
 export const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 export const ATTACHMENT_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "text/plain", "text/csv"] as const
 export const AttachmentInput = z.object({

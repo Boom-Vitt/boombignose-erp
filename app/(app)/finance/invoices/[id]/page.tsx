@@ -1,3 +1,5 @@
+import { invoiceDisplayNumber } from "@/lib/documents/numbering"
+import { CancelDraftButton } from "../../_components/cancel-draft-button"
 import { readAll } from "@/lib/supabase/read-all"
 import { DocumentTotals } from "@/components/document-totals"
 import { WithholdingForm } from "../../_components/withholding-form"
@@ -23,6 +25,7 @@ import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { InvoiceStatusBadge } from "@/components/status-badge"
 import { StatusBar } from "@/components/record/status-bar"
+import { RequireSaved } from "@/components/record/record-guard"
 import { SmartButtons } from "@/components/record/smart-buttons"
 import { Button } from "@/components/ui/button"
 import {
@@ -158,7 +161,6 @@ export default async function InvoiceDetailPage({
     client_id: invoice.client_id,
     project_id: invoice.project_id ?? "",
     number: invoice.number,
-    status: invoice.status,
     issue_date: invoice.issue_date ?? "",
     due_date: invoice.due_date ?? "",
     amountBaht: satangToBahtString(invoice.amount_satang),
@@ -195,7 +197,7 @@ export default async function InvoiceDetailPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={invoice.number}
+        title={invoiceDisplayNumber(invoice)}
         description={invoice.clients?.name ?? "Invoice"}
         breadcrumbs={[{ label: "Finance", href: "/finance" }]}
       >
@@ -256,7 +258,7 @@ export default async function InvoiceDetailPage({
       {stock.lines.length > 0 && invoice.issued_snapshot_id && <div className="space-y-2 rounded-xl border p-4"><h2 className="font-semibold">Stock fulfillment</h2>{stock.lines.map(line => <p key={line.id} className="text-sm">{line.description} · Delivered {line.delivered_quantity} of {line.quantity} {line.unit} · Returned {line.returned_quantity}</p>)}</div>}
       {manageStock && stock.moves.some(move => move.kind === "delivery") && <section className="space-y-3"><h2 className="font-semibold">Customer returns</h2>{stock.moves.filter(move => move.kind === "delivery").map(move => <CustomerReturnForm key={move.id} invoiceId={id} move={move} returnedQuantity={stock.moves.filter(row => row.return_of_move_id === move.id).reduce((sum, row) => sum + Math.round(row.quantity * 1000), 0) / 1000} description={stock.lines.find(line => line.id === move.source_line_id)?.description ?? inventory.products.find(product => product.id === move.product_id)?.name ?? "product"} warehouse={inventory.warehouses.find(warehouse => warehouse.id === move.warehouse_id)?.name ?? "Original warehouse"} />)}</section>}
       <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. VAT and withholding are document calculations only, not a legal tax system, accounting ledger, filing service or e-Tax Invoice. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
-      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></CardContent></Card> : null}
+      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><RequireSaved message="Save your invoice changes below before issuing it."><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></RequireSaved><CancelDraftButton invoiceId={invoice.id} /></CardContent></Card> : null}
       {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
