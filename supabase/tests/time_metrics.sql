@@ -33,7 +33,7 @@ select lives_ok($$select public.set_member_cost_rate('d4000000-0000-4000-8000-00
 select is((select labour_cost_satang from public.project_labour_totals where project_id='d4000000-0000-4000-8000-000000000030'),3178::bigint,'labour includes non-billable and unrated time');
 select is((select count(*) from public.memberships where org_id='d4000000-0000-4000-8000-000000000010'),3::bigint,'staff can read all team cost rates');
 select set_config('request.jwt.claims','{"role":"authenticated","sub":"d4000000-0000-4000-8000-000000000002"}',true);
-select is((select labour_cost_satang from public.project_labour_totals where project_id='d4000000-0000-4000-8000-000000000030'),3178::bigint,'member sees the same complete labour total despite self-only membership RLS');
+select is((select count(*) from public.project_labour_totals where project_id='d4000000-0000-4000-8000-000000000030'),0::bigint,'member reads no labour total; it is staff-only');
 select set_config('request.jwt.claims','{"role":"authenticated","sub":"d4000000-0000-4000-8000-000000000001"}',true);
 select set_config('test.time_invoice',public.bill_project_time('d4000000-0000-4000-8000-000000000010','d4000000-0000-4000-8000-000000000030','d4000000-0000-4000-8000-000000000050')::text,true);
 select is((select status::text from public.invoices where id=current_setting('test.time_invoice')::uuid),'draft','billing inserts a draft through existing guards');

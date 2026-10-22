@@ -17,6 +17,7 @@ import {
 import { createClient } from "@/lib/supabase/server"
 import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
 import { projectProfit } from "@/lib/metrics/projects"
 import { minutesToHours, billableValueSatang } from "@/lib/metrics/timesheets"
@@ -79,6 +80,7 @@ export default async function ProjectDetailPage({
   const ctx = await requireOrgContext()
   const { id } = await params
   const supabase = await createClient()
+  const seesProfit = can(ctx.role, "profit:view")
 
   const { data: project } = await supabase
     .from("projects")
@@ -141,7 +143,7 @@ export default async function ProjectDetailPage({
       .from("time_entries")
       .select("project_id, minutes, billable, rate_satang")
       .eq("org_id", ctx.orgId).eq("project_id", id).order("id").range(from, to)),
-    supabase.from("project_labour_totals").select("labour_cost_satang").eq("org_id", ctx.orgId).eq("project_id", id).maybeSingle(),
+    seesProfit ? supabase.from("project_labour_totals").select("labour_cost_satang").eq("org_id", ctx.orgId).eq("project_id", id).maybeSingle() : null,
     supabase
       .from("project_time_totals")
       .select("minutes")
@@ -203,8 +205,8 @@ export default async function ProjectDetailPage({
 
   const billedInvoices = invoices.filter((invoice) => ["sent", "partially_paid", "paid", "overdue"].includes(invoice.status))
   const hasFinancials = billedInvoices.length > 0 || costs.length > 0 || timeEntries.length > 0
-  if (labourRes.error) throw new Error("Project labour cost unavailable. Please reload.")
-  const profit = hasFinancials ? projectProfit(billedInvoices, costs, labourRes.data?.labour_cost_satang ?? 0) : null
+  if (labourRes?.error) throw new Error("Project labour cost unavailable. Please reload.")
+  const profit = labourRes && hasFinancials ? projectProfit(billedInvoices, costs, labourRes.data?.labour_cost_satang ?? 0) : null
 
   const projectId = p.id
   async function transitionProject(to: Enums<"project_status">) {
@@ -336,7 +338,7 @@ export default async function ProjectDetailPage({
         </Card>
       ) : null}
 
-      {/* Profit (only when there are invoices or costs) */}
+      {/* Profit (staff only, once there are invoices, costs or time) */}
       {profit ? (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard label="Revenue" value={formatTHB(profit.revenueSatang)} tone="positive" />
