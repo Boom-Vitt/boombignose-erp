@@ -1,10 +1,12 @@
+import { invoiceDisplayNumber } from "@/lib/documents/numbering"
+import { CancelDraftButton } from "../../_components/cancel-draft-button"
 import { readAll } from "@/lib/supabase/read-all"
 import { DocumentTotals } from "@/components/document-totals"
 import { WithholdingForm } from "../../_components/withholding-form"
 import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { FileSignature, FileText, FolderKanban, Wallet } from "lucide-react"
+import { FileSignature, FileText, FolderKanban, Wallet, Truck } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -15,6 +17,9 @@ import {
   outstandingSatang,
 } from "@/lib/metrics/invoice-status"
 import type { Enums } from "@/lib/types/database"
+import { deliverInvoice } from "@/lib/inventory/actions"
+import { invoiceStockableCount, stockMoveCount } from "@/lib/inventory/queries"
+import { InventoryAction } from "@/app/(app)/inventory/_components/action-button"
 import { INVOICE_FLOW } from "@/lib/record/status"
 
 import { PageHeader } from "@/components/page-header"
@@ -88,6 +93,7 @@ export default async function InvoiceDetailPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
   const today = todayISO()
+  const [deliveryCount, stockableCount] = await Promise.all([stockMoveCount({ sourceId: id }), invoiceStockableCount(id)])
 
   const [
     claimsRes,
@@ -151,7 +157,6 @@ export default async function InvoiceDetailPage({
     client_id: invoice.client_id,
     project_id: invoice.project_id ?? "",
     number: invoice.number,
-    status: invoice.status,
     issue_date: invoice.issue_date ?? "",
     due_date: invoice.due_date ?? "",
     amountBaht: satangToBahtString(invoice.amount_satang),
@@ -188,7 +193,7 @@ export default async function InvoiceDetailPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={invoice.number}
+        title={invoiceDisplayNumber(invoice)}
         description={invoice.clients?.name ?? "Invoice"}
         breadcrumbs={[{ label: "Finance", href: "/finance" }]}
       >
@@ -210,6 +215,7 @@ export default async function InvoiceDetailPage({
 
       <SmartButtons
         buttons={[
+          { label: "Deliveries", icon: Truck, count: deliveryCount, href: `/inventory/moves?sourceId=${id}`, nextStep: !!invoice.issued_snapshot_id && stockableCount > 0 },
           { label: "Payments", icon: Wallet, count: paymentCountRes.count ?? 0, href: "#payments" },
           {
             label: "Source quote",
@@ -234,6 +240,9 @@ export default async function InvoiceDetailPage({
             ? {}
             : {
                 issue: "#issue-invoice",
+                ...(can(ctx.role, "inventory:manage") && invoice.issued_snapshot_id && deliveryCount === 0 && stockableCount > 0
+                  ? { deliver: ({ label, variant }: { label: string; variant: "default" | "outline" }) => <InventoryAction label={label} variant={variant} action={deliverInvoice.bind(null, id, undefined)} /> }
+                  : {}),
                 ...(outstanding > 0 && !["draft", "cancelled"].includes(invoice.status)
                   ? { pay: "#payment-claims" }
                   : {}),
@@ -242,7 +251,7 @@ export default async function InvoiceDetailPage({
       />
 
       <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. VAT and withholding are document calculations only, not a legal tax system, accounting ledger, filing service or e-Tax Invoice. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
-      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></CardContent></Card> : null}
+      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /><CancelDraftButton invoiceId={invoice.id} /></CardContent></Card> : null}
       {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

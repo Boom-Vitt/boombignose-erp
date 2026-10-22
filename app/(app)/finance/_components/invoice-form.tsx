@@ -35,14 +35,6 @@ const Schema = z
     client_id: z.string().min(1, "Choose a client"),
     project_id: z.string().optional(),
     number: z.string().optional(),
-    status: z.enum([
-      "draft",
-      "sent",
-      "partially_paid",
-      "paid",
-      "overdue",
-      "cancelled",
-    ]),
     issue_date: z.string().optional(),
     due_date: z.string().optional(),
     amountBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter an exact THB amount with up to two decimals"),
@@ -66,7 +58,6 @@ export type InvoiceFormValues = {
   client_id: string
   project_id: string
   number: string
-  status: Values["status"]
   issue_date: string
   due_date: string
   amountBaht: string
@@ -142,18 +133,17 @@ export function InvoiceForm({
             name="number"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Invoice number</FormLabel>
+                <FormLabel>Draft reference (optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="Auto (INV-2026-00X)" {...field} />
+                  <Input placeholder="Assigned on issue" {...field} />
                 </FormControl>
                 <FormDescription>
-                  Leave blank to auto-number.
+                  The issued invoice number is assigned by the issue command.
                 </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <FormField control={form.control} name="status" render={({ field }) => <FormItem><FormLabel>Status</FormLabel><FormControl><Input {...field} readOnly /></FormControl><FormDescription>Payment status is derived from verified receipts. Use the issue action to issue a draft.</FormDescription></FormItem>} />
         </div>
 
         <div className="grid gap-5 sm:grid-cols-3">
@@ -162,10 +152,11 @@ export function InvoiceForm({
             name="issue_date"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Issue date</FormLabel>
+                <FormLabel>Draft date</FormLabel>
                 <FormControl>
                   <Input type="date" {...field} />
                 </FormControl>
+                <FormDescription>Issuing replaces this with today in Bangkok.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}

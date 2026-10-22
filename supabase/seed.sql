@@ -119,14 +119,14 @@ insert into milestones (org_id, project_id, title, done, due_date) values
   ('a0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000002','Signed SOW', false, current_date + 6)
 on conflict do nothing;
 
--- ── Finance: invoices (varied statuses) ─────────────────────────────────────
+-- ── Finance: drafts (issued after their lines are complete) ─────────────────────────────────────
 insert into invoices (id, org_id, client_id, project_id, number, status, issue_date, due_date, amount_satang, is_recurring, recurring_interval, notes) values
-  ('f0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','INV-2026-001','sent',          current_date - 25, current_date - 10,  9000000, false, null,     'Deposit 50% — LINE bot project'),
-  ('f0000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000002','INV-2026-002','sent',          current_date - 8,  current_date + 7,  12500000, false, null,     'Deposit — CRM automation'),
-  ('f0000000-0000-0000-0000-000000000003','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000004',null,                                   'INV-2026-003','overdue',       current_date - 30, current_date - 8,   5500000, false, null,     'Discovery workshop — Siam Property'),
-  ('f0000000-0000-0000-0000-000000000004','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003','e0000000-0000-0000-0000-000000000003','INV-2026-004','sent',current_date - 15, current_date + 5,   8000000, false, null,     'Course onboarding — milestone 2'),
-  ('f0000000-0000-0000-0000-000000000005','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003',null,                                   'INV-2026-005','sent',          current_date - 3,  current_date + 27,  3500000, true,  'monthly','Lanna EdTech — monthly support retainer'),
-  ('f0000000-0000-0000-0000-000000000006','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002',null,                                   'INV-2026-006','draft',         current_date,      current_date + 30,  4000000, true,  'monthly','Krua Thai — monthly automation retainer (draft)')
+  ('f0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000001','DRAFT-f0000000-0000-0000-0000-000000000001','draft',          current_date - 25, current_date - 10,  9000000, false, null,     'Deposit 50% — LINE bot project'),
+  ('f0000000-0000-0000-0000-000000000002','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002','e0000000-0000-0000-0000-000000000002','DRAFT-f0000000-0000-0000-0000-000000000002','draft',          current_date - 8,  current_date + 7,  12500000, false, null,     'Deposit — CRM automation'),
+  ('f0000000-0000-0000-0000-000000000003','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000004',null,                                   'DRAFT-f0000000-0000-0000-0000-000000000003','draft',       current_date - 30, current_date - 8,   5500000, false, null,     'Discovery workshop — Siam Property'),
+  ('f0000000-0000-0000-0000-000000000004','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003','e0000000-0000-0000-0000-000000000003','DRAFT-f0000000-0000-0000-0000-000000000004','draft',current_date - 15, current_date + 5,   8000000, false, null,     'Course onboarding — milestone 2'),
+  ('f0000000-0000-0000-0000-000000000005','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000003',null,                                   'DRAFT-f0000000-0000-0000-0000-000000000005','draft',          current_date - 3,  current_date + 27,  3500000, true,  'monthly','Lanna EdTech — monthly support retainer'),
+  ('f0000000-0000-0000-0000-000000000006','a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000002',null,                                   'DRAFT-f0000000-0000-0000-0000-000000000006','draft',         current_date,      current_date + 30,  4000000, true,  'monthly','Krua Thai — monthly automation retainer (draft)')
 on conflict (id) do nothing;
 
 -- ── Finance: payments ───────────────────────────────────────────────────────
@@ -187,11 +187,38 @@ update quotes set status='accepted' where id='90000000-0000-0000-0000-0000000000
 
 
 -- ── V3: Invoice line items (sum to the invoice amount) ──────────────────────
-insert into invoice_items (org_id, invoice_id, description, quantity, unit_price_satang, amount_satang, position, product_id, unit) values
+with seed_lines(org_id,invoice_id,description,quantity,unit_price_satang,amount_satang,position,product_id,unit) as (values
   ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000001','Discovery & conversation-flow design', 1, 4000000, 4000000, 0, 'a5000000-0000-4000-8000-000000000004', 'project'),
   ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000001','LINE bot build (50% deposit)',         1, 5000000, 5000000, 1, 'a5000000-0000-4000-8000-000000000005', 'project'),
-  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000002','CRM automation — deposit',             1, 12500000, 12500000, 0, 'a5000000-0000-4000-8000-000000000006', 'project')
-on conflict do nothing;
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000002','CRM automation — deposit',             1, 12500000, 12500000, 0, 'a5000000-0000-4000-8000-000000000006', 'project'),
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000003','Discovery workshop',1,5500000,5500000,0,null,'project'),
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000004','Course onboarding milestone 2',1,8000000,8000000,0,null,'project'),
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000005','Monthly support retainer',1,3500000,3500000,0,null,'month'),
+  ('a0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000006','Monthly automation retainer',1,4000000,4000000,0,null,'month')
+)
+insert into public.invoice_items(org_id,invoice_id,description,quantity,unit_price_satang,amount_satang,position,product_id,unit)
+select l.org_id::uuid,l.invoice_id::uuid,l.description,l.quantity,l.unit_price_satang,l.amount_satang,l.position,l.product_id::uuid,l.unit
+from seed_lines l join public.invoices i on i.org_id=l.org_id::uuid and i.id=l.invoice_id::uuid
+where i.status='draft' and i.issued_snapshot_id is null and not exists(
+  select 1 from public.invoice_items item where item.org_id=i.org_id and item.invoice_id=i.id and item.position=l.position
+);
+
+select set_config('request.jwt.claims','{"role":"authenticated","sub":"b0000000-0000-0000-0000-000000000001"}',false);
+do $$
+declare i public.invoices;
+begin
+  if (select legal_name is null from public.org_settings where org_id='a0000000-0000-0000-0000-000000000001') then
+    perform public.update_business_profile('a0000000-0000-0000-0000-000000000001','Synthetic BoomBigNose seller','Synthetic Bangkok address',null,'not_registered');
+  end if;
+  for i in select * from public.invoices where org_id='a0000000-0000-0000-0000-000000000001' and id in (
+    'f0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000002','f0000000-0000-0000-0000-000000000003',
+    'f0000000-0000-0000-0000-000000000004','f0000000-0000-0000-0000-000000000005') and status='draft' and issued_snapshot_id is null order by id
+  loop
+    perform public.issue_invoice(i.org_id,i.id,i.version,i.id);
+  end loop;
+end;
+$$;
+select set_config('request.jwt.claims','{}',false);
 
 -- ── V3: Timesheets ──────────────────────────────────────────────────────────
 insert into time_entries (org_id, project_id, task_id, user_id, work_date, minutes, billable, rate_satang, notes) values
@@ -226,6 +253,24 @@ on conflict(id) do nothing;
 insert into public.document_counters(org_id,kind,year,value)
 values('a0000000-0000-0000-0000-000000000001','PO',extract(year from current_date)::integer,2)
 on conflict(org_id,kind,year) do update set value=greatest(document_counters.value,excluded.value);
+
+-- Synthetic opening inventory; stable IDs make a seed retry leave the ledger unchanged.
+insert into public.products(id,org_id,sku,name,type,unit,is_stockable,list_price_satang,cost_satang,reorder_min,reorder_qty,default_vendor_id) values
+ ('a8100000-0000-4000-8000-000000000001','a0000000-0000-0000-0000-000000000001','DEMO-HUB','Demo USB hub','goods','piece',true,150000,80000,5,10,'a6000000-0000-4000-8000-000000000001'),
+ ('a8100000-0000-4000-8000-000000000002','a0000000-0000-0000-0000-000000000001','DEMO-MIC','Demo studio microphone','goods','piece',true,350000,200000,4,6,'a6000000-0000-4000-8000-000000000002')
+on conflict(id) do nothing;
+insert into public.stock_moves(id,org_id,product_id,warehouse_id,kind,quantity,unit_cost_satang,source_type,source_id,note,balance_after,average_cost_after)
+select v.id,'a0000000-0000-0000-0000-000000000001',v.product,w.id,'receipt'::public.stock_move_kind,v.qty,v.cost,'adjustment',v.id,'Synthetic opening receipt',0,0
+from (values
+ ('a8200000-0000-4000-8000-000000000001'::uuid,'a8100000-0000-4000-8000-000000000001'::uuid,12,80000),
+ ('a8200000-0000-4000-8000-000000000002'::uuid,'a8100000-0000-4000-8000-000000000002'::uuid,3,200000)
+) v(id,product,qty,cost)
+join public.warehouses w on w.org_id='a0000000-0000-0000-0000-000000000001' and w.is_default
+where not exists(select 1 from public.stock_moves m where m.id=v.id);
+insert into public.stock_moves(id,org_id,product_id,warehouse_id,kind,quantity,unit_cost_satang,source_type,source_id,note,balance_after,average_cost_after)
+select 'a8200000-0000-4000-8000-000000000003','a0000000-0000-0000-0000-000000000001','a8100000-0000-4000-8000-000000000001',w.id,'delivery',2,0,'adjustment','a8200000-0000-4000-8000-000000000003','Synthetic demo delivery',0,0
+from public.warehouses w where w.org_id='a0000000-0000-0000-0000-000000000001' and w.is_default
+and not exists(select 1 from public.stock_moves where id='a8200000-0000-4000-8000-000000000003');
 
 -- One submitted expense claim from the first seeded member, waiting on the owner.
 insert into public.expense_claims(id,org_id,number,employee,title,status,submitted_at)

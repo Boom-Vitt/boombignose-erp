@@ -28,3 +28,9 @@ it("inserts one exact line and leaves authoritative discount/header recompute to
   expect(insert).toHaveBeenCalledWith(expect.objectContaining({ org_id: ctx.orgId, quantity: 2.125, unit_price_satang: 101, amount_satang: 215 }))
   expect(update).not.toHaveBeenCalled()
 })
+
+
+it("refuses an explicit positive VAT rate for an unregistered workspace", async () => {
+  expect(await addInvoiceItem({ invoice_id: "invoice", description: "Service", quantity: "1", unitPriceBaht: "1.00", tax_rate_bps: 700 })).toEqual({ error: expect.stringContaining("VAT registration") })
+  expect(insert).not.toHaveBeenCalled()
+})

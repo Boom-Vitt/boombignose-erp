@@ -1,3 +1,6 @@
+import Link from "next/link"
+import { readAll } from "@/lib/supabase/read-all"
+import { can } from "@/lib/permissions"
 import { SearchFacets } from "@/components/search/search-facets"
 import { GroupedTableRows } from "@/components/search/grouped-table-rows"
 import { parseFacets, matchesFacets, type SearchParams } from "@/lib/search-facets"
@@ -14,6 +17,7 @@ import {
   billableValueSatang,
   utilization,
   entryValueSatang,
+  canEditTimeEntry,
 } from "@/lib/metrics/timesheets"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
@@ -31,6 +35,8 @@ import {
 
 import type { Option } from "./_components/form-fields"
 import { LogTimeForm } from "./_components/log-time-form"
+import { BillTimeForm, MemberCostRateForm } from "./_components/billing-controls"
+import { EditTimeEntryButton } from "./_components/edit-time-entry-button"
 import { DeleteTimeEntryButton } from "./_components/delete-time-entry-button"
 
 export const dynamic = "force-dynamic"
@@ -53,6 +59,9 @@ type EntryRow = {
   rate_satang: number | null
   project_id: string
   user_id: string | null
+  notes: string | null
+  invoice_id: string | null
+  invoices: { status: string; number: string } | null
   projects: { name: string } | null
 }
 
@@ -65,23 +74,19 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
   const month = currentMonthKey()
   const today = todayISO()
 
-  const [entriesRes, projectsRes] = await Promise.all([
-    supabase
+  const [entriesRes, projectsRes, membersRes] = await Promise.all([
+    readAll((from, to) => supabase
       .from("time_entries")
-      .select(
-        "id, work_date, minutes, billable, rate_satang, project_id, user_id, projects(name)"
-      )
+      .select("id, work_date, minutes, billable, rate_satang, project_id, user_id, notes, invoice_id, invoices(status, number), projects(name)")
       .eq("org_id", ctx.orgId)
-      .order("work_date", { ascending: false })
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("projects")
-      .select("id, name")
-      .eq("org_id", ctx.orgId)
-      .order("name", { ascending: true }),
+      .order("work_date", { ascending: false }).order("id").range(from, to)),
+    readAll((from, to) => supabase
+      .from("projects").select("id, name").eq("org_id", ctx.orgId).order("name").order("id").range(from, to)),
+    readAll((from, to) => supabase
+      .from("memberships").select("user_id,cost_rate_satang").eq("org_id", ctx.orgId).order("id").range(from, to)),
   ])
 
-  if (entriesRes.error || projectsRes.error) throw new Error("Timesheets unavailable. Please reload.")
+  if (entriesRes.error || projectsRes.error || membersRes.error) throw new Error("Timesheets unavailable. Please reload.")
   const allEntries = (entriesRes.data ?? []) as EntryRow[]
   const projects = (projectsRes.data ?? []) as Array<{ id: string; name: string }>
 
@@ -92,20 +97,13 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
 
   // Resolve who logged each entry. `time_entries.user_id` references auth.users
   // (no PostgREST FK to profiles), so fetch the profiles separately and map.
-  const userIds = Array.from(
-    new Set(allEntries.map((e) => e.user_id).filter((v): v is string => !!v))
-  )
   const nameById = new Map<string, string>()
-  if (userIds.length > 0) {
-    const { data: profiles, error } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", userIds)
-    if (error) throw new Error("Time-entry users unavailable. Please reload.")
-    for (const p of profiles ?? []) {
-      if (p.full_name) nameById.set(p.id, p.full_name)
-    }
-  }
+  const { data: profiles, error: profilesError } = await readAll((from, to) => supabase
+    .from("profiles").select("id, full_name").order("id").range(from, to))
+  if (profilesError) throw new Error("Time-entry users unavailable. Please reload.")
+  for (const profile of profiles ?? []) if (profile.full_name) nameById.set(profile.id, profile.full_name)
+  const staff = can(ctx.role, "settings:manage")
+  const members = (membersRes.data ?? []).map(member => ({ value: member.user_id, label: nameById.get(member.user_id) ?? "Member", rate: member.cost_rate_satang }))
 
   const entries = allEntries.filter((e) => matchesFacets(config, {
     text: `${e.projects?.name ?? ""} ${e.user_id ? nameById.get(e.user_id) ?? "" : ""}`,
@@ -167,6 +165,14 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
         </CardContent>
       </Card>
 
+      {staff ? <Card>
+        <CardHeader><CardTitle className="text-base">Billing and labour cost</CardTitle></CardHeader>
+        <CardContent className="space-y-6">
+          <BillTimeForm projects={projectOptions} />
+          <MemberCostRateForm members={members} />
+        </CardContent>
+      </Card> : null}
+
       <SearchFacets list="timesheets" config={config} savedViews={savedViews} />
 
       <Card>
@@ -191,11 +197,12 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                   <TableHead className="text-right">Hours</TableHead>
                   <TableHead>Billable</TableHead>
                   <TableHead className="text-right">Value</TableHead>
+                  <TableHead>Invoice</TableHead>
                   <TableHead className="w-10" aria-label="Actions" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <GroupedTableRows rows={entries} colSpan={7} amount={entryValueSatang}
+                <GroupedTableRows rows={entries} colSpan={8} amount={entryValueSatang}
                 group={config.groupBy ? (e) => config.groupBy === "project"
                   ? { key: e.project_id, label: e.projects?.name ?? "No project" }
                   : { key: monthKey(e.work_date), label: monthKey(e.work_date) } : undefined}>
@@ -225,13 +232,17 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                       <TableCell className="text-right tabular-nums">
                         {value > 0 ? formatTHB(value) : "—"}
                       </TableCell>
+                      <TableCell>{e.invoice_id ? <Link className="text-sm underline" href={`/finance/invoices/${e.invoice_id}`}>{e.invoices?.number ?? "Invoice"}{e.invoices?.status === "cancelled" ? " (cancelled)" : ""}</Link> : "Unbilled"}</TableCell>
                       <TableCell className="text-right">
+                        {canEditTimeEntry(ctx.userId, ctx.role, { ...e, invoice_status: e.invoices?.status ?? null }) ? <div className="flex justify-end">
+                        <EditTimeEntryButton entry={e} />
                         <DeleteTimeEntryButton
                           id={e.id}
                           label={`${minutesToHours(e.minutes).toFixed(2)}h on ${
                             e.projects?.name ?? "project"
                           }`}
                         />
+                        </div> : <span className="text-muted-foreground text-xs">Locked</span>}
                       </TableCell>
                     </TableRow>
                   )

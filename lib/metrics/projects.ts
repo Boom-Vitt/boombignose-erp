@@ -18,19 +18,23 @@ export type ProjectProfit = {
 
 /**
  * Gross project profit: billed revenue before VAT (non-draft, non-cancelled
- * invoices) minus all recorded costs. Withholding is still revenue, so this
+ * invoices) minus all recorded costs and labour at current member rates. Withholding is still revenue, so this
  * never reads the collectible amount_satang.
  */
 export function projectProfit(
   invoices: InvoiceForProfit[],
-  costs: CostForProfit[]
+  costs: CostForProfit[],
+  labourCostSatang: Satang = 0
 ): ProjectProfit {
   const revenueSatang = sumSatang(
     invoices
       .filter((i) => i.status !== "cancelled" && i.status !== "draft")
       .map((i) => i.total_satang - i.vat_satang)
   )
-  const costSatang = sumSatang(costs.map((c) => c.amount_satang))
+  const costSatang = sumSatang([
+    ...costs.map((c) => c.amount_satang),
+    labourCostSatang,
+  ])
   const profitSatang = revenueSatang - costSatang
   const marginPct = revenueSatang > 0 ? (profitSatang / revenueSatang) * 100 : 0
   return { revenueSatang, costSatang, profitSatang, marginPct }

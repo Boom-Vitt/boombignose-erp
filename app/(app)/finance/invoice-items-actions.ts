@@ -67,11 +67,10 @@ export async function addInvoiceItem(
     if (!product) return { error: "Product unavailable. Choose an active product or a free-text line." }
     taxRate ??= product.tax_rate_bps
   }
-  if (taxRate === undefined) {
-    const { data: settings, error: settingsError } = await supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle()
-    if (settingsError) return { error: settingsError.message }
-    taxRate = settings?.vat_registered ? settings.vat_rate_bps : 0
-  }
+  const { data: settings, error: settingsError } = await supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle()
+  if (settingsError) return { error: settingsError.message }
+  taxRate ??= settings?.vat_registered ? settings.vat_rate_bps : 0
+  if (taxRate > 0 && !settings?.vat_registered) return { error: "VAT registration required for taxable lines" }
   let amount: number
   try { amount = invoiceLineAmount(d.quantity, unitPriceSatang) }
   catch { return { error: "Line total exceeds safe bounds" } }

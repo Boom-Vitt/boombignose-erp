@@ -36,7 +36,7 @@ beforeEach(() => {
     activities: ['A','B'].map(org_id => ({ id: `activity-${org_id}`, org_id, body: `ACTIVITY_${org_id}`, type: 'note', client_id: 'client-A', deal_id: 'deal-A', done: false, due_date: '2026-10-01' })),
     contacts: ['A','B'].map(org_id => ({ id: `contact-${org_id}`, org_id, name: `CONTACT_${org_id}`, client_id: 'client-A' })),
     org_settings: ['A','B'].map(org_id => ({ org_id, cash_balance_satang: org_id === 'A' ? 500 : 800 })),
-    invoices: ['A','B'].map(org_id => ({id:`invoice-${org_id}`,org_id,status:'sent',amount_satang:org_id==='A'?1000:3000,due_date:'2000-01-01',is_recurring:true,recurring_interval:'monthly'})),
+    invoices: ['A','B'].map(org_id => ({id:`invoice-${org_id}`,org_id,status:'sent',amount_satang:org_id==='A'?1000:3000,total_satang:org_id==='A'?1070:3210,vat_satang:org_id==='A'?70:210,issue_date:date,due_date:'2000-01-01',is_recurring:true,recurring_interval:'monthly'})),
     payments: ['A','B'].map(org_id => ({org_id,invoice_id:`invoice-${org_id}`,amount_satang:org_id==='A'?100:500,paid_at:date,verification_state:'verified'})).concat([{org_id:'A',invoice_id:'invoice-A',amount_satang:777,paid_at:date,verification_state:'legacy_unverified'}]),
     costs: ['A','B'].map(org_id => ({org_id,amount_satang:org_id==='A'?300:900,incurred_on:date})),
     subscriptions: ['A','B'].map(org_id => ({org_id,status:'active',amount_satang:org_id==='A'?600:1800,interval:'monthly'})),
@@ -145,7 +145,7 @@ describe('active workspace business reads', () => {
     expect(a.openQuotesValueSatang).toBe(200)
     expect(a.activeProjectCount).toBe(1)
     expect(a.cashSatang).toBe(500)
-    expect(a.monthlyRevenueSatang).toBe(100)
+    expect(a.monthlyRevenueSatang).toBe(1000)
     expect(a.revenueHistory).toHaveLength(6)
     expect(a.revenueHistory[5]).toEqual({ month: currentMonthKey(), revenueSatang: a.monthlyRevenueSatang })
     expect(a.monthlyBurnSatang).toBe(300)
@@ -162,7 +162,7 @@ describe('active workspace business reads', () => {
     expect(b.pipelineSatang).toBe(999)
     expect(b.openQuotesValueSatang).toBe(1000)
     expect(b.cashSatang).toBe(800)
-    expect(b.monthlyRevenueSatang).toBe(500)
+    expect(b.monthlyRevenueSatang).toBe(3000)
     expect(b.revenueHistory[5]).toEqual({ month: currentMonthKey(), revenueSatang: b.monthlyRevenueSatang })
     expect(b.unpaidSatang).toBe(2500)
     expect(b.mrrSatang).toBe(1800)
@@ -170,19 +170,20 @@ describe('active workspace business reads', () => {
   })
 })
 
-it('dashboard revenue history uses verified receipts and Bangkok calendar boundaries', async () => {
+it('dashboard revenue history uses issued base revenue and the Bangkok current month', async () => {
   vi.useFakeTimers()
-  vi.setSystemTime(new Date('2026-01-31T17:00:00Z')) // February in Bangkok, January in UTC.
-  const receipt = { org_id: 'A', invoice_id: 'invoice-A', verification_state: 'verified' }
-  state.client = databaseFixture({ payments: [
-    { ...receipt, paid_at: '2025-08-31T16:59:59Z', amount_satang: 9999 },
-    { ...receipt, paid_at: '2025-08-31T17:00:00Z', amount_satang: 101 },
-    { ...receipt, paid_at: '2026-01-31T16:59:59Z', amount_satang: 202 },
-    { ...receipt, paid_at: '2026-01-31T17:00:00Z', amount_satang: 303 },
-    { ...receipt, paid_at: '2026-02-28T16:59:59Z', amount_satang: 404 },
-    { ...receipt, paid_at: '2026-02-28T17:00:00Z', amount_satang: 9999 },
-    { ...receipt, org_id: 'B', paid_at: '2026-01-31T17:00:00Z', amount_satang: 9999 },
-    { ...receipt, verification_state: 'legacy_unverified', paid_at: '2026-01-31T17:00:00Z', amount_satang: 9999 },
+  vi.setSystemTime(new Date('2026-01-31T17:00:00Z'))
+  const invoice = { org_id: 'A', status: 'sent', vat_satang: 0, amount_satang: 0 }
+  state.client = databaseFixture({ invoices: [
+    { ...invoice, issue_date: '2025-08-31', total_satang: 9999 },
+    { ...invoice, issue_date: '2025-09-01', total_satang: 101 },
+    { ...invoice, issue_date: '2026-01-31', total_satang: 202 },
+    { ...invoice, issue_date: '2026-02-01', total_satang: 303 },
+    { ...invoice, issue_date: '2026-02-28', total_satang: 404 },
+    { ...invoice, issue_date: '2026-03-01', total_satang: 9999 },
+    { ...invoice, org_id: 'B', issue_date: '2026-02-01', total_satang: 9999 },
+    { ...invoice, status: 'draft', issue_date: '2026-02-01', total_satang: 9999 },
+    { ...invoice, status: 'cancelled', issue_date: '2026-02-01', total_satang: 9999 },
   ] })
   const data = await getDashboardData()
   expect(data.revenueHistory).toEqual([
@@ -202,7 +203,7 @@ it('dashboard revenue history uses verified receipts and Bangkok calendar bounda
   expect(html).toContain('฿7.07')
 })
 
-it('dashboard shows six zero months and safe bars when there are no payments', async () => {
+it('dashboard shows six zero months and safe bars when there are no issued invoices', async () => {
   state.client = databaseFixture({})
   expect((await getDashboardData()).revenueHistory.map(row => row.revenueSatang)).toEqual([0, 0, 0, 0, 0, 0])
   const html = renderToStaticMarkup(await DashboardPage())
@@ -241,9 +242,9 @@ it('deal exports contain only the active workspace and its client names',async()
  expect(b).toContain('DEAL_B');expect(b).toContain('CLIENT_B');expect(b).not.toContain('DEAL_A')
 })
 
-it('dashboard reads beyond 1000 net receivables and keeps revenue based on verified receipts', async () => {
+it('dashboard reads beyond 1000 net receivables and uses issued pre-VAT revenue', async () => {
  vi.useFakeTimers().setSystemTime(new Date('2026-10-23T06:00:00Z'))
- const invoices = Array.from({length:1501},(_,n)=>({id:`vat-${n}`,org_id:'A',status:'sent',amount_satang:104000,total_satang:107000,due_date:'2026-10-01',is_recurring:false}))
+ const invoices = Array.from({length:1501},(_,n)=>({id:`vat-${n}`,org_id:'A',status:'sent',amount_satang:104000,total_satang:107000,vat_satang:7000,issue_date:'2026-10-01',due_date:'2026-10-01',is_recurring:false}))
  const payments = invoices.map(i=>({id:`paid-${i.id}`,org_id:'A',invoice_id:i.id,amount_satang:100000,paid_at:'2026-10-23T05:00:00Z',verification_state:'verified'}))
  state.client = databaseFixture({invoices,payments})
  const result = await getDashboardData()

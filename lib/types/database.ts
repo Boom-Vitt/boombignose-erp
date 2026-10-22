@@ -24,6 +24,24 @@ export type Database = {
           }
         },"public": {
           Tables: {
+      warehouses: {
+        Row: { id: string; org_id: string; code: string; name: string; address: string | null; is_default: boolean; active: boolean }
+        Insert: { id?: string; org_id: string; code: string; name: string; address?: string | null; is_default?: boolean; active?: boolean }
+        Update: { code?: string; name?: string; address?: string | null; is_default?: boolean; active?: boolean }
+        Relationships: []
+      }
+      stock_counts: {
+        Row: { org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
+        Insert: { org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
+        Update: never
+        Relationships: []
+      }
+      stock_moves: {
+        Row: { id: string; sequence: number; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: "purchase_order" | "invoice" | "adjustment" | "transfer"; source_id: string; note: string | null; moved_at: string; created_by: string | null; balance_after: number; average_cost_after: number }
+        Insert: { id?: string; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: string; source_id: string; note?: string | null; balance_after: number; average_cost_after: number }
+        Update: never
+        Relationships: []
+      }
       vendors: {
         Row: { id: string; org_id: string; name: string; tax_id: string | null; email: string | null; phone: string | null; address: string | null; payment_terms_days: number; notes: string | null; active: boolean; created_at: string; updated_at: string }
         Insert: { id?: string; org_id: string; name: string; tax_id?: string | null; email?: string | null; phone?: string | null; address?: string | null; payment_terms_days?: number; notes?: string | null; active?: boolean; created_at?: string; updated_at?: string }
@@ -521,13 +539,16 @@ isOneToOne: false
                   ]
                 },"memberships": {
                   Row: {
+                    "cost_rate_satang": number,
                     "created_at": string,"id": string,"org_id": string,"role": Database["public"]['Enums']["role_enum"],"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
+                    "cost_rate_satang"?: number,
                     "created_at"?: string,"id"?: string,"org_id": string,"role"?: Database["public"]['Enums']["role_enum"],"updated_at"?: string,"user_id": string
                   }
                   Update: {
+                    "cost_rate_satang"?: number,
                     "created_at"?: string,"id"?: string,"org_id"?: string,"role"?: Database["public"]['Enums']["role_enum"],"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
@@ -575,21 +596,22 @@ isOneToOne: false
                   Row: {
 "wht_rate_bps": number,
 
-"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
-                    "business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
+"lock_date": string | null,"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
+                    "allow_negative_stock": boolean,"business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
 "wht_rate_bps"?: number,
 
-"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
-                    "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
+"lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
+                    "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
 "wht_rate_bps"?: number,
 
-"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
-                    "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
+"lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
+                    "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
+
                   }
                   Relationships: [
                     {
@@ -1116,18 +1138,30 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"time_billing_requests": {
+                  Row: { org_id: string; key: string; project_id: string; invoice_id: string | null }
+                  Insert: { org_id: string; key: string; project_id: string; invoice_id?: string | null }
+                  Update: { org_id?: string; key?: string; project_id?: string; invoice_id?: string | null }
+                  Relationships: []
                 },"time_entries": {
                   Row: {
+                    "invoice_id": string | null,"invoice_item_id": string | null,
                     "billable": boolean,"created_at": string,"id": string,"minutes": number,"notes": string | null,"org_id": string,"project_id": string,"rate_satang": number | null,"task_id": string | null,"updated_at": string,"user_id": string | null,"work_date": string
                   }
                   ComputedFields: never
                   Insert: {
+                    "invoice_id"?: string | null,"invoice_item_id"?: string | null,
                     "billable"?: boolean,"created_at"?: string,"id"?: string,"minutes": number,"notes"?: string | null,"org_id": string,"project_id": string,"rate_satang"?: number | null,"task_id"?: string | null,"updated_at"?: string,"user_id"?: string | null,"work_date"?: string
                   }
                   Update: {
+                    "invoice_id"?: string | null,"invoice_item_id"?: string | null,
                     "billable"?: boolean,"created_at"?: string,"id"?: string,"minutes"?: number,"notes"?: string | null,"org_id"?: string,"project_id"?: string,"rate_satang"?: number | null,"task_id"?: string | null,"updated_at"?: string,"user_id"?: string | null,"work_date"?: string
                   }
                   Relationships: [
+                    { foreignKeyName: "time_entries_invoice_item_tenant_fkey"; columns: ["org_id", "invoice_item_id"]; isOneToOne: false; referencedRelation: "invoice_items"; referencedColumns: ["org_id", "id"] },
+
+                    { foreignKeyName: "time_entries_invoice_tenant_fkey"; columns: ["org_id", "invoice_id"]; isOneToOne: false; referencedRelation: "invoices"; referencedColumns: ["org_id", "id"] },
+
                     {
       foreignKeyName: "time_entries_org_id_fkey"
       columns: ["org_id"]
@@ -1175,21 +1209,21 @@ isOneToOne: false
 
                 id: string; org_id: string; sku: string | null; name: string; description: string | null;
                 type: "service" | "goods"; unit: string; list_price_satang: number; cost_satang: number;
-                tax_rate_bps: number; is_stockable: boolean; active: boolean; created_at: string; updated_at: string;
+                reorder_min: number; reorder_qty: number; default_vendor_id: string | null; tax_rate_bps: number; is_stockable: boolean; active: boolean; created_at: string; updated_at: string;
               }
               Insert: {
 "wht_rate_bps"?: number | null,
 
                 id?: string; org_id: string; sku?: string | null; name: string; description?: string | null;
                 type?: "service" | "goods"; unit?: string; list_price_satang?: number; cost_satang?: number;
-                tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
+                reorder_min?: number; reorder_qty?: number; default_vendor_id?: string | null; tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
               }
               Update: {
 "wht_rate_bps"?: number | null,
 
                 id?: string; org_id?: string; sku?: string | null; name?: string; description?: string | null;
                 type?: "service" | "goods"; unit?: string; list_price_satang?: number; cost_satang?: number;
-                tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
+                reorder_min?: number; reorder_qty?: number; default_vendor_id?: string | null; tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
               }
               ComputedFields: never
               Relationships: [{
@@ -1216,6 +1250,14 @@ isOneToOne: false
       }
 }
           Views: {
+            stock_on_hand: {
+              Row: { org_id: string; product_id: string; warehouse_id: string; quantity: number; average_cost_satang: number; value_satang: number }
+              Relationships: []
+            }
+            inventory_totals: {
+              Row: { org_id: string; product_id: string; quantity: number; value_satang: number }
+              Relationships: []
+            }
             deal_next_activity: {
               Row: { org_id: string | null; deal_id: string | null; next_due_date: string | null; open_count: number | null }
               Relationships: []
@@ -1232,6 +1274,10 @@ isOneToOne: false
               }
               Relationships: []
             }
+            "project_labour_totals": {
+              Row: { org_id: string | null; project_id: string | null; labour_cost_satang: number | null }
+              Relationships: []
+            }
             "project_time_totals": {
               Row: {
                 "minutes": number | null,"org_id": string | null,"project_id": string | null
@@ -1244,6 +1290,16 @@ isOneToOne: false
 "reserve_document_number": { Args: { p_org_id: string; p_kind: string; p_year: number }; Returns: string },
 "accept_portal_quote": { Args: { p_token: string; p_quote_id: string; p_name: string; p_email: string }; Returns: string },
 "update_subscription_schedule": { Args: { p_org_id: string; p_subscription_id: string; p_start_date?: string | null; p_status?: Database["public"]["Enums"]["subscription_status"] | null; p_bill_missed_periods?: boolean; p_changes?: Json }; Returns: undefined },
+            inventory_snapshot: { Args: { p_org_id: string; p_warehouse_id?: string; p_product_id?: string }; Returns: Json }
+            save_warehouse: { Args: { p_org_id: string; p_id: string | null; p_code: string; p_name: string; p_address: string | null; p_default: boolean; p_active: boolean }; Returns: string }
+            delete_warehouse: { Args: { p_org_id: string; p_id: string }; Returns: undefined }
+            deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string }; Returns: undefined }
+            adjust_stock: { Args: { p_org_id: string; p_product_id: string; p_warehouse_id: string; p_count: number; p_reason: string; p_key: string }; Returns: string | null }
+            create_replenishment_rfq: { Args: { p_org_id: string; p_vendor_id: string }; Returns: string }
+            "bill_project_time": { Args: { p_org_id: string; p_project_id: string; p_key: string }; Returns: string }
+            "set_member_cost_rate": { Args: { p_org_id: string; p_user_id: string; p_rate_satang: number }; Returns: undefined }
+
+
             "accept_integration_event":
 { Args: { "p_event_type": string,"p_key": string,"p_org_id": string,"p_payload": Json }; Returns: Json
                            },
@@ -1274,17 +1330,11 @@ isOneToOne: false
 "provision_workspace":
 { Args: { "p_key": string,"p_name": string }; Returns: string
                            },
-"reconcile_legacy_payment":
-{ Args: { "p_amount_satang": number,"p_key": string,"p_legacy_payment_id": string,"p_org_id": string,"p_reference": string }; Returns: string
-                           },
 "reconcile_legacy_payment_with_evidence":
 { Args: { "p_amount_satang": number,"p_key": string,"p_legacy_payment_id": string,"p_method": Database["public"]['Enums']["payment_method"],"p_org_id": string,"p_paid_on": string,"p_reference": string }; Returns: string
                            },
-"review_payment_claim":
-{ Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_org_id": string,"p_reference": string }; Returns: string
-                           },
 "review_payment_claim_with_evidence":
-{ Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_method": Database["public"]['Enums']["payment_method"],"p_org_id": string,"p_paid_on": string,"p_reference": string }; Returns: string
+{ Args: { "p_amount_satang": number,"p_claim_id": string,"p_decision": string,"p_key": string,"p_method": Database["public"]['Enums']["payment_method"] | null,"p_org_id": string,"p_paid_on": string | null,"p_reference": string }; Returns: string
                            },
 "submit_internal_payment_claim":
 { Args: { "p_amount_satang": number,"p_invoice_id": string,"p_key": string,"p_org_id": string,"p_reference": string }; Returns: string
@@ -1295,12 +1345,14 @@ isOneToOne: false
 "update_business_profile":
 { Args: { "p_business_address": string,"p_legal_name": string,"p_org_id": string,"p_tax_id": string,"p_tax_status": string }; Returns: undefined
                            }
+            cancel_draft_invoice: { Args: { p_org_id: string; p_invoice_id: string }; Returns: undefined }
+            update_finance_lock_date: { Args: { p_org_id: string; p_lock_date: string | null }; Returns: undefined }
             update_tax_business_profile: { Args: { p_org_id: string; p_legal_name: string; p_business_address: string; p_tax_id: string; p_vat_registered: boolean; p_vat_rate_bps: number; p_prices_include_vat: boolean; p_branch_label: string }; Returns: undefined }
             claim_purchase_rfq: { Args: { p_org_id: string; p_order_id: string }; Returns: Json }
             finish_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_error?: string | null }; Returns: undefined }
             create_purchase_order: { Args: { p_org_id: string; p_vendor_id: string; p_order_date: string; p_expected_date?: string | null; p_notes?: string | null }; Returns: string }
             transition_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_status: Database["public"]["Enums"]["purchase_status"] }; Returns: undefined }
-            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json }; Returns: undefined }
+            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string }; Returns: undefined }
             bill_purchase_order: { Args: { p_org_id: string; p_order_id: string }; Returns: string }
             create_expense_claim: { Args: { p_org_id: string; p_title: string }; Returns: string }
             transition_expense_claim: { Args: { p_org_id: string; p_claim_id: string; p_status: Database["public"]["Enums"]["expense_status"]; p_note?: string | null }; Returns: undefined }
@@ -1309,6 +1361,7 @@ isOneToOne: false
           }
           Enums: {
             "accounting_conn_status": "disconnected"|"connected"|"error","accounting_provider": "flowaccount"|"peak"|"xero","accounting_sync_status": "pending"|"synced"|"error","activity_type": "note"|"call"|"email"|"meeting"|"follow_up","ai_output_kind": "deal_summary"|"followup_draft"|"meeting_intake","cost_category": "software"|"contractor"|"infra"|"marketing"|"salary"|"other","deal_stage": "lead"|"contacted"|"discovery"|"proposal"|"negotiation"|"won"|"lost","invitation_status": "pending"|"accepted"|"revoked"|"expired","invoice_status": "draft"|"sent"|"partially_paid"|"paid"|"overdue"|"cancelled","outbound_status": "queued"|"delivered"|"failed","payment_method": "transfer"|"cash"|"card"|"promptpay"|"cheque"|"other","project_status": "not_started"|"in_progress"|"review"|"delivered"|"support"|"paused"|"cancelled","quote_status": "draft"|"sent"|"accepted"|"declined"|"expired"|"converted","recurring_interval": "weekly"|"monthly"|"quarterly"|"yearly","reminder_channel": "line"|"email"|"inapp","reminder_status": "pending"|"sent"|"cancelled","role_enum": "owner"|"admin"|"member","subscription_status": "active"|"paused"|"cancelled","task_status": "todo"|"in_progress"|"done"
+      stock_move_kind: "receipt" | "delivery" | "adjustment_in" | "adjustment_out" | "transfer_in" | "transfer_out"
       purchase_status: "draft" | "sent" | "confirmed" | "received" | "billed" | "cancelled"
       expense_status: "draft" | "submitted" | "approved" | "rejected" | "paid"
       record_type: "client" | "deal" | "quote" | "invoice" | "project" | "subscription" | "vendor" | "purchase_order" | "expense_claim"
@@ -1432,6 +1485,7 @@ export const Constants = {
         },"public": {
           Enums: {
             "accounting_conn_status": ["disconnected", "connected", "error"],"accounting_provider": ["flowaccount", "peak", "xero"],"accounting_sync_status": ["pending", "synced", "error"],"activity_type": ["note", "call", "email", "meeting", "follow_up"],"ai_output_kind": ["deal_summary", "followup_draft", "meeting_intake"],"cost_category": ["software", "contractor", "infra", "marketing", "salary", "other"],"deal_stage": ["lead", "contacted", "discovery", "proposal", "negotiation", "won", "lost"],"invitation_status": ["pending", "accepted", "revoked", "expired"],"invoice_status": ["draft", "sent", "partially_paid", "paid", "overdue", "cancelled"],"outbound_status": ["queued", "delivered", "failed"],"payment_method": ["transfer", "cash", "card", "promptpay", "cheque", "other"],"project_status": ["not_started", "in_progress", "review", "delivered", "support", "paused", "cancelled"],"quote_status": ["draft", "sent", "accepted", "declined", "expired", "converted"],"recurring_interval": ["weekly", "monthly", "quarterly", "yearly"],"reminder_channel": ["line", "email", "inapp"],"reminder_status": ["pending", "sent", "cancelled"],"role_enum": ["owner", "admin", "member"],"subscription_status": ["active", "paused", "cancelled"],"task_status": ["todo", "in_progress", "done"],
+            stock_move_kind: ["receipt", "delivery", "adjustment_in", "adjustment_out", "transfer_in", "transfer_out"],
             purchase_status: ["draft", "sent", "confirmed", "received", "billed", "cancelled"],
             expense_status: ["draft", "submitted", "approved", "rejected", "paid"],
             record_type: ["client", "deal", "quote", "invoice", "project", "subscription", "vendor", "purchase_order", "expense_claim"]

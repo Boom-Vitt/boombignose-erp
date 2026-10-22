@@ -69,6 +69,13 @@ describe("purchasing accepts demo seed ids", () => {
     expect(state.rpcs).toEqual([["receive_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_lines: [{ id: lineId, received_quantity: 1 }] }]])
   })
 
+  it("receives stock into a chosen warehouse whose id lacks RFC version bits", async () => {
+    const warehouseId = seedId(7)
+    state.rows.purchase_order_items = [{ id: lineId, quantity: 2, received_quantity: 0 }]
+    expect(await receivePurchase(orderId, [{ id: lineId, received_quantity: 1 }], warehouseId)).toEqual({})
+    expect(state.rpcs).toEqual([["receive_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_lines: [{ id: lineId, received_quantity: 1 }], p_warehouse_id: warehouseId }]])
+  })
+
   it("bills a seed-id purchase", async () => {
     expect(await createPurchaseBill(orderId)).toEqual({})
     expect(state.rpcs).toEqual([["bill_purchase_order", { p_org_id: state.orgId, p_order_id: orderId }]])

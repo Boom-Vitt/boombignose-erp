@@ -4,7 +4,7 @@ import { loginDemo } from "./auth"
 
 /**
  * Record header smoke: breadcrumbs, the status bar and smart buttons on seeded
- * records (supabase/seed.sql). QUO-2026-001 and INV-2026-001 both link to a project.
+ * records (supabase/seed.sql), including the first issued invoice with a project.
  */
 
 async function expectRecordHeader(page: Page, root: string, statusList: string) {
@@ -30,7 +30,9 @@ test("quote detail shows breadcrumbs, status bar and a linked project", async ({
 test("invoice detail shows breadcrumbs, status bar and a linked project", async ({ page }) => {
   await loginDemo(page)
   await page.goto("/finance")
-  await page.getByRole("link", { name: "INV-2026-001" }).first().click()
-  await expect(page.getByRole("heading", { name: "INV-2026-001" })).toBeVisible()
+  const invoice = page.getByRole("link", { name: /^INV-[0-9]{4}-000001$/ }).first()
+  const number = await invoice.innerText()
+  await invoice.click()
+  await expect(page.getByRole("heading", { name: number })).toBeVisible()
   await expectRecordHeader(page, "Finance", "Invoice status")
 })
