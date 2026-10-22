@@ -33,6 +33,14 @@
 - One pager. `lib/supabase/read-all.ts` is the only loop for the row cap. `readAll` now keeps one copy of any row with an `id`, which moves the insert-during-read fix over from `fetchAllRows`. Its `{ data, error }` result is unchanged for existing callers. `readAllOrThrow` wraps it for callers that used to throw, and a failed page throws an `Error` with that page's message. The deals page, the deals export, the projects page, `lib/purchasing/queries.ts`, `app/(app)/purchases/actions.ts`, the purchases and vendors pages, and the Finance costs list now use it. `lib/queries/fetch-all-rows.ts`, `lib/purchasing/pagination.ts` and their tests are deleted. Their de-duplication and failed-page message checks moved to `lib/supabase/read-all.test.ts`.
 - Error handling. A failed deals or projects read still throws to the error boundary, as on this branch, so a board never shows an empty pipeline as if it were real. A failed `deal_next_activity` read only hides the activity dots, as on the kanban track.
 
+## Fix round 2 (saved views keep the view)
+
+- The Codex review found that loading a saved view dropped the list or board choice. On `/deals?view=list` a saved view linked to `/deals?groupBy=stage`, which reopened the board, and the board ignores grouping. A saved view loaded from the projects board likewise opened the list. The cause was that `SearchFacets` kept its `params` (the view) on facet links and the search form but never passed them to `SavedViewsMenu`.
+- `configToHref` in `app/(app)/views/view-config.ts` takes optional page-owned `params` and appends them after the filters. `SavedViewsMenu` takes the same optional `params` prop and uses it for every link and for the active tick, and `SearchFacets` passes its `params` through. Saved views still store only filters, so a view loads into whichever list or board the user is on. Finance and Clients pass no `params` and render as before.
+- `lib/search-facets-deals-projects.test.ts` renders the facet bar with a saved view on the deals list (`view=list`) and on the projects board (`view=board`) and asserts each saved-view link keeps the view. The dropdown is mocked to render its items inline, because the real menu portals them only while it is open. The test landed first and failed (`expected … to contain 'href="/deals?q=bot&amp;groupBy=stage&amp;view=list"'`), then passed with the fix.
+- Merging `odoo-parity` at `c211899` was a fast-forward.
+- Gates on `6ad60c6`, each with exit code 0. Lint and typecheck were clean (`$ eslint`, `$ tsc --noEmit`), `Test Files  111 passed (111)` and `Tests  797 passed (797)`, and the build ended with `ƒ  (Dynamic)  server-rendered on demand`.
+
 ## Verification
 
 Fix round 1: all four gates passed again on the merged branch, each with exit code 0. Lint and typecheck were clean, 105 test files and 748 tests passed, and the build succeeded.
@@ -66,7 +74,7 @@ Lint and typecheck print nothing after the command line when clean.
 ## Open issues
 
 - The projects list no longer groups by status by default, which was a deliberate choice. It matches Quotes and the other facet lists, and `?groupBy=status` or a saved view restores the old grouping in lifecycle order. Keeping status as an implicit default would leave a grouping with no chip that can't be removed.
-- Saved views store filters, not the view. Loading one from the deals list opens the board, and loading one from the projects board opens the list. Fixing it means adding `view` to the saved-view config in `app/(app)/views` (keys, Zod schema, loader), which this track did not own.
+- Saved views store filters, not the view. Since fix round 2 a saved view loads into the view the user is on. Remembering a view per saved view would mean adding `view` to the saved-view config in `app/(app)/views` (keys, Zod schema, loader).
 - `readAll` pages by offset. A delete during a multi-page load can skip one row for that render. Keyset paging would close this. Inserts are handled by keeping one row per id, but reads that select no `id` (the purchases page line totals, the `deal_next_activity` view) can still see a repeated page-edge row.
 - `lib/mcp/data.mjs` keeps its own offset loop. It is a separate `.mjs` runtime that cannot import the TypeScript pager, so fix round 1 left it alone.
 - The deals page still loads the client list for quick create with a plain capped query, so an org with more than 1,000 clients would miss some in that picker. The headline pipeline KPIs now cover every deal.
