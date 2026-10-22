@@ -1117,7 +1117,10 @@ isOneToOne: false
       }
 }
           Views: {
-            [_ in never]: never
+            deal_next_activity: {
+              Row: { org_id: string | null; deal_id: string | null; next_due_date: string | null; open_count: number | null }
+              Relationships: []
+            }
           }
           Functions: {
             "accept_integration_event":
