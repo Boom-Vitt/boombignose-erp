@@ -8,10 +8,10 @@ import {
 
 describe("projectProfit", () => {
   const invoices: InvoiceForProfit[] = [
-    { status: "paid", amount_satang: 500_000 },
-    { status: "sent", amount_satang: 300_000 },
-    { status: "draft", amount_satang: 100_000 },
-    { status: "cancelled", amount_satang: 200_000 },
+    { status: "paid", total_satang: 535_000, vat_satang: 35_000 },
+    { status: "sent", total_satang: 300_000, vat_satang: 0 },
+    { status: "draft", total_satang: 100_000, vat_satang: 0 },
+    { status: "cancelled", total_satang: 200_000, vat_satang: 0 },
   ]
   const costs: CostForProfit[] = [
     { amount_satang: 200_000 },
@@ -20,7 +20,7 @@ describe("projectProfit", () => {
 
   it("computes revenue, cost, profit, and margin", () => {
     const r = projectProfit(invoices, costs)
-    expect(r.revenueSatang).toBe(800_000) // paid + sent (draft/cancelled excluded)
+    expect(r.revenueSatang).toBe(800_000) // paid + sent before VAT (draft/cancelled excluded)
     expect(r.costSatang).toBe(300_000)
     expect(r.profitSatang).toBe(500_000)
     expect(r.marginPct).toBeCloseTo(62.5, 5)
@@ -32,5 +32,11 @@ describe("projectProfit", () => {
     expect(r.costSatang).toBe(50_000)
     expect(r.profitSatang).toBe(-50_000)
     expect(r.marginPct).toBe(0)
+  })
+
+  it("counts revenue before withholding, which the customer pays to the revenue department", () => {
+    const invoice = { status: "sent" as const, total_satang: 100_000, vat_satang: 0, amount_satang: 97_000 }
+    const r = projectProfit([invoice], [{ amount_satang: 50_000 }])
+    expect(r.profitSatang).toBe(50_000)
   })
 })
