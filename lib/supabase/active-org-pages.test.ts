@@ -18,6 +18,7 @@ import DealsPage from '@/app/(app)/deals/page'
 import DealDetailPage from '@/app/(app)/deals/[id]/page'
 import EditDealPage from '@/app/(app)/deals/[id]/edit/page'
 import NewDealPage from '@/app/(app)/deals/new/page'
+import ProjectsPage from '@/app/(app)/projects/page'
 import { addActivity } from '@/app/(app)/deals/actions'
 import { GET as exportDeals } from '@/app/(app)/deals/export/route'
 import { currentMonthKey } from '@/lib/dates'
@@ -63,6 +64,27 @@ describe('active workspace business reads', () => {
     const content = pageContent(await ClientsPage({ searchParams: Promise.resolve({}) }))
     expect(content).toContain('CLIENT_B')
     expect(content).not.toContain('CLIENT_A')
+  })
+
+  it('deal due dots survive the 1,000-row cap', async () => {
+    const busy = Array.from({ length: 1000 }, (_, i) => `deal-busy-${i}`)
+    state.client = databaseFixture({
+      clients: [{ id: 'client-A', org_id: 'A', name: 'CLIENT_A' }],
+      deals: [{ id: 'deal-A', org_id: 'A', title: 'DEAL_A', stage: 'lead', value_satang: 100, client_id: 'client-A', next_follow_up_date: '2026-12-31', created_at: '2026-10-01' }],
+      activities: [...busy, 'deal-A'].map((deal_id) => ({ org_id: 'A', deal_id, done: false, due_date: deal_id === 'deal-A' ? '2026-01-15' : '2026-01-01' })),
+      deal_next_activity: [...busy, 'deal-A'].map((deal_id) => ({ org_id: 'A', deal_id, next_due_date: deal_id === 'deal-A' ? '2026-01-15' : '2026-01-01', open_count: 1 })),
+    })
+    const content = pageContent(await DealsPage({ searchParams: Promise.resolve({}) }))
+    expect(content).toContain('2026-01-15')
+  })
+
+  it('boards list every deal and project past the 1,000-row cap, so column counts and sums are complete', async () => {
+    state.client = databaseFixture({
+      deals: Array.from({ length: 1001 }, (_, i) => ({ id: `deal-${i}`, org_id: 'A', title: `DEAL_${i}`, stage: 'lead', value_satang: 1, client_id: 'client-A', created_at: '2026-10-01' })),
+      projects: Array.from({ length: 1001 }, (_, i) => ({ id: `project-${i}`, org_id: 'A', name: `PROJECT_${i}`, status: 'in_progress' })),
+    })
+    expect(pageContent(await DealsPage({ searchParams: Promise.resolve({}) }))).toContain('DEAL_1000')
+    expect(pageContent(await ProjectsPage({ searchParams: Promise.resolve({ view: 'board' }) }))).toContain('PROJECT_1000')
   })
 
   it('clients show open deal counts, including zero, without counting closed or other-workspace deals', async () => {
