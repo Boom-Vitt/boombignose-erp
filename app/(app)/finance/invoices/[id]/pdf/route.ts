@@ -1,3 +1,5 @@
+import { readAll } from "@/lib/queries/read-all"
+import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { invoiceSnapshotDocument } from "@/lib/documents/invoice-snapshot"
@@ -16,7 +18,7 @@ import {
  * Serves a self-contained, print-to-PDF HTML document for one invoice. When the
  * invoice has line items they drive the table + subtotal; otherwise a single
  * synthetic line is derived from the invoice amount so the document is never
- * empty. The invoice's authoritative `amount_satang` is always the grand total.
+ * empty. The invoice amount_satang is collectible after WHT; total_satang is gross.
  */
 export async function GET(
   _request: Request,
@@ -30,18 +32,18 @@ export async function GET(
     supabase
       .from("invoices")
       .select(
-        "number, status, amount_satang, discount_satang, issued_snapshot_id, issue_date, due_date, notes, clients(name)"
+        "number, status, amount_satang, discount_satang, subtotal_satang, total_satang, vat_satang, wht_satang, wht_rate_bps, prices_include_vat, tax_breakdown, issued_snapshot_id, issue_date, due_date, notes, clients(name)"
       )
       .eq("id", id)
       .eq("org_id", ctx.orgId)
       .maybeSingle(),
-    supabase
+    readAll((from, to) => supabase
       .from("invoice_items")
       .select("description, quantity, unit_price_satang, amount_satang, unit")
       .eq("invoice_id", id)
       .eq("org_id", ctx.orgId)
-      .order("position", { ascending: true }),
-    supabase.from("payments").select("amount_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).eq("verification_state", "verified"),
+      .order("position", { ascending: true }).order("id").range(from, to)),
+    readAll((from, to) => supabase.from("payments").select("amount_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).eq("verification_state", "verified").order("id").range(from, to)),
   ])
 
   if (invoiceRes.error || itemsRes.error || receiptsRes.error) return new Response("Invoice evidence unavailable", { status: 503 })
@@ -66,13 +68,13 @@ export async function GET(
           {
             description: invoice.notes || "Services",
             quantity: 1,
-            unit_price_satang: invoice.amount_satang,
-            amount_satang: invoice.amount_satang,
+            unit_price_satang: invoice.subtotal_satang ?? invoice.amount_satang + invoice.discount_satang,
+            amount_satang: invoice.subtotal_satang ?? invoice.amount_satang + invoice.discount_satang,
           },
         ]
 
   let doc: PrintableDocument = {
-    kind: invoice.status === "draft" ? "ร่างใบแจ้งหนี้ / Draft invoice" : "รายการเดิม / Legacy operational record",
+    kind: "Invoice",
     number: invoice.number,
     status: deriveInvoiceStatus(invoice, paid, todayISO()),
     orgName: ctx.orgName,
@@ -81,9 +83,15 @@ export async function GET(
     dueDate: invoice.due_date,
     validUntil: undefined,
     items,
-    subtotalSatang: subtotalSatang(items),
+    subtotalSatang: invoice.subtotal_satang ?? subtotalSatang(items),
     discountSatang: invoice.discount_satang,
-    totalSatang: invoice.amount_satang,
+    totalSatang: invoice.total_satang ?? invoice.amount_satang,
+    amountDueSatang: invoice.amount_satang,
+    vatSatang: invoice.vat_satang ?? 0,
+    whtSatang: invoice.wht_satang ?? 0,
+    whtRateBps: invoice.wht_rate_bps ?? 0,
+    pricesIncludeVat: invoice.prices_include_vat,
+    vatByRate: z.array(z.object({ rateBps: z.number(), vatSatang: z.number() })).parse(invoice.tax_breakdown ?? []),
     verifiedPaidSatang: paid,
     outstandingSatang: outstandingSatang(invoice.amount_satang, paid),
     notes: invoice.notes,

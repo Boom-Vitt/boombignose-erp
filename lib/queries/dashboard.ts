@@ -1,3 +1,4 @@
+import { readAll } from "./read-all"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { currentMonthKey, lastNMonths, todayISO, isPastDue, startOfDayInstant } from "@/lib/dates"
@@ -90,36 +91,36 @@ export async function getDashboardData(): Promise<DashboardData> {
     timeEntriesRes,
     newClientsRes,
   ] = await Promise.all([
-    supabase.from("deals").select("stage,value_satang").eq("org_id", ctx.orgId),
-    supabase
+    readAll((from, to) => supabase.from("deals").select("stage,value_satang").eq("org_id", ctx.orgId).order("id").range(from, to)),
+    readAll((from, to) => supabase
       .from("invoices")
       .select("id,status,amount_satang,is_recurring,recurring_interval,due_date")
-      .eq("org_id", ctx.orgId),
-    supabase.from("payments").select("invoice_id,amount_satang,paid_at").eq("org_id", ctx.orgId).eq("verification_state", "verified"),
-    supabase.from("costs").select("amount_satang,incurred_on").eq("org_id", ctx.orgId),
-    supabase.from("projects").select("status").eq("org_id", ctx.orgId),
-    supabase.from("activities").select("id,body,type,due_date,done").eq("org_id", ctx.orgId),
+      .eq("org_id", ctx.orgId).order("id").range(from, to)),
+    readAll((from, to) => supabase.from("payments").select("invoice_id,amount_satang,paid_at").eq("org_id", ctx.orgId).eq("verification_state", "verified").order("id").range(from, to)),
+    readAll((from, to) => supabase.from("costs").select("amount_satang,incurred_on").eq("org_id", ctx.orgId).order("id").range(from, to)),
+    readAll((from, to) => supabase.from("projects").select("status").eq("org_id", ctx.orgId).order("id").range(from, to)),
+    readAll((from, to) => supabase.from("activities").select("id,body,type,due_date,done").eq("org_id", ctx.orgId).order("id").range(from, to)),
     supabase
       .from("org_settings")
       .select("cash_balance_satang,monthly_burn_satang")
       .eq("org_id", ctx.orgId)
       .maybeSingle(),
-    supabase
+    readAll((from, to) => supabase
       .from("subscriptions")
       .select("status,amount_satang,interval")
       .eq("org_id", ctx.orgId)
-      .eq("status", "active"),
-    supabase
+      .eq("status", "active").order("id").range(from, to)),
+    readAll((from, to) => supabase
       .from("quotes")
       .select("status,total_satang")
       .eq("org_id", ctx.orgId)
-      .in("status", OPEN_QUOTE_STATUSES),
-    supabase
+      .in("status", OPEN_QUOTE_STATUSES).order("id").range(from, to)),
+    readAll((from, to) => supabase
       .from("time_entries")
       .select("project_id,minutes,billable,rate_satang,work_date")
       .eq("org_id", ctx.orgId)
       .gte("work_date", `${month}-01`)
-      .lt("work_date", nextMonthStart(month)),
+      .lt("work_date", nextMonthStart(month)).order("id").range(from, to)),
     supabase
       .from("clients")
       .select("id", { count: "exact", head: true })

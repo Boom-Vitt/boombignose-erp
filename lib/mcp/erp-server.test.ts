@@ -790,6 +790,14 @@ describe("ERP MCP server", () => {
       return JSON.parse(res.result.content[0].text)
     }
 
+    it("keeps gross invoiced totals separate from net collectible and verified revenue", async () => {
+      const data = { ...store(), invoices: [{ ...invoice("vat", "sent", 1040), total_satang: 107000 }], payments: [payment("receipt", "vat", 1000, "verified")] }
+      const out = await summary(data, "2026-10-15T05:00:00Z")
+      expect(out.invoiced_total_satang).toBe(107000)
+      expect(out.unpaid_satang).toBe(4000)
+      expect(out.verified_paid_satang).toBe(100000)
+    })
+
     it("burn without a setting is this month's costs, not every cost ever", async () => {
       const data = store()
       const out = await summary(data, "2026-10-15T05:00:00Z")

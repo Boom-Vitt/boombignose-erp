@@ -1,3 +1,6 @@
+import { readAll } from "@/lib/queries/read-all"
+import { DocumentTotals } from "@/components/document-totals"
+import { WithholdingForm } from "../../_components/withholding-form"
 import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -95,36 +98,38 @@ export default async function InvoiceDetailPage({
     clientsRes,
     projectsRes,
     accounting,
+    settingsRes,
   ] = await Promise.all([
-    supabase.from("payment_claims").select("id, amount_satang, reference, status").eq("org_id", ctx.orgId).eq("invoice_id",id).order("created_at"),
-    supabase.from("payments").select("id, amount_satang, notes, paid_at, method, verification_state, reconciled_payment_id").eq("org_id", ctx.orgId).neq("verification_state","verified").eq("invoice_id",id),
+    readAll((from, to) => supabase.from("payment_claims").select("id, amount_satang, reference, status").eq("org_id", ctx.orgId).eq("invoice_id",id).order("created_at").order("id").range(from, to)),
+    readAll((from, to) => supabase.from("payments").select("id, amount_satang, notes, paid_at, method, verification_state, reconciled_payment_id").eq("org_id", ctx.orgId).neq("verification_state","verified").eq("invoice_id",id).order("id").range(from, to)),
     supabase
       .from("invoices")
       .select(
-        "id, number, amount_satang, status, issue_date, due_date, is_recurring, recurring_interval, notes, client_id, project_id, discount_satang, source_quote_id, source_milestone_id, version, issued_snapshot_id, clients(name), projects(name)"
+        "id, number, amount_satang, status, issue_date, due_date, is_recurring, recurring_interval, notes, client_id, project_id, discount_satang, subtotal_satang, vat_satang, total_satang, wht_satang, wht_rate_bps, tax_breakdown, prices_include_vat, source_quote_id, source_milestone_id, version, issued_snapshot_id, clients(name), projects(name)"
       ).eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
-    supabase
+    readAll((from, to) => supabase
       .from("invoice_items")
-      .select("id, description, quantity, unit_price_satang, amount_satang, unit").eq("org_id", ctx.orgId)
+      .select("id, description, quantity, unit_price_satang, amount_satang, unit, tax_rate_bps").eq("org_id", ctx.orgId)
       .eq("invoice_id", id)
-      .order("position", { ascending: true }),
-    supabase
+      .order("position", { ascending: true }).order("id").range(from, to)),
+    readAll((from, to) => supabase
       .from("payments")
       .select("id, amount_satang, paid_at, method, notes").eq("verification_state", "verified").eq("org_id", ctx.orgId)
       .eq("invoice_id", id)
-      .order("paid_at", { ascending: false }),
+      .order("paid_at", { ascending: false }).order("id").range(from, to)),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
     getInvoiceAccounting(ctx.orgId, id),
+    supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle(),
   ])
 
   const invoice = invoiceRes.data
   if (!invoice) notFound()
 
   const payments = paymentsRes.data ?? []
-  if (paymentsRes.error || itemsRes.error || legacyRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
+  if (paymentsRes.error || itemsRes.error || legacyRes.error || settingsRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
   const paid = sumSatang(payments.map(p => p.amount_satang))
   const outstanding = outstandingSatang(invoice.amount_satang, paid)
   const effectiveStatus = deriveInvoiceStatus(invoice, paid, today)
@@ -168,6 +173,7 @@ export default async function InvoiceDetailPage({
     quantity: `${Number(it.quantity)}${it.unit ? ` ${it.unit}` : ""}`,
     unitPrice: formatTHB(it.unit_price_satang),
     amount: formatTHB(it.amount_satang),
+    taxRate: `${it.tax_rate_bps / 100}%`,
   }))
 
   async function removeInvoiceItem(input: { id: string }) {
@@ -231,7 +237,7 @@ export default async function InvoiceDetailPage({
         }
       />
 
-      <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. Tax classification, credits and withholding require accountant-approved evidence. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
+      <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. VAT and withholding are document calculations only, not a legal tax system, accounting ledger, filing service or e-Tax Invoice. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
       {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></CardContent></Card> : null}
       {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -242,7 +248,9 @@ export default async function InvoiceDetailPage({
               <InvoiceStatusBadge status={effectiveStatus} />
             </CardHeader>
             <CardContent>
-              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <DocumentTotals subtotal={invoice.subtotal_satang} discount={invoice.discount_satang} vat={invoice.vat_satang} total={invoice.total_satang} wht={invoice.wht_satang} whtRate={invoice.wht_rate_bps} amountDue={invoice.amount_satang} breakdown={invoice.tax_breakdown} inclusive={invoice.prices_include_vat} />
+              {ctx.role !== "member" && invoice.status === "draft" && !invoice.issued_snapshot_id && paid === 0 && !(claimsRes.data ?? []).some(claim => claim.status === "pending") ? <div className="my-4"><WithholdingForm invoiceId={invoice.id} rate={invoice.wht_rate_bps} /></div> : null}
+              <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <Field label="Amount" value={formatTHB(invoice.amount_satang)} />
                 <Field label="Verified receipts" value={formatTHB(paid)} />
                 <Field
@@ -295,6 +303,7 @@ export default async function InvoiceDetailPage({
             </CardHeader>
             <CardContent>
               <InvoiceItemsEditor
+                defaultTaxRate={settingsRes.data?.vat_registered ? settingsRes.data.vat_rate_bps : 0}
                 invoiceId={invoice.id}
                 products={await activeProductOptions()}
                 canManageProducts={can(ctx.role, "product:manage")}

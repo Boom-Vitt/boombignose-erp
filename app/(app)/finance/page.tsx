@@ -1,3 +1,4 @@
+import { readAll } from "@/lib/queries/read-all"
 import { SearchFacets } from "@/components/search/search-facets"
 import { GroupedTableRows } from "@/components/search/grouped-table-rows"
 import { parseFacets, matchesFacets, facetLabel, type SearchParams } from "@/lib/search-facets"
@@ -76,27 +77,27 @@ export default async function FinancePage({
 
   const [invoicesRes, paymentsRes, costsRes, savedViews, subscriptionsRes] =
     await Promise.all([
-      supabase
+      readAll((from, to) => supabase
         .from("invoices")
         .select(
           "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
         )
         .eq("org_id", ctx.orgId)
-        .order("issue_date", { ascending: false }),
-      supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified").eq("org_id", ctx.orgId),
-      supabase
+        .order("issue_date", { ascending: false }).order("id").range(from, to)),
+      readAll((from, to) => supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified").eq("org_id", ctx.orgId).order("id").range(from, to)),
+      readAll((from, to) => supabase
         .from("costs")
         .select(
           "id, category, amount_satang, incurred_on, vendor, project_id, projects(name)"
         )
         .eq("org_id", ctx.orgId)
-        .order("incurred_on", { ascending: false }),
+        .order("incurred_on", { ascending: false }).order("id").range(from, to)),
       getFacetSavedViews("finance"),
-      supabase
+      readAll((from, to) => supabase
         .from("subscriptions")
         .select("status, amount_satang, interval")
         .eq("org_id", ctx.orgId)
-        .eq("status", "active"),
+        .eq("status", "active").order("id").range(from, to)),
     ])
 
   if (invoicesRes.error || paymentsRes.error || costsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")

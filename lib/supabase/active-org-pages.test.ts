@@ -199,7 +199,7 @@ it('an inactive deal cannot create an activity in the active workspace', async (
 it('a failed dashboard query cannot report invented zero balances', async () => {
  const client = state.client as ReturnType<typeof databaseFixture>
  state.client = {from: (table:string) => table === 'costs'
-   ? {select: () => ({eq: async () => ({data:null,error:{message:'Unavailable'}})})}
+   ? {select: () => { const q = { eq: () => q, order: () => q, range: async () => ({data:null,error:{message:'Unavailable'}}) }; return q }}
    : client.from(table)}
  await expect(getDashboardData()).rejects.toThrow('Unable to load dashboard data')
 })
@@ -210,4 +210,16 @@ it('deal exports contain only the active workspace and its client names',async()
  state.orgId='B'
  const b=await (await exportDeals(new Request('https://app.example.test/deals/export'))).text()
  expect(b).toContain('DEAL_B');expect(b).toContain('CLIENT_B');expect(b).not.toContain('DEAL_A')
+})
+
+it('dashboard reads beyond 1000 net receivables and keeps revenue based on verified receipts', async () => {
+ vi.useFakeTimers().setSystemTime(new Date('2026-10-23T06:00:00Z'))
+ const invoices = Array.from({length:1501},(_,n)=>({id:`vat-${n}`,org_id:'A',status:'sent',amount_satang:104000,total_satang:107000,due_date:'2026-10-01',is_recurring:false}))
+ const payments = invoices.map(i=>({id:`paid-${i.id}`,org_id:'A',invoice_id:i.id,amount_satang:100000,paid_at:'2026-10-23T05:00:00Z',verification_state:'verified'}))
+ state.client = databaseFixture({invoices,payments})
+ const result = await getDashboardData()
+ expect(result.unpaidSatang).toBe(1501*4000)
+ expect(result.unpaidInvoiceCount).toBe(1501)
+ expect(result.overdueInvoiceCount).toBe(1501)
+ expect(result.monthlyRevenueSatang).toBe(1501*100000)
 })

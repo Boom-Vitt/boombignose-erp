@@ -1,3 +1,5 @@
+import { readAll } from "@/lib/queries/read-all"
+import { z } from "zod"
 import { notFound } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/server"
@@ -21,19 +23,20 @@ export async function GET(
     supabase
       .from("quotes")
       .select(
-        "number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, notes, clients(name)"
+        "number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, vat_satang, tax_breakdown, prices_include_vat, notes, clients(name)"
       )
       .eq("id", id)
       .eq("org_id", ctx.orgId)
       .maybeSingle(),
-    supabase
+    readAll((from, to) => supabase
       .from("quote_items")
       .select("description, quantity, unit_price_satang, amount_satang, position, unit")
       .eq("quote_id", id)
       .eq("org_id", ctx.orgId)
-      .order("position", { ascending: true }),
+      .order("position", { ascending: true }).order("id").range(from, to)),
   ])
 
+  if (quoteRes.error || itemsRes.error) return new Response("Quote details unavailable", { status: 503 })
   const quote = quoteRes.data
   if (!quote) notFound()
 
@@ -56,6 +59,9 @@ export async function GET(
     subtotalSatang: quote.subtotal_satang,
     discountSatang: quote.discount_satang,
     totalSatang: quote.total_satang,
+    vatSatang: quote.vat_satang ?? 0,
+    vatByRate: z.array(z.object({ rateBps: z.number(), vatSatang: z.number() })).parse(quote.tax_breakdown ?? []),
+    pricesIncludeVat: quote.prices_include_vat,
     notes: quote.notes,
   }
 

@@ -46,6 +46,7 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
           return query
         },
         order: () => query,
+        range: (from: number, to: number) => { rows = rows.slice(from, to + 1); return query },
         limit: (value: number) => { rows = rows.slice(0, value); return query },
         maybeSingle: () => { single = true; return query },
         then: (resolve: (result: unknown) => unknown, reject?: (error: unknown) => unknown) => {

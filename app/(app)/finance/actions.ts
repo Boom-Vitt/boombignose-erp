@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
+import { readAll } from "@/lib/queries/read-all"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability, requireRole } from "@/lib/auth"
@@ -87,10 +88,11 @@ export async function createInvoice(
   let number = d.number
   if (!number) {
     const year = Number(todayISO().slice(0, 4))
-    const { data: existing } = await supabase
+    const { data: existing, error: numberError } = await readAll((from, to) => supabase
       .from("invoices")
       .select("number")
-      .eq("org_id", ctx.orgId)
+      .eq("org_id", ctx.orgId).order("id").range(from, to))
+    if (numberError) return { error: numberError.message }
     number = nextDocumentNumber(
       "INV",
       (existing ?? []).map((r) => r.number),
@@ -362,22 +364,39 @@ export async function issueInvoice(input: z.input<typeof IssueInvoice>): Promise
 const BusinessProfile = z.object({
   expectedOrgId: z.guid(),
   legalName: z.string().trim().min(1).max(200), address: z.string().trim().min(1).max(1000),
+  vatRegistered: z.boolean().optional(), vatRateBps: z.number().int().min(0).max(10000).default(700), pricesIncludeVat: z.boolean().default(false), branchLabel: z.string().trim().max(200).default(""),
   taxId: z.string().trim().refine(value => value === "" || /^[0-9]{13}$/.test(value), "Enter a 13-digit tax ID or leave it blank"), taxStatus: z.enum(["unknown", "not_registered", "registered"]),
-}).refine(value => value.taxStatus !== "registered" || value.taxId.length === 13, "Registered VAT profile needs a tax ID")
+}).refine(value => !(value.vatRegistered ?? (value.taxStatus === "registered")) || value.taxId.length === 13, "Registered VAT profile needs a tax ID")
 export async function updateBusinessProfile(input: z.input<typeof BusinessProfile>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  try { requireRole(ctx, ["owner", "admin"]) }
+  try { requireCapability(ctx, "settings:manage") }
   catch { return { error: "Only owners and admins can update the business profile." } }
   const parsed = BusinessProfile.safeParse(input)
   if (!parsed.success) return { error: "Enter the legal business name, address and explicit tax status." }
   const d = parsed.data
   if (d.expectedOrgId !== ctx.orgId) return { error: "Workspace changed. Reload this form before saving the business profile." }
   const supabase = await createSupabaseClient()
-  const { error } = await supabase.rpc("update_business_profile", {
+  const { error } = await supabase.rpc("update_tax_business_profile", {
     p_org_id: ctx.orgId, p_legal_name: d.legalName, p_business_address: d.address,
-    p_tax_id: d.taxId, p_tax_status: d.taxStatus,
+    p_tax_id: d.taxId, p_vat_registered: d.vatRegistered ?? (d.taxStatus === "registered"), p_vat_rate_bps: d.vatRateBps, p_prices_include_vat: d.pricesIncludeVat, p_branch_label: d.branchLabel,
   })
   if (error) return { error: error.message }
   revalidatePath("/finance/business-profile")
+  return {}
+}
+
+const Withholding = z.object({ invoiceId: z.uuid(), rateBps: z.number().refine(value => [0, 100, 200, 300, 500].includes(value)) })
+export async function updateInvoiceWithholding(input: z.input<typeof Withholding>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "payment:verify") } catch { return { error: "Only owners and admins can edit withholding." } }
+  const parsed = Withholding.safeParse(input)
+  if (!parsed.success) return { error: "Invalid withholding rate" }
+  const supabase = await createSupabaseClient()
+  const { data, error } = await supabase.from("invoices").update({ wht_rate_bps: parsed.data.rateBps }).eq("org_id", ctx.orgId).eq("id", parsed.data.invoiceId).eq("status", "draft").is("issued_snapshot_id", null).select("id").maybeSingle()
+  if (error) return { error: error.message }
+  if (!data) return { error: "Draft invoice unavailable" }
+  await writeAudit(ctx, { entity: "invoice", entityId: data.id, action: "withholding_updated", summary: "Updated invoice withholding", meta: { rateBps: parsed.data.rateBps } })
+  revalidatePath(`/finance/invoices/${data.id}`)
+  revalidatePath("/finance")
   return {}
 }

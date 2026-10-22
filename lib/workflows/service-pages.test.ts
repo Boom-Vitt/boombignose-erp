@@ -17,6 +17,7 @@ vi.mock("@/lib/supabase/server", () => ({
       deals: [{ id: "deal-id", title: "Service", client_id: "client-id", value_satang: 100 }],
     }
     const chain = {
+      range: () => chain,
       select: () => chain,
       eq: (column: string, value: unknown) => { query.filters.push([column, value]); return chain },
       in: () => chain,

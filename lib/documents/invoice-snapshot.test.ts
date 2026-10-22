@@ -38,3 +38,20 @@ it("preserves a space-padded unit accepted by the database", () => {
   const unit = `${" ".repeat(40)}hour${" ".repeat(40)}`
   expect(invoiceSnapshotDocument({ ...snapshot, lines: [{ ...snapshot.lines[0], unit }] }, "sent", 0).items[0]).toMatchObject({ unit })
 })
+
+it("prints VAT-registered issued totals, tax IDs, branches and the collectible balance", () => {
+  const issued = {
+    ...snapshot,
+    seller: { ...snapshot.seller, vatRegistered: true, taxId: "1234567890123", branchLabel: "Head office" },
+    buyer: { ...snapshot.buyer, taxId: "9876543210123", branchLabel: "Branch 001" },
+    document: { ...snapshot.document, subtotalSatang: 100000, discountSatang: 0, totalSatang: 107000, vatSatang: 7000, whtRateBps: 300, whtSatang: 3000, amountDueSatang: 104000 },
+    lines: [{ ...snapshot.lines[0], amountSatang: 100000, unitPriceSatang: 100000, taxRateBps: 700 }],
+  }
+  const doc = invoiceSnapshotDocument(issued, "partially_paid", 4000)
+  expect(doc.kind).toBe("Tax Invoice / ใบกำกับภาษี")
+  expect(doc.outstandingSatang).toBe(100000)
+  const html = renderDocumentHtml(doc)
+  for (const text of ["VAT 7%", "WHT 3%", "Amount due", "Head office", "Branch 001", "1234567890123", "9876543210123", "1,040.00"]) expect(html).toContain(text)
+  for (const field of ["vatSatang", "whtSatang", "amountDueSatang"]) expect(() => invoiceSnapshotDocument({ ...issued, document: { ...issued.document, [field]: 1 } }, "sent", 0)).toThrow("Invalid issued snapshot totals")
+  expect(invoiceSnapshotDocument({ ...issued, seller: { ...issued.seller, vatRegistered: false } }, "sent", 0).kind).toBe("Invoice")
+})
