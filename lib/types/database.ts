@@ -1066,7 +1066,12 @@ isOneToOne: false
                 }
           }
           Views: {
-            [_ in never]: never
+            "client_balances": {
+              Row: {
+                "client_id": string | null,"invoiced_satang": number | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null
+              }
+              Relationships: []
+            }
           }
           Functions: {
             "accept_integration_event":

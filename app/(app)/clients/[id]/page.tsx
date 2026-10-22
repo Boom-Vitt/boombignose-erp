@@ -15,8 +15,7 @@ import {
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { formatTHB, sumSatang } from "@/lib/money"
-import { unpaidTotal } from "@/lib/metrics/finance"
+import { formatTHB } from "@/lib/money"
 import { SmartButtons, recordHref } from "@/components/record/smart-buttons"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
@@ -53,7 +52,7 @@ export default async function ClientDetailPage({
 
   if (!client) notFound()
 
-  const [contactsRes, dealsRes, activitiesRes, quotesRes, invoicesRes, projectsRes] = await Promise.all([
+  const [contactsRes, dealsRes, activitiesRes, quotesRes, invoicesRes, projectsRes, balanceRes] = await Promise.all([
     supabase
       .from("contacts")
       .select("id, name, email, phone, role")
@@ -74,43 +73,26 @@ export default async function ClientDetailPage({
       .order("created_at", { ascending: false })
       .limit(8),
     supabase.from("quotes").select("id").eq("org_id", ctx.orgId).eq("client_id", id),
-    supabase
-      .from("invoices")
-      .select("id, status, amount_satang")
-      .eq("org_id", ctx.orgId)
-      .eq("client_id", id),
+    supabase.from("invoices").select("id").eq("org_id", ctx.orgId).eq("client_id", id),
     supabase.from("projects").select("id").eq("org_id", ctx.orgId).eq("client_id", id),
+    supabase
+      .from("client_balances")
+      .select("outstanding_satang")
+      .eq("org_id", ctx.orgId)
+      .eq("client_id", id)
+      .maybeSingle(),
   ])
 
   const contacts = contactsRes.data ?? []
   const deals = dealsRes.data ?? []
   const activities = activitiesRes.data ?? []
   const quoteIds = (quotesRes.data ?? []).map((q) => q.id)
-  const invoices = invoicesRes.data ?? []
-  const invoiceIds = invoices.map((invoice) => invoice.id)
+  const invoiceIds = (invoicesRes.data ?? []).map((invoice) => invoice.id)
   const projectIds = (projectsRes.data ?? []).map((p) => p.id)
 
-  // shortcut: the id list rides in the URL, so a client with several hundred invoices
-  // fails the read and the balance hides; move to an RPC or join if clients get that big.
-  const paymentsRes = invoiceIds.length
-    ? await supabase
-        .from("payments")
-        .select("invoice_id, amount_satang")
-        .eq("org_id", ctx.orgId)
-        .eq("verification_state", "verified")
-        .in("invoice_id", invoiceIds)
-    : { data: [], error: null }
-  const payments = paymentsRes.data ?? []
-  // A partial read would understate what the client owes, so hide the balance instead.
-  const balanceKnown = !invoicesRes.error && !paymentsRes.error
-  const openBalance = unpaidTotal(
-    invoices.map((invoice) => ({
-      ...invoice,
-      paid_satang: sumSatang(
-        payments.filter((p) => p.invoice_id === invoice.id).map((p) => p.amount_satang)
-      ),
-    }))
-  )
+  // No row means no issued invoices. A failed read hides the balance rather than understate it.
+  const balanceKnown = !balanceRes.error
+  const openBalance = balanceRes.data?.outstanding_satang ?? 0
 
   return (
     <div className="space-y-6">
