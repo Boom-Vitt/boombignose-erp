@@ -12,12 +12,12 @@ const state = vi.hoisted(() => ({
 }))
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: state.orgId, userId: "me", role: "owner" }), requireCapability: vi.fn() }))
 vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
-vi.mock("@/lib/email", () => ({ sendEmail: async () => ({ ok: true }) }))
+vi.mock("@/lib/email", () => ({ sendEmail: async () => ({ ok: true }), isEmailConfigured: () => true }))
 vi.mock("@/lib/queries/saved-views", () => ({ getFacetSavedViews: async () => [] }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({ redirect: vi.fn(), notFound: vi.fn() }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({
-  rpc: async (name: string, args: Record<string, unknown>) => { state.rpcs.push([name, args]); return { error: null } },
+  rpc: async (name: string, args: Record<string, unknown>) => { state.rpcs.push([name, args]); return { data: name === "claim_purchase_rfq" ? rfqClaim : null, error: null } },
   from: (table: string) => {
     let single = false
     const chain = {
@@ -44,6 +44,11 @@ import { saveVendor } from "@/app/(app)/vendors/actions"
 const orderId = seedId(2)
 const lineId = seedId(3)
 const vendorId = seedId(4)
+
+const rfqClaim = {
+  delivery_key: "6f1c2b9e-3a4d-4c5e-8f60-1a2b3c4d5e6f",
+  snapshot: { to: "vendor@example.com", number: "PO-1", vendorName: "Seed vendor", orderDate: "2026-10-01", expectedDate: null, notes: null, lines: [{ description: "Paper", quantity: 1, unit: "box", unit_cost_satang: 100 }] },
+}
 
 beforeEach(() => { state.orgId = seedId(1); state.rows = {}; state.filters = []; state.rpcs = []; vi.mocked(redirect).mockClear() })
 
@@ -78,7 +83,10 @@ describe("purchasing accepts demo seed ids", () => {
     state.rows.purchase_orders = [{ id: orderId, number: "PO-1", status: "draft", order_date: "2026-10-01", expected_date: null, notes: null, vendors: { name: "Seed vendor", email: "vendor@example.com" } }]
     state.rows.purchase_order_items = [{ id: lineId, description: "Paper", quantity: 1, unit: "box", unit_cost_satang: 100 }]
     expect(await sendPurchaseRFQ(orderId)).toEqual({})
-    expect(state.rpcs).toEqual([["transition_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_status: "sent" }]])
+    expect(state.rpcs).toEqual([
+      ["claim_purchase_rfq", { p_org_id: state.orgId, p_order_id: orderId }],
+      ["finish_purchase_rfq", { p_org_id: state.orgId, p_order_id: orderId, p_delivery_key: rfqClaim.delivery_key, p_error: null }],
+    ])
   })
 
   it("filters the purchase list by a seed vendor id", async () => {
