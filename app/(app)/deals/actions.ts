@@ -39,12 +39,11 @@ const DealInput = z.object({
 })
 export type DealInput = z.infer<typeof DealInput>
 
-export async function createDeal(input: DealInput): Promise<{ error?: string }> {
-  const ctx = await requireOrgContext()
-  const parsed = DealInput.safeParse(input)
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
-  const d = parsed.data
-
+/** Inserts a validated deal and writes its audit entry. */
+async function insertDeal(
+  ctx: Awaited<ReturnType<typeof requireOrgContext>>,
+  d: z.infer<typeof DealInput>
+): Promise<{ id?: string; error?: string }> {
   const supabase = await createSupabaseClient()
   const { data, error } = await supabase
     .from("deals")
@@ -72,8 +71,37 @@ export async function createDeal(input: DealInput): Promise<{ error?: string }> 
   })
 
   revalidatePath("/deals")
+  return { id: data.id }
+}
+
+export async function createDeal(input: DealInput): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  const parsed = DealInput.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
+
+  const { id, error } = await insertDeal(ctx, parsed.data)
+  if (!id) return { error }
   // redirect throws NEXT_REDIRECT — must stay outside any try/catch.
-  redirect(`/deals/${data.id}`)
+  redirect(`/deals/${id}`)
+}
+
+const QuickDealInput = DealInput.pick({
+  clientId: true,
+  title: true,
+  stage: true,
+  valueBaht: true,
+})
+
+/** Board quick create: same insert and audit as createDeal, but stays on the board. */
+export async function quickCreateDeal(
+  input: z.input<typeof QuickDealInput>
+): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  const parsed = QuickDealInput.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
+
+  const { error } = await insertDeal(ctx, parsed.data)
+  return error ? { error } : {}
 }
 
 export async function updateDeal(
