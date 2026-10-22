@@ -26,6 +26,10 @@ describe("saving facet views", () => {
     expect(state.inserts).toEqual([{ module, name: "My work", config, org_id: "org", user_id: "me" }])
     expect(state.revalidate).toHaveBeenCalledWith(`/${module}`)
   })
+  it.each(["draft", "draft,sent"])("persists the status filter %s", async (status) => {
+    expect(await createSavedView({ module: "quotes", name: "Open", config: { status } })).toEqual({})
+    expect(state.inserts).toEqual([{ module: "quotes", name: "Open", config: { status }, org_id: "org", user_id: "me" }])
+  })
   it.each([{ period: "tomorrow" }, { groupBy: "unknown" }, { mine: "someone_else" }, { extra: "redirect" }])("rejects invalid facet state %j", async (config) => {
     expect(await createSavedView({ module: "quotes", name: "Invalid", config })).toHaveProperty("error")
     expect(state.inserts).toHaveLength(0)

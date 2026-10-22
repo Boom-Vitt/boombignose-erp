@@ -59,3 +59,14 @@ export function pageTimeline(timeline: TimelineEntry[]): TimelinePage {
   const last = page.at(-1)
   return { timeline: page, nextCursor: timeline.length > TIMELINE_PAGE_SIZE && last ? { at: last.at, id: last.id } : null }
 }
+
+export type LoadedTimeline = { entries: TimelineEntry[]; cursor: TimelineCursor | null }
+/** Older pages survive a refresh only while they stay contiguous with the fresh first page. */
+export function mergeLoaded(initial: TimelinePage, older: LoadedTimeline | null): LoadedTimeline {
+  const fresh = { entries: initial.timeline, cursor: initial.nextCursor }
+  if (!older || !initial.nextCursor) return fresh
+  const seen = new Set(initial.timeline.map(entry => entry.id))
+  if (!older.entries.some(entry => seen.has(entry.id))) return fresh
+  const entries = [...initial.timeline, ...older.entries.filter(entry => !seen.has(entry.id))].sort(compareTimelineEntries)
+  return { entries, cursor: older.cursor }
+}
