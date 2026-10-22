@@ -1,12 +1,12 @@
 import { beforeEach, expect, it, vi } from "vitest"
-const { rpc, gate } = vi.hoisted(() => ({ rpc: vi.fn(), gate: vi.fn() }))
+const { rpc, gate, from } = vi.hoisted(() => ({ rpc: vi.fn(), gate: vi.fn(), from: vi.fn() }))
 const orgId = "00000000-0000-4000-8000-000000000003"
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "00000000-0000-4000-8000-000000000003", role: "owner" }), requireRole: gate, requireCapability: gate }))
-vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc }) }))
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc, from }) }))
 vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }))
-import { issueInvoice, updateBusinessProfile } from "@/app/(app)/finance/actions"
+import { issueInvoice, updateBusinessProfile, updateInvoiceWithholding } from "@/app/(app)/finance/actions"
 const key = "00000000-0000-4000-8000-000000000002"
 const invoiceId = "00000000-0000-0000-0000-000000000001"
 beforeEach(() => { vi.clearAllMocks(); gate.mockImplementation(() => {}); rpc.mockResolvedValue({ data: "snapshot", error: null }) })
@@ -34,4 +34,12 @@ it("profile update leaves tax classification explicit and trusts active org only
 it("stale profile form cannot save an A profile after the active org switches to B", async () => {
   expect((await updateBusinessProfile({ expectedOrgId: invoiceId, legalName: "ร้าน A", address: "ที่อยู่ A", taxId: "", taxStatus: "unknown" })).error).toContain("Workspace changed")
   expect(rpc).not.toHaveBeenCalled()
+})
+it("withholding reaches a draft invoice whose seeded id lacks RFC 9562 version bits", async () => {
+  const seeded = "60000000-0000-0000-0000-000000000001"
+  const query = { update: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), is: vi.fn().mockReturnThis(), select: vi.fn().mockReturnThis(), maybeSingle: async () => ({ data: { id: seeded }, error: null }) }
+  from.mockReturnValue(query)
+  expect(await updateInvoiceWithholding({ invoiceId: seeded, rateBps: 300 })).toEqual({})
+  expect(query.update).toHaveBeenCalledWith({ wht_rate_bps: 300 })
+  expect(query.eq).toHaveBeenCalledWith("id", seeded)
 })
