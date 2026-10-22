@@ -74,16 +74,17 @@ it.each(["/login", "/signup"])("a revoked but unexpired session stays on %s and 
   expect(res.cookies.get(cookieName)).toMatchObject({ value: "", maxAge: 0 })
 })
 
+// The auth server is down in these tests: clearing the cookie must not depend on it.
 it.each(["/login", "/f/lead-token", "/portal/portal-token"])("a session cookie that does not decode still loads public %s and is cleared", async path => {
-  auth["/auth/v1/logout"] = () => goTrueError(403, "bad_jwt")
   const res = await updateSession(request(path, garbledToken))
   expect(res.headers.get("location")).toBeNull()
   expect(res.cookies.get(cookieName)).toMatchObject({ value: "", maxAge: 0 })
+  expect(calls).toEqual([])
 })
 
 it("a session cookie that does not decode is sent from app routes to login", async () => {
-  auth["/auth/v1/logout"] = () => goTrueError(403, "bad_jwt")
   const res = await updateSession(request("/deals", garbledToken))
   expect(res.headers.get("location")).toBe("https://app.example.test/login?redirect=%2Fdeals")
   expect(res.cookies.get(cookieName)).toMatchObject({ value: "", maxAge: 0 })
+  expect(calls).toEqual([])
 })
