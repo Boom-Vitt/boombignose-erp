@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { serviceAmountBaht } from "@/lib/workflows/service"
+import { Constants } from "@/lib/types/database"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -19,10 +20,16 @@ export const dynamic = "force-dynamic"
 export default async function NewProjectPage({
   searchParams,
 }: {
-  searchParams: Promise<{ dealId?: string; clientId?: string }>
+  searchParams: Promise<{
+    dealId?: string
+    clientId?: string
+    name?: string
+    budget?: string
+    status?: string
+  }>
 }) {
   const ctx = await requireOrgContext()
-  const { dealId, clientId } = await searchParams
+  const { dealId, clientId, name, budget, status } = await searchParams
   const supabase = await createClient()
 
   const { data: clientsData } = await supabase
@@ -32,8 +39,13 @@ export default async function NewProjectPage({
     .order("name", { ascending: true })
   const clients = (clientsData ?? []) as ClientOption[]
 
-  // Prefill from a deal when arriving from CRM.
-  let prefill: Partial<ProjectFormValues> = {}
+  // Prefill from the board's quick create ("Edit"), or from a deal when arriving from CRM.
+  const boardStatus = Constants.public.Enums.project_status.find((s) => s === status)
+  let prefill: Partial<ProjectFormValues> = {
+    ...(name ? { name } : {}),
+    ...(budget ? { budgetBaht: budget } : {}),
+    ...(boardStatus ? { status: boardStatus } : {}),
+  }
   let resolvedDealId: string | null = null
 
   if (dealId) {
