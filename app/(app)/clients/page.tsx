@@ -7,6 +7,7 @@ import Link from "next/link"
 import { Users, Plus } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { readAll } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
 import { OPEN_STAGES } from "@/lib/metrics/pipeline"
 import { PageHeader } from "@/components/page-header"
@@ -35,15 +36,17 @@ export default async function ClientsPage({
   const now = new Date()
   const savedViews = await getFacetSavedViews("clients")
 
-  let query = supabase
-    .from("clients")
-    .select("id, name, industry, source, created_at, owner, deals(count)")
-    .eq("org_id", ctx.orgId)
-    .in("deals.stage", OPEN_STAGES)
-    .order("name", { ascending: true })
-  if (config.q) query = query.ilike("name", `%${config.q.replace(/[\\%_(),.":]/g, "\\$&")}%`)
-
-  const { data, error } = await query
+  const pattern = config.q ? `%${config.q.replace(/[\\%_(),.":]/g, "\\$&")}%` : undefined
+  const { data, error } = await readAll((from, to) => {
+    const query = supabase
+      .from("clients")
+      .select("id, name, industry, source, created_at, owner, deals(count)")
+      .eq("org_id", ctx.orgId)
+      .in("deals.stage", OPEN_STAGES)
+      .order("name", { ascending: true }).order("id")
+      .range(from, to)
+    return pattern ? query.ilike("name", pattern) : query
+  })
   if (error) throw new Error("Clients unavailable. Please reload.")
   const clients = (data ?? []).filter((c) => matchesFacets(config, {
     text: c.name, date: c.created_at, owner: c.owner,
