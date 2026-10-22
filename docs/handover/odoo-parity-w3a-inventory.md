@@ -337,3 +337,58 @@ pnpm e2e
 ```
 
 `git diff --check`, memory validation and final scoped ESLint also pass. The only source changes in this runtime round are the two fixture corrections described above; migrations and production code remain byte-identical to `b9b9532`. No environment file or local stack configuration is tracked. Four Pro-only browser cases remain intentionally skipped. The final browser server log also recorded one non-failing active-workspace lookup error during the passing subscription recovery scenario; no causal product defect was established or code changed for that log. There are no remaining failed SQL or browser tests in the assigned scope.
+
+
+## Integration round 3, 2026-10-23
+
+Merged the requested `odoo-parity` 702c7f5 as f89dac2, then the coordinator-approved test-only 4a98a8b as a8eac99. All seven conflicts preserve both sides:
+
+- `app/(app)/reports/_data.ts` and `lib/documents/report-data.test.ts` combine issued pre-VAT issue-month revenue with monthly COGS, complete shared paging, date/org boundaries and read failures.
+- `lib/documents/report.ts` retains COGS totals/monthly rows and the upstream Revenue before VAT label and issued-invoice terminology.
+- `lib/metrics/finance.ts`, `lib/queries/dashboard.test.ts` and `lib/supabase/active-org-pages.test.ts` preserve inventory exclusion from operating costs and COGS alongside issued revenue, verified cash burn and tenant coverage.
+- `lib/record/status.ts` keeps closed PO mapping/billing together with all upstream flows and destructive transition confirmations.
+
+The imported expense-cost fixture also sets `purchase_cost_kind:null` for its ordinary expense row, resolving the sole initial typecheck error. Automatically merged invoice/finance pages, types, seed, labour/billed-time sources and UX behavior retain upstream content. `lib/forms-submit.test.ts` is unchanged from 4a98a8b and passes. No SQL function was authored/redefined during these resolutions; incoming finance/time migrations are retained under their track ownership. The original inventory, inventory-fix and procure-stock migrations remain byte-identical to ea08f68.
+
+Independent source review approved the seven resolutions and expense fixture (107 focused tests in 10 files), then the one-file test-only merge (1/1). Initial combined verification passed all local gates, 698 SQL tests and 41 browser cases with 4 expected skips. Final gates after including the submit guard pass lint/typecheck/1,042 unit tests/build plus a fresh full SQL run; the final browser rerun also passes 41 scenarios with four expected Pro-only skips.
+
+Final gate excerpts after the approved form-submit test merge, all exit 0:
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+
+ Test Files  139 passed (139)
+      Tests  1042 passed (1042)
+   Start at  04:24:08
+   Duration  6.79s (transform 14.23s, setup 0ms, import 85.39s, tests 5.80s, environment 7ms)
+
+
+pnpm build
+├ ƒ /vendors/new
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+
+
+.local-stack/db-reset.sh "$PWD"
+All tests successful.
+Files=24, Tests=698,  5 wallclock secs ( 0.10 usr  0.05 sys +  0.14 cusr  0.11 csys =  0.40 CPU)
+Result: PASS
+db-check ok: a8eac99
+
+pnpm e2e
+
+  4 skipped
+  41 passed (1.4m)
+```
+
+`git diff --check`, conflict-marker/unmerged-path checks and project-memory validation pass. The assigned API 56001/app 3109 stack alone was reset and exercised. `.env.local` and `.local-stack/` remain ignored and uncommitted. No dependency or lockfile change was needed. There are no unresolved conflicts or failed gates; only the four expected Pro-only browser cases are skipped. Coordinator integration of this branch is the next step.
