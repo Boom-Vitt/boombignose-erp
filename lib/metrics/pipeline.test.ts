@@ -6,15 +6,17 @@ import {
   wonValue,
   pipelineByStage,
   isOpenStage,
+  expectedRevenue,
+  STAGE_PROBABILITY,
   type DealLike,
 } from "@/lib/metrics/pipeline"
 
 const deals: DealLike[] = [
-  { stage: "lead", value_satang: 100_000 },
-  { stage: "proposal", value_satang: 200_000 },
-  { stage: "negotiation", value_satang: 300_000 },
-  { stage: "won", value_satang: 500_000 },
-  { stage: "lost", value_satang: 400_000 },
+  { stage: "lead", value_satang: 100_000, probability: 10 },
+  { stage: "proposal", value_satang: 200_000, probability: 50 },
+  { stage: "negotiation", value_satang: 300_000, probability: 70 },
+  { stage: "won", value_satang: 500_000, probability: 100 },
+  { stage: "lost", value_satang: 400_000, probability: 0 },
 ]
 
 describe("pipeline metrics", () => {
@@ -22,9 +24,26 @@ describe("pipeline metrics", () => {
     expect(pipelineValue(deals)).toBe(600_000)
   })
 
-  it("weightedPipelineValue applies stage probabilities", () => {
+  it("weightedPipelineValue sums the expected revenue of open deals", () => {
     // 0.1*100000 + 0.5*200000 + 0.7*300000 = 320000
     expect(weightedPipelineValue(deals)).toBe(320_000)
+  })
+
+  it("uses each deal's own probability, not its stage default", () => {
+    const edited: DealLike[] = [{ stage: "proposal", value_satang: 200_000, probability: 90 }]
+    expect(weightedPipelineValue(edited)).toBe(180_000)
+  })
+
+  it("expectedRevenue rounds value x probability to whole satang", () => {
+    expect(expectedRevenue({ value_satang: 333, probability: 50 })).toBe(167)
+    expect(expectedRevenue({ value_satang: 1_000_001, probability: 0 })).toBe(0)
+    expect(expectedRevenue({ value_satang: 1_000_001, probability: 100 })).toBe(1_000_001)
+  })
+
+  it("stage defaults are whole percentages, closed stages pinned to 0 and 100", () => {
+    expect(STAGE_PROBABILITY.proposal).toBe(50)
+    expect(STAGE_PROBABILITY.won).toBe(100)
+    expect(STAGE_PROBABILITY.lost).toBe(0)
   })
 
   it("wonValue sums won deals", () => {

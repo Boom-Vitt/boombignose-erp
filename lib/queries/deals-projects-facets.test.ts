@@ -26,7 +26,7 @@ import DealsPage from "@/app/(app)/deals/page"
 import ProjectsPage from "@/app/(app)/projects/page"
 
 const deal = (id: string, stage: string, owner: string, close: string | null) => ({
-  id, title: `Deal ${id}`, stage, value_satang: 100, client_id: "c1", client: { name: "Acme" }, owner,
+  id, title: `Deal ${id}`, stage, value_satang: 100, probability: 10, sequence: 0, client_id: "c1", client: { name: "Acme" }, owner,
   expected_close_date: close, next_follow_up_date: null, created_at: "2026-10-01T00:00:00Z",
 })
 const project = (id: string, status: string, deadline: string | null) => ({

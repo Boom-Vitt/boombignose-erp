@@ -91,7 +91,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     timeEntriesRes,
     newClientsRes,
   ] = await Promise.all([
-    readAll((from, to) => supabase.from("deals").select("stage,value_satang").eq("org_id", ctx.orgId).order("id").range(from, to)),
+    readAll((from, to) => supabase.from("deals").select("stage,value_satang,probability").eq("org_id", ctx.orgId).order("id").range(from, to)),
     readAll((from, to) => supabase
       .from("invoices")
       .select("id,status,amount_satang,is_recurring,recurring_interval,due_date")
