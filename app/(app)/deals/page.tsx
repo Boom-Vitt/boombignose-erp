@@ -1,10 +1,11 @@
 import Link from "next/link"
-import { Plus, Target, CalendarClock } from "lucide-react"
+import { Plus, Target } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
-import { formatTHB, formatTHBWhole } from "@/lib/money"
+import { formatTHBWhole } from "@/lib/money"
+import { earliestDate, type KanbanCard, type KanbanColumn } from "@/lib/kanban"
 import {
   pipelineValue,
   weightedPipelineValue,
@@ -15,25 +16,23 @@ import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
+import { profileNames } from "@/app/(app)/projects/_lib/profile-names"
 
+import { DealsBoard } from "./_components/deals-board"
 import { DealsToolbar } from "./_components/deals-toolbar"
 import type { SavedView } from "@/app/(app)/views/saved-views-menu"
 import type { ViewConfig } from "@/app/(app)/views/view-config"
 
 export const dynamic = "force-dynamic"
 
-type BoardColumn = { stage: DealStage; label: string }
-
-const COLUMNS: BoardColumn[] = [
-  { stage: "lead", label: "Lead" },
-  { stage: "contacted", label: "Contacted" },
-  { stage: "discovery", label: "Discovery" },
-  { stage: "proposal", label: "Proposal" },
-  { stage: "negotiation", label: "Negotiation" },
-  { stage: "won", label: "Won" },
-  { stage: "lost", label: "Lost" },
+const COLUMNS: KanbanColumn<DealStage>[] = [
+  { id: "lead", label: "Lead" },
+  { id: "contacted", label: "Contacted" },
+  { id: "discovery", label: "Discovery" },
+  { id: "proposal", label: "Proposal" },
+  { id: "negotiation", label: "Negotiation" },
+  { id: "won", label: "Won", foldedByDefault: true },
+  { id: "lost", label: "Lost", foldedByDefault: true },
 ]
 
 const DEAL_STAGES = Constants.public.Enums.deal_stage
@@ -62,11 +61,11 @@ export default async function DealsPage({
     : ""
   const q = (qParam ?? "").trim()
 
-  const [dealsRes, clientsRes, viewsRes] = await Promise.all([
+  const [dealsRes, clientsRes, viewsRes, activitiesRes] = await Promise.all([
     supabase
       .from("deals")
       .select(
-        "id,title,stage,value_satang,client_id,next_follow_up_date,created_at"
+        "id,title,stage,value_satang,client_id,owner,next_follow_up_date,created_at"
       )
       .eq("org_id", ctx.orgId)
       .order("created_at", { ascending: false }),
@@ -78,11 +77,25 @@ export default async function DealsPage({
       .eq("module", "deals")
       .eq("user_id", ctx.userId)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("activities")
+      .select("deal_id,due_date")
+      .eq("org_id", ctx.orgId)
+      .eq("done", false)
+      .not("deal_id", "is", null)
+      .not("due_date", "is", null)
+      // Earliest first, so a capped response still keeps the dates that drive the dots.
+      .order("due_date", { ascending: true }),
   ])
 
   const allDeals = dealsRes.data ?? []
   const clients = clientsRes.data ?? []
   const clientName = new Map(clients.map((c) => [c.id, c.name]))
+  const ownerName = await profileNames(supabase, allDeals.map((d) => d.owner))
+  const nextActivity = new Map<string, string | null>()
+  for (const a of activitiesRes.data ?? []) {
+    if (a.deal_id) nextActivity.set(a.deal_id, earliestDate([nextActivity.get(a.deal_id) ?? null, a.due_date]))
+  }
 
   const savedViews: SavedView[] = (viewsRes.data ?? []).map((v) => ({
     id: v.id,
@@ -90,7 +103,7 @@ export default async function DealsPage({
     config: toViewConfig(v.config),
   }))
 
-  // Apply filters in-memory (board stays a server component).
+  // Apply filters in-memory.
   const qLower = q.toLowerCase()
   const deals = allDeals.filter((d) => {
     if (stage && d.stage !== stage) return false
@@ -100,16 +113,23 @@ export default async function DealsPage({
 
   // When a stage is selected, only show that column.
   const visibleColumns = stage
-    ? COLUMNS.filter((col) => col.stage === stage)
+    ? COLUMNS.filter((col) => col.id === stage)
     : COLUMNS
 
   // Headline KPIs summarize the whole pipeline, independent of the active filter.
   const openValue = pipelineValue(allDeals)
   const weighted = weightedPipelineValue(allDeals)
 
-  const byStage = new Map<DealStage, typeof deals>()
-  for (const col of COLUMNS) byStage.set(col.stage, [])
-  for (const d of deals) byStage.get(d.stage)?.push(d)
+  const cards: KanbanCard<DealStage>[] = deals.map((d) => ({
+    id: d.id,
+    stage: d.stage,
+    title: d.title,
+    href: `/deals/${d.id}`,
+    amountSatang: d.value_satang,
+    client: clientName.get(d.client_id) ?? null,
+    owner: (d.owner && ownerName.get(d.owner)) || null,
+    due: earliestDate([d.next_follow_up_date, nextActivity.get(d.id) ?? null]),
+  }))
 
   return (
     <div className="space-y-6">
@@ -158,100 +178,16 @@ export default async function DealsPage({
           description="No deals match the current filters. Try clearing the search or stage filter."
         />
       ) : (
-        <div className="-mx-4 overflow-x-auto px-4 pb-2 md:-mx-6 md:px-6">
-          <div className="flex min-w-max gap-4">
-            {visibleColumns.map((col) => {
-              const colDeals = byStage.get(col.stage) ?? []
-              const colTotal = colDeals.reduce(
-                (acc, d) => acc + d.value_satang,
-                0
-              )
-              return (
-                <div key={col.stage} className="w-72 shrink-0">
-                  <div className="mb-2 flex items-center justify-between px-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold">{col.label}</span>
-                      <span className="text-muted-foreground text-xs">
-                        {colDeals.length}
-                      </span>
-                    </div>
-                    <span className="text-muted-foreground text-xs">
-                      {formatTHBWhole(colTotal)}
-                    </span>
-                  </div>
-                  <div className="space-y-2 rounded-lg bg-muted/40 p-2">
-                    {colDeals.length === 0 ? (
-                      <p className="text-muted-foreground px-2 py-6 text-center text-xs">
-                        No deals
-                      </p>
-                    ) : (
-                      colDeals.map((d) => (
-                        <DealCard
-                          key={d.id}
-                          id={d.id}
-                          title={d.title}
-                          client={clientName.get(d.client_id) ?? "—"}
-                          valueSatang={d.value_satang}
-                          followUp={d.next_follow_up_date}
-                          today={today}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <DealsBoard
+          columns={visibleColumns}
+          moveTargets={COLUMNS}
+          cards={cards}
+          clients={clients}
+          today={today}
+          storageKey={`kanban:deals:${ctx.userId}`}
+        />
       )}
     </div>
   )
 }
 
-function DealCard({
-  id,
-  title,
-  client,
-  valueSatang,
-  followUp,
-  today,
-}: {
-  id: string
-  title: string
-  client: string
-  valueSatang: number
-  followUp: string | null
-  today: string
-}) {
-  const overdue = followUp != null && followUp < today
-  const dueToday = followUp === today
-
-  return (
-    <Card className="gap-0 py-0 transition-colors hover:border-ring">
-      <CardContent className="p-3">
-        <Link href={`/deals/${id}`} className="block space-y-1.5">
-          <div className="text-sm font-medium leading-snug">{title}</div>
-          <div className="text-muted-foreground text-xs">{client}</div>
-          <div className="flex items-center justify-between gap-2 pt-0.5">
-            <span className="text-sm font-semibold">{formatTHB(valueSatang)}</span>
-            {followUp ? (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 text-xs",
-                  overdue
-                    ? "font-medium text-red-600 dark:text-red-400"
-                    : dueToday
-                      ? "font-medium text-amber-600 dark:text-amber-400"
-                      : "text-muted-foreground"
-                )}
-              >
-                <CalendarClock className="size-3" />
-                {followUp}
-              </span>
-            ) : null}
-          </div>
-        </Link>
-      </CardContent>
-    </Card>
-  )
-}

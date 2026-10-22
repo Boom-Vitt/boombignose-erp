@@ -50,7 +50,7 @@ describe('active workspace business reads', () => {
   it.each([
     ['clients', () => ClientsPage({ searchParams: Promise.resolve({}) }), 'CLIENT'],
     ['deals', () => DealsPage({ searchParams: Promise.resolve({}) }), 'DEAL'],
-    ['new deal client selector', () => NewDealPage(), 'CLIENT'],
+    ['new deal client selector', () => NewDealPage({ searchParams: Promise.resolve({}) }), 'CLIENT'],
     ['edit deal client selector', () => EditDealPage({ params: Promise.resolve({ id: 'deal-A' }) }), 'CLIENT'],
   ])('%s show only the active workspace', async (_name, render, marker) => {
     const content = pageContent(await render())

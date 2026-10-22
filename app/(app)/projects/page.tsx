@@ -1,8 +1,10 @@
 import Link from "next/link"
-import { Briefcase, Plus } from "lucide-react"
+import { Briefcase, Columns3, List, Plus } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
+import { todayISO } from "@/lib/dates"
+import type { KanbanCard, KanbanColumn } from "@/lib/kanban"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { ProjectStatusBadge } from "@/components/status-badge"
@@ -21,6 +23,7 @@ import { cn } from "@/lib/utils"
 import type { Enums } from "@/lib/types/database"
 import { deadlineMeta } from "./_lib/dates"
 import { profileNames } from "./_lib/profile-names"
+import { ProjectsBoard } from "./_components/projects-board"
 
 export const dynamic = "force-dynamic"
 
@@ -37,13 +40,27 @@ const STATUS_ORDER: { value: ProjectStatus; label: string }[] = [
   { value: "cancelled", label: "Cancelled" },
 ]
 
-export default async function ProjectsPage() {
+const BOARD_COLUMNS: KanbanColumn<ProjectStatus>[] = STATUS_ORDER.map((s) => ({
+  id: s.value,
+  label: s.label,
+  foldedByDefault: s.value === "cancelled",
+}))
+
+// Finished work has no upcoming deadline to flag.
+const CLOSED: ProjectStatus[] = ["delivered", "cancelled"]
+
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>
+}) {
   const ctx = await requireOrgContext()
   const supabase = await createClient()
+  const view = (await searchParams).view === "board" ? "board" : "list"
 
   const { data: projects } = await supabase
     .from("projects")
-    .select("id, name, status, deadline, owner, client:clients(name)")
+    .select("id, name, status, deadline, owner, budget_satang, client:clients(name)")
     .eq("org_id", ctx.orgId)
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })
@@ -54,6 +71,7 @@ export default async function ProjectsPage() {
     status: ProjectStatus
     deadline: string | null
     owner: string | null
+    budget_satang: number | null
     client: { name: string } | null
   }>
   const ownerNames = await profileNames(supabase, rows.map((p) => p.owner))
@@ -64,12 +82,41 @@ export default async function ProjectsPage() {
     </Button>
   )
 
+  const cards: KanbanCard<ProjectStatus>[] = rows.map((p) => ({
+    id: p.id,
+    stage: p.status,
+    title: p.name,
+    href: `/projects/${p.id}`,
+    amountSatang: p.budget_satang ?? null,
+    client: p.client?.name ?? null,
+    owner: (p.owner && ownerNames.get(p.owner)) || null,
+    due: CLOSED.includes(p.status) ? null : p.deadline,
+  }))
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Projects"
         description="Delivery work across every client, grouped by status."
       >
+        <div role="group" aria-label="View" className="flex rounded-lg border p-0.5">
+          <Button
+            size="sm"
+            variant={view === "list" ? "secondary" : "ghost"}
+            aria-current={view === "list" ? "page" : undefined}
+            render={<Link href="/projects" />}
+          >
+            <List data-icon="inline-start" /> List
+          </Button>
+          <Button
+            size="sm"
+            variant={view === "board" ? "secondary" : "ghost"}
+            aria-current={view === "board" ? "page" : undefined}
+            render={<Link href="/projects?view=board" />}
+          >
+            <Columns3 data-icon="inline-start" /> Board
+          </Button>
+        </div>
         {newButton}
       </PageHeader>
 
@@ -79,6 +126,13 @@ export default async function ProjectsPage() {
           title="No projects yet"
           description="Create your first project to start tracking delivery, tasks, and milestones."
           action={newButton}
+        />
+      ) : view === "board" ? (
+        <ProjectsBoard
+          columns={BOARD_COLUMNS}
+          cards={cards}
+          today={todayISO()}
+          storageKey={`kanban:projects:${ctx.userId}`}
         />
       ) : (
         <div className="space-y-5">

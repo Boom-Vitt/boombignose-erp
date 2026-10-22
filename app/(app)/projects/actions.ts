@@ -41,16 +41,11 @@ const ProjectInput = z.object({
   dealId: optionalId,
 })
 
-export async function createProject(
-  input: z.input<typeof ProjectInput>
-): Promise<{ error?: string }> {
-  const ctx = await requireOrgContext()
-  const parsed = ProjectInput.safeParse(input)
-  if (!parsed.success) {
-    return { error: "Invalid input" }
-  }
-  const { name, clientId, status, deadline, budgetBaht, owner, dealId } =
-    parsed.data
+async function insertProject(
+  ctx: Awaited<ReturnType<typeof requireOrgContext>>,
+  p: z.output<typeof ProjectInput>
+): Promise<{ id?: string; error?: string }> {
+  const { name, clientId, status, deadline, budgetBaht, owner, dealId } = p
 
   const supabase = await createSupabaseClient()
   const { data, error } = await supabase
@@ -72,7 +67,47 @@ export async function createProject(
   if (error) return { error: error.message }
 
   revalidatePath("/projects")
-  redirect(`/projects/${data.id}`)
+  return { id: data.id }
+}
+
+export async function createProject(
+  input: z.input<typeof ProjectInput>
+): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  const parsed = ProjectInput.safeParse(input)
+  if (!parsed.success) {
+    return { error: "Invalid input" }
+  }
+
+  const { id, error } = await insertProject(ctx, parsed.data)
+  if (!id) return { error }
+  redirect(`/projects/${id}`)
+}
+
+const QuickProjectInput = ProjectInput.pick({
+  name: true,
+  status: true,
+  budgetBaht: true,
+})
+
+/** Board quick create: same insert as createProject, but stays on the board. */
+export async function quickCreateProject(
+  input: z.input<typeof QuickProjectInput>
+): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  const parsed = QuickProjectInput.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
+  }
+
+  const { error } = await insertProject(ctx, {
+    ...parsed.data,
+    clientId: null,
+    deadline: null,
+    owner: undefined,
+    dealId: null,
+  })
+  return error ? { error } : {}
 }
 
 const UpdateProjectInput = ProjectInput.extend({

@@ -28,6 +28,10 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
           rows = rows.filter((row) => values.includes(row[key]))
           return query
         },
+        not: (key: string, operator: string, value: unknown) => {
+          if (operator === 'is' && value === null) rows = rows.filter((row) => row[key] != null)
+          return query
+        },
         gte: (key: string, value: string) => {
           rows = rows.filter((row) => String(row[key]) >= value)
           return query
