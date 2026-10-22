@@ -1,7 +1,9 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import { ThemeProvider } from "next-themes"
 import "./globals.css"
 
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { PublicEnvScript } from "@/lib/supabase/public-env"
@@ -33,8 +35,16 @@ export default function RootLayout({
     >
       <body className="bg-background text-foreground min-h-full">
         <PublicEnvScript />
-        <TooltipProvider>{children}</TooltipProvider>
-        <Toaster richColors position="top-right" />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <TooltipProvider>{children}</TooltipProvider>
+          <ThemeToggle />
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
       </body>
     </html>
   )
