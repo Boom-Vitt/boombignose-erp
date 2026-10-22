@@ -1,4 +1,4 @@
-import { allPurchasingRows } from "@/lib/purchasing/pagination"
+import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { can } from "@/lib/permissions"
 import { markBillPaid } from "@/app/(app)/purchases/actions"
 import { PurchaseAction } from "@/app/(app)/purchases/_components/action-button"
@@ -89,7 +89,7 @@ export default async function FinancePage({
         .eq("org_id", ctx.orgId)
         .order("issue_date", { ascending: false }),
       supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified").eq("org_id", ctx.orgId),
-      allPurchasingRows((from, to) => supabase
+      readAllOrThrow((from, to) => supabase
         .from("costs")
         .select(
           "id, category, amount_satang, incurred_on, vendor, project_id, projects(name), vendor_id, purchase_order_id, bill_number, bill_date, due_date, paid_at"

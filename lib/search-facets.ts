@@ -7,6 +7,8 @@ export const FACET_LISTS = {
   finance: { statuses: Constants.public.Enums.invoice_status, groups: ["status", "client", "month"] },
   clients: { statuses: [], groups: ["industry", "source", "month"] },
   timesheets: { statuses: ["billable", "non_billable"], groups: ["project", "month"] },
+  deals: { statuses: Constants.public.Enums.deal_stage, groups: ["stage", "client", "owner", "month"] },
+  projects: { statuses: Constants.public.Enums.project_status, groups: ["status", "client", "owner", "month"] },
   purchases: { statuses: Constants.public.Enums.purchase_status, groups: ["status", "vendor", "month"] },
   vendors: { statuses: ["active", "archived"], groups: ["status", "month"] },
 } as const
@@ -22,7 +24,9 @@ export function parseFacets(params: SearchParams | URLSearchParams, list: FacetL
   }
   const config: FacetConfig = {}
   if (get("q")) config.q = get("q").slice(0, 200)
-  if ((FACET_LISTS[list].statuses as readonly string[]).includes(get("status"))) config.status = get("status")
+  // Deal links and saved views from before facets name the stage `stage`.
+  const status = get("status") || (list === "deals" ? get("stage") : "")
+  if ((FACET_LISTS[list].statuses as readonly string[]).includes(status)) config.status = status
   if (Object.hasOwn(PERIODS, get("period"))) config.period = get("period") as Period
   if (get("mine") === "1") config.mine = "1"
   if ((FACET_LISTS[list].groups as readonly string[]).includes(get("groupBy"))) config.groupBy = get("groupBy")
@@ -40,10 +44,10 @@ export function facetLabel(value: string): string {
   return value.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
 }
 
-export function matchesFacets(config: FacetConfig, row: { text: string; status?: string; date: string; owner: string | null }, userId: string, now: Date = new Date()): boolean {
+export function matchesFacets(config: FacetConfig, row: { text: string; status?: string; date: string | null; owner: string | null }, userId: string, now: Date = new Date()): boolean {
   return (!config.q || row.text.toLowerCase().includes(config.q.toLowerCase()))
     && (!config.status || row.status === config.status)
-    && (!config.period || inPeriod(row.date, config.period, now))
+    && (!config.period || (row.date !== null && inPeriod(row.date, config.period, now)))
     && (!config.mine || row.owner === userId)
 }
 
