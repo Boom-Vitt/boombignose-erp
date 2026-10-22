@@ -11,6 +11,15 @@ async function inventoryOwner() {
   return db
 }
 
+test("stock ledger accepts multiple move kinds from search facets", async ({ page }) => {
+  await loginDemo(page)
+  await page.goto("/inventory/moves?status=receipt,delivery")
+  await expect(page.getByRole("heading", { name: "Stock moves", exact: true })).toBeVisible()
+  await expect(page.getByRole("cell", { name: "Receipt", exact: true }).first()).toBeVisible()
+  await expect(page.getByRole("cell", { name: "Delivery", exact: true }).first()).toBeVisible()
+  await expect(page.getByRole("cell", { name: /^Adjustment (In|Out)$/ })).toHaveCount(0)
+})
+
 test("receiving, invoice delivery and physical count update stock once", async ({ page }) => {
   await loginDemo(page)
   const suffix = Date.now()
