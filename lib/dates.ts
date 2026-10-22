@@ -1,4 +1,4 @@
-import { formatInTimeZone } from "date-fns-tz"
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz"
 
 /** App timezone. The studio operates in Thailand; "today"/"this month" use this. */
 export const APP_TZ = "Asia/Bangkok"
@@ -17,6 +17,11 @@ export function monthKey(instant: string | Date, tz: string = APP_TZ): string {
 /** Current 'YYYY-MM' in the app timezone. */
 export function currentMonthKey(now: Date = new Date(), tz: string = APP_TZ): string {
   return monthKey(now, tz)
+}
+
+/** UTC ISO instant of local midnight on a 'YYYY-MM-DD' date in the app timezone. */
+export function startOfDayInstant(dateISO: string, tz: string = APP_TZ): string {
+  return fromZonedTime(`${dateISO}T00:00:00`, tz).toISOString()
 }
 
 /** True when an ISO date (YYYY-MM-DD) is strictly before today. Null → false. */

@@ -4,8 +4,13 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
     from(table: string) {
       let rows = [...(tables[table] ?? [])]
       let single = false
+      let countDeals = false
+      const dealFilters: [string, readonly unknown[]][] = []
       const query = {
-        select: () => query,
+        select: (columns = '') => {
+          countDeals = columns.includes('deals(count)')
+          return query
+        },
         insert: (row: Record<string, unknown>) => {
           (tables[table] ??= []).push(row)
           rows = [row]
@@ -15,7 +20,11 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
           rows = rows.filter((row) => row[key] === value)
           return query
         },
-        in: (key: string, values: unknown[]) => {
+        in: (key: string, values: readonly unknown[]) => {
+          if (key.startsWith('deals.')) {
+            dealFilters.push([key.slice('deals.'.length), values])
+            return query
+          }
           rows = rows.filter((row) => values.includes(row[key]))
           return query
         },
@@ -34,8 +43,16 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
         order: () => query,
         limit: (value: number) => { rows = rows.slice(0, value); return query },
         maybeSingle: () => { single = true; return query },
-        then: (resolve: (result: unknown) => unknown, reject?: (error: unknown) => unknown) =>
-          Promise.resolve({ data: single ? rows[0] ?? null : rows, error: null }).then(resolve, reject),
+        then: (resolve: (result: unknown) => unknown, reject?: (error: unknown) => unknown) => {
+          const data = countDeals ? rows.map((row) => ({
+            ...row,
+            deals: [{ count: (tables.deals ?? []).filter((deal) =>
+              deal.org_id === row.org_id && deal.client_id === row.id &&
+              dealFilters.every(([key, values]) => values.includes(deal[key]))
+            ).length }],
+          })) : rows
+          return Promise.resolve({ data: single ? data[0] ?? null : data, error: null }).then(resolve, reject)
+        },
       }
       return query
     },

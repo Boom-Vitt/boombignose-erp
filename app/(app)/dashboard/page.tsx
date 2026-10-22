@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   FileText,
   Clock,
+  UserPlus,
 } from "lucide-react"
 
 import { getDashboardData } from "@/lib/queries/dashboard"
@@ -105,6 +106,12 @@ export default async function DashboardPage() {
           value={String(d.activeProjectCount)}
           icon={Briefcase}
           hint="In delivery or support"
+        />
+        <StatCard
+          label="New clients this month"
+          value={String(d.newClientsThisMonth)}
+          icon={UserPlus}
+          hint="Added since the 1st (Bangkok time)"
         />
       </div>
 

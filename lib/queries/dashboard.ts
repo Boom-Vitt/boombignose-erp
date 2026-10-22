@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { currentMonthKey, todayISO, isPastDue } from "@/lib/dates"
+import { currentMonthKey, todayISO, isPastDue, startOfDayInstant } from "@/lib/dates"
 import {
   revenueForMonth,
   costsForMonth,
@@ -51,6 +51,7 @@ export type DashboardData = {
   unpaidInvoiceCount: number
   overdueInvoiceCount: number
   activeProjectCount: number
+  newClientsThisMonth: number
   followUpsDueToday: FollowUp[]
   overdueFollowUps: FollowUp[]
 }
@@ -86,6 +87,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     subscriptionsRes,
     quotesRes,
     timeEntriesRes,
+    newClientsRes,
   ] = await Promise.all([
     supabase.from("deals").select("stage,value_satang").eq("org_id", ctx.orgId),
     supabase
@@ -117,10 +119,16 @@ export async function getDashboardData(): Promise<DashboardData> {
       .eq("org_id", ctx.orgId)
       .gte("work_date", `${month}-01`)
       .lt("work_date", nextMonthStart(month)),
+    supabase
+      .from("clients")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", ctx.orgId)
+      .gte("created_at", startOfDayInstant(`${month}-01`))
+      .lt("created_at", startOfDayInstant(nextMonthStart(month))),
   ])
 
   if ([dealsRes, invoicesRes, paymentsRes, costsRes, projectsRes, activitiesRes,
-    settingsRes, subscriptionsRes, quotesRes, timeEntriesRes].some((result) => result.error)) {
+    settingsRes, subscriptionsRes, quotesRes, timeEntriesRes, newClientsRes].some((result) => result.error)) {
     throw new Error("Unable to load dashboard data. Please try again.")
   }
 
@@ -199,6 +207,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     activeProjectCount: projects.filter((p) =>
       ACTIVE_PROJECT_STATUSES.includes(p.status)
     ).length,
+    newClientsThisMonth: newClientsRes.count ?? 0,
     followUpsDueToday,
     overdueFollowUps,
   }
