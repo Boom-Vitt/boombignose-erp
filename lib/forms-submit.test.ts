@@ -12,11 +12,13 @@ function tsxFiles(dir: string): string[] {
 }
 
 describe("forms", () => {
-  it("each file has at least one submit control or onSubmit handler per <form>", () => {
+  it("each file has a real submit control per <form>", () => {
     const offenders = ["app", "components", "ee"].flatMap((root) => tsxFiles(join(process.cwd(), root))).filter((file) => {
       const source = readFileSync(file, "utf8")
       const forms = source.match(/<form[\s>]/g)?.length ?? 0
-      const submits = (source.match(/type="submit"|type=\{"submit"\}/g)?.length ?? 0) + (source.match(/onSubmit=/g)?.length ?? 0)
+      // onSubmit alone is not enough: the house Button never submits without type="submit".
+      const submits = (source.match(/type="submit"|type=\{"submit"\}|requestSubmit\(|form-submit: implicit/g)?.length ?? 0) +
+        (source.match(/<button(?![^>]*\btype=)[\s>]/g)?.length ?? 0)
       return submits < forms
     })
     expect(offenders).toEqual([])
