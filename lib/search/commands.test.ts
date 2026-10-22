@@ -21,7 +21,7 @@ describe("palette command list", () => {
   })
 
   it("filters create commands by what the role may create", () => {
-    const all = ["New deal", "New quote", "New invoice", "New client", "New project", "New product"]
+    const all = ["New deal", "New quote", "New invoice", "New client", "New project", "New product", "New purchase order", "New vendor"]
     expect(titles(paletteCommands("owner").create)).toEqual(all)
     expect(titles(paletteCommands("admin").create)).toEqual(all)
     expect(titles(paletteCommands("member").create)).toEqual([

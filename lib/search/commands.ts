@@ -15,7 +15,8 @@ const CREATE_COMMANDS: (PaletteCommand & { gate: Capability | readonly Role[] })
   { title: "New client", href: "/clients/new", gate: "record:write" },
   { title: "New project", href: "/projects/new", gate: "record:write" },
   { title: "New product", href: "/products/new", gate: "product:manage" },
-  // shortcut: no purchase-order route exists yet, add "New purchase order" here when one ships.
+  { title: "New purchase order", href: "/purchases/new", gate: "purchase:manage" },
+  { title: "New vendor", href: "/vendors/new", gate: "purchase:manage" },
 ]
 
 /** Go to every nav module the sidebar shows this role, and the creates the role may run. */
