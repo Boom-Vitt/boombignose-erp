@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { ThemeProvider } from "next-themes"
 import "./globals.css"
 
-import { ThemeToggle } from "@/components/theme-toggle"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { PublicEnvScript } from "@/lib/supabase/public-env"
@@ -42,7 +41,6 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <TooltipProvider>{children}</TooltipProvider>
-          <ThemeToggle />
           <Toaster richColors position="top-right" />
         </ThemeProvider>
       </body>
