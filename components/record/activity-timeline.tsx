@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { loadRecordHistoryPage } from "@/lib/record-history/actions"
 import type { RecordRef } from "@/lib/record-history/model"
-import { timelineDay, type TimelineEntry, type TimelinePage } from "@/lib/record-history/timeline"
+import { mergeLoaded, timelineDay, type LoadedTimeline, type TimelinePage } from "@/lib/record-history/timeline"
 import { ActivityAttachment } from "./activity-attachment"
 
 export function ActivityTimeline({ record, initial, people, canViewAudit }: {
@@ -13,11 +13,10 @@ export function ActivityTimeline({ record, initial, people, canViewAudit }: {
   people: { id: string; name: string }[]
   canViewAudit: boolean
 }) {
-  const [older, setOlder] = useState<TimelineEntry[]>([])
-  const [cursor, setCursor] = useState(initial.nextCursor)
+  const [loaded, setLoaded] = useState<LoadedTimeline | null>(null)
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
-  const entries = [...initial.timeline, ...older]
+  const { entries, cursor } = mergeLoaded(initial, loaded)
   const names = new Map(people.map(person => [person.id, person.name]))
 
   function loadOlder() {
@@ -28,8 +27,7 @@ export function ActivityTimeline({ record, initial, people, canViewAudit }: {
         const result = await loadRecordHistoryPage({ ...record, cursor })
         const page = result.page
         if (!page) { setError(result.error || "Unable to load older history."); return }
-        setOlder(current => [...current, ...page.timeline])
-        setCursor(page.nextCursor)
+        setLoaded({ entries: [...entries, ...page.timeline], cursor: page.nextCursor })
       } catch { setError("Unable to load older history. Please try again.") }
     })
   }

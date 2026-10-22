@@ -6,6 +6,7 @@ import {
   DEAL_FLOW,
   INVOICE_FLOW,
   PROJECT_FLOW,
+  PURCHASE_FLOW,
   QUOTE_FLOW,
   STATUS_DISPLAY,
   SUBSCRIPTION_FLOW,
@@ -67,6 +68,21 @@ describe.each(FLOWS)("%s flow", (_name, flow, statuses) => {
   })
 })
 
+describe("destructive transitions", () => {
+  const flows = [...FLOWS, ["purchase", PURCHASE_FLOW, Constants.public.Enums.purchase_status] as const]
+  it.each(flows)("every %s move to lost, declined or cancelled asks first", (_name, flow, statuses) => {
+    for (const status of statuses) {
+      for (const action of actions(flow as DocumentFlow<string>, status)) {
+        if (!("to" in action)) continue
+        const destructive = ["lost", "declined", "cancelled"].includes(action.to)
+        expect(Boolean(action.confirm), `${status} → ${action.to}`).toBe(destructive)
+        // Lost deals and declined quotes keep why; the other moves have no reason in this domain.
+        expect(Boolean(action.reason), `${status} → ${action.to}`).toBe(["lost", "declined"].includes(action.to))
+      }
+    }
+  })
+})
+
 describe("statusBar", () => {
   it("marks earlier stages done, the current one current, later ones upcoming", () => {
     const bar = statusBar(DEAL_FLOW, "proposal")
@@ -87,7 +103,7 @@ describe("statusBar", () => {
   it("drops actions the page cannot offer without promoting a secondary", () => {
     const bar = statusBar(QUOTE_FLOW, "sent", (a) => !("to" in a && a.to === "accepted"))
     expect(bar.primary).toBeNull()
-    expect(bar.secondary).toEqual([{ label: "Decline", to: "declined" }])
+    expect(bar.secondary).toEqual([expect.objectContaining({ label: "Decline", to: "declined" })])
   })
 })
 

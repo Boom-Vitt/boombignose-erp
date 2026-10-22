@@ -1,6 +1,5 @@
 "use client"
 
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -19,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { useGuardedForm } from "@/components/record/record-guard"
 import { Switch } from "@/components/ui/switch"
 
 import { SelectField, type Option } from "./form-fields"
@@ -79,7 +79,6 @@ export function InvoiceForm({
   submitLabel: string
   action: (values: Values) => Promise<{ error?: string } | void>
 }) {
-  const router = useRouter()
   const form = useForm<z.input<typeof Schema>, unknown, Values>({
     resolver: zodResolver(Schema),
     defaultValues,
@@ -87,26 +86,27 @@ export function InvoiceForm({
 
   // eslint-disable-next-line react-hooks/incompatible-library -- watch() is RHF's intended API
   const isRecurring = form.watch("is_recurring")
+  const onSubmit = useGuardedForm(form, async (values) => {
+    const payload = {
+      ...values,
+      recurring_interval: values.is_recurring
+        ? values.recurring_interval
+        : undefined,
+    }
+    const res = await action(payload)
+    if (res?.error) {
+      toast.error(res.error)
+      return false
+    }
+    // createInvoice redirects on success (no return); update returns {}.
+    toast.success("Invoice saved")
+    return true
+  })
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(async (values) => {
-          const payload = {
-            ...values,
-            recurring_interval: values.is_recurring
-              ? values.recurring_interval
-              : undefined,
-          }
-          const res = await action(payload)
-          if (res?.error) {
-            toast.error(res.error)
-            return
-          }
-          // createInvoice redirects on success (no return); update returns {}.
-          toast.success("Invoice saved")
-          router.refresh()
-        })}
+        onSubmit={onSubmit}
         className="space-y-5"
       >
         <div className="grid gap-5 sm:grid-cols-2">

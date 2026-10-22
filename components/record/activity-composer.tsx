@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { attachRecordFile, logRecordNote, scheduleRecordActivity } from "@/lib/record-history/actions"
-import { ACTIVITY_LABELS, type RecordRef } from "@/lib/record-history/model"
+import type { RecordRef } from "@/lib/record-history/model"
 import { ATTACHMENT_TYPES } from "@/lib/record-history/input"
+import { ActivityFields, readActivityFields } from "./activity-fields"
 
 export function ActivityComposer({ recordType, recordId, people, userId }: RecordRef & { people: { id: string; name: string }[]; userId: string }) {
   const id = useId()
@@ -24,7 +24,7 @@ export function ActivityComposer({ recordType, recordId, people, userId }: Recor
     startTransition(async () => {
       try {
         const result = kind === "note" ? await logRecordNote({ ...ref, body: data.get("body") })
-          : kind === "activity" ? await scheduleRecordActivity({ ...ref, type: data.get("type"), dueDate: data.get("dueDate"), owner: data.get("owner"), summary: data.get("summary") })
+          : kind === "activity" ? await scheduleRecordActivity({ ...ref, ...readActivityFields(data) })
             : await attachRecordFile(data)
         if (result.error) { setError(result.error); return }
         form.reset()
@@ -48,20 +48,7 @@ export function ActivityComposer({ recordType, recordId, people, userId }: Recor
       </TabsContent>
       <TabsContent value="activity">
         <form className="grid gap-3 sm:grid-cols-3" onSubmit={event => { event.preventDefault(); submit(event.currentTarget, "activity") }}>
-          <div className="space-y-2"><Label htmlFor={`${id}-type`}>Type</Label>
-            <Select name="type" defaultValue="follow_up" items={Object.entries(ACTIVITY_LABELS).map(([value, label]) => ({ value, label }))}>
-              <SelectTrigger id={`${id}-type`} className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>{Object.entries(ACTIVITY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2"><Label htmlFor={`${id}-due`}>Due date</Label><Input id={`${id}-due`} name="dueDate" type="date" required /></div>
-          <div className="space-y-2"><Label htmlFor={`${id}-owner`}>Assignee</Label>
-            <Select name="owner" defaultValue={userId} items={people.map(person => ({ value: person.id, label: person.name }))}>
-              <SelectTrigger id={`${id}-owner`} className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>{people.map(person => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2 sm:col-span-3"><Label htmlFor={`${id}-summary`}>Summary</Label><Input id={`${id}-summary`} name="summary" required maxLength={2000} /></div>
+          <ActivityFields idPrefix={id} people={people} defaults={{ owner: userId }} />
           <Button disabled={pending} type="submit" className="justify-self-start">Schedule activity</Button>
         </form>
       </TabsContent>

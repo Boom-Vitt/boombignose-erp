@@ -8,6 +8,10 @@ vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
   useRef: () => state.ref,
   useTransition: () => [false, (task: () => Promise<void>) => { state.operation = task() }],
+  useCallback: (fn: unknown) => fn,
+  useId: () => "convert",
+  useEffect: () => {},
+  useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }))
 vi.mock("sonner", () => ({ toast: { error: state.toast, success: vi.fn() } }))
 vi.mock("@/app/(app)/quotes/actions", () => ({ convertQuoteToInvoice: state.action }))

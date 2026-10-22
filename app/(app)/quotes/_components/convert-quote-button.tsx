@@ -1,11 +1,12 @@
 "use client"
 
-import { useRef, useTransition } from "react"
+import { useRef } from "react"
 import { unstable_rethrow } from "next/navigation"
 import { FileOutput } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useRecordGuard } from "@/components/record/record-guard"
 import { quoteConversionKey } from "@/lib/workflows/service"
 
 import { convertQuoteToInvoice } from "../actions"
@@ -21,11 +22,11 @@ export function ConvertQuoteButton({
   label: string
   variant: "default" | "outline"
 }) {
-  const [pending, startTransition] = useTransition()
+  const { busy, run } = useRecordGuard()
   const conversionRequest = useRef<{ scope: string; key: string } | null>(null)
 
   function convert() {
-    startTransition(async () => {
+    run(async () => {
       // Keep the same command identity after an error or an uncertain response.
       const scope = `${orgId}:${quoteId}`
       if (conversionRequest.current?.scope !== scope) {
@@ -49,7 +50,7 @@ export function ConvertQuoteButton({
   }
 
   return (
-    <Button size="sm" variant={variant} disabled={pending} onClick={convert}>
+    <Button size="sm" variant={variant} disabled={busy} onClick={convert}>
       <FileOutput /> {label}
     </Button>
   )

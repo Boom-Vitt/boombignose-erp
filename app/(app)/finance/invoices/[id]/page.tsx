@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { InvoiceStatusBadge } from "@/components/status-badge"
 import { StatusBar } from "@/components/record/status-bar"
+import { RequireSaved } from "@/components/record/record-guard"
 import { SmartButtons } from "@/components/record/smart-buttons"
 import { Button } from "@/components/ui/button"
 import {
@@ -251,7 +252,7 @@ export default async function InvoiceDetailPage({
       />
 
       <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. VAT and withholding are document calculations only, not a legal tax system, accounting ledger, filing service or e-Tax Invoice. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
-      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /><CancelDraftButton invoiceId={invoice.id} /></CardContent></Card> : null}
+      {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><RequireSaved message="Save your invoice changes below before issuing it."><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></RequireSaved><CancelDraftButton invoiceId={invoice.id} /></CardContent></Card> : null}
       {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
