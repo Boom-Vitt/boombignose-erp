@@ -61,7 +61,7 @@ export default async function ClientDetailPage({
       .order("created_at", { ascending: true }),
     supabase
       .from("deals")
-      .select("id, title, stage, value_satang, updated_at")
+      .select("id, title, stage, value_satang, updated_at", { count: "exact" })
       .eq("org_id", ctx.orgId)
       .eq("client_id", id)
       .order("updated_at", { ascending: false }),
@@ -72,9 +72,9 @@ export default async function ClientDetailPage({
       .eq("client_id", id)
       .order("created_at", { ascending: false })
       .limit(8),
-    supabase.from("quotes").select("id").eq("org_id", ctx.orgId).eq("client_id", id),
-    supabase.from("invoices").select("id").eq("org_id", ctx.orgId).eq("client_id", id),
-    supabase.from("projects").select("id").eq("org_id", ctx.orgId).eq("client_id", id),
+    supabase.from("quotes").select("id", { count: "exact" }).eq("org_id", ctx.orgId).eq("client_id", id).limit(1),
+    supabase.from("invoices").select("id", { count: "exact" }).eq("org_id", ctx.orgId).eq("client_id", id).limit(1),
+    supabase.from("projects").select("id", { count: "exact" }).eq("org_id", ctx.orgId).eq("client_id", id).limit(1),
     supabase
       .from("client_balances")
       .select("outstanding_satang")
@@ -86,9 +86,6 @@ export default async function ClientDetailPage({
   const contacts = contactsRes.data ?? []
   const deals = dealsRes.data ?? []
   const activities = activitiesRes.data ?? []
-  const quoteIds = (quotesRes.data ?? []).map((q) => q.id)
-  const invoiceIds = (invoicesRes.data ?? []).map((invoice) => invoice.id)
-  const projectIds = (projectsRes.data ?? []).map((p) => p.id)
 
   // No row means no issued invoices. A failed read hides the balance rather than understate it.
   const balanceKnown = !balanceRes.error
@@ -114,24 +111,24 @@ export default async function ClientDetailPage({
 
       <SmartButtons
         buttons={[
-          { label: "Deals", icon: Handshake, count: deals.length, href: "#deals" },
+          { label: "Deals", icon: Handshake, count: dealsRes.count ?? 0, href: "#deals" },
           {
             label: "Quotes",
             icon: FileSignature,
-            count: quoteIds.length,
-            href: recordHref(quoteIds, (quoteId) => `/quotes/${quoteId}`, "/quotes"),
+            count: quotesRes.count ?? 0,
+            href: recordHref(quotesRes, (quoteId) => `/quotes/${quoteId}`, "/quotes"),
           },
           {
             label: "Invoices",
             icon: ReceiptText,
-            count: invoiceIds.length,
-            href: recordHref(invoiceIds, (invoiceId) => `/finance/invoices/${invoiceId}`, "/finance"),
+            count: invoicesRes.count ?? 0,
+            href: recordHref(invoicesRes, (invoiceId) => `/finance/invoices/${invoiceId}`, "/finance"),
           },
           {
             label: "Projects",
             icon: FolderKanban,
-            count: projectIds.length,
-            href: recordHref(projectIds, (projectId) => `/projects/${projectId}`, "/projects"),
+            count: projectsRes.count ?? 0,
+            href: recordHref(projectsRes, (projectId) => `/projects/${projectId}`, "/projects"),
           },
           {
             label: "Open balance",

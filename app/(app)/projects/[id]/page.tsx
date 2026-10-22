@@ -17,11 +17,7 @@ import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
 import { projectProfit } from "@/lib/metrics/projects"
-import {
-  totalMinutes,
-  minutesToHours,
-  billableValueSatang,
-} from "@/lib/metrics/timesheets"
+import { minutesToHours, billableValueSatang } from "@/lib/metrics/timesheets"
 import { todayISO } from "@/lib/dates"
 import { PROJECT_FLOW } from "@/lib/record/status"
 import { PageHeader } from "@/components/page-header"
@@ -98,21 +94,29 @@ export default async function ProjectDetailPage({
   }
 
   const [
-    { data: tasksData },
+    { data: tasksData, count: taskCount },
+    { count: doneTaskCount },
     { data: milestonesData },
-    { data: invoicesData },
+    { data: invoicesData, count: invoiceCount },
     { data: costsData },
     { data: timeData },
-    { data: sourceQuotes },
+    { data: timeTotal },
+    { data: sourceQuotes, count: quoteCount },
   ] = await Promise.all([
     supabase
       .from("project_tasks")
-      .select("id, title, status, assignee, due_date, done")
+      .select("id, title, status, assignee, due_date, done", { count: "exact" })
       .eq("org_id", ctx.orgId)
       .eq("project_id", id)
       .order("done", { ascending: true })
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true }),
+    supabase
+      .from("project_tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", ctx.orgId)
+      .eq("project_id", id)
+      .eq("done", true),
     supabase
       .from("milestones")
       .select("id, title, due_date, done, source_quote_id")
@@ -123,7 +127,7 @@ export default async function ProjectDetailPage({
       .order("created_at", { ascending: true }),
     supabase
       .from("invoices")
-      .select("id, number, status, amount_satang, source_quote_id, source_milestone_id")
+      .select("id, number, status, amount_satang, source_quote_id, source_milestone_id", { count: "exact" })
       .eq("org_id", ctx.orgId)
       .eq("project_id", id),
     supabase.from("costs").select("amount_satang").eq("org_id", ctx.orgId).eq("project_id", id),
@@ -133,8 +137,14 @@ export default async function ProjectDetailPage({
       .eq("org_id", ctx.orgId)
       .eq("project_id", id),
     supabase
+      .from("project_time_totals")
+      .select("minutes")
+      .eq("org_id", ctx.orgId)
+      .eq("project_id", id)
+      .maybeSingle(),
+    supabase
       .from("quotes")
-      .select("id, number, status, total_satang, converted_invoice_id")
+      .select("id, number, status, total_satang, converted_invoice_id", { count: "exact" })
       .eq("org_id", ctx.orgId)
       .eq("project_id", id)
       .order("created_at", { ascending: true }),
@@ -175,18 +185,17 @@ export default async function ProjectDetailPage({
     rate_satang: number | null
   }>
 
-  const loggedMinutes = totalMinutes(timeEntries)
+  const loggedMinutes = timeTotal?.minutes ?? 0
   const loggedBillable = billableValueSatang(timeEntries)
 
   const dl = deadlineMeta(p.deadline)
-  const doneTasks = tasks.filter((t) => t.done).length
+  const doneTasks = doneTaskCount ?? 0
+  const totalTasks = taskCount ?? 0
   const doneMilestones = milestones.filter((m) => m.done).length
 
   const billedInvoices = invoices.filter((invoice) => ["sent", "partially_paid", "paid", "overdue"].includes(invoice.status))
   const hasFinancials = billedInvoices.length > 0 || costs.length > 0
   const profit = hasFinancials ? projectProfit(billedInvoices, costs) : null
-  const invoiceIds = invoices.map((invoice) => invoice.id)
-  const quoteIds = (sourceQuotes ?? []).map((quote) => quote.id)
 
   const projectId = p.id
   async function transitionProject(to: Enums<"project_status">) {
@@ -211,8 +220,8 @@ export default async function ProjectDetailPage({
           {
             label: "Tasks",
             icon: ListChecks,
-            count: tasks.length,
-            value: `${doneTasks}/${tasks.length}`,
+            count: totalTasks,
+            value: `${doneTasks}/${totalTasks}`,
             href: "#tasks",
           },
           {
@@ -225,17 +234,17 @@ export default async function ProjectDetailPage({
           {
             label: "Invoices",
             icon: ReceiptText,
-            count: invoiceIds.length,
-            href: invoiceIds.length
-              ? recordHref(invoiceIds, (invoiceId) => `/finance/invoices/${invoiceId}`, "#billing")
+            count: invoiceCount ?? 0,
+            href: invoiceCount
+              ? recordHref({ count: invoiceCount, data: invoicesData }, (invoiceId) => `/finance/invoices/${invoiceId}`, "#billing")
               : "/finance/invoices/new",
             nextStep: p.status === "delivered" || p.status === "support",
           },
           {
             label: "Quotes",
             icon: FileSignature,
-            count: quoteIds.length,
-            href: recordHref(quoteIds, (quoteId) => `/quotes/${quoteId}`, "#billing"),
+            count: quoteCount ?? 0,
+            href: recordHref({ count: quoteCount, data: sourceQuotes }, (quoteId) => `/quotes/${quoteId}`, "#billing"),
           },
         ]}
       />
@@ -343,7 +352,7 @@ export default async function ProjectDetailPage({
           <CardTitle className="flex items-center gap-2 text-base">
             <ListChecks className="size-4" /> Tasks
             <span className="text-muted-foreground text-sm font-normal">
-              {doneTasks}/{tasks.length} done
+              {doneTasks}/{totalTasks} done
             </span>
           </CardTitle>
         </CardHeader>

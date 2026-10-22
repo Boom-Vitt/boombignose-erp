@@ -1072,6 +1072,18 @@ isOneToOne: false
               }
               Relationships: []
             }
+            "invoice_balances": {
+              Row: {
+                "amount_satang": number | null,"client_id": string | null,"invoice_id": string | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null,"status": Database["public"]["Enums"]["invoice_status"] | null
+              }
+              Relationships: []
+            }
+            "project_time_totals": {
+              Row: {
+                "minutes": number | null,"org_id": string | null,"project_id": string | null
+              }
+              Relationships: []
+            }
           }
           Functions: {
             "accept_integration_event":

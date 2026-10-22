@@ -64,9 +64,10 @@ export default async function SubscriptionDetailPage({
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase
       .from("subscription_occurrences")
-      .select("invoice_id")
+      .select("id:invoice_id", { count: "exact" })
       .eq("org_id", ctx.orgId)
-      .eq("subscription_id", id),
+      .eq("subscription_id", id)
+      .limit(1),
   ])
 
   const sub = subRes.data
@@ -104,7 +105,6 @@ export default async function SubscriptionDetailPage({
     "use server"
     return setSubscriptionStatus({ id: subId, status: to })
   }
-  const invoiceIds = (occurrencesRes.data ?? []).map((o) => o.invoice_id)
 
   return (
     <div className="space-y-6">
@@ -122,8 +122,8 @@ export default async function SubscriptionDetailPage({
           {
             label: "Invoices",
             icon: ReceiptText,
-            count: invoiceIds.length,
-            href: recordHref(invoiceIds, (invoiceId) => `/finance/invoices/${invoiceId}`, "/finance"),
+            count: occurrencesRes.count ?? 0,
+            href: recordHref(occurrencesRes, (invoiceId) => `/finance/invoices/${invoiceId}`, "/finance"),
           },
           {
             label: "Project",
