@@ -1,6 +1,6 @@
 # Odoo parity t1: record header
 
-Branch `odoo-t1-record-header`, based on `main` at b4d9d69. One migration, `20261023140000_client_balances.sql`, adds three read-only views (fix round 1).
+Branch `odoo-t1-record-header`, based on `main` at b4d9d69. One migration, `20261023150000_client_balances.sql`, adds three read-only views (fix round 1).
 
 ## What changed
 
@@ -28,7 +28,7 @@ Behaviour moved, not added. The quote's Mark sent, Accept, Decline and convert b
 - New: `lib/record/status.ts`, `lib/record/status.test.ts`, `components/record/status-bar.tsx`, `components/record/transition-button.tsx`, `components/record/smart-buttons.tsx`, `app/(app)/quotes/_components/convert-quote-button.tsx`, `e2e/record-header.spec.ts`.
 - Changed: `components/page-header.tsx`, `components/status-badge.tsx`, the six detail pages, `app/(app)/finance/_components/subscription-controls.tsx`, the two local badge files (now re-exports), `app/(app)/finance/subscriptions/page.tsx` (one breadcrumb prop), `lib/workflows/service-controls.test.ts`.
 - Deleted: `app/(app)/quotes/_components/quote-status-controls.tsx`.
-- Fix round 1: `supabase/migrations/20261023140000_client_balances.sql`, `supabase/tests/client_balances.sql`, `lib/record/change-stage-select.test.ts`, `lib/types/database.ts` (the three views), `app/(app)/deals/_components/change-stage-select.tsx`, the six detail pages, `components/record/smart-buttons.tsx`, `lib/workflows/service-pages.test.ts` (its query mock gains `limit`).
+- Fix round 1: `supabase/migrations/20261023150000_client_balances.sql`, `supabase/tests/client_balances.sql`, `lib/record/change-stage-select.test.ts`, `lib/types/database.ts` (the three views), `app/(app)/deals/_components/change-stage-select.tsx`, the six detail pages, `components/record/smart-buttons.tsx`, `lib/workflows/service-pages.test.ts` (its query mock gains `limit`).
 
 ## Fix round 1
 
@@ -69,7 +69,7 @@ The new components were rendered to static HTML with the production CSS and scre
 Fix round 1. The four gates above were rerun on the final commit. The SQL test runs on the local stack inside one transaction with the migration, then rolls back, so the shared database keeps no view or fixture:
 
 ```text
-$ { echo 'begin;'; cat supabase/migrations/20261023140000_client_balances.sql supabase/tests/client_balances.sql; } | psql
+$ { echo 'begin;'; cat supabase/migrations/20261023150000_client_balances.sql supabase/tests/client_balances.sql; } | psql
 ok 1 - invoice paid by 1,001 verified receipts owes nothing
 ok 2 - drafts, cancelled invoices and unverified receipts are excluded
 ok 3 - one row per client
