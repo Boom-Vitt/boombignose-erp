@@ -1,14 +1,24 @@
 "use client"
 
-import { useState, useTransition, type FormEvent } from "react"
+import { useState, useSyncExternalStore, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import type { Tables } from "@/lib/types/database"
 import { adjustStock, saveReorder, saveWarehouse } from "@/lib/inventory/actions"
+import { acknowledgeCountCommand, prepareCountCommand, readPendingCount, type CountCommand } from "@/lib/inventory/retry-command"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 const selectStyle = "h-9 w-full rounded-md border bg-background px-3 text-sm"
+
+function browserStore(): Storage | null {
+  try { return window.sessionStorage } catch { return null }
+}
+
+function subscribeCountStorage(change: () => void) {
+  window.addEventListener("storage", change)
+  return () => window.removeEventListener("storage", change)
+}
 
 export function WarehouseForm({ warehouse }: { warehouse?: Tables<"warehouses"> }) {
   const [pending, start] = useTransition()
@@ -35,31 +45,55 @@ export function WarehouseForm({ warehouse }: { warehouse?: Tables<"warehouses"> 
   </form>
 }
 
-export function CountForm({ products, warehouses, balances }: { products: Pick<Tables<"products">, "id" | "name" | "unit">[]; warehouses: Tables<"warehouses">[]; balances: Tables<"stock_on_hand">[] }) {
+export function CountForm({ products, warehouses, balances, scope }: { products: Pick<Tables<"products">, "id" | "name" | "unit">[]; warehouses: Tables<"warehouses">[]; balances: Tables<"stock_on_hand">[]; scope: string }) {
   const [pending, start] = useTransition()
   const [message, setMessage] = useState("")
-  const [key, setKey] = useState(() => crypto.randomUUID())
-  const [product, setProduct] = useState(products[0]?.id ?? "")
-  const [warehouse, setWarehouse] = useState(warehouses.find(w => w.is_default)?.id ?? warehouses[0]?.id ?? "")
+  const [pendingCommand, setPendingCommand] = useState<CountCommand | null>(null)
+  const saved = useSyncExternalStore(subscribeCountStorage, () => JSON.stringify(readPendingCount(browserStore(), scope)), () => "null")
+  const command = pendingCommand ?? (JSON.parse(saved) as CountCommand | null)
+  const [selectedProduct, setProduct] = useState(products[0]?.id ?? "")
+  const [selectedWarehouse, setWarehouse] = useState(warehouses.find(w => w.is_default)?.id ?? warehouses[0]?.id ?? "")
+  const [quantity, setQuantity] = useState("")
+  const [reason, setReason] = useState("")
+  const product = command?.product_id ?? selectedProduct
+  const warehouse = command?.warehouse_id ?? selectedWarehouse
   const router = useRouter()
   const onHand = balances.find(row => row.product_id === product && row.warehouse_id === warehouse)?.quantity ?? 0
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
+    let request: CountCommand
+    try {
+      request = prepareCountCommand(browserStore(), scope, command ?? { product_id: product, warehouse_id: warehouse, quantity: Number(quantity), reason }, () => crypto.randomUUID())
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Invalid count"); return }
+    setProduct(request.product_id)
+    setWarehouse(request.warehouse_id)
+    setQuantity(String(request.quantity))
+    setReason(request.reason)
+    setPendingCommand(request)
     start(async () => {
-      const result = await adjustStock({ product_id: product, warehouse_id: warehouse, quantity: form.get("quantity"), reason: form.get("reason"), key })
-      setMessage(result.error ?? "Count recorded.")
-      if (!result.error) { setKey(crypto.randomUUID()); router.refresh() }
+      try {
+        const result = await adjustStock(request)
+        if (!acknowledgeCountCommand(browserStore(), scope, request.key, result)) {
+          setMessage(result.error !== undefined ? `${result.error} Retry the saved count before entering a new count.` : "Count response received, but browser recovery could not be cleared. Retry the saved count.")
+          return
+        }
+        setPendingCommand(null)
+        setMessage(result.error ?? "Count recorded.")
+        if (!result.error) router.refresh()
+      } catch { setMessage("Could not confirm the count response. Retry the saved count before entering a new count.") }
     })
   }
   return <form onSubmit={submit} className="max-w-xl space-y-4 rounded-xl border p-5">
-    <div><Label htmlFor="count-product">Product</Label><select id="count-product" className={selectStyle} value={product} onChange={e => setProduct(e.target.value)} required>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-    <div><Label htmlFor="count-warehouse">Warehouse</Label><select id="count-warehouse" className={selectStyle} value={warehouse} onChange={e => setWarehouse(e.target.value)} required>{warehouses.map(w => <option key={w.id} value={w.id}>{w.code} · {w.name}</option>)}</select></div>
+    {command && <p className="text-sm">A saved count is awaiting confirmation. Retry it before entering another count.</p>}
+    <fieldset disabled={pending || !!command} className="space-y-4">
+    <div><Label htmlFor="count-product">Product</Label><select id="count-product" className={selectStyle} value={product} onChange={e => setProduct(e.target.value)} required>{command && !products.some(p => p.id === product) && <option value={product}>{product} (saved product)</option>}{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+    <div><Label htmlFor="count-warehouse">Warehouse</Label><select id="count-warehouse" className={selectStyle} value={warehouse} onChange={e => setWarehouse(e.target.value)} required>{command && !warehouses.some(w => w.id === warehouse) && <option value={warehouse}>{warehouse} (saved warehouse)</option>}{warehouses.map(w => <option key={w.id} value={w.id}>{w.code} · {w.name}</option>)}</select></div>
     <p className="text-sm text-muted-foreground">Current on hand: {onHand} {products.find(p => p.id === product)?.unit}</p>
-    <div><Label htmlFor="count-quantity">Counted quantity</Label><Input id="count-quantity" name="quantity" type="number" step="0.001" min="0" max="999999999.999" required /></div>
-    <div><Label htmlFor="count-reason">Reason</Label><Input id="count-reason" name="reason" maxLength={2000} required /></div>
+    <div><Label htmlFor="count-quantity">Counted quantity</Label><Input id="count-quantity" name="quantity" type="number" step="0.001" min="0" max="999999999.999" required value={command ? String(command.quantity) : quantity} onChange={e => setQuantity(e.target.value)} /></div>
+    <div><Label htmlFor="count-reason">Reason</Label><Input id="count-reason" name="reason" maxLength={2000} required value={command?.reason ?? reason} onChange={e => setReason(e.target.value)} /></div>
+    </fieldset>
     {message && <p role="status" className="text-sm">{message}</p>}
-    <Button type="submit" disabled={pending || !product || !warehouse}>Record count</Button>
+    <Button type="submit" disabled={pending || !product || !warehouse}>{command ? "Retry saved count" : "Record count"}</Button>
   </form>
 }
 

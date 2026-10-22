@@ -1208,6 +1208,7 @@ isOneToOne: false
             }
           }
           Functions: {
+            inventory_snapshot: { Args: { p_org_id: string; p_warehouse_id?: string; p_product_id?: string }; Returns: Json }
             save_warehouse: { Args: { p_org_id: string; p_id: string | null; p_code: string; p_name: string; p_address: string | null; p_default: boolean; p_active: boolean }; Returns: string }
             delete_warehouse: { Args: { p_org_id: string; p_id: string }; Returns: undefined }
             deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string }; Returns: undefined }

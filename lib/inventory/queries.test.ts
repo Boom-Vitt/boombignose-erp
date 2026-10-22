@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest"
 
-const state = vi.hoisted(() => ({ rows: {} as Record<string, Record<string, unknown>[]>, snapshot: {} as Record<string, unknown>, fail: "", mutate: false, ranges: [] as [string, number, number][], rpc: vi.fn() }))
-vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "b8200000-0000-4000-8000-000000000010", userId: "user" }) }))
+const state = vi.hoisted(() => ({ org: "b8200000-0000-4000-8000-000000000010", rows: {} as Record<string, Record<string, unknown>[]>, snapshot: {} as Record<string, unknown>, fail: "", mutate: false, ranges: [] as [string, number, number][], rpc: vi.fn() }))
+vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: state.org, userId: "user" }) }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: state.rpc, from: (table: string) => {
   const builder = {
     select: () => builder, eq: () => builder, order: () => builder,
@@ -20,7 +20,7 @@ const id = "b8200000-0000-4000-8000-000000000030"
 const product = { id, org_id: org, name: "Product", sku: null, description: null, unit: "piece", type: "goods", is_stockable: true, active: true, list_price_satang: 200, cost_satang: 100, tax_rate_bps: 0, reorder_min: 5, reorder_qty: 10, default_vendor_id: null, created_at: "2026-10-23", updated_at: "2026-10-23" }
 
 beforeEach(() => {
-  state.rows = { products: [product] }; state.fail = ""; state.mutate = false; state.ranges = []
+  state.org = org; state.rows = { products: [product] }; state.fail = ""; state.mutate = false; state.ranges = []
   state.snapshot = { products: [{ ...product, quantity: 0, value_satang: 0 }], balances: [] }
   state.rpc.mockReset().mockImplementation(async () => ({ data: state.snapshot, error: state.fail === "inventory_snapshot" ? new Error("Unavailable") : null }))
 })
@@ -49,4 +49,11 @@ it("fails closed if the snapshot is unavailable or malformed", async () => {
   state.fail = ""
   state.snapshot = { products: [{ ...product, quantity: 1, value_satang: Number.MAX_SAFE_INTEGER + 1 }], balances: [] }
   await expect(inventoryData()).rejects.toThrow("Inventory data unavailable")
+})
+
+it("accepts the PostgreSQL UUID format used by the seeded demo organization", async () => {
+  state.org = "a0000000-0000-0000-0000-000000000001"
+  state.snapshot = { products: [{ ...product, org_id: state.org, quantity: 0, value_satang: 0 }], balances: [] }
+  const result = await inventoryData()
+  expect(result.products[0].org_id).toBe(state.org)
 })

@@ -2,6 +2,14 @@ import { test, expect } from "@playwright/test"
 import { loginDemo } from "./auth"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/types/database"
+import { todayISO } from "@/lib/dates"
+
+async function inventoryOwner() {
+  const db = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } })
+  const login = await db.auth.signInWithPassword({ email: "demo@boombignose.org", password: "BoomDemo123!" })
+  expect(login.error).toBeNull()
+  return db
+}
 
 test("receiving, invoice delivery and physical count update stock once", async ({ page }) => {
   await loginDemo(page)
@@ -13,6 +21,7 @@ test("receiving, invoice delivery and physical count update stock once", async (
   await page.getByLabel("SKU (optional)").fill(sku)
   await page.getByLabel("Type", { exact: true }).click()
   await page.getByRole("option", { name: "Goods", exact: true }).click()
+  await page.getByLabel("Unit", { exact: true }).fill("piece")
   await page.getByLabel("Stockable", { exact: false }).check()
   await page.getByLabel("Sales price (THB)").fill("20.00")
   await page.getByLabel("Cost (THB)").fill("10.00")
@@ -34,6 +43,10 @@ test("receiving, invoice delivery and physical count update stock once", async (
   await expect(page.getByRole("link", { name: "Receipts 1", exact: true })).toBeVisible()
   await page.goto(`/inventory?product=${productId}`)
   await expect(page.getByTestId(`on-hand-${productId}`)).toHaveText("5 piece")
+  await page.goto(`/products/${productId}/edit`)
+  await page.getByLabel("Unit", { exact: true }).fill("box")
+  await page.getByRole("button", { name: "Save product", exact: true }).click()
+  await expect(page.getByText("This product has stock history. Keep its current unit or create a new product for a different unit.", { exact: true })).toBeVisible()
 
   await page.goto("/finance/business-profile")
   await page.getByLabel("Legal business name", { exact: false }).fill("Synthetic inventory seller")
@@ -72,12 +85,48 @@ test("receiving, invoice delivery and physical count update stock once", async (
   await expect(page.getByTestId(`on-hand-${productId}`)).toHaveText("4 piece")
   await page.goto(`/inventory/moves?product=${productId}`)
   await expect(page.getByRole("row").filter({ hasText: "Synthetic cycle count" })).toContainText("Adjustment In")
+
+  await page.goto("/inventory/adjust")
+  await page.getByLabel("Product", { exact: true }).selectOption(productId)
+  await page.getByLabel("Counted quantity", { exact: true }).fill("5")
+  await page.getByLabel("Reason", { exact: true }).fill("Unconfirmed cycle count")
+  let loseResponse = true
+  await page.route("**/inventory/adjust", async route => {
+    if (loseResponse && route.request().method() === "POST" && route.request().headers()["next-action"]) {
+      loseResponse = false
+      await route.fetch()
+      await route.abort("connectionreset")
+    } else await route.continue()
+  })
+  await page.getByRole("button", { name: "Record count", exact: true }).click()
+  await expect(page.getByRole("status")).toContainText("Could not confirm the count response")
+  await page.reload()
+  await expect(page.getByRole("button", { name: "Retry saved count", exact: true })).toBeVisible()
+  await expect(page.getByLabel("Counted quantity", { exact: true })).toHaveValue("5")
+  await expect(page.getByLabel("Reason", { exact: true })).toHaveValue("Unconfirmed cycle count")
+
+  const db = await inventoryOwner()
+  const org = "a0000000-0000-0000-0000-000000000001"
+  const po = await db.rpc("create_purchase_order", { p_org_id: org, p_vendor_id: "a6000000-0000-4000-8000-000000000001", p_order_date: todayISO() })
+  expect(po.error).toBeNull()
+  const lineId = crypto.randomUUID()
+  const line = await db.from("purchase_order_items").insert({ id: lineId, org_id: org, purchase_order_id: po.data!, product_id: productId, description: "Intervening receipt", quantity: 2, unit: "piece", unit_cost_satang: 1000 })
+  expect(line.error).toBeNull()
+  const confirmed = await db.rpc("transition_purchase_order", { p_org_id: org, p_order_id: po.data!, p_status: "confirmed" })
+  expect(confirmed.error).toBeNull()
+  const received = await db.rpc("receive_purchase_order", { p_org_id: org, p_order_id: po.data!, p_lines: [{ id: lineId, received_quantity: 2 }] })
+  expect(received.error).toBeNull()
+  await page.reload()
+  await page.getByRole("button", { name: "Retry saved count", exact: true }).click()
+  await expect(page.getByRole("status")).toHaveText("Count recorded.")
+  await page.goto(`/inventory?product=${productId}`)
+  await expect(page.getByTestId(`on-hand-${productId}`)).toHaveText("7 piece")
+  await page.goto(`/inventory/moves?product=${productId}`)
+  await expect(page.getByRole("row").filter({ hasText: "Unconfirmed cycle count" })).toHaveCount(1)
 })
 
 test("concurrent invoice deliveries cannot spend the same stock", async () => {
-  const db = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } })
-  const login = await db.auth.signInWithPassword({ email: "demo@boombignose.org", password: "BoomDemo123!" })
-  expect(login.error).toBeNull()
+  const db = await inventoryOwner()
   const org = "a0000000-0000-0000-0000-000000000001"
   const suffix = crypto.randomUUID()
   const warehouse = await db.from("warehouses").select("id").eq("org_id", org).eq("is_default", true).single()
