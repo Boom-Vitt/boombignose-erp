@@ -13,9 +13,9 @@ insert into public.memberships(org_id,user_id,role) values
 insert into public.vendors(id,org_id,name,payment_terms_days) values
  ('b6000000-0000-4000-8000-000000000020','b6000000-0000-4000-8000-000000000010','Test supplier',14),
  ('b6000000-0000-4000-8000-000000000021','b6000000-0000-4000-8000-000000000011','Other supplier',30);
-insert into public.products(id,org_id,name,cost_satang) values
- ('b6000000-0000-4000-8000-000000000030','b6000000-0000-4000-8000-000000000010','Test product',101),
- ('b6000000-0000-4000-8000-000000000031','b6000000-0000-4000-8000-000000000011','Other product',202);
+insert into public.products(id,org_id,name,unit,cost_satang) values
+ ('b6000000-0000-4000-8000-000000000030','b6000000-0000-4000-8000-000000000010','Test product','day',101),
+ ('b6000000-0000-4000-8000-000000000031','b6000000-0000-4000-8000-000000000011','Other product','piece',202);
 insert into public.purchase_orders(id,org_id,number,vendor_id) values
  ('b6000000-0000-4000-8000-000000000050','b6000000-0000-4000-8000-000000000011','PO-2026-001','b6000000-0000-4000-8000-000000000021');
 insert into public.purchase_order_items(org_id,purchase_order_id,description,quantity,unit_cost_satang) values
