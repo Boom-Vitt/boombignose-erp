@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 export type RequestStore = Pick<Storage, "getItem" | "setItem" | "removeItem">
-const Command = z.object({ orgId: z.uuid(), subscriptionId: z.uuid(), occurrence: z.iso.date() })
+const Command = z.object({ orgId: z.guid(), subscriptionId: z.guid(), occurrence: z.iso.date() })
 const keyFor = (orgId: string, subId: string) => `erp.subscription.request:${orgId}:${subId}`
 
 export function readInvoiceRequest(store: RequestStore, orgId: string, subId: string) {

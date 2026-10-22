@@ -3,7 +3,7 @@ import { z } from "zod"
 import type { Database } from "@/lib/types/database"
 
 const Claim = z.object({
-  id: z.uuid(), org_id: z.uuid(), event_type: z.string().min(1),
+  id: z.guid(), org_id: z.guid(), event_type: z.string().min(1),
   payload: z.json(), attempts: z.number().int().positive(), lease_token: z.uuid(),
 })
 export type DeliveryConfig = { url: string; secret: string }

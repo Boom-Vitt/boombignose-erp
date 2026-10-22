@@ -16,7 +16,7 @@ const SUBSCRIPTION_STATUSES = ["active", "paused", "cancelled"] as const
 
 /** Optional id select: "" (none) → null. */
 const optionalId = z
-  .union([z.uuid(), z.literal("")])
+  .union([z.guid(), z.literal("")])
   .optional()
   .transform((v) => (v ? v : null))
 
@@ -42,7 +42,7 @@ const amountBaht = z.coerce.number().min(0).refine(value => {
 // ---------------------------------------------------------------------------
 
 const CreateSubscription = z.object({
-  client_id: z.uuid("Client is required"),
+  client_id: z.guid("Client is required"),
   project_id: optionalId,
   name: z.string().trim().min(1, "Name is required"),
   amountBaht,
@@ -103,8 +103,8 @@ export async function createSubscription(
 // ---------------------------------------------------------------------------
 
 const UpdateSubscription = z.object({
-  id: z.uuid(),
-  client_id: z.uuid("Client is required"),
+  id: z.guid(),
+  client_id: z.guid("Client is required"),
   project_id: optionalId,
   name: z.string().trim().min(1, "Name is required"),
   amountBaht,
@@ -160,7 +160,7 @@ export async function updateSubscription(
 // ---------------------------------------------------------------------------
 
 const SetStatus = z.object({
-  id: z.uuid(),
+  id: z.guid(),
   status: z.enum(SUBSCRIPTION_STATUSES),
 })
 
@@ -203,7 +203,7 @@ export async function setSubscriptionStatus(
 // Delete
 // ---------------------------------------------------------------------------
 
-const DeleteSubscription = z.object({ id: z.uuid() })
+const DeleteSubscription = z.object({ id: z.guid() })
 
 export async function deleteSubscription(
   input: z.input<typeof DeleteSubscription>
@@ -241,7 +241,7 @@ export async function deleteSubscription(
 // Manual invoice generation
 // ---------------------------------------------------------------------------
 
-const GenerateNow = z.object({ id: z.uuid(), occurrence: z.iso.date() })
+const GenerateNow = z.object({ id: z.guid(), occurrence: z.iso.date() })
 
 export async function generateInvoiceNow(
   input: { id: string; occurrence?: string }

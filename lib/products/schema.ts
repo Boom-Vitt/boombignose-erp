@@ -16,6 +16,6 @@ export const ProductInput = z.object({
 export type ProductFormValues = z.input<typeof ProductInput>
 
 export const ProductLineInput = z.object({
-  product_id: z.uuid().nullable().optional(),
+  product_id: z.guid().nullable().optional(),
   unit: z.string().trim().min(1).max(40).nullable().optional(),
 })

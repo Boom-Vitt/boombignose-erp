@@ -12,7 +12,7 @@ import { renderRFQEmail } from "@/lib/purchasing/rfq"
 export async function sendPurchaseRFQ(id: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
-  if (!z.uuid().safeParse(id).success) return { error: "Invalid purchase" }
+  if (!z.guid().safeParse(id).success) return { error: "Invalid purchase" }
   const { order, lines } = await purchaseDetail(id)
   if (order.status !== "draft") return { error: "Only draft RFQs can be sent" }
   if (!lines.length) return { error: "Add purchase lines first" }

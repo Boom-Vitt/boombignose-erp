@@ -12,7 +12,7 @@ export async function saveVendor(id: string | null, input: unknown): Promise<{ e
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
   const parsed = VendorInput.safeParse(input)
-  if (!parsed.success || (id !== null && !z.uuid().safeParse(id).success)) return { error: "Invalid vendor details" }
+  if (!parsed.success || (id !== null && !z.guid().safeParse(id).success)) return { error: "Invalid vendor details" }
   const db = await createClient()
   const result = id
     ? await db.from("vendors").update(parsed.data).eq("org_id", ctx.orgId).eq("id", id).select("id").single()

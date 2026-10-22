@@ -14,7 +14,7 @@ export async function saveProduct(input: ProductFormValues, id?: string): Promis
   try { requireCapability(ctx, "product:manage") }
   catch { return { error: "Only owners and admins can manage products." } }
   const parsed = ProductInput.safeParse(input)
-  if (!parsed.success || (id !== undefined && !z.uuid().safeParse(id).success)) return { error: "Invalid product input" }
+  if (!parsed.success || (id !== undefined && !z.guid().safeParse(id).success)) return { error: "Invalid product input" }
   const d = parsed.data
   const values = {
     sku: d.sku || null,
@@ -49,7 +49,7 @@ export async function setProductActive(id: string, active: boolean): Promise<{ e
   const ctx = await requireOrgContext()
   try { requireCapability(ctx, "product:manage") }
   catch { return { error: "Only owners and admins can manage products." } }
-  if (!z.uuid().safeParse(id).success || typeof active !== "boolean") return { error: "Invalid product input" }
+  if (!z.guid().safeParse(id).success || typeof active !== "boolean") return { error: "Invalid product input" }
   const supabase = await createClient()
   const { data, error } = await supabase.from("products").update({ active })
     .eq("org_id", ctx.orgId).eq("id", id).select("id, name").maybeSingle()

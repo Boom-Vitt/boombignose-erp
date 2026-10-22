@@ -15,7 +15,7 @@ const ClientInput = z.object({
 })
 
 const ContactInput = z.object({
-  client_id: z.string().uuid(),
+  client_id: z.guid(),
   name: z.string().min(1, "Name is required"),
   email: z.string().optional(),
   phone: z.string().optional(),

@@ -13,17 +13,17 @@ export const VendorInput = z.object({
   active: z.boolean(),
 })
 export const PurchaseInput = z.object({
-  vendor_id: z.uuid(),
+  vendor_id: z.guid(),
   order_date: z.iso.date(),
   expected_date: z.union([z.iso.date(), z.literal("")]).transform(value => value || null),
   notes: optionalText(10000),
 })
 export const LineInput = z.object({
-  purchase_order_id: z.uuid(),
-  product_id: z.uuid().nullable(),
+  purchase_order_id: z.guid(),
+  product_id: z.guid().nullable(),
   description: z.string().trim().min(1).max(4000),
   quantity: serviceQuantityInput,
   unit: z.string().trim().min(1).max(40),
   unitCostBaht: serviceMoneyInput,
 })
-export const ReceiptInput = z.array(z.object({ id: z.uuid(), received_quantity: z.number().finite().nonnegative() })).min(1)
+export const ReceiptInput = z.array(z.object({ id: z.guid(), received_quantity: z.number().finite().nonnegative() })).min(1)
