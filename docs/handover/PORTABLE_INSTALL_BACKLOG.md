@@ -16,4 +16,12 @@ Release/install gates:
 
 ## License inspection, unchanged
 
+**Correction — 2026-10-22:** The owner selected Community AGPL-3.0-only OR
+Commercial after Pro application implementations were separated into `ee/`.
+`LICENSE` and `COMMERCIAL-LICENSE.md` now govern Community; `ee/LICENSE` and
+`bignose/LICENSE` remain separate commercial/proprietary scopes. The earlier
+licensing observation below is historical and is superseded. This checkout
+still builds a combined application; Community-only packaging remains a
+separate task. See `docs/OPEN_CORE_BOUNDARY.md`.
+
 `LICENSE.md` states NOT YET FINALIZED, proprietary/all rights reserved, internal use only, do not redistribute. It describes a proposed AGPLv3 OR Commercial direction but does not grant that license. README points to the same planned open-core direction. Licensing terms were not changed. Public redistribution and third-party self-hosting permission require a separate explicit licensing decision; technical portability work does not resolve this mismatch.

@@ -41,4 +41,3 @@ export const getUserOrgs = cache(async (): Promise<UserOrg[]> => {
     role: m.role,
   }))
 })
-
