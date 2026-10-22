@@ -24,7 +24,7 @@ function refresh(ref: RecordRef) {
 }
 export async function logRecordNote(input: unknown): Promise<{ error?: string }> {
   const parsed = NoteInput.safeParse(input)
-  if (!parsed.success) return { error: "Enter a note of 1 to 20,000 characters." }
+  if (!parsed.success) return { error: parsed.error.issues.some(issue => issue.path[0] === "body") ? "Enter a note of 1 to 20,000 characters." : "This record is not available. Reload the page and try again." }
   const ref = parsed.data
   const { ctx, supabase } = await writableRecord(ref)
   const { error } = await supabase.from("record_notes").insert({ org_id: ctx.orgId, record_type: ref.recordType, record_id: ref.recordId, author: ctx.userId, body: ref.body })
