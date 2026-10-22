@@ -21,7 +21,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
   const ctx = await requireOrgContext()
   const params = await searchParams
   const config = parseFacets(params, "purchases")
-  const vendorId = z.uuid().safeParse(params.vendor)
+  const vendorId = z.guid().safeParse(params.vendor)
   const db = await createClient()
   const [orders, lines, savedViews] = await Promise.all([
     readAllOrThrow((from, to) => db.from("purchase_orders").select("*,vendors(name)").eq("org_id", ctx.orgId).order("order_date", { ascending: false }).order("id").range(from, to)),

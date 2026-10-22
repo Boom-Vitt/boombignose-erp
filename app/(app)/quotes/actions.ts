@@ -394,7 +394,7 @@ export async function setQuoteStatus(
 // Convert to invoice (owner/admin only)
 // ---------------------------------------------------------------------------
 
-const ConvertQuote = z.object({ id: z.uuid(), key: z.uuid() })
+const ConvertQuote = z.object({ id: z.guid(), key: z.uuid() })
 
 export async function convertQuoteToInvoice(
   input: z.input<typeof ConvertQuote>

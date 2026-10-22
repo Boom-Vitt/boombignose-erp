@@ -48,7 +48,7 @@ export async function scheduleRecordActivity(input: unknown): Promise<{ error?: 
   return {}
 }
 export async function completeRecordActivity(input: unknown): Promise<{ error?: string }> {
-  const parsed = z.uuid().safeParse(input)
+  const parsed = z.guid().safeParse(input)
   if (!parsed.success) return { error: "Invalid activity." }
   const ctx = await requireOrgContext()
   requireCapability(ctx, "record:write")
@@ -85,7 +85,7 @@ export async function attachRecordFile(form: FormData): Promise<{ error?: string
   return {}
 }
 export async function recordAttachmentUrl(input: unknown): Promise<{ url?: string; error?: string }> {
-  const parsed = z.uuid().safeParse(input)
+  const parsed = z.guid().safeParse(input)
   if (!parsed.success) return { error: "Invalid attachment." }
   const ctx = await requireOrgContext()
   const supabase = await createClient()

@@ -16,8 +16,10 @@ vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 import { saveProduct, setProductActive } from "./actions"
+import { ProductLineInput } from "./schema"
 import { writeAudit } from "@/lib/audit"
 
+const seedId = "50000000-0000-0000-0000-000000000001"
 const id = "b5000000-0000-4000-8000-000000000002"
 const input = { name: " Training ", sku: " TRAIN ", description: " Training day ", type: "service" as const, unit: "day", listPriceBaht: "1.01", costBaht: "0.50", taxRateBps: 700, isStockable: false }
 
@@ -80,4 +82,14 @@ describe("catalog server actions", () => {
     expect(await setProductActive(id, true)).toEqual({ error: "Product not found" })
     expect(writeAudit).not.toHaveBeenCalled()
   })
+
+  it("updates and archives a product whose id lacks RFC 9562 version bits", async () => {
+    expect(await saveProduct(input, seedId)).not.toHaveProperty("error")
+    expect(await setProductActive(seedId, false)).toEqual({})
+    expect(state.eq.mock.calls).toEqual([["org_id", state.ctx.orgId], ["id", seedId], ["org_id", state.ctx.orgId], ["id", seedId]])
+  })
+})
+
+it("accepts a quote or invoice line product id that lacks RFC 9562 version bits", () => {
+  expect(ProductLineInput.parse({ product_id: seedId, unit: "day" })).toEqual({ product_id: seedId, unit: "day" })
 })

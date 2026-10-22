@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test"
 import { createClient } from "@supabase/supabase-js"
 import { randomUUID } from "node:crypto"
+import { community } from "./edition"
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
 
@@ -39,7 +40,7 @@ test("VAT-registered invoice with WHT 3% freezes and presents the same totals", 
     await page.getByLabel("Unit price (฿)", { exact: true }).fill("1000.00")
     await expect(page.getByLabel("VAT rate (bps)", { exact: true })).toHaveValue("700")
     await page.getByRole("button", { name: "Add item", exact: true }).click()
-    await page.getByLabel("Withholding tax", { exact: true }).selectOption("300")
+    await page.getByRole("combobox", { name: "Withholding tax", exact: true }).selectOption("300")
     const totals = page.getByTestId("document-totals")
     for (const [label, amount] of [["Subtotal", "1,000.00"], ["Discount", "0.00"], ["VAT 7%", "70.00"], ["Total", "1,070.00"], ["WHT 3%", "30.00"], ["Amount due", "1,040.00"]]) {
       await expect(totals.getByText(label, { exact: true }).locator("..").locator("dd")).toContainText(amount)
@@ -52,9 +53,12 @@ test("VAT-registered invoice with WHT 3% freezes and presents the same totals", 
     expect(pdf.ok()).toBe(true)
     const html = await pdf.text()
     for (const value of ["Tax Invoice / ใบกำกับภาษี", "VAT 7%", "WHT 3%", "1,040.00", "Head office", "Branch 001", "1234567890123", "9876543210123"]) expect(html).toContain(value)
-    await page.goto(`/portal/${token}`)
-    await expect(page.getByTestId("document-totals")).toContainText("1,040.00")
-    await expect(page.getByTestId("document-totals")).toContainText("VAT 7%")
+    // The client portal is Pro-only; community renders notFound() there.
+    if (!community) {
+      await page.goto(`/portal/${token}`)
+      await expect(page.getByTestId("document-totals")).toContainText("1,040.00")
+      await expect(page.getByTestId("document-totals")).toContainText("VAT 7%")
+    }
   } finally {
     expect((await admin.from("organizations").delete().eq("id", org)).error).toBeNull()
     expect((await admin.auth.admin.deleteUser(uid)).error).toBeNull()

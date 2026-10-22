@@ -69,7 +69,7 @@ export async function createSavedView(
   return {}
 }
 
-const DeleteSavedViewInput = z.object({ id: z.string().uuid() })
+const DeleteSavedViewInput = z.object({ id: z.guid() })
 
 export async function deleteSavedView(
   id: string

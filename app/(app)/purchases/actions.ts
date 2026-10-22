@@ -55,7 +55,7 @@ export async function addPurchaseLine(input: unknown): Promise<{ error?: string 
 export async function removePurchaseLine(orderId: string, lineId: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
-  if (!z.uuid().safeParse(orderId).success || !z.uuid().safeParse(lineId).success) return { error: "Invalid line" }
+  if (!z.guid().safeParse(orderId).success || !z.guid().safeParse(lineId).success) return { error: "Invalid line" }
   const db = await createClient()
   const { error } = await db.from("purchase_order_items").delete().eq("org_id", ctx.orgId).eq("purchase_order_id", orderId).eq("id", lineId)
   if (error) return { error: error.message }
@@ -66,7 +66,7 @@ export async function removePurchaseLine(orderId: string, lineId: string): Promi
 export async function transitionPurchase(id: string, status: Enums<"purchase_status">): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
-  if (!z.uuid().safeParse(id).success || !z.enum(["confirmed", "cancelled"]).safeParse(status).success) return { error: "Invalid purchase transition" }
+  if (!z.guid().safeParse(id).success || !z.enum(["confirmed", "cancelled"]).safeParse(status).success) return { error: "Invalid purchase transition" }
   const db = await createClient()
   const { error } = await db.rpc("transition_purchase_order", { p_org_id: ctx.orgId, p_order_id: id, p_status: status })
   if (error) return { error: error.message }
@@ -78,7 +78,7 @@ export async function receivePurchase(id: string, input: unknown): Promise<{ err
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
   const parsed = ReceiptInput.safeParse(input)
-  if (!z.uuid().safeParse(id).success || !parsed.success) return { error: "Invalid receipt" }
+  if (!z.guid().safeParse(id).success || !parsed.success) return { error: "Invalid receipt" }
   const db = await createClient()
   let receipt
   try {
@@ -94,7 +94,7 @@ export async function receivePurchase(id: string, input: unknown): Promise<{ err
 export async function createPurchaseBill(id: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
-  if (!z.uuid().safeParse(id).success) return { error: "Invalid purchase" }
+  if (!z.guid().safeParse(id).success) return { error: "Invalid purchase" }
   const db = await createClient()
   const { error } = await db.rpc("bill_purchase_order", { p_org_id: ctx.orgId, p_order_id: id })
   if (error) return { error: error.message }
@@ -105,7 +105,7 @@ export async function createPurchaseBill(id: string): Promise<{ error?: string }
 export async function markBillPaid(id: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
-  if (!z.uuid().safeParse(id).success) return { error: "Invalid bill" }
+  if (!z.guid().safeParse(id).success) return { error: "Invalid bill" }
   const db = await createClient()
   const { data, error } = await db.from("costs").update({ paid_at: new Date().toISOString() }).eq("org_id", ctx.orgId).eq("id", id).not("vendor_id", "is", null).is("paid_at", null).select("purchase_order_id, vendor_id, bill_number").maybeSingle()
   if (error) return { error: error.message }
