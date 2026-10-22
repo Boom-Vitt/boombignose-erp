@@ -1,4 +1,6 @@
+import type * as React from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
+import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -44,19 +46,18 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  render,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
-  return (
-    <ButtonPrimitive
-      data-slot="button"
-      // When `render` swaps in a non-button element (e.g. a Next.js <Link>/<a>),
-      // Base UI warns unless nativeButton is false. Default it off in that case;
-      // an explicit nativeButton in props still wins via the spread below.
-      nativeButton={props.render ? false : undefined}
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
+}: Omit<ButtonPrimitive.Props, "render"> & { render?: React.ReactElement } & VariantProps<typeof buttonVariants>) {
+  const classes = cn(buttonVariants({ variant, size, className }))
+  // `render` swaps in a link (Next.js <Link>/<a>). Base UI Button would force
+  // role="button" on it, so render it as a plain styled link instead.
+  const link = useRender({
+    render,
+    enabled: render !== undefined,
+    props: { ...props, "data-slot": "button", className: classes },
+  })
+  return link ?? <ButtonPrimitive data-slot="button" className={classes} {...props} />
 }
 
 export { Button, buttonVariants }
