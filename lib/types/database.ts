@@ -30,9 +30,9 @@ export type Database = {
         Relationships: [{ foreignKeyName: "vendors_org_id_fkey"; columns: ["org_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] }]
       }
       purchase_orders: {
-        Row: { id: string; org_id: string; number: string; vendor_id: string; status: Database["public"]["Enums"]["purchase_status"]; order_date: string; expected_date: string | null; notes: string | null; created_by: string | null; created_at: string; updated_at: string }
-        Insert: { id?: string; org_id: string; number: string; vendor_id: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
-        Update: { id?: string; org_id?: string; number?: string; vendor_id?: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Row: { rfq_snapshot: Json | null; rfq_delivery_key: string | null; rfq_delivered_at: string | null; rfq_delivery_error: string | null; id: string; org_id: string; number: string; vendor_id: string; status: Database["public"]["Enums"]["purchase_status"]; order_date: string; expected_date: string | null; notes: string | null; created_by: string | null; created_at: string; updated_at: string }
+        Insert: { rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id: string; number: string; vendor_id: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Update: { rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id?: string; number?: string; vendor_id?: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
         Relationships: [{ foreignKeyName: "purchase_orders_org_id_vendor_id_fkey"; columns: ["org_id", "vendor_id"]; isOneToOne: false; referencedRelation: "vendors"; referencedColumns: ["org_id", "id"] }]
       }
       purchase_order_items: {
@@ -1215,6 +1215,8 @@ isOneToOne: false
 "update_business_profile":
 { Args: { "p_business_address": string,"p_legal_name": string,"p_org_id": string,"p_tax_id": string,"p_tax_status": string }; Returns: undefined
                            }
+            claim_purchase_rfq: { Args: { p_org_id: string; p_order_id: string }; Returns: Json }
+            finish_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_error?: string | null }; Returns: undefined }
             create_purchase_order: { Args: { p_org_id: string; p_vendor_id: string; p_order_date: string; p_expected_date?: string | null; p_notes?: string | null }; Returns: string }
             transition_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_status: Database["public"]["Enums"]["purchase_status"] }; Returns: undefined }
             receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json }; Returns: undefined }
