@@ -154,3 +154,46 @@ pnpm test
 ```
 
 `git diff --check` passed. The coordinator must apply the new fix migration after the original inventory migration, run both `supabase/tests/inventory.sql` and `supabase/tests/inventory_fixes.sql`, then run `e2e/inventory.spec.ts` on the integration database. These SQL/browser checks remain unexecuted here; no Supabase or Docker stack was started. SessionStorage recovery lasts for the current browser tab session, as requested; closing that session discards its recovery data.
+
+## Integration round 2, 2026-10-23
+
+Merged the requested `odoo-parity` head `4bd97d0` into inventory head `d33e112` as `53ff1d3`. All five conflicts retain both module contracts:
+
+- `app/(app)/purchases/actions.ts` keeps `receivePurchaseStock`, its optional chosen warehouse and stock-page refreshes. Database IDs use `z.guid()`. The upstream RFQ claim/finish email flow and its seed-ID tests remain intact.
+- `lib/products/actions.test.ts` retains the friendly stock-unit error test and upstream seeded-ID catalog tests.
+- `lib/record/status.ts` includes Deliver and Reject commands, invoice delivery actions and `EXPENSE_FLOW`.
+- `lib/types/database.ts` includes inventory tables, views, RPCs and the negative-stock flag alongside expense tables, RPCs, cost references and record types. `vat_registered` remains readable and generated, with `never` for inserts/updates.
+- `supabase/seed.sql` preserves every inventory and expense block from both parents verbatim.
+
+The inventory actions and schemas, inventory overview URL filters, and inventory saved-view filters now accept PostgreSQL GUID IDs. `CountInput.key` continues to require an RFC UUID because it is an application-generated retry key. The seven new regressions in `lib/inventory/seed-ids.test.ts` failed before the change, including `Invalid UUID` on a saved view and inventory filters becoming `undefined`. They pass after the change. A purchasing regression also checks that a chosen warehouse with a seed-shaped ID reaches the atomic receipt RPC. The targeted four-suite run passed 28 tests, including `lib/migrations.test.ts`.
+
+Both inventory migration files remain byte-identical to `d33e112`, with reserved versions `20261024120000` and `20261024120500`. No pager was added. The inherited upstream manifest/lockfile changes are retained without manual lockfile edits. Independent read-only review approved all five resolutions and the GUID sweep, confirmed both parents' seed blocks, and passed 79 targeted tests. A separate comment review found no new comments or suppressions. Prove It Works kept these source checks distinct from the pending integration runtime checks.
+
+Final gates on the merged source all exited 0:
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+ Test Files  125 passed (125)
+      Tests  900 passed (900)
+   Start at  03:42:41
+   Duration  6.77s (transform 11.56s, setup 0ms, import 77.46s, tests 4.66s, environment 8ms)
+```
+
+`pnpm build` reported `✓ Compiled successfully in 4.1s`, included the inventory and expense routes, and ended with:
+
+```text
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+`git diff --check` passed. There are no remaining conflict markers or unmerged entries. No database or browser runtime checks were run, and no Supabase or Docker startup was performed. Coordinator integration must apply migrations and execute both inventory SQL suites and `e2e/inventory.spec.ts`.
