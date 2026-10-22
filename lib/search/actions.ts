@@ -10,6 +10,7 @@ import { can } from "@/lib/permissions"
 import { recordHref } from "@/lib/record-history/model"
 import { DEAL_FLOW, INVOICE_FLOW, PROJECT_FLOW, QUOTE_FLOW, SUBSCRIPTION_FLOW } from "@/lib/record/status"
 import { createClient } from "@/lib/supabase/server"
+import { readAll } from "@/lib/supabase/read-all"
 import type { Enums } from "@/lib/types/database"
 import { updateDealStage } from "@/app/(app)/deals/actions"
 import { setSubscriptionStatus } from "@/app/(app)/finance/subscription-actions"
@@ -22,11 +23,15 @@ import { paletteActions, recordFromPath, type PaletteAction, type StatusRecordRe
 export type SearchHit = { type: SearchType; id: string; title: string; detail: string | null; href: string }
 
 /** Up to five matches per record type in the caller's org, by name or number. */
-export async function searchRecords(raw: string): Promise<SearchHit[]> {
+export async function searchRecords(raw: string): Promise<{ hits: SearchHit[]; error?: string }> {
   const queries = searchQueries(raw)
-  if (!queries.length) return []
+  if (!queries.length) return { hits: [] }
   const ctx = await requireOrgContext()
   const supabase = await createClient()
+  // The client debounce is advisory; this per-user budget bounds the fan-out below for direct callers.
+  const { data: allowed, error: slotError } = await supabase.rpc("take_search_slot")
+  if (slotError) throw new Error(slotError.message)
+  if (!allowed) return { hits: [], error: "Too many searches. Wait a minute and try again." }
   const results = await Promise.all(
     queries.map(async ({ type, table, columns, filter, limit }) => {
       const { data, error } = await supabase
@@ -46,10 +51,8 @@ export async function searchRecords(raw: string): Promise<SearchHit[]> {
       }))
     })
   )
-  return results.flat()
+  return { hits: results.flat() }
 }
-
-const PAGE = 1000
 
 /** Verified payments on one invoice, paged so the API row cap cannot truncate the sum; null on error. */
 async function verifiedPaidSatang(
@@ -57,20 +60,15 @@ async function verifiedPaidSatang(
   orgId: string,
   invoiceId: string
 ): Promise<number | null> {
-  const amounts: number[] = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("amount_satang")
-      .eq("verification_state", "verified")
-      .eq("org_id", orgId)
-      .eq("invoice_id", invoiceId)
-      .order("id")
-      .range(from, from + PAGE - 1)
-    if (error) return null
-    amounts.push(...data.map((p) => p.amount_satang))
-    if (data.length < PAGE) return sumSatang(amounts)
-  }
+  const { data, error } = await readAll((from, to) => supabase
+    .from("payments")
+    .select("amount_satang")
+    .eq("verification_state", "verified")
+    .eq("org_id", orgId)
+    .eq("invoice_id", invoiceId)
+    .order("id")
+    .range(from, to))
+  return error || !data ? null : sumSatang(data.map(payment => payment.amount_satang))
 }
 
 type RecordContext = { actions: PaletteAction[]; transition?: (to: string) => Promise<{ error?: string }> }

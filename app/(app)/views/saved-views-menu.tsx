@@ -34,13 +34,16 @@ export function SavedViewsMenu({
   views,
   basePath,
   activeConfig,
+  params,
 }: {
   views: SavedView[]
   basePath: string
   activeConfig: ViewConfig
+  /** Non-filter query params every saved-view link keeps, such as the active view. */
+  params?: Record<string, string>
 }) {
   const [pending, startTransition] = useTransition()
-  const activeKey = configToHref(basePath, activeConfig)
+  const activeKey = configToHref(basePath, activeConfig, params)
 
   if (views.length === 0) return null
 
@@ -70,7 +73,7 @@ export function SavedViewsMenu({
         <DropdownMenuLabel>Saved views</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {views.map((view) => {
-          const href = configToHref(basePath, view.config)
+          const href = configToHref(basePath, view.config, params)
           const isActive = href === activeKey
           return (
             <div

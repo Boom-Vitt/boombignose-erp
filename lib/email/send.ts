@@ -20,6 +20,7 @@ export type SendEmailInput = {
   to: string
   subject: string
   html: string
+  idempotencyKey?: string
 }
 
 export type SendEmailResult =
@@ -64,6 +65,7 @@ export async function sendEmail(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
       },
       body: JSON.stringify({
         from,

@@ -85,3 +85,7 @@ describe("invoiceToExternalPayload", () => {
     expect(invoiceToExternalPayload(baseInvoice, null).currency).toBe("THB")
   })
 })
+
+it("maps gross document total instead of the collectible amount after WHT", () => {
+  expect(invoiceToExternalPayload({ number: "VAT-1", amount_satang: 104000, total_satang: 107000, status: "sent", issue_date: null, due_date: null }).totalBaht).toBe(1070)
+})

@@ -7,8 +7,8 @@ import { requireCapability, requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { writeAudit } from "@/lib/audit"
 import { LineInput, PurchaseInput, ReceiptInput } from "@/lib/purchasing/schema"
-import { allPurchasingRows } from "@/lib/purchasing/pagination"
 import { receivePurchaseStock } from "@/lib/purchasing/receive"
+import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { applyReceipt, purchaseTotal } from "@/lib/purchasing/quantities"
 import { serviceAmountSatang } from "@/lib/workflows/service"
 import type { Enums } from "@/lib/types/database"
@@ -83,7 +83,7 @@ export async function receivePurchase(id: string, input: unknown, warehouseId?: 
   const db = await createClient()
   let receipt
   try {
-    const lines = await allPurchasingRows((from, to) => db.from("purchase_order_items").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("id").range(from, to))
+    const lines = await readAllOrThrow((from, to) => db.from("purchase_order_items").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("id").range(from, to))
     receipt = applyReceipt(lines, parsed.data)
   } catch (error) { return { error: error instanceof Error ? error.message : "Invalid receipt" } }
   const { error } = await receivePurchaseStock(db, ctx.orgId, id, receipt, warehouseId)

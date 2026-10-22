@@ -17,18 +17,20 @@ import {
 } from "@/lib/search-facets"
 import { PERIODS } from "@/lib/periods"
 
-export function SearchFacets({ list, config, savedViews, selectors = [] }: {
+export function SearchFacets({ list, config, savedViews, selectors = [], params = {} }: {
   list: FacetList
   config: FacetConfig
   savedViews: SavedView[]
   selectors?: { key: "warehouse" | "product"; label: string; options: { id: string; name: string }[] }[]
+  /** Non-facet query params kept on every facet link and search, such as the active view. */
+  params?: Record<string, string>
 }) {
   const pathname = usePathname()
   const definition = FACET_LISTS[list]
 
   function href(key: keyof FacetConfig, value?: string) {
     const next = { ...config, [key]: config[key] === value ? undefined : value }
-    const qs = serializeFacets(next, list)
+    const qs = [serializeFacets(next, list), new URLSearchParams(params).toString()].filter(Boolean).join("&")
     return qs ? `${pathname}?${qs}` : pathname
   }
 
@@ -48,7 +50,7 @@ export function SearchFacets({ list, config, savedViews, selectors = [] }: {
   return (
     <section aria-label="Search and facets" className="space-y-3 rounded-xl border p-3">
       <form action={pathname} className="flex flex-wrap gap-2">
-        {Object.entries(config).filter(([key]) => key !== "q" && !selectors.some(s => s.key === key)).map(([key, value]) => (
+        {Object.entries({ ...config, ...params }).filter(([key]) => key !== "q" && !selectors.some(s => s.key === key)).map(([key, value]) => (
           <input key={key} type="hidden" name={key} value={value} />
         ))}
         <Input
@@ -81,6 +83,8 @@ export function SearchFacets({ list, config, savedViews, selectors = [] }: {
           <div className="space-y-1">
             <h3 className="mb-2 text-sm font-semibold">Filters</h3>
             {list === "finance" && <p className="text-xs text-muted-foreground">My records uses the client owner.</p>}
+            {list === "deals" && <p className="text-xs text-muted-foreground">Period uses the expected close date.</p>}
+            {list === "projects" && <p className="text-xs text-muted-foreground">Period uses the deadline.</p>}
             {filters.map(({ key, value, label }) => (
               <Button
                 key={`${key}-${value}`}
@@ -111,7 +115,7 @@ export function SearchFacets({ list, config, savedViews, selectors = [] }: {
           </div>
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">Saved</h3>
-            <SavedViewsMenu views={savedViews} basePath={pathname} activeConfig={config} />
+            <SavedViewsMenu views={savedViews} basePath={pathname} activeConfig={config} params={params} />
             <SaveViewButton module={list} config={config} />
             {savedViews.length === 0 && (
               <p className="text-xs text-muted-foreground">Save the current search, filters and grouping for later.</p>

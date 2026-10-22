@@ -46,7 +46,7 @@ export async function syncInvoiceToAccounting(
   // Load the invoice (+ client name) — org-scoped in code, not RLS alone.
   const { data: invoice, error: invErr } = await supabase
     .from("invoices")
-    .select("id, number, amount_satang, status, issue_date, due_date, clients(name)")
+    .select("id, number, amount_satang, total_satang, status, issue_date, due_date, clients(name)")
     .eq("id", invoiceId)
     .eq("org_id", ctx.orgId)
     .maybeSingle()

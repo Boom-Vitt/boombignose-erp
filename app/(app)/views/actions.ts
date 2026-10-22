@@ -13,12 +13,13 @@ const MODULE_PATH: Record<string, string> = {
   clients: "/clients",
   quotes: "/quotes",
   timesheets: "/timesheets",
+  projects: "/projects",
   purchases: "/purchases",
   vendors: "/vendors",
   inventory: "/inventory/moves",
 }
 
-const MODULES = ["deals", "finance", "clients", "quotes", "timesheets", "purchases", "vendors", "inventory"] as const
+const MODULES = ["deals", "finance", "clients", "quotes", "timesheets", "projects", "purchases", "vendors", "inventory"] as const
 
 /**
  * Filter config persisted with a saved view. Kept to the known, URL-driven
@@ -35,7 +36,7 @@ const ViewConfig = z
     warehouse: z.uuid().optional(),
     product: z.uuid().optional(),
     sourceId: z.uuid().optional(),
-    groupBy: z.enum(["status", "client", "month", "industry", "source", "project", "vendor"]).optional(),
+    groupBy: z.enum(["status", "client", "month", "industry", "source", "project", "stage", "owner", "vendor"]).optional(),
   })
   .strict()
 export type ViewConfig = z.infer<typeof ViewConfig>

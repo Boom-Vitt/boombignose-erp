@@ -52,9 +52,9 @@ describe("renderDocumentHtml", () => {
     expect(html).toContain("&lt;script&gt;")
   })
 
-  it("omits the discount line when there is no discount", () => {
+  it("shows a zero discount consistently with the totals block", () => {
     const html = renderDocumentHtml({ ...doc, discountSatang: 0 })
-    expect(html).not.toContain("Discount")
+    expect(html).toContain("Discount")
   })
 
   it("shows an empty-state row when there are no items", () => {

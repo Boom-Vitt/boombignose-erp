@@ -3,11 +3,14 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
+import { writeAudit } from "@/lib/audit"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
 
 const ClientInput = z.object({
+  tax_id: z.string().trim().regex(/^([0-9]{13})?$/, "Enter a 13-digit tax ID").optional(),
+  branch_label: z.string().trim().max(200).optional(),
   name: z.string().min(1, "Name is required"),
   industry: z.string().optional(),
   source: z.string().optional(),
@@ -32,6 +35,7 @@ export async function createClient(
   input: z.infer<typeof ClientInput>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  requireCapability(ctx, "record:write")
   const parsed = ClientInput.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
 
@@ -45,12 +49,15 @@ export async function createClient(
       industry: nullify(parsed.data.industry),
       source: nullify(parsed.data.source),
       notes: nullify(parsed.data.notes),
+      tax_id: nullify(parsed.data.tax_id),
+      branch_label: nullify(parsed.data.branch_label),
     })
     .select("id")
     .single()
 
   if (error) return { error: error.message }
 
+  await writeAudit(ctx, { entity: "client", entityId: data.id, action: "created", summary: "Created client profile" })
   revalidatePath("/clients")
   redirect(`/clients/${data.id}`)
 }
@@ -60,6 +67,7 @@ export async function updateClient(
   input: z.infer<typeof ClientInput>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
+  requireCapability(ctx, "record:write")
   const parsed = ClientInput.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
 
@@ -71,12 +79,15 @@ export async function updateClient(
       industry: nullify(parsed.data.industry),
       source: nullify(parsed.data.source),
       notes: nullify(parsed.data.notes),
+      tax_id: nullify(parsed.data.tax_id),
+      branch_label: nullify(parsed.data.branch_label),
     })
     .eq("id", id)
     .eq("org_id", ctx.orgId)
 
   if (error) return { error: error.message }
 
+  await writeAudit(ctx, { entity: "client", entityId: id, action: "updated", summary: "Updated client profile" })
   revalidatePath("/clients")
   revalidatePath(`/clients/${id}`)
   return {}
