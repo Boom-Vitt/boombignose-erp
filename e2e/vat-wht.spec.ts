@@ -40,7 +40,10 @@ test("VAT-registered invoice with WHT 3% freezes and presents the same totals", 
     await page.getByLabel("Unit price (฿)", { exact: true }).fill("1000.00")
     await expect(page.getByLabel("VAT rate (bps)", { exact: true })).toHaveValue("700")
     await page.getByRole("button", { name: "Add item", exact: true }).click()
-    await page.getByRole("combobox", { name: "Withholding tax", exact: true }).selectOption("300")
+    // getByLabel reads a wrapping <label>'s full text, option labels included; the accessible name is just "Withholding tax".
+    const withholding = page.getByRole("combobox", { name: "Withholding tax", exact: true })
+    await withholding.selectOption("300")
+    await expect(withholding).toHaveValue("300")
     const totals = page.getByTestId("document-totals")
     for (const [label, amount] of [["Subtotal", "1,000.00"], ["Discount", "0.00"], ["VAT 7%", "70.00"], ["Total", "1,070.00"], ["WHT 3%", "30.00"], ["Amount due", "1,040.00"]]) {
       await expect(totals.getByText(label, { exact: true }).locator("..").locator("dd")).toContainText(amount)

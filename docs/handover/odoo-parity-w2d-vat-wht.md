@@ -18,7 +18,7 @@ The coordinator approved this contract during the dispatch. Do not subtract WHT 
 
 `COMMENT ON COLUMN` records the net/gross distinction in the migration. Legacy lines keep zero tax; the migration does not retroactively tax documents or rewrite issued JSON snapshots. Snapshot version 1 gains optional fields; the parser retains support for old snapshots.
 
-`lib/tax/totals.ts` uses bigint internally and returns safe integer satang to existing application readers. PostgreSQL uses exact numeric arithmetic. Discount allocation uses proportional rate buckets and largest remainders, with ascending rate as the tie-break. Inclusive VAT is extracted after discount. Quotes have no WHT; converted invoice drafts can select it without changing accepted gross terms. Supported WHT rates are 0, 1, 2, 3, and 5 percent.
+`lib/tax/totals.ts` uses bigint internally and returns safe integer satang to existing application readers. PostgreSQL uses exact `div()`/`mod()` integer arithmetic. Plain numeric `/` rounds its quotient, so it is not exact. Discount allocation uses proportional rate buckets and largest remainders, with ascending rate as the tie-break. Inclusive VAT is extracted after discount. Quotes have no WHT; converted invoice drafts can select it without changing accepted gross terms. Supported WHT rates are 0, 1, 2, 3, and 5 percent.
 
 ## Existing reader audit
 
@@ -34,7 +34,7 @@ The coordinator approved this contract during the dispatch. Do not subtract WHT 
 | Issued invoice PDF | Frozen snapshot. `Tax Invoice / ใบกำกับภาษี` only for seller VAT registration frozen at issue; seller/buyer tax IDs and branches retained. |
 | Quote detail/PDF/portal and quote conversion | `quotes.total_satang` remains gross including VAT. |
 | Accounting provider `totalBaht` and MCP `invoiced_total_satang` | `total_satang`, with legacy fixture fallback. MCP unpaid continues using net `amount_satang`. |
-| Existing project billed-profit estimate and project invoice labels | Continue reading `amount_satang`. This is an existing billed estimate, not verified cash revenue; project/facet work is outside this track. |
+| Project billed-profit estimate | `total_satang - vat_satang` since `20261024110500_vat_wht_fixes.sql` landed, so withholding counts as revenue. Project invoice labels keep the net `amount_satang`. |
 
 Financial reads in the dashboard, Finance list/detail/export, PDF routes, and portal use `lib/supabase/read-all.ts`, with stable unique ordering and pages below the API cap. Quote/invoice draft numbering scans also paginate. A failed later page discards partial financial data. Other tracks retain ownership of their readers.
 
@@ -137,3 +137,57 @@ pnpm build
 Independent read-only review approved the resolved source against both parents and passed 6 focused files with 44 tests. Its fixture suggestion was applied; counts now require an explicit exact-count request. `git diff --check` and the memory reader check pass. Migrate Callers Then Delete Legacy APIs led to removing the duplicate pager; Prove It Works led to the merged-page regressions and stricter count fixture.
 
 SQL and Playwright execution remain assigned to the coordinator; no local database or Docker startup occurred. No push, deployment, or merge into the integration/base branch was performed.
+
+## E2E and review-fix round on 2026-10-23
+
+The branch was fast-forwarded to `c211899` and runs on its own isolated Supabase stack (API 55901, app 3108). Four commits follow.
+
+**E2E hang root cause (`5488109`).** The app was fine; the test selector was wrong. Playwright's `getByLabel` matches a wrapping `<label>` by its full text content, which includes the option labels (`Withholding tax0%1%2%3%5%`). `getByLabel("Withholding tax", { exact: true })` therefore never resolved, and `selectOption` waited until the test timed out. The DEBUG log shows it never printed "locator resolved to". The combobox's accessible name is exactly "Withholding tax", which is what the page snapshot showed. A `page.setContent` micro-repro confirmed it: the wrapped markup gave `getByLabel` exact 0 matches and `getByRole` 1, while `htmlFor` markup gave 1 for both. The spec now targets `getByRole("combobox", { name: "Withholding tax", exact: true })` and asserts `toHaveValue("300")` after the save and refresh, so the saved rate is checked. Behind the hang was a second failure. `/portal/<token>` 404s in community builds because `lib/edition/community.tsx` makes the portal Pro-only. Those assertions now run only when `community` from `e2e/edition.ts` is false, the same guard the other specs use. The spec passes in a community build (portal skipped) and in a `BBN_EDITION=pro` build (portal asserted).
+
+**Review fixes (`205b061` failing tests first, then `a24459f` and `2e59534`; the row-cap test and fix follow).** These come from the Codex review of `w2d`.
+
+1. `org_settings.vat_registered` is now `generated always as (tax_status='registered') stored`. Registered sellers from before VAT settings read as VAT registered, and the flag can no longer drift from `tax_status`. `update_tax_business_profile` stops writing the flag. An unchecked save keeps `unknown` rather than declaring `not_registered`, because the checkbox cannot express "unknown". Lines and snapshots are untouched. `lib/types/database.ts` marks the column `never` for Insert/Update.
+2. `private.document_tax_totals` used `round(a/b)` and `floor(a/b)`. Postgres numeric `/` already rounds the quotient (here to 4 decimals), so the result was rounded twice. The reviewer's inclusive `1999900000000001` satang at 9999 bps gave SQL VAT `…001` against `…000` in TS. The discount allocation had the same flaw: a three-rate case moved one satang between rate buckets. The function now uses `div()`/`mod()` with half-up `div(2n+d,2d)`, the same arithmetic as `lib/tax/totals.ts`. `supabase/tests/vat_wht_fixes.sql` and `lib/tax/totals.test.ts` assert the same six edge cases with identical expectations, generated once from the TS helper. Before the fix, 4 of the 10 new SQL assertions failed (backfill, unknown status, and both divergent cases). After it, all pass. A 3,000-case random sweep of live SQL against TS found 0 mismatches. The same sweep also found 0 against the old function, so it only shows ordinary inputs did not regress. The constructed cases are the evidence for the fix.
+3. `projectProfit` reads `total_satang - vat_satang`. The reviewer's case (exempt ฿1,000, 3% WHT, ฿500 cost) gave ฿470 before the fix and ฿500 after. Receivables keep `amount_satang`.
+4. The project page summed profit from plain invoice and cost lists, which the API caps at 1,000 rows. Both now read through `readAllOrThrow`, so a failed page fails the request instead of showing a partial profit. The invoice smart-button count is the complete list's length. `lib/documents/vat-pages.test.ts` renders the page with 1,001 WHT invoices and 1,001 costs. Before the fix it showed ฿1,000.00 / ฿500.00 / ฿500.00, and after it ฿1,001.00 / ฿500.50 / ฿500.50.
+
+**Verification.** All gates ran on the isolated stack.
+
+```text
+.local-stack/db-reset.sh
+supabase/tests/vat_wht_fixes.sql ........... ok
+All tests successful.
+Files=16, Tests=330
+Result: PASS
+
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+ Test Files  111 passed (111)
+      Tests  804 passed (804)
+
+pnpm build
+✓ Compiled successfully in 3.6s
+✓ Generating static pages using 17 workers (22/22) in 152ms
+
+pnpm e2e
+  ✓  37 [chromium] › e2e/vat-wht.spec.ts:8:5 › VAT-registered invoice with WHT 3% freezes and presents the same totals (3.2s)
+  4 skipped
+  35 passed (48.4s)
+```
+
+The four skips are the existing Pro-only guards in a community build.
+
+An independent read-only review found no blockers. Its one code nit is fixed: project invoices are ordered by `created_at` and then `id`, which keeps the displayed order and still gives `readAll` a unique order. Its two behavior notes are listed below. One e2e run without a DB reset failed `facets-deals-projects.spec.ts:7`. That spec expects a seeded deal in Proposal, and earlier specs move seeded deals. After `.local-stack/db-reset.sh` the full suite passed again. Reset before each full run.
+
+**Open issues.** These are known and out of scope.
+
+- `private.document_tax_totals` changes results only for extreme inputs. A draft saved earlier with such values keeps its stored totals until its next edit, and `issue_invoice` rejects it until then. Issued snapshots made with the old arithmetic stay as issued.
+- Release note. Once this migration deploys, every seller with `tax_status='registered'` reads as VAT registered. Their existing drafts keep `tax_rate_bps=0` lines, as the brief required, so issuing one produces a "Tax Invoice / ใบกำกับภาษี" with 0% VAT. Before, it would have been a plain "Invoice". Re-rate those drafts before issuing them.
+- The VAT checkbox has two states and `tax_status` has three. An undeclared (`unknown`) seller therefore cannot record `not_registered` from the UI. No screen shows `tax_status` today; it lives only in snapshot JSON. A three-way control would fix it if it ever matters.
+- Dashboard invoice MRR (`lib/queries/dashboard.ts`) still sums the net `amount_satang` of recurring invoices, so WHT lowers it. The review did not flag it, and subscriptions remain the primary MRR. Owner call.
+- The project page's billable time value still sums a plain `time_entries` list. That is pre-existing and outside this track, and it undercounts above 1,000 entries.
