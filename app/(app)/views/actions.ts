@@ -14,9 +14,11 @@ const MODULE_PATH: Record<string, string> = {
   quotes: "/quotes",
   timesheets: "/timesheets",
   projects: "/projects",
+  purchases: "/purchases",
+  vendors: "/vendors",
 }
 
-const MODULES = ["deals", "finance", "clients", "quotes", "timesheets", "projects"] as const
+const MODULES = ["deals", "finance", "clients", "quotes", "timesheets", "projects", "purchases", "vendors"] as const
 
 /**
  * Filter config persisted with a saved view. Kept to the known, URL-driven
@@ -30,7 +32,7 @@ const ViewConfig = z
     q: z.string().max(200).optional(),
     period: z.enum(["this_month", "last_month", "this_quarter", "this_year"]).optional(),
     mine: z.literal("1").optional(),
-    groupBy: z.enum(["status", "client", "month", "industry", "source", "project", "stage", "owner"]).optional(),
+    groupBy: z.enum(["status", "client", "month", "industry", "source", "project", "stage", "owner", "vendor"]).optional(),
   })
   .strict()
 export type ViewConfig = z.infer<typeof ViewConfig>

@@ -4,7 +4,7 @@ import { satangToBaht } from "@/lib/money"
 import { toCsv } from "@/lib/export/csv"
 import { todayISO } from "@/lib/dates"
 import { matchesFacets, parseFacets } from "@/lib/search-facets"
-import { fetchAllRows } from "@/lib/queries/fetch-all-rows"
+import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { dealFacetRow } from "../_lib/deal-facets"
 
 /**
@@ -20,14 +20,15 @@ export async function GET(request: Request) {
   const config = parseFacets(new URL(request.url).searchParams, "deals")
 
   const now = new Date()
-  const deals = (await fetchAllRows(() => supabase
+  const deals = (await readAllOrThrow((from, to) => supabase
     .from("deals")
     .select(
       "id, title, stage, value_satang, owner, expected_close_date, next_follow_up_date, client:clients(name)"
     )
     .eq("org_id", ctx.orgId)
     .order("created_at", { ascending: false })
-    .order("id"))
+    .order("id")
+    .range(from, to))
   ).filter((d) => matchesFacets(config, dealFacetRow(d, d.client?.name), ctx.userId, now))
 
   const headers = [

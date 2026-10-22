@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { ChevronsLeftRight, ChevronsRightLeft, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 
-import { groupCards, moveCard, type KanbanCard as Card, type KanbanColumn, type KanbanGroup } from "@/lib/kanban"
+import { groupCards, moveCard, movedCardFocus, type KanbanCard as Card, type KanbanColumn, type KanbanGroup } from "@/lib/kanban"
 import { formatTHBWhole } from "@/lib/money"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -66,7 +66,7 @@ export function KanbanBoard<S extends string>({
     cards,
     (state: readonly Card<S>[], m: { id: string; to: S }) => moveCard(state, m.id, m.to)
   )
-  const [, startTransition] = useTransition()
+  const [pending, startTransition] = useTransition()
   const [folded, toggleFold] = useFoldedColumns(
     storageKey,
     columns.filter((c) => c.foldedByDefault).map((c) => c.id)
@@ -74,10 +74,18 @@ export function KanbanBoard<S extends string>({
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<S | null>(null)
   const [creatingIn, setCreatingIn] = useState<S | null>(null)
-  // Moves, folds and closing quick create unmount the focused control; refocus its replacement.
+  // Folds and closing quick create unmount the focused control; refocus its replacement.
   const refocus = useRef<string[]>([])
+  // A card moved from its menu, followed until the move settles (see movedCardFocus).
+  const followCard = useRef<string | null>(null)
   useEffect(() => {
-    const target = refocus.current
+    const active = document.activeElement
+    const moved = movedCardFocus(followCard.current, shown, {
+      pending,
+      focusLost: !active || active === document.body,
+    })
+    followCard.current = moved.followId
+    const target = [...refocus.current, ...moved.selectors]
       .map((selector) => document.querySelector<HTMLElement>(selector))
       .find(Boolean)
     if (!target) return
@@ -209,8 +217,7 @@ export function KanbanBoard<S extends string>({
                       setOver(null)
                     }}
                     onMove={(to) => {
-                      // Keyboard/touch path: follow the card, or its folded column.
-                      refocus.current = [`[data-card="${card.id}"] [data-move]`, `[data-unfold="${to}"]`]
+                      followCard.current = card.id
                       move(card.id, to)
                     }}
                   />

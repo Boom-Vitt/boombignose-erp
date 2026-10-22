@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(34);
 
 insert into auth.users(id,email,email_confirmed_at) values
   ('b5000000-0000-4000-8000-000000000001','synthetic-product-owner@example.invalid',now()),
@@ -61,6 +61,17 @@ select is((select product_id from public.invoice_items where invoice_id='b500000
 select is((select org_id::text||':'||description||':'||unit||':'||amount_satang from public.invoice_items where invoice_id='b5000000-0000-4000-8000-000000000050'),'b5000000-0000-4000-8000-000000000010:Agreed training:day:253','reference removal preserves tenant and line snapshot');
 reset role;
 select is((select count(*)::int from public.products where sku='TRAINING' and org_id in ('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000011')),2,'same SKU allowed in different workspaces');
+set local role authenticated;
+select public.update_business_profile('b5000000-0000-4000-8000-000000000010','Synthetic seller','Synthetic address',null,'unknown');
+insert into public.invoice_items(org_id,invoice_id,description,quantity,unit_price_satang,position) values ('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000050','Legacy unitless line',1,100,1);
+select lives_ok($$select public.issue_invoice('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000050',(select version from public.invoices where id='b5000000-0000-4000-8000-000000000050'),'b5000000-0000-4000-8000-000000000061')$$,'invoice with unit and unitless lines issues');
+select is((select snapshot->'lines'->0->>'unit' from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'day','issued snapshot retains agreed billing unit');
+select is((select snapshot->'lines'->1->'unit' from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'null'::jsonb,'issued snapshot retains nullable legacy unit');
+update public.products set unit='month' where id='b5000000-0000-4000-8000-000000000020';
+select is((select snapshot->'lines'->0->>'unit' from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'day','catalog edits cannot rewrite issued billing unit');
+select is((select snapshot->'document'->>'totalSatang' from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'353','unit retention preserves exact issued money');
+select is(public.issue_invoice('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000050',(select source_version from public.invoice_snapshots where invoice_id='b5000000-0000-4000-8000-000000000050'),'b5000000-0000-4000-8000-000000000061'),(select issued_snapshot_id from public.invoices where id='b5000000-0000-4000-8000-000000000050'),'issued retry returns the same unit snapshot');
+reset role;
 set local role anon;
 select throws_ok($$select * from public.products$$,'42501',null,'anonymous product access denied');
 reset role;

@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Download, Plus, Target } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
@@ -13,7 +14,6 @@ import {
 } from "@/lib/metrics/pipeline"
 import { facetLabel, matchesFacets, parseFacets, serializeFacets, type SearchParams } from "@/lib/search-facets"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
-import { fetchAllRows } from "@/lib/queries/fetch-all-rows"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { EmptyState } from "@/components/empty-state"
@@ -55,34 +55,34 @@ export default async function DealsPage({
   const view = params.view === "list" ? "list" : "board"
   const facetQuery = serializeFacets(config, "deals")
 
-  const [allDeals, clientsRes, savedViews, activitiesRes] = await Promise.all([
-    fetchAllRows(() => supabase
-      .from("deals")
-      .select(
-        "id,title,stage,value_satang,client_id,owner,expected_close_date,next_follow_up_date,created_at,client:clients(name)"
-      )
-      .eq("org_id", ctx.orgId)
-      .order("created_at", { ascending: false })
-      .order("id")),
+  const [allDeals, clientsRes, savedViews, nextRes] = await Promise.all([
+    readAllOrThrow((from, to) =>
+      supabase
+        .from("deals")
+        .select(
+          "id,title,stage,value_satang,client_id,owner,expected_close_date,next_follow_up_date,created_at,client:clients(name)"
+        )
+        .eq("org_id", ctx.orgId)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    ),
     supabase.from("clients").select("id,name").eq("org_id", ctx.orgId),
     getFacetSavedViews("deals"),
-    supabase
-      .from("activities")
-      .select("deal_id,due_date")
-      .eq("org_id", ctx.orgId)
-      .eq("done", false)
-      .not("deal_id", "is", null)
-      .not("due_date", "is", null)
-      // Earliest first, so a capped response still keeps the dates that drive the dots.
-      .order("due_date", { ascending: true }),
+    // Earliest open activity per deal, aggregated in the database.
+    readAll((from, to) =>
+      supabase
+        .from("deal_next_activity")
+        .select("deal_id,next_due_date")
+        .eq("org_id", ctx.orgId)
+        .order("deal_id")
+        .range(from, to)
+    ),
   ])
 
   const clients = clientsRes.data ?? []
   const ownerName = await profileNames(supabase, allDeals.map((d) => d.owner))
-  const nextActivity = new Map<string, string | null>()
-  for (const a of activitiesRes.data ?? []) {
-    if (a.deal_id) nextActivity.set(a.deal_id, earliestDate([nextActivity.get(a.deal_id) ?? null, a.due_date]))
-  }
+  const nextActivity = new Map((nextRes.data ?? []).map((r) => [r.deal_id, r.next_due_date]))
 
   const now = new Date()
   const deals = allDeals.filter((d) =>

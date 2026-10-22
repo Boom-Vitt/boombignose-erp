@@ -16,3 +16,10 @@ export const AttachmentInput = z.object({
   size: z.number().int().positive().max(MAX_ATTACHMENT_SIZE),
   type: z.enum(ATTACHMENT_TYPES),
 })
+
+export const TimelinePageInput = RecordInput.extend({
+  cursor: z.object({
+    at: z.iso.datetime({ offset: true }),
+    id: z.string().regex(/^(note|attachment|activity|audit):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+  }),
+})

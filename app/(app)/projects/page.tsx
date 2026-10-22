@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Briefcase, Plus } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
+import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import type { KanbanCard, KanbanColumn } from "@/lib/kanban"
@@ -23,7 +24,6 @@ import { cn } from "@/lib/utils"
 import type { Enums } from "@/lib/types/database"
 import { matchesFacets, parseFacets, serializeFacets, type SearchParams } from "@/lib/search-facets"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
-import { fetchAllRows } from "@/lib/queries/fetch-all-rows"
 import { SearchFacets } from "@/components/search/search-facets"
 import { GroupedTableRows } from "@/components/search/grouped-table-rows"
 import { deadlineMeta } from "./_lib/dates"
@@ -69,14 +69,18 @@ export default async function ProjectsPage({
   const view = params.view === "board" ? "board" : "list"
   const facetQuery = serializeFacets(config, "projects")
 
+  // Board column counts and sums need every project, not the first capped page.
   const [projects, savedViews] = await Promise.all([
-    fetchAllRows(() => supabase
-      .from("projects")
-      .select("id, name, status, deadline, owner, client_id, budget_satang, client:clients(name)")
-      .eq("org_id", ctx.orgId)
-      .order("deadline", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .order("id")),
+    readAllOrThrow((from, to) =>
+      supabase
+        .from("projects")
+        .select("id, name, status, deadline, owner, client_id, budget_satang, client:clients(name)")
+        .eq("org_id", ctx.orgId)
+        .order("deadline", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    ),
     getFacetSavedViews("projects"),
   ])
 

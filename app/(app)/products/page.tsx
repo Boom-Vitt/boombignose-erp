@@ -10,26 +10,38 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ProductsToolbar } from "./_components/products-toolbar"
+import { productSearchFilter } from "@/lib/products/search"
 
 export const dynamic = "force-dynamic"
 
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
 export default async function ProductsPage({ searchParams }: {
-  searchParams: Promise<{ q?: string; status?: string }>
+  searchParams: Promise<{ q?: string | string[]; status?: string | string[]; page?: string | string[] }>
 }) {
   const ctx = await requireOrgContext()
   const params = await searchParams
-  const search = (params.q ?? "").trim().slice(0, 200)
-  const status = params.status === "archived" ? "archived" : params.status === "all" ? "all" : "active"
+  const search = (firstParam(params.q) ?? "").trim().slice(0, 200)
+  const requestedStatus = firstParam(params.status)
+  const status = requestedStatus === "archived" ? "archived" : requestedStatus === "all" ? "all" : "active"
+  const requestedPage = Number(firstParam(params.page) ?? "1")
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 && Number.isSafeInteger(requestedPage * 50) ? requestedPage : 1
+  const offset = (page - 1) * 50
   const supabase = await createClient()
   let query = supabase.from("products").select("id, sku, name, type, unit, list_price_satang, active")
-    .eq("org_id", ctx.orgId).order("name")
+    .eq("org_id", ctx.orgId).order("name").order("id").range(offset, offset + 50)
   if (status !== "all") query = query.eq("active", status === "active")
-  if (search) {
-    const pattern = JSON.stringify(`%${search.replace(/[\\%_]/g, "\\$&")}%`)
-    query = query.or(`name.ilike.${pattern},sku.ilike.${pattern}`)
-  }
-  const { data: products, error } = await query
+  if (search) query = query.or(productSearchFilter(search))
+  const { data, error } = await query
   if (error) throw new Error(error.message)
+  const products = data.slice(0, 50)
+  function pageHref(nextPage: number) {
+    const query = new URLSearchParams({ status, page: String(nextPage) })
+    if (search) query.set("q", search)
+    return `/products?${query}`
+  }
   return (
     <div className="space-y-6">
       <PageHeader title="Products" description="Products and services with reusable prices and units.">
@@ -46,6 +58,11 @@ export default async function ProductsPage({ searchParams }: {
           </TableRow>)}</TableBody>
         </Table>
       )}
+      <nav aria-label="Product pages" className="flex items-center gap-3">
+        {page > 1 && <Button variant="outline" render={<Link href={pageHref(page - 1)} />}>Previous</Button>}
+        <span className="text-sm text-muted-foreground">Page {page}</span>
+        {data.length > 50 && <Button variant="outline" render={<Link href={pageHref(page + 1)} />}>Next</Button>}
+      </nav>
     </div>
   )
 }

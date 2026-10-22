@@ -1,3 +1,7 @@
+import { readAllOrThrow } from "@/lib/supabase/read-all"
+import { can } from "@/lib/permissions"
+import { markBillPaid } from "@/app/(app)/purchases/actions"
+import { PurchaseAction } from "@/app/(app)/purchases/_components/action-button"
 import { SearchFacets } from "@/components/search/search-facets"
 import { GroupedTableRows } from "@/components/search/grouped-table-rows"
 import { parseFacets, matchesFacets, facetLabel, type SearchParams } from "@/lib/search-facets"
@@ -71,10 +75,11 @@ export default async function FinancePage({
   const month = currentMonthKey()
   const today = todayISO()
 
-  const config = parseFacets(await searchParams, "finance")
+  const params = await searchParams
+  const config = parseFacets(params, "finance")
   const now = new Date()
 
-  const [invoicesRes, paymentsRes, costsRes, savedViews, subscriptionsRes] =
+  const [invoicesRes, paymentsRes, costs, savedViews, subscriptionsRes] =
     await Promise.all([
       supabase
         .from("invoices")
@@ -84,13 +89,13 @@ export default async function FinancePage({
         .eq("org_id", ctx.orgId)
         .order("issue_date", { ascending: false }),
       supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified").eq("org_id", ctx.orgId),
-      supabase
+      readAllOrThrow((from, to) => supabase
         .from("costs")
         .select(
-          "id, category, amount_satang, incurred_on, vendor, project_id, projects(name)"
+          "id, category, amount_satang, incurred_on, vendor, project_id, projects(name), vendor_id, purchase_order_id, bill_number, bill_date, due_date, paid_at"
         )
         .eq("org_id", ctx.orgId)
-        .order("incurred_on", { ascending: false }),
+        .order("incurred_on", { ascending: false }).order("id").range(from, to)),
       getFacetSavedViews("finance"),
       supabase
         .from("subscriptions")
@@ -99,10 +104,9 @@ export default async function FinancePage({
         .eq("status", "active"),
     ])
 
-  if (invoicesRes.error || paymentsRes.error || costsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
+  if (invoicesRes.error || paymentsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
   const invoices = invoicesRes.data ?? []
   const payments = paymentsRes.data ?? []
-  const costs = costsRes.data ?? []
   const activeSubscriptions = subscriptionsRes.data ?? []
 
   // Sum payments per invoice.
@@ -199,7 +203,7 @@ export default async function FinancePage({
         <span className="text-xs text-muted-foreground self-center">Invoice export uses the status filter.</span>
       </div>
 
-      <Tabs defaultValue="invoices" className="gap-4">
+      <Tabs defaultValue={params.tab === "costs" ? "costs" : "invoices"} className="gap-4">
         <TabsList>
           <TabsTrigger value="invoices">
             <ReceiptText /> Invoices
@@ -292,7 +296,7 @@ export default async function FinancePage({
           </Card>
         </TabsContent>
 
-        <TabsContent value="costs">
+        <TabsContent value="costs" id="bills">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Costs</CardTitle>
@@ -318,6 +322,9 @@ export default async function FinancePage({
                       <TableHead className="text-right">Amount</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Vendor</TableHead>
+                      <TableHead>Bill</TableHead>
+                      <TableHead>Due date</TableHead>
+                      <TableHead>Payment</TableHead>
                       <TableHead>Project</TableHead>
                       <TableHead className="w-10" aria-label="Actions" />
                     </TableRow>
@@ -334,13 +341,16 @@ export default async function FinancePage({
                         <TableCell className="text-muted-foreground">
                           {c.incurred_on}
                         </TableCell>
-                        <TableCell>{c.vendor ?? "—"}</TableCell>
+                        <TableCell>{c.vendor_id ? <Link className="underline" href={`/vendors/${c.vendor_id}`}>{c.vendor ?? "Vendor"}</Link> : c.vendor ?? "—"}</TableCell>
+                        <TableCell>{c.purchase_order_id ? <Link className="underline" href={`/purchases/${c.purchase_order_id}`}>{c.bill_number}</Link> : c.bill_number ?? "—"}</TableCell>
+                        <TableCell className={c.vendor_id && !c.paid_at && c.due_date && c.due_date < today ? "text-destructive" : ""}>{c.due_date ?? "—"}</TableCell>
+                        <TableCell>{c.vendor_id ? c.paid_at ? `Paid ${c.paid_at.slice(0, 10)}` : <div className="space-y-1"><span>Unpaid</span>{can(ctx.role, "purchase:manage") && <PurchaseAction action={markBillPaid.bind(null, c.id)} label="Mark paid" />}</div> : "—"}</TableCell>
                         <TableCell>{c.projects?.name ?? "—"}</TableCell>
                         <TableCell className="text-right">
-                          <DeleteCostButton
+                          {!c.vendor_id && !c.purchase_order_id && <DeleteCostButton
                             id={c.id}
                             label={`${COST_CATEGORY_LABEL[c.category]} cost`}
-                          />
+                          />}
                         </TableCell>
                       </TableRow>
                     ))}

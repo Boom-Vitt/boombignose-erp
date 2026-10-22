@@ -9,6 +9,8 @@ export const FACET_LISTS = {
   timesheets: { statuses: ["billable", "non_billable"], groups: ["project", "month"] },
   deals: { statuses: Constants.public.Enums.deal_stage, groups: ["stage", "client", "owner", "month"] },
   projects: { statuses: Constants.public.Enums.project_status, groups: ["status", "client", "owner", "month"] },
+  purchases: { statuses: Constants.public.Enums.purchase_status, groups: ["status", "vendor", "month"] },
+  vendors: { statuses: ["active", "archived"], groups: ["status", "month"] },
 } as const
 export type FacetList = keyof typeof FACET_LISTS
 export type FacetConfig = { q?: string; status?: string; period?: Period; mine?: "1"; groupBy?: string }

@@ -14,11 +14,15 @@ export type RecordStatus =
   | ProjectStatus
   | SubscriptionStatus
   | TaskStatus
+  | Enums<"purchase_status">
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger"
 
 /** One label and tone per status value, shared by every enum that uses the value. */
 export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }> = {
+  confirmed: { label: "Confirmed", tone: "info" },
+  received: { label: "Received", tone: "success" },
+  billed: { label: "Billed", tone: "success" },
   draft: { label: "Draft", tone: "neutral" },
   sent: { label: "Sent", tone: "info" },
   accepted: { label: "Accepted", tone: "success" },
@@ -48,7 +52,7 @@ export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }>
 }
 
 /** Steps a page performs with its own control instead of a plain status change. */
-export type FlowCommand = "convert" | "issue" | "pay" | "create_project"
+export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill"
 
 export type FlowAction<S extends string> =
   | { label: string; to: S }
@@ -173,4 +177,16 @@ export function statusBar<S extends string>(
     primary: primary && available(primary) ? primary : null,
     secondary: secondary.filter(available),
   }
+}
+
+export const PURCHASE_FLOW: DocumentFlow<Enums<"purchase_status">> = {
+  stages: ["draft", "sent", "confirmed", "received", "billed"],
+  next: {
+    draft: { primary: { label: "Send RFQ", command: "send_rfq" }, secondary: [{ label: "Confirm", to: "confirmed" }, { label: "Cancel", to: "cancelled" }] },
+    sent: { primary: { label: "Confirm", to: "confirmed" }, secondary: [{ label: "Cancel", to: "cancelled" }] },
+    confirmed: { primary: { label: "Receive", command: "receive" }, secondary: [{ label: "Create bill", command: "bill" }, { label: "Cancel", to: "cancelled" }] },
+    received: { primary: { label: "Create bill", command: "bill" } },
+    billed: {},
+    cancelled: {},
+  },
 }

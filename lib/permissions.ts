@@ -23,6 +23,7 @@ export type Capability =
   | "subscription:manage" // generate-now / delete a subscription
   | "payment:verify"
   | "audit:view" // view the audit log
+  | "purchase:manage"
   | "product:manage"
   | "record:write"
 
@@ -47,6 +48,7 @@ export const CAPABILITY_ROLES: Record<Capability, Role[]> = {
   "subscription:manage": ALL_STAFF,
   "audit:view": ALL_STAFF,
   "payment:verify": ALL_STAFF,
+  "purchase:manage": ALL_STAFF,
   "product:manage": ALL_STAFF,
   "record:write": ["owner", "admin", "member"],
 }
