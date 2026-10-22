@@ -168,7 +168,7 @@ $ tsc --noEmit
 
 pnpm test
  Test Files  111 passed (111)
-      Tests  803 passed (803)
+      Tests  804 passed (804)
 
 pnpm build
 ✓ Compiled successfully in 3.6s
@@ -177,13 +177,17 @@ pnpm build
 pnpm e2e
   ✓  37 [chromium] › e2e/vat-wht.spec.ts:8:5 › VAT-registered invoice with WHT 3% freezes and presents the same totals (3.2s)
   4 skipped
-  35 passed (37.9s)
+  35 passed (48.4s)
 ```
 
 The four skips are the existing Pro-only guards in a community build.
 
+An independent read-only review found no blockers. Its one code nit is fixed: project invoices are ordered by `created_at` and then `id`, which keeps the displayed order and still gives `readAll` a unique order. Its two behavior notes are listed below. One e2e run without a DB reset failed `facets-deals-projects.spec.ts:7`. That spec expects a seeded deal in Proposal, and earlier specs move seeded deals. After `.local-stack/db-reset.sh` the full suite passed again. Reset before each full run.
+
 **Open issues.** These are known and out of scope.
 
 - `private.document_tax_totals` changes results only for extreme inputs. A draft saved earlier with such values keeps its stored totals until its next edit, and `issue_invoice` rejects it until then. Issued snapshots made with the old arithmetic stay as issued.
+- Release note. Once this migration deploys, every seller with `tax_status='registered'` reads as VAT registered. Their existing drafts keep `tax_rate_bps=0` lines, as the brief required, so issuing one produces a "Tax Invoice / ใบกำกับภาษี" with 0% VAT. Before, it would have been a plain "Invoice". Re-rate those drafts before issuing them.
+- The VAT checkbox has two states and `tax_status` has three. An undeclared (`unknown`) seller therefore cannot record `not_registered` from the UI. No screen shows `tax_status` today; it lives only in snapshot JSON. A three-way control would fix it if it ever matters.
 - Dashboard invoice MRR (`lib/queries/dashboard.ts`) still sums the net `amount_satang` of recurring invoices, so WHT lowers it. The review did not flag it, and subscriptions remain the primary MRR. Owner call.
 - The project page's billable time value still sums a plain `time_entries` list. That is pre-existing and outside this track, and it undercounts above 1,000 entries.
