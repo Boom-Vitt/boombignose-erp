@@ -36,9 +36,10 @@ export function pipelineValue(deals: DealLike[]): Satang {
   return sumSatang(deals.filter((d) => isOpenStage(d.stage)).map((d) => d.value_satang))
 }
 
-/** Expected revenue: value x the deal's win probability, rounded per deal so sums stay exact. */
+/** Expected revenue: value x the deal's win probability, rounded half up per deal so sums stay exact. */
 export function expectedRevenue(d: Pick<DealLike, "value_satang" | "probability">): Satang {
-  return Math.round((d.value_satang * d.probability) / 100)
+  // Integer math: value x probability passes 2^53 for large deals, where a float product loses satang.
+  return Number((BigInt(d.value_satang) * BigInt(d.probability) + BigInt(50)) / BigInt(100))
 }
 
 /** Expected revenue of open deals. */

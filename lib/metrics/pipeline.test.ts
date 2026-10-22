@@ -40,6 +40,12 @@ describe("pipeline metrics", () => {
     expect(expectedRevenue({ value_satang: 1_000_001, probability: 100 })).toBe(1_000_001)
   })
 
+  it("expectedRevenue stays exact at the largest safe satang value", () => {
+    // 9007199254740991 x 30% = 2702159776422297.3
+    expect(expectedRevenue({ value_satang: Number.MAX_SAFE_INTEGER, probability: 30 })).toBe(2_702_159_776_422_297)
+    expect(expectedRevenue({ value_satang: 5, probability: 50 })).toBe(3)
+  })
+
   it("stage defaults are whole percentages, closed stages pinned to 0 and 100", () => {
     expect(STAGE_PROBABILITY.proposal).toBe(50)
     expect(STAGE_PROBABILITY.won).toBe(100)
