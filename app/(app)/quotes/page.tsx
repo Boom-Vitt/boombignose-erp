@@ -1,3 +1,8 @@
+import { SearchFacets } from "@/components/search/search-facets"
+import { GroupedTableRows } from "@/components/search/grouped-table-rows"
+import { parseFacets, matchesFacets, facetLabel, type SearchParams } from "@/lib/search-facets"
+import { getFacetSavedViews } from "@/lib/queries/saved-views"
+import { monthKey } from "@/lib/dates"
 import Link from "next/link"
 import { FileText, FilePlus2 } from "lucide-react"
 
@@ -22,18 +27,24 @@ import { QuoteStatusBadge } from "./_components/quote-status-badge"
 
 export const dynamic = "force-dynamic"
 
-export default async function QuotesPage() {
+export default async function QuotesPage({ searchParams }: { searchParams: Promise<SearchParams> } = { searchParams: Promise.resolve({}) }) {
+  const config = parseFacets(await searchParams, "quotes")
+  const now = new Date()
+  const savedViews = await getFacetSavedViews("quotes")
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("quotes")
     .select(
-      "id, number, status, total_satang, valid_until, issue_date, clients(name)"
+      "id, number, status, total_satang, valid_until, issue_date, client_id, owner, clients(name)"
     ).eq("org_id", ctx.orgId)
     .order("issue_date", { ascending: false })
 
-  const quotes = data ?? []
+  if (error) throw new Error("Quotes unavailable. Please reload.")
+  const quotes = (data ?? []).filter((q) => matchesFacets(config, {
+    text: `${q.number} ${q.clients?.name ?? ""}`, status: q.status, date: q.issue_date, owner: q.owner,
+  }, ctx.userId, now))
 
   return (
     <div className="space-y-6">
@@ -46,6 +57,8 @@ export default async function QuotesPage() {
         </Button>
       </PageHeader>
 
+      <SearchFacets list="quotes" config={config} savedViews={savedViews} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Quotes</CardTitle>
@@ -54,8 +67,8 @@ export default async function QuotesPage() {
           {quotes.length === 0 ? (
             <EmptyState
               icon={FileText}
-              title="No quotes yet"
-              description="Create your first quote to send a proposal to a client."
+              title={Object.keys(config).length ? "No matching quotes" : "No quotes yet"}
+              description={Object.keys(config).length ? "No quotes match the selected filters." : "Create your first quote to send a proposal to a client."}
               action={
                 <Button render={<Link href="/quotes/new" />}>
                   <FilePlus2 /> New quote
@@ -75,7 +88,12 @@ export default async function QuotesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {quotes.map((q) => (
+                <GroupedTableRows rows={quotes} colSpan={5} amount={(q) => q.total_satang}
+                  group={config.groupBy ? (q) => config.groupBy === "client"
+                    ? { key: q.client_id, label: q.clients?.name ?? "Unassigned" }
+                    : config.groupBy === "month" ? { key: monthKey(q.issue_date), label: monthKey(q.issue_date) }
+                    : { key: q.status, label: facetLabel(q.status) } : undefined}>
+                {(q) => (
                   <TableRow key={q.id}>
                     <TableCell className="font-medium">
                       <Link
@@ -96,7 +114,7 @@ export default async function QuotesPage() {
                       {q.valid_until ?? "—"}
                     </TableCell>
                   </TableRow>
-                ))}
+                )}</GroupedTableRows>
               </TableBody>
             </Table>
           )}

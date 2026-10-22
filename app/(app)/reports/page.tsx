@@ -1,3 +1,5 @@
+import { ReportChart } from "./_components/report-chart"
+import type { SearchParams } from "@/lib/search-facets"
 import Link from "next/link"
 import { TrendingUp, Timer, Printer, BarChart3, Clock } from "lucide-react"
 
@@ -25,7 +27,9 @@ function fmtHours(hours: number): string {
   return hours.toFixed(2)
 }
 
-export default async function ReportsPage() {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<SearchParams> } = { searchParams: Promise.resolve({}) }) {
+  const params = await searchParams
+  const view = params.view === "line" || params.view === "pivot" ? params.view : "bar"
   const { months, rangeLabel, revenue, hours, totalRevenueSatang } =
     await getReportData()
 
@@ -67,6 +71,25 @@ export default async function ReportsPage() {
         />
       </div>
 
+      <nav aria-label="Report view" className="flex flex-wrap gap-2">
+        {(["bar", "line", "pivot"] as const).map((value) => <Button key={value} variant={view === value ? "secondary" : "outline"}
+          render={<Link href={`/reports?view=${value}`} />} aria-current={view === value ? "page" : undefined}>
+          {value === "pivot" ? "Pivot / table" : value === "bar" ? "Bar chart" : "Line chart"}
+        </Button>)}
+      </nav>
+
+      {view !== "pivot" ? <div className="space-y-6">
+        <Card><CardHeader><CardTitle>Revenue by month</CardTitle></CardHeader><CardContent>
+          <ReportChart title="Revenue by month" unit="satang" kind={view} rows={months.map((month) => ({ label: month, value: revenue.colTotal(month) }))} />
+        </CardContent></Card>
+        <Card><CardHeader><CardTitle>Revenue by client</CardTitle></CardHeader><CardContent>
+          <ReportChart title="Revenue by client" unit="satang" kind={view} rows={revenue.rowKeys.map((client) => ({ label: client, value: revenue.rowTotal(client) }))} />
+        </CardContent></Card>
+        <Card><CardHeader><CardTitle>Hours by project</CardTitle></CardHeader><CardContent>
+          <ReportChart title="Hours by project" unit="hours" kind={view} rows={hours.projects.map((project) => ({ label: project.project_name, value: project.totalHours }))} />
+        </CardContent></Card>
+        <p className="text-sm text-muted-foreground">Revenue is verified cash received, grouped by Bangkok month. Pivot / table shows the underlying totals.</p>
+      </div> : <>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Verified cash by client × month</CardTitle>
@@ -185,6 +208,7 @@ export default async function ReportsPage() {
           )}
         </CardContent>
       </Card>
+      </>}
     </div>
   )
 }

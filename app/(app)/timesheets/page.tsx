@@ -1,3 +1,7 @@
+import { SearchFacets } from "@/components/search/search-facets"
+import { GroupedTableRows } from "@/components/search/grouped-table-rows"
+import { parseFacets, matchesFacets, type SearchParams } from "@/lib/search-facets"
+import { getFacetSavedViews } from "@/lib/queries/saved-views"
 import { Clock, Timer, Coins, Gauge } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
@@ -52,8 +56,11 @@ type EntryRow = {
   projects: { name: string } | null
 }
 
-export default async function TimesheetsPage() {
-  await requireOrgContext()
+export default async function TimesheetsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const ctx = await requireOrgContext()
+  const config = parseFacets(await searchParams, "timesheets")
+  const now = new Date()
+  const savedViews = await getFacetSavedViews("timesheets")
   const supabase = await createClient()
   const month = currentMonthKey()
   const today = todayISO()
@@ -64,16 +71,18 @@ export default async function TimesheetsPage() {
       .select(
         "id, work_date, minutes, billable, rate_satang, project_id, user_id, projects(name)"
       )
+      .eq("org_id", ctx.orgId)
       .order("work_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(100),
+      .order("created_at", { ascending: false }),
     supabase
       .from("projects")
       .select("id, name")
+      .eq("org_id", ctx.orgId)
       .order("name", { ascending: true }),
   ])
 
-  const entries = (entriesRes.data ?? []) as EntryRow[]
+  if (entriesRes.error || projectsRes.error) throw new Error("Timesheets unavailable. Please reload.")
+  const allEntries = (entriesRes.data ?? []) as EntryRow[]
   const projects = (projectsRes.data ?? []) as Array<{ id: string; name: string }>
 
   const projectOptions: Option[] = projects.map((p) => ({
@@ -84,21 +93,27 @@ export default async function TimesheetsPage() {
   // Resolve who logged each entry. `time_entries.user_id` references auth.users
   // (no PostgREST FK to profiles), so fetch the profiles separately and map.
   const userIds = Array.from(
-    new Set(entries.map((e) => e.user_id).filter((v): v is string => !!v))
+    new Set(allEntries.map((e) => e.user_id).filter((v): v is string => !!v))
   )
   const nameById = new Map<string, string>()
   if (userIds.length > 0) {
-    const { data: profiles } = await supabase
+    const { data: profiles, error } = await supabase
       .from("profiles")
       .select("id, full_name")
       .in("id", userIds)
+    if (error) throw new Error("Time-entry users unavailable. Please reload.")
     for (const p of profiles ?? []) {
       if (p.full_name) nameById.set(p.id, p.full_name)
     }
   }
 
+  const entries = allEntries.filter((e) => matchesFacets(config, {
+    text: `${e.projects?.name ?? ""} ${e.user_id ? nameById.get(e.user_id) ?? "" : ""}`,
+    status: e.billable ? "billable" : "non_billable", date: e.work_date, owner: e.user_id,
+  }, ctx.userId, now))
+
   // This-month metrics.
-  const monthEntries = entries.filter((e) => monthKey(e.work_date) === month)
+  const monthEntries = allEntries.filter((e) => monthKey(e.work_date) === month)
   const monthMinutes = totalMinutes(monthEntries)
   const monthBillable = billableValueSatang(monthEntries)
   const monthUtil = utilization(monthEntries)
@@ -152,16 +167,18 @@ export default async function TimesheetsPage() {
         </CardContent>
       </Card>
 
+      <SearchFacets list="timesheets" config={config} savedViews={savedViews} />
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Recent entries</CardTitle>
+          <CardTitle className="text-base">Entries</CardTitle>
         </CardHeader>
         <CardContent>
           {entries.length === 0 ? (
             <EmptyState
               icon={Timer}
-              title="No time logged yet"
-              description="Log your first hours to start tracking utilization."
+              title={Object.keys(config).length ? "No matching time entries" : "No time logged yet"}
+              description={Object.keys(config).length ? "No entries match the selected filters." : "Log your first hours to start tracking utilization."}
               className="border-0"
             />
           ) : (
@@ -178,7 +195,11 @@ export default async function TimesheetsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.map((e) => {
+                <GroupedTableRows rows={entries} colSpan={7} amount={entryValueSatang}
+                group={config.groupBy ? (e) => config.groupBy === "project"
+                  ? { key: e.project_id, label: e.projects?.name ?? "No project" }
+                  : { key: monthKey(e.work_date), label: monthKey(e.work_date) } : undefined}>
+                {(e) => {
                   const value = entryValueSatang(e)
                   return (
                     <TableRow key={e.id}>
@@ -214,7 +235,7 @@ export default async function TimesheetsPage() {
                       </TableCell>
                     </TableRow>
                   )
-                })}
+                }}</GroupedTableRows>
               </TableBody>
             </Table>
           )}

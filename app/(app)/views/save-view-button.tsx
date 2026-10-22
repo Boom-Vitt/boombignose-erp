@@ -30,7 +30,7 @@ export function SaveViewButton({
   module,
   config,
 }: {
-  module: "deals" | "finance" | "clients"
+  module: "deals" | "finance" | "clients" | "quotes" | "timesheets"
   config: ViewConfig
 }) {
   const [open, setOpen] = useState(false)

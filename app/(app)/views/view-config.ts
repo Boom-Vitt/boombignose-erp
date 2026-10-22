@@ -7,7 +7,7 @@
  */
 
 /** The filter keys a saved view may carry. */
-export const VIEW_FILTER_KEYS = ["stage", "status", "q"] as const
+export const VIEW_FILTER_KEYS = ["stage", "status", "q", "period", "mine", "groupBy"] as const
 export type ViewFilterKey = (typeof VIEW_FILTER_KEYS)[number]
 
 export type ViewConfig = Partial<Record<ViewFilterKey, string>>
