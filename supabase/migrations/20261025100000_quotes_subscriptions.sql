@@ -382,7 +382,7 @@ create function public.convert_accepted_quote(p_org_id uuid,p_quote_id uuid,p_ke
 returns uuid language plpgsql security definer set search_path='' as $$
 declare q public.quotes;request public.quote_conversion_requests;project uuid;milestone uuid;invoice uuid;item record;
   payload jsonb;chosen jsonb;qty numeric;raw_amount numeric:=0;previous_raw numeric;previous_discount numeric;discount bigint;
-  deposits bigint;deposit bigint;deposit_deduction bigint;rate integer;final_invoice boolean;previous_total numeric;target_total bigint;actual_total bigint;adjustment bigint:=0;attempt integer:=0;tax_lines jsonb;settlement_discount bigint;
+  deposits bigint;deposit bigint;deposit_deduction bigint;rate integer;final_invoice boolean;
   today date:=(now() at time zone 'Asia/Bangkok')::date;
 begin
   if not private.is_org_staff(p_org_id) then raise exception 'Only owners and admins may convert quotes';end if;
@@ -398,9 +398,8 @@ begin
   select * into q from public.quotes where org_id=p_org_id and id=p_quote_id for no key update;
   if not found or q.status not in ('accepted','converted') then raise exception 'Accepted quote required';end if;
   if q.total_satang<=0 or q.discount_satang>q.subtotal_satang then raise exception 'Billable quote required';end if;
-  select coalesce(sum(total_satang),0),coalesce(sum(quote_deposit_satang-quote_deposit_deduction_satang),0),coalesce(sum(quote_discount_satang),0)
-    into previous_total,deposits,previous_discount from public.invoices where org_id=p_org_id and source_quote_id=q.id and status<>'cancelled' and quote_invoice_sealed;
-  if previous_total>q.total_satang then raise exception 'Quote is fully invoiced';end if;
+  select coalesce(sum(quote_deposit_satang-quote_deposit_deduction_satang),0),coalesce(sum(quote_discount_satang),0)
+    into deposits,previous_discount from public.invoices where org_id=p_org_id and source_quote_id=q.id and status<>'cancelled' and quote_invoice_sealed;
   select coalesce(sum(l.amount_satang),0) into previous_raw from public.invoice_items l join public.invoices i on i.org_id=l.org_id and i.id=l.invoice_id
     where i.org_id=p_org_id and i.source_quote_id=q.id and i.status<>'cancelled' and i.quote_invoice_kind='lines' and l.quote_item_id is not null;
   if p_lines is null and p_deposit_satang is null and p_deposit_bps is null and q.converted_invoice_id is not null
@@ -459,28 +458,7 @@ begin
     if discount+deposit_deduction>raw_amount then raise exception 'Invoice remaining quantities together to deduct deposits';end if;
     update public.invoices set discount_satang=discount+deposit_deduction,
       quote_discount_satang=discount,quote_deposit_deduction_satang=deposit_deduction where org_id=p_org_id and id=invoice;
-    if final_invoice then
-      target_total:=q.total_satang-previous_total;
-      select jsonb_agg(jsonb_build_object('amount_satang',l.amount_satang,'tax_rate_bps',l.tax_rate_bps)),max(i.discount_satang)
-        into tax_lines,settlement_discount from public.invoice_items l join public.invoices i on i.org_id=l.org_id and i.id=l.invoice_id where i.org_id=p_org_id and i.id=invoice;
-      loop
-        actual_total:=(private.document_tax_totals(tax_lines||case when adjustment>0 then jsonb_build_array(jsonb_build_object('amount_satang',adjustment,'tax_rate_bps',0)) else '[]'::jsonb end,
-          settlement_discount,q.prices_include_vat,0)->>'totalSatang')::bigint;
-        exit when actual_total=target_total;
-        attempt:=attempt+1;
-        if attempt>100 then raise exception 'Cannot reconcile final invoice rounding';end if;
-        if actual_total>target_total then settlement_discount:=settlement_discount+actual_total-target_total;
-        else adjustment:=adjustment+target_total-actual_total;end if;
-      end loop;
-      update public.invoices set discount_satang=settlement_discount where org_id=p_org_id and id=invoice;
-      if adjustment>0 then
-        insert into public.invoice_items(org_id,invoice_id,description,quantity,unit_price_satang,tax_rate_bps)
-          values(p_org_id,invoice,'Rounding adjustment',1,adjustment,0);
-      end if;
-    end if;
   end if;
-  select total_satang into actual_total from public.invoices where org_id=p_org_id and id=invoice;
-  if (actual_total<=0 and not (deposit is null and final_invoice and actual_total=0)) or previous_total+actual_total>q.total_satang then raise exception 'Invoice exceeds remaining quote total';end if;
   update public.invoices set quote_invoice_sealed=true where org_id=p_org_id and id=invoice;
   update public.quotes set status='converted',converted_invoice_id=invoice where org_id=p_org_id and id=q.id;
   insert into public.audit_log(org_id,actor_id,entity,entity_id,action,summary,meta)

@@ -69,11 +69,11 @@ select throws_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_te
 select throws_ok($$update public.quote_items set invoiced_quantity=0 where id=pg_temp.w4c_id(1102)$$,'P0001',null,'cached invoiced quantity cannot be forged directly');
 select throws_ok($$update public.invoice_items set quantity=1 where invoice_id=current_setting('test.w4c_partial')::uuid$$,'P0001',null,'sealed quote invoice lines cannot be changed');
 select throws_ok($$update public.invoices set quote_invoice_sealed=false where id=current_setting('test.w4c_partial')::uuid$$,'P0001',null,'ordinary caller cannot unseal a source invoice');
-select throws_ok($$update public.invoices set status='cancelled' where id=current_setting('test.w4c_partial')::uuid$$,'P0001','Use the quote invoice cancellation command','source cancellation cannot invert the quote-first command lock order');
+select throws_ok($$update public.invoices set status='cancelled' where id=current_setting('test.w4c_partial')::uuid$$,'P0001','Invoice status changes require a command','source cancellation cannot invert the quote-first command lock order');
 select lives_ok($$select public.cancel_quote_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_partial')::uuid)$$,'cancelling a source draft is an explicit command');
 select is((select invoiced_quantity from public.quote_items where id=pg_temp.w4c_id(1102)),0::numeric,'cancelled draft releases its reserved quote quantity');
 select ok((select status in ('accepted','converted') from public.quotes where id=pg_temp.w4c_id(102)),'draft cancellation preserves the accepted agreement');
-select throws_ok($$update public.invoices set status='draft' where id=current_setting('test.w4c_partial')::uuid$$,'P0001','Cancelled quote invoice cannot be reopened','cancelled invoice cannot reclaim released quantities');
+select throws_ok($$update public.invoices set status='draft' where id=current_setting('test.w4c_partial')::uuid$$,'P0001','Cancelled draft is final','cancelled invoice cannot reclaim released quantities');
 select set_config('test.w4c_remainder',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(102),pg_temp.w4c_id(203))::text,true);
 select is((select invoiced_quantity from public.quote_items where id=pg_temp.w4c_id(1102)),10::numeric,'a new command bills the released remainder');
 select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(102) and status<>'cancelled'),10000::numeric,'noncancelled invoices cannot double charge the quote');
@@ -116,8 +116,8 @@ select set_config('test.w4c_cycle_deposit',public.convert_accepted_quote(pg_temp
 select set_config('test.w4c_cycle_partial',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(130),pg_temp.w4c_id(233),
   jsonb_build_array(jsonb_build_object('quote_item_id',pg_temp.w4c_id(1130),'quantity',4)))::text,true);
 select set_config('test.w4c_cycle_final',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(130),pg_temp.w4c_id(234))::text,true);
-select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(130) and status<>'cancelled'),9630::numeric,
-  'deposit plus partial and final invoices equal the discounted quote total');
+select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(130) and status<>'cancelled'),9631::numeric,
+  'discounted deposit and split invoices preserve independent VAT rounding');
 select is((select quote_deposit_deduction_satang from public.invoices where id=current_setting('test.w4c_cycle_final')::uuid),2250::bigint,
   'the original final applies the deposit once');
 select lives_ok($$select public.cancel_quote_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_cycle_partial')::uuid)$$,
@@ -129,25 +129,44 @@ select is((select quote_deposit_deduction_satang from public.invoices where id=c
   'rebilling released quantity does not deduct an already-applied deposit');
 select is((select sum(quote_deposit_deduction_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(130) and status<>'cancelled'),2250::numeric,
   'active invoices still deduct the deposit exactly once after rebilling');
-select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(130) and status<>'cancelled'),9630::numeric,
-  'active deposit and replacement invoices still equal the quote total');
+select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(130) and status<>'cancelled'),9631::numeric,
+  'rebilling preserves independent VAT rounding and one deposit deduction');
 select is((select invoiced_quantity from public.quote_items where id=pg_temp.w4c_id(1130)),10::numeric,
   'replacement invoice restores exactly the accepted line quantity');
 
 select pg_temp.w4c_quote(104,1,100,700);
 select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(104),pg_temp.w4c_id(206),null,50,null);
 select set_config('test.w4c_round_final',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(104),pg_temp.w4c_id(207))::text,true);
-select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(104) and status<>'cancelled'),107::numeric,'deposit and final reconcile the one-satang VAT rounding residual');
-select lives_ok($$select public.issue_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_round_final')::uuid,(select version from public.invoices where id=current_setting('test.w4c_round_final')::uuid),pg_temp.w4c_id(211))$$,'rounding-adjusted final remains compatible with the existing issue command');
+select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(104) and status<>'cancelled'),108::numeric,'deposit and final each round their own VAT without forcing the quote gross');
+select lives_ok($$select public.issue_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_round_final')::uuid,(select version from public.invoices where id=current_setting('test.w4c_round_final')::uuid),pg_temp.w4c_id(211))$$,'independently rounded final remains compatible with the existing issue command');
 select throws_ok($$update public.invoice_items set quantity=2 where invoice_id=current_setting('test.w4c_round_final')::uuid$$,'P0001',null,'issued source invoice retains line evidence protection');
 select throws_ok($$update public.invoices set wht_rate_bps=300 where id=current_setting('test.w4c_round_final')::uuid$$,'P0001',null,'issued source invoice retains tax evidence protection');
+
+select pg_temp.w4c_quote(140,2,10005,700);
+select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(140),pg_temp.w4c_id(440),jsonb_build_array(jsonb_build_object('quote_item_id',pg_temp.w4c_id(1140),'quantity',1)));
+select set_config('test.w4c_vat_final',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(140),pg_temp.w4c_id(441))::text,true);
+select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(140)),21410::numeric,'partial invoices keep independently rounded gross');
+select is((select sum(vat_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(140)),1400::numeric,'each exclusive invoice rounds VAT on its own base');
+select is((select sum((b->>'baseSatang')::numeric) from public.invoices i cross join jsonb_array_elements(i.tax_breakdown) b where i.source_quote_id=pg_temp.w4c_id(140) and (b->>'rateBps')::int=700),20010::numeric,'exclusive partial invoices preserve accepted taxable base');
+select is((select count(*) from public.invoice_items l join public.invoices i on i.id=l.invoice_id where i.source_quote_id=pg_temp.w4c_id(140) and l.tax_rate_bps=0),0::bigint,'VAT rounding does not add a zero-rated revenue line');
+select lives_ok($$select public.issue_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_vat_final')::uuid,(select version from public.invoices where id=current_setting('test.w4c_vat_final')::uuid),pg_temp.w4c_id(442))$$,'independently rounded final remains issuable');
+
+select public.update_tax_business_profile(pg_temp.w4c_id(10),'Synthetic W4c seller','Synthetic address','1234567890123',true,700,true,'Head office');
+select pg_temp.w4c_quote(141,2,10705,700);
+select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(141),pg_temp.w4c_id(443),jsonb_build_array(jsonb_build_object('quote_item_id',pg_temp.w4c_id(1141),'quantity',1)));
+select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(141),pg_temp.w4c_id(444));
+select is((select sum(vat_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(141)),1400::numeric,'each inclusive invoice extracts VAT from its own total');
+select is((select sum((b->>'baseSatang')::numeric) from public.invoices i cross join jsonb_array_elements(i.tax_breakdown) b where i.source_quote_id=pg_temp.w4c_id(141) and (b->>'rateBps')::int=700),20010::numeric,'inclusive invoices preserve their independently computed taxable base');
+select public.update_tax_business_profile(pg_temp.w4c_id(10),'Synthetic W4c seller','Synthetic address','1234567890123',true,700,false,'Head office');
 
 select pg_temp.w4c_quote(105,1,10000,0,0,false);
 insert into public.quote_items(org_id,quote_id,description,quantity,unit_price_satang,tax_rate_bps,position)
   values(pg_temp.w4c_id(10),pg_temp.w4c_id(105),'Different tax bucket',1,10000,700,1);
 update public.quotes set status='accepted' where id=pg_temp.w4c_id(105);
 select throws_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(105),pg_temp.w4c_id(208),null,1000,null)$$,'P0001','Deposits require one tax rate','mixed-rate deposit fails explicitly rather than misallocating tax');
+reset role;
 select is((select count(*) from public.quote_conversion_requests where org_id=pg_temp.w4c_id(10) and key=pg_temp.w4c_id(208)),0::bigint,'rejected deposit rolls back its idempotency claim');
+set local role authenticated;
 select throws_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(11),pg_temp.w4c_id(102),pg_temp.w4c_id(209))$$,'P0001',null,'owner cannot bill another workspace');
 select throws_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(105),pg_temp.w4c_id(210),jsonb_build_array(jsonb_build_object('quote_item_id',pg_temp.w4c_id(1102),'quantity',1)))$$,'P0001',null,'invoice command rejects a line from another quote');
 

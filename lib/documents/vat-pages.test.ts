@@ -46,7 +46,7 @@ it("unpaid invoice draft still exposes the WHT selector after the balance-view m
 })
 
 it("quote detail keeps VAT totals and the complete linked invoice count", async () => {
-  state.client = databaseFixture({ quotes: [{ ...header, id: "quote", project_id: "project", valid_until: null }], invoices: Array.from({ length: 1001 }, (_, n) => ({ id: `invoice-${n}`, org_id: "A", source_quote_id: "quote" })) })
+  state.client = databaseFixture({ quotes: [{ ...header, id: "quote", project_id: "project", valid_until: null }], invoices: Array.from({ length: 1001 }, (_, n) => ({ id: `invoice-${n}`, org_id: "A", source_quote_id: "quote", total_satang: 1, status: "draft" })) })
   const page = await QuotePage({ params: Promise.resolve({ id: "quote" }) })
   const nodes = elements(page)
   expect(nodes.find(node => node.type === DocumentTotals)?.props).toMatchObject({ vat: 70000, total: 1070000 })

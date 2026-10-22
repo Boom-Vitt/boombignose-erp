@@ -6,7 +6,7 @@ vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org", r
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (table: string) => {
   let from = 0
   let to = 999
-  const invoices = Array.from({ length: 1001 }, (_, index) => ({ id: `invoice-${index}`, number: `INV-${index}`, status: "draft", quote_invoice_kind: "lines", quote_deposit_satang: 0 }))
+  const invoices = Array.from({ length: 1001 }, (_, index) => ({ id: `invoice-${index}`, number: `INV-${index}`, status: "draft", quote_invoice_kind: "lines", quote_deposit_satang: 0, total_satang: 1 }))
   const rows: Record<string, unknown[]> = {
     quotes: [{ id: "quote", number: "QUO", status: "converted", valid_until: "2000-01-01", client_id: "client", project_id: null, total_satang: 100, subtotal_satang: 100, discount_satang: 0, clients: { name: "Client" } }],
     quote_items: [{ id: "line", description: "Service", quantity: 5, invoiced_quantity: 1, unit_price_satang: 100, amount_satang: 500, tax_rate_bps: 0 }],
@@ -45,6 +45,9 @@ it("links every invoice and counts beyond the API cap", async () => {
   expect(nodes.find((node) => node.type === SmartButtons)?.props.buttons).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Invoices", count: 1001, href: "#invoices" })]))
   expect(nodes.filter((node) => node.props.href === "/finance/invoices/invoice-1000")).toHaveLength(1)
   expect(nodes.filter((node) => node.type === CancelQuoteInvoiceButton)).toHaveLength(1001)
+  const comparison = nodes.find(node => node.props.label === "Invoiced vs quote")!
+  expect(JSON.stringify(comparison.props.value)).toContain("10.01")
+  expect(JSON.stringify(comparison.props.value)).toContain("9.01")
 })
 
 it("hides staff acceptance from ordinary members", async () => {

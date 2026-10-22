@@ -7,7 +7,7 @@ import { Download, FolderKanban, ListPlus, ReceiptText } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
-import { formatTHB } from "@/lib/money"
+import { formatTHB, sumSatang } from "@/lib/money"
 import { quoteIsEditable, serviceAmountBaht } from "@/lib/workflows/service"
 import { activeProductOptions } from "@/lib/products/queries"
 import { can } from "@/lib/permissions"
@@ -81,7 +81,7 @@ export default async function QuoteDetailPage({
     readAll((from, to) => supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name").order("id").range(from, to)),
     readAll((from, to) => supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name").order("id").range(from, to)),
     readAll((from, to) => supabase.from("invoices")
-      .select("id, number, status, quote_invoice_kind, quote_deposit_satang")
+      .select("id, number, status, quote_invoice_kind, quote_deposit_satang, total_satang")
       .eq("org_id", ctx.orgId).eq("source_quote_id", id)
       .order("created_at").order("id").range(from, to)),
     supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle(),
@@ -101,8 +101,9 @@ export default async function QuoteDetailPage({
   if (itemsRes.error || clientsRes.error || projectsRes.error || invoicesRes.error || settingsRes.error) throw new Error("Quote details unavailable")
   const items = itemsRes.data ?? []
   const invoices = invoicesRes.data ?? []
+  const invoicedTotal = sumSatang(invoices.filter(invoice => invoice.status !== "cancelled").map(invoice => invoice.total_satang))
   const canAccept = can(ctx.role, "quote:convert")
-  const canConvert = canAccept && ["accepted", "converted"].includes(quote.status) && items.some((item) => item.quantity > item.invoiced_quantity)
+  const canConvert = canAccept && ["accepted", "converted"].includes(quote.status)
   const flow = {
     ...QUOTE_FLOW,
     next: {
@@ -112,7 +113,6 @@ export default async function QuoteDetailPage({
       converted: { primary: { label: "Create draft invoice", command: "convert" as const } },
     },
   }
-  const invoiceRevision = invoices.map((invoice) => `${invoice.id}:${invoice.status}`).join(",") || "initial"
   const editable = quoteIsEditable(quote.status)
   const locked = !editable
   const linkedProject = (projectsRes.data ?? []).find((p) => p.id === quote.project_id)
@@ -192,7 +192,7 @@ export default async function QuoteDetailPage({
         transition={transitionQuote}
         commands={
           canConvert
-            ? { convert: (props) => <QuoteInvoiceForm quoteId={quote.id} orgId={ctx.orgId} lines={items} revision={invoiceRevision} {...props} /> }
+            ? { convert: (props) => <QuoteInvoiceForm quoteId={quote.id} orgId={ctx.orgId} lines={items} {...props} /> }
             : {}
         }
       />
@@ -222,6 +222,10 @@ export default async function QuoteDetailPage({
               </li>)}
             </ul>
           } /></dl> : null}
+          {invoices.length ? <Field label="Invoiced vs quote" value={<div>
+            <p>{formatTHB(invoicedTotal)} / {formatTHB(quote.total_satang)}</p>
+            <p className="text-muted-foreground text-sm">Difference: {formatTHB(invoicedTotal - quote.total_satang)}. Each invoice rounds VAT independently; a few satang may differ after the full scope is invoiced.</p>
+          </div>} /> : null}
 
           {deliveryMilestones?.length ? (
             <Field label="Delivery milestones" value={
