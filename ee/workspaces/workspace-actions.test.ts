@@ -11,7 +11,7 @@ vi.mock('next/headers', () => ({cookies: async () => ({set:state.setCookie})}))
 vi.mock('next/navigation', () => ({redirect: (path:string) => {throw new Error(`REDIRECT:${path}`)}}))
 vi.mock('next/cache', () => ({revalidatePath: vi.fn()}))
 vi.mock('@/lib/audit', () => ({writeAudit: vi.fn()}))
-import * as actions from '@/app/(app)/settings/org-actions'
+import * as actions from '@/ee/workspaces/actions'
 const orgId = '00000000-0000-4000-8000-000000000001'
 const key = '00000000-0000-4000-8000-000000000002'
 

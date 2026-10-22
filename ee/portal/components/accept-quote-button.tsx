@@ -7,7 +7,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 
-import { portalAcceptQuote } from "../portal-actions"
+import { portalAcceptQuote } from "@/ee/portal/actions"
 
 export function AcceptQuoteButton({
   token,

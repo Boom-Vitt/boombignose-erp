@@ -20,8 +20,8 @@ function from(table: string) {
 }
 
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from }) }))
-vi.mock("@/app/portal/[token]/_components/accept-quote-button", () => ({ AcceptQuoteButton: () => null }))
-vi.mock("@/app/portal/[token]/_components/mark-invoice-paid-button", () => ({ MarkInvoicePaidButton: () => null }))
+vi.mock("@/ee/portal/components/accept-quote-button", () => ({ AcceptQuoteButton: () => null }))
+vi.mock("@/ee/portal/components/mark-invoice-paid-button", () => ({ MarkInvoicePaidButton: () => null }))
 import ClientPortalPage from "@/app/portal/[token]/page"
 
 const org = "org-1"

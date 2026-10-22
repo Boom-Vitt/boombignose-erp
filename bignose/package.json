@@ -1,5 +1,6 @@
 {
   "name": "bignose",
+  "license": "UNLICENSED",
   "private": true,
   "packageManager": "pnpm@12.3.4",
   "engines": { "node": ">=24" },

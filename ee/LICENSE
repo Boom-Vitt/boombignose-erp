@@ -1,0 +1,31 @@
+BoomBigNose Pro Commercial Source-Available License
+
+Copyright © 2026 BoomBigNose AI Co., Ltd. All rights reserved.
+
+This license applies to company-owned code, tests, and documentation in ee/.
+It is separate from the Community Edition license in ../LICENSE. The AGPL
+license and the Community Edition's commercial alternative do not grant rights
+to Pro code unless a written commercial agreement expressly includes it.
+
+Permission is granted to view, copy, and modify this source solely for local,
+non-production evaluation, development, testing, and submission of contributions
+to BoomBigNose AI Co., Ltd. Preserve this notice on permitted copies.
+
+Production use requires a separate written commercial agreement with
+BoomBigNose AI Co., Ltd. This includes internal business production use,
+customer-facing deployments, hosted services, and SaaS. Without that agreement,
+you may not distribute, sublicense, sell, or offer a hosted service using this
+software. Submission of contributions through the project's contribution
+process is permitted. No trademark rights are granted.
+
+Third-party materials retain their own licenses and notices. This license does
+not change the licenses of Community modules or dependencies used by Pro.
+A commercial agreement must cover the rights required for a combined deployment.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+NONINFRINGEMENT. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT HOLDER
+IS NOT LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE
+SOFTWARE OR ITS USE.
+
+Commercial terms and licensing inquiries: https://boombignose.org

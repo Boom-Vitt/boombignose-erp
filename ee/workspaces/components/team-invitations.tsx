@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { Copy, Mail, Trash2, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 
-import { inviteMember, revokeInvitation } from "../org-actions"
+import { inviteMember, revokeInvitation } from "@/ee/workspaces/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {

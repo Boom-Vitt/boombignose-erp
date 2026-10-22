@@ -6,7 +6,8 @@ vi.mock('react', () => ({ cache: (fn: unknown) => fn }))
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => ({ value: state.preferred }) }) }))
 vi.mock('next/navigation', () => ({ redirect: (path: string) => { throw new Error(`REDIRECT:${path}`) } }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: async () => ({ ...(state.client as object), auth: { getUser: async () => ({ data: {user:state.user}, error:null }) } }) }))
-import { getOrgContext, requireOrgContext, getUserOrgs } from '@/lib/auth'
+import { getOrgContext, requireOrgContext } from '@/lib/auth'
+import { getUserOrgs } from '@/ee/workspaces/queries'
 
 beforeEach(() => {
  state.user = {id:'user',email:'owner@example.test'}

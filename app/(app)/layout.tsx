@@ -1,4 +1,5 @@
-import { requireOrgContext, getUserOrgs } from "@/lib/auth"
+import { requireOrgContext } from "@/lib/auth"
+import { getUserOrgs } from "@/ee/workspaces/queries"
 import { AppSidebar } from "@/components/app-sidebar"
 import {
   SidebarInset,

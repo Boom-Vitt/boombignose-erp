@@ -5,15 +5,15 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
-import { invoiceToExternalPayload } from "@/lib/accounting/mapping"
-import { getProvider } from "@/lib/accounting/provider"
+import { invoiceToExternalPayload } from "@/ee/accounting/mapping"
+import { getProvider } from "@/ee/accounting/provider"
 
 /**
  * Scaffold-sync a single invoice to the org's connected accounting provider.
  *
  * SCOPE: maps our invoice to a provider-neutral payload and records the mapping
  * in `accounting_sync_map`. The provider's `pushInvoice` is a STUB (no live HTTP
- * — see lib/accounting/provider.ts). Re-syncing is idempotent: we upsert on the
+ * — see ee/accounting/provider.ts). Re-syncing is idempotent: we upsert on the
  * (org, provider, entity, id) key.
  */
 export async function syncInvoiceToAccounting(

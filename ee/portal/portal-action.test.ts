@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest"
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }))
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ rpc }) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
-import { portalMarkInvoicePaid } from "@/app/portal/[token]/portal-actions"
+import { portalMarkInvoicePaid } from "@/ee/portal/actions"
 
 it("public payment action sends only a pending claim command", async () => {
   rpc.mockResolvedValue({ data: "claim-id", error: null })

@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
-import { provisionWorkspace } from "@/app/(app)/settings/org-actions"
-import { workspaceProvisionRequest, type WorkspaceProvisionRequest } from "@/lib/supabase/workspace-request"
+import { provisionWorkspace } from "@/ee/workspaces/actions"
+import { workspaceProvisionRequest, type WorkspaceProvisionRequest } from "@/ee/workspaces/workspace-request"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"

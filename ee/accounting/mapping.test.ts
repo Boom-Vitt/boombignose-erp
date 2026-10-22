@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { invoiceToExternalPayload } from "@/lib/accounting/mapping"
+import { invoiceToExternalPayload } from "@/ee/accounting/mapping"
 
 /**
  * Pure mapping: our invoice row (+ optional client) -> provider-neutral payload.

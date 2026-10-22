@@ -7,7 +7,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 
-import { syncInvoiceToAccounting } from "../accounting-actions"
+import { syncInvoiceToAccounting } from "@/ee/accounting/invoice-actions"
 
 /**
  * "Sync to accounting" — pushes the invoice to the connected provider (a stub

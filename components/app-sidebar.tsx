@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { LogOut } from "lucide-react"
 
 import { NAV_ITEMS } from "@/components/nav"
-import { OrgSwitcher, type OrgOption } from "@/components/org-switcher"
+import { OrgSwitcher, type OrgOption } from "@/ee/workspaces/components/org-switcher"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {

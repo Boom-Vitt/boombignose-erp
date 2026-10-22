@@ -4,7 +4,7 @@ import { useTransition } from "react"
 import { Check, ChevronsUpDown, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
-import { setActiveOrg } from "@/app/(app)/settings/org-actions"
+import { setActiveOrg } from "@/ee/workspaces/actions"
 import {
   DropdownMenu,
   DropdownMenuTrigger,

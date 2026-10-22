@@ -6,7 +6,7 @@ import { cookies } from "next/headers"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
-import { workspaceCookieIsSecure } from "@/lib/supabase/workspace-cookie"
+import { workspaceCookieIsSecure } from "@/ee/workspaces/workspace-cookie"
 import { requireOrgContext, requireCapability, ACTIVE_ORG_COOKIE } from "@/lib/auth"
 import { writeAudit } from "@/lib/audit"
 
