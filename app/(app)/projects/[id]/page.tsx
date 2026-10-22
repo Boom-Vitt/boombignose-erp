@@ -128,7 +128,7 @@ export default async function ProjectDetailPage({
       .order("created_at", { ascending: true }),
     supabase
       .from("invoices")
-      .select("id, number, status, amount_satang, source_quote_id, source_milestone_id", { count: "exact" })
+      .select("id, number, status, amount_satang, total_satang, vat_satang, source_quote_id, source_milestone_id", { count: "exact" })
       .eq("org_id", ctx.orgId)
       .eq("project_id", id),
     supabase.from("costs").select("amount_satang").eq("org_id", ctx.orgId).eq("project_id", id),
@@ -171,6 +171,8 @@ export default async function ProjectDetailPage({
     number: string
     status: Enums<"invoice_status">
     amount_satang: number
+    total_satang: number
+    vat_satang: number
     source_quote_id: string | null
     source_milestone_id: string | null
   }>

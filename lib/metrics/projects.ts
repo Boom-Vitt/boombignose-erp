@@ -3,7 +3,8 @@ import type { Enums } from "@/lib/types/database"
 
 export type InvoiceForProfit = {
   status: Enums<"invoice_status">
-  amount_satang: number
+  total_satang: number
+  vat_satang: number
 }
 export type CostForProfit = { amount_satang: number }
 
@@ -16,8 +17,9 @@ export type ProjectProfit = {
 }
 
 /**
- * Gross project profit: billed revenue (non-draft, non-cancelled invoices)
- * minus all recorded costs.
+ * Gross project profit: billed revenue before VAT (non-draft, non-cancelled
+ * invoices) minus all recorded costs. Withholding is still revenue, so this
+ * never reads the collectible amount_satang.
  */
 export function projectProfit(
   invoices: InvoiceForProfit[],
@@ -26,7 +28,7 @@ export function projectProfit(
   const revenueSatang = sumSatang(
     invoices
       .filter((i) => i.status !== "cancelled" && i.status !== "draft")
-      .map((i) => i.amount_satang)
+      .map((i) => i.total_satang - i.vat_satang)
   )
   const costSatang = sumSatang(costs.map((c) => c.amount_satang))
   const profitSatang = revenueSatang - costSatang
