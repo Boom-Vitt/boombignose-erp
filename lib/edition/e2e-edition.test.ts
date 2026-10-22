@@ -14,9 +14,9 @@ function playwrightEdition(envLocal: string, shell?: string) {
   try {
     writeFileSync(join(dir, ".env.local"), envLocal)
     writeFileSync(join(dir, "playwright.config.ts"), `import { community } from ${JSON.stringify(edition)}\nconsole.log(\`EDITION \${community}\`)\nexport default {}\n`)
-    // Vitest sets NODE_ENV=test, under which Next skips .env.local; Playwright and next build run without it.
-    const { NODE_ENV: _test, BBN_EDITION: _edition, ...env } = process.env
-    const run = spawnSync(process.execPath, [cli, "test", "--list"], { cwd: dir, env: shell ? { ...env, BBN_EDITION: shell } : env, encoding: "utf8" })
+    // Vitest sets NODE_ENV=test, under which Next skips .env.local; next build loads env in production mode.
+    const env = { ...process.env, NODE_ENV: "production" as const, BBN_EDITION: shell }
+    const run = spawnSync(process.execPath, [cli, "test", "--list"], { cwd: dir, env, encoding: "utf8" })
     return `${run.stdout}${run.stderr}`.match(/EDITION (true|false)|BBN_EDITION must be community or pro/)?.[0]
   } finally {
     rmSync(dir, { recursive: true, force: true })
