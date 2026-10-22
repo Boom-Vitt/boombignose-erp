@@ -6,7 +6,7 @@ import { redirect } from "next/navigation"
 import { requireCapability, requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { writeAudit } from "@/lib/audit"
-import { CountInput, ReorderInput, WarehouseInput } from "./schema"
+import { CountInput, DeliveryInput, ReorderInput, StockQuantity, WarehouseInput } from "./schema"
 
 function refresh() {
   revalidatePath("/inventory", "layout")
@@ -37,28 +37,45 @@ export async function deleteWarehouse(id: string): Promise<{ error?: string }> {
   return {}
 }
 
-export async function adjustStock(input: unknown): Promise<{ error?: string }> {
+export async function adjustStock(input: unknown): Promise<{ error?: string; rejected?: true }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "inventory:manage")
   const parsed = CountInput.safeParse(input)
   if (!parsed.success) return { error: "Choose a product and warehouse, and enter a nonnegative count and reason." }
   const d = parsed.data
   const db = await createClient()
-  const { error } = await db.rpc("adjust_stock", { p_org_id: ctx.orgId, p_product_id: d.product_id, p_warehouse_id: d.warehouse_id, p_count: d.quantity, p_reason: d.reason, p_key: d.key })
-  if (error) return { error: error.message }
+  const { error } = await db.rpc("adjust_stock", { p_org_id: ctx.orgId, p_product_id: d.product_id, p_warehouse_id: d.warehouse_id, p_count: d.quantity, p_reason: d.reason, p_key: d.key, ...(d.unit_cost_satang !== undefined ? { p_unit_cost_satang: d.unit_cost_satang } : {}) })
+  if (error) return { error: error.message, ...(error.code === "P0001" ? { rejected: true as const } : {}) }
   refresh()
   return {}
 }
 
-export async function deliverInvoice(id: string, warehouseId?: string): Promise<{ error?: string }> {
+export async function deliverInvoice(id: string, warehouseId?: string, input?: unknown): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "inventory:manage")
-  if (!z.guid().safeParse(id).success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success)) return { error: "Invalid delivery" }
+  const lines = input === undefined ? undefined : DeliveryInput.safeParse(input)
+  if (!z.guid().safeParse(id).success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success) || (lines && !lines.success)) return { error: "Invalid delivery" }
   const db = await createClient()
-  const { error } = await db.rpc("deliver_invoice", { p_org_id: ctx.orgId, p_invoice_id: id, ...(warehouseId ? { p_warehouse_id: warehouseId } : {}) })
+  const { error } = await db.rpc("deliver_invoice", { p_org_id: ctx.orgId, p_invoice_id: id, ...(warehouseId ? { p_warehouse_id: warehouseId } : {}), ...(lines?.success ? { p_lines: lines.data } : {}) })
   if (error) return { error: error.message }
   refresh()
   revalidatePath(`/finance/invoices/${id}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/reports")
+  return {}
+}
+
+export async function returnInvoiceDelivery(id: string, moveId: string, quantity: number): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "inventory:manage")
+  if (!z.guid().safeParse(id).success || !z.guid().safeParse(moveId).success || !StockQuantity.safeParse(quantity).success) return { error: "Invalid return" }
+  const db = await createClient()
+  const { error } = await db.rpc("return_invoice_delivery", { p_org_id: ctx.orgId, p_invoice_id: id, p_move_id: moveId, p_returned_quantity: quantity })
+  if (error) return { error: error.message }
+  refresh()
+  revalidatePath(`/finance/invoices/${id}`)
+  revalidatePath("/dashboard")
+  revalidatePath("/reports")
   return {}
 }
 

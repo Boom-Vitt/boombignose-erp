@@ -39,6 +39,7 @@ beforeEach(() => {
     invoices: ['A','B'].map(org_id => ({id:`invoice-${org_id}`,org_id,status:'sent',amount_satang:org_id==='A'?1000:3000,total_satang:org_id==='A'?1070:3210,vat_satang:org_id==='A'?70:210,issue_date:date,due_date:'2000-01-01',is_recurring:true,recurring_interval:'monthly'})),
     payments: ['A','B'].map(org_id => ({org_id,invoice_id:`invoice-${org_id}`,amount_satang:org_id==='A'?100:500,paid_at:date,verification_state:'verified'})).concat([{org_id:'A',invoice_id:'invoice-A',amount_satang:777,paid_at:date,verification_state:'legacy_unverified'}]),
     costs: ['A','B'].map(org_id => ({org_id,amount_satang:org_id==='A'?300:900,incurred_on:date})),
+    monthly_inventory_cogs: ['A','B'].map(org_id => ({org_id, month: `${currentMonthKey()}-01`, amount_satang: org_id === 'A' ? 200 : 700})),
     subscriptions: ['A','B'].map(org_id => ({org_id,status:'active',amount_satang:org_id==='A'?600:1800,interval:'monthly'})),
     time_entries: ['A','B'].map(org_id => ({org_id,project_id:`project-${org_id}`,minutes:org_id==='A'?60:180,billable:true,rate_satang:100,work_date:date})),
     projects: [{ org_id: 'A', status: 'in_progress' },{ org_id: 'B', status: 'in_progress' }],
@@ -149,6 +150,7 @@ describe('active workspace business reads', () => {
     expect(a.revenueHistory).toHaveLength(6)
     expect(a.revenueHistory[5]).toEqual({ month: currentMonthKey(), revenueSatang: a.monthlyRevenueSatang })
     expect(a.monthlyBurnSatang).toBe(300)
+    expect(a.monthlyCogsSatang).toBe(200)
     expect(a.unpaidSatang).toBe(900)
     expect(a.unpaidInvoiceCount).toBe(1)
     expect(a.overdueInvoiceCount).toBe(1)
@@ -163,6 +165,7 @@ describe('active workspace business reads', () => {
     expect(b.openQuotesValueSatang).toBe(1000)
     expect(b.cashSatang).toBe(800)
     expect(b.monthlyRevenueSatang).toBe(3000)
+    expect(b.monthlyCogsSatang).toBe(700)
     expect(b.revenueHistory[5]).toEqual({ month: currentMonthKey(), revenueSatang: b.monthlyRevenueSatang })
     expect(b.unpaidSatang).toBe(2500)
     expect(b.mrrSatang).toBe(1800)

@@ -38,15 +38,21 @@ export type Database = {
         Update: { code?: string; name?: string; address?: string | null; is_default?: boolean; active?: boolean }
         Relationships: []
       }
+      invoice_line_stock: {
+        Row: { org_id: string; line_id: string; invoice_id: string; delivered_quantity: number; returned_quantity: number }
+        Insert: { org_id: string; line_id: string; invoice_id: string; delivered_quantity?: number; returned_quantity?: number }
+        Update: { delivered_quantity?: number; returned_quantity?: number }
+        Relationships: []
+      }
       stock_counts: {
-        Row: { org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
-        Insert: { org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
+        Row: { unit_cost_satang: number | null; org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
+        Insert: { unit_cost_satang?: number | null; org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
         Update: never
         Relationships: []
       }
       stock_moves: {
-        Row: { id: string; sequence: number; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: "purchase_order" | "invoice" | "adjustment" | "transfer"; source_id: string; note: string | null; moved_at: string; created_by: string | null; balance_after: number; average_cost_after: number }
-        Insert: { id?: string; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: string; source_id: string; note?: string | null; balance_after: number; average_cost_after: number }
+        Row: { source_line_id: string | null; return_of_move_id: string | null; id: string; sequence: number; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: "purchase_order" | "invoice" | "adjustment" | "transfer"; source_id: string; note: string | null; moved_at: string; created_by: string | null; balance_after: number; average_cost_after: number }
+        Insert: { source_line_id?: string | null; return_of_move_id?: string | null; id?: string; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: string; source_id: string; note?: string | null; balance_after: number; average_cost_after: number }
         Update: never
         Relationships: []
       }
@@ -75,9 +81,9 @@ export type Database = {
         Relationships: [{ foreignKeyName: "expense_lines_org_id_claim_id_fkey"; columns: ["org_id", "claim_id"]; isOneToOne: false; referencedRelation: "expense_claims"; referencedColumns: ["org_id", "id"] }, { foreignKeyName: "expense_lines_org_id_project_id_fkey"; columns: ["org_id", "project_id"]; isOneToOne: false; referencedRelation: "projects"; referencedColumns: ["org_id", "id"] }]
       }
       purchase_order_items: {
-        Row: { id: string; org_id: string; purchase_order_id: string; product_id: string | null; description: string; quantity: number; unit: string; unit_cost_satang: number; received_quantity: number; billed_quantity: number; position: number }
-        Insert: { id?: string; org_id: string; purchase_order_id: string; product_id?: string | null; description: string; quantity: number; unit?: string; unit_cost_satang: number; received_quantity?: number; billed_quantity?: number; position?: number }
-        Update: { id?: string; org_id?: string; purchase_order_id?: string; product_id?: string | null; description?: string; quantity?: number; unit?: string; unit_cost_satang?: number; received_quantity?: number; billed_quantity?: number; position?: number }
+        Row: { id: string; org_id: string; purchase_order_id: string; product_id: string | null; description: string; quantity: number; unit: string; unit_cost_satang: number; received_quantity: number; returned_quantity: number; billed_quantity: number; position: number }
+        Insert: { id?: string; org_id: string; purchase_order_id: string; product_id?: string | null; description: string; quantity: number; unit?: string; unit_cost_satang: number; received_quantity?: number; returned_quantity?: number; billed_quantity?: number; position?: number }
+        Update: { id?: string; org_id?: string; purchase_order_id?: string; product_id?: string | null; description?: string; quantity?: number; unit?: string; unit_cost_satang?: number; received_quantity?: number; returned_quantity?: number; billed_quantity?: number; position?: number }
         Relationships: [{ foreignKeyName: "purchase_order_items_org_id_purchase_order_id_fkey"; columns: ["org_id", "purchase_order_id"]; isOneToOne: false; referencedRelation: "purchase_orders"; referencedColumns: ["org_id", "id"] }, { foreignKeyName: "purchase_order_items_org_id_product_id_fkey"; columns: ["org_id", "product_id"]; isOneToOne: false; referencedRelation: "products"; referencedColumns: ["org_id", "id"] }]
       }
             "accounting_connections": {
@@ -269,15 +275,18 @@ isOneToOne: false
                   ]
                 },"costs": {
                   Row: {
+                    purchase_cost_kind: "bill" | "credit" | "return_adjustment" | null,
                     vendor_id: string | null; purchase_order_id: string | null; expense_claim_id: string | null; bill_number: string | null; bill_date: string | null; due_date: string | null; paid_at: string | null;
                     "amount_satang": number,"category": Database["public"]['Enums']["cost_category"],"created_at": string,"id": string,"incurred_on": string,"notes": string | null,"org_id": string,"project_id": string | null,"updated_at": string,"vendor": string | null
                   }
                   ComputedFields: never
                   Insert: {
+                    purchase_cost_kind?: "bill" | "credit" | "return_adjustment" | null,
                     vendor_id?: string | null; purchase_order_id?: string | null; expense_claim_id?: string | null; bill_number?: string | null; bill_date?: string | null; due_date?: string | null; paid_at?: string | null;
                     "amount_satang": number,"category"?: Database["public"]['Enums']["cost_category"],"created_at"?: string,"id"?: string,"incurred_on"?: string,"notes"?: string | null,"org_id": string,"project_id"?: string | null,"updated_at"?: string,"vendor"?: string | null
                   }
                   Update: {
+                    purchase_cost_kind?: "bill" | "credit" | "return_adjustment" | null,
                     vendor_id?: string | null; purchase_order_id?: string | null; expense_claim_id?: string | null; bill_number?: string | null; bill_date?: string | null; due_date?: string | null; paid_at?: string | null;
                     "amount_satang"?: number,"category"?: Database["public"]['Enums']["cost_category"],"created_at"?: string,"id"?: string,"incurred_on"?: string,"notes"?: string | null,"org_id"?: string,"project_id"?: string | null,"updated_at"?: string,"vendor"?: string | null
                   }
@@ -1209,6 +1218,18 @@ isOneToOne: false
       }
 }
           Views: {
+            invoice_stock_lines: {
+              Row: Database["public"]["Tables"]["invoice_items"]["Row"] & { delivered_quantity: number; returned_quantity: number; is_stockable: boolean }
+              Relationships: []
+            }
+            inventory_forecast: {
+              Row: { org_id: string; product_id: string; on_order: number; reserved_quantity: number }
+              Relationships: []
+            }
+            monthly_inventory_cogs: {
+              Row: { org_id: string; month: string; amount_satang: number }
+              Relationships: []
+            }
             stock_on_hand: {
               Row: { org_id: string; product_id: string; warehouse_id: string; quantity: number; average_cost_satang: number; value_satang: number }
               Relationships: []
@@ -1248,8 +1269,10 @@ isOneToOne: false
             inventory_snapshot: { Args: { p_org_id: string; p_warehouse_id?: string; p_product_id?: string }; Returns: Json }
             save_warehouse: { Args: { p_org_id: string; p_id: string | null; p_code: string; p_name: string; p_address: string | null; p_default: boolean; p_active: boolean }; Returns: string }
             delete_warehouse: { Args: { p_org_id: string; p_id: string }; Returns: undefined }
-            deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string }; Returns: undefined }
-            adjust_stock: { Args: { p_org_id: string; p_product_id: string; p_warehouse_id: string; p_count: number; p_reason: string; p_key: string }; Returns: string | null }
+            deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string; p_lines?: Json }; Returns: undefined }
+            adjust_stock: { Args: { p_org_id: string; p_product_id: string; p_warehouse_id: string; p_count: number; p_reason: string; p_key: string; p_unit_cost_satang?: number | null }; Returns: string | null }
+            return_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string }; Returns: undefined }
+            return_invoice_delivery: { Args: { p_org_id: string; p_invoice_id: string; p_move_id: string; p_returned_quantity: number }; Returns: undefined }
             create_replenishment_rfq: { Args: { p_org_id: string; p_vendor_id: string }; Returns: string }
             "bill_project_time": { Args: { p_org_id: string; p_project_id: string; p_key: string }; Returns: string }
             "set_member_cost_rate": { Args: { p_org_id: string; p_user_id: string; p_rate_satang: number }; Returns: undefined }
@@ -1314,9 +1337,9 @@ isOneToOne: false
             take_search_slot: { Args: Record<PropertyKey, never>; Returns: boolean }
           }
           Enums: {
-            "accounting_conn_status": "disconnected"|"connected"|"error","accounting_provider": "flowaccount"|"peak"|"xero","accounting_sync_status": "pending"|"synced"|"error","activity_type": "note"|"call"|"email"|"meeting"|"follow_up","ai_output_kind": "deal_summary"|"followup_draft"|"meeting_intake","cost_category": "software"|"contractor"|"infra"|"marketing"|"salary"|"other","deal_stage": "lead"|"contacted"|"discovery"|"proposal"|"negotiation"|"won"|"lost","invitation_status": "pending"|"accepted"|"revoked"|"expired","invoice_status": "draft"|"sent"|"partially_paid"|"paid"|"overdue"|"cancelled","outbound_status": "queued"|"delivered"|"failed","payment_method": "transfer"|"cash"|"card"|"promptpay"|"cheque"|"other","project_status": "not_started"|"in_progress"|"review"|"delivered"|"support"|"paused"|"cancelled","quote_status": "draft"|"sent"|"accepted"|"declined"|"expired"|"converted","recurring_interval": "weekly"|"monthly"|"quarterly"|"yearly","reminder_channel": "line"|"email"|"inapp","reminder_status": "pending"|"sent"|"cancelled","role_enum": "owner"|"admin"|"member","subscription_status": "active"|"paused"|"cancelled","task_status": "todo"|"in_progress"|"done"
-      stock_move_kind: "receipt" | "delivery" | "adjustment_in" | "adjustment_out" | "transfer_in" | "transfer_out"
-      purchase_status: "draft" | "sent" | "confirmed" | "received" | "billed" | "cancelled"
+            "accounting_conn_status": "disconnected"|"connected"|"error","accounting_provider": "flowaccount"|"peak"|"xero","accounting_sync_status": "pending"|"synced"|"error","activity_type": "note"|"call"|"email"|"meeting"|"follow_up","ai_output_kind": "deal_summary"|"followup_draft"|"meeting_intake","cost_category": "software"|"contractor"|"infra"|"marketing"|"salary"|"other"|"inventory","deal_stage": "lead"|"contacted"|"discovery"|"proposal"|"negotiation"|"won"|"lost","invitation_status": "pending"|"accepted"|"revoked"|"expired","invoice_status": "draft"|"sent"|"partially_paid"|"paid"|"overdue"|"cancelled","outbound_status": "queued"|"delivered"|"failed","payment_method": "transfer"|"cash"|"card"|"promptpay"|"cheque"|"other","project_status": "not_started"|"in_progress"|"review"|"delivered"|"support"|"paused"|"cancelled","quote_status": "draft"|"sent"|"accepted"|"declined"|"expired"|"converted","recurring_interval": "weekly"|"monthly"|"quarterly"|"yearly","reminder_channel": "line"|"email"|"inapp","reminder_status": "pending"|"sent"|"cancelled","role_enum": "owner"|"admin"|"member","subscription_status": "active"|"paused"|"cancelled","task_status": "todo"|"in_progress"|"done"
+      stock_move_kind: "receipt" | "delivery" | "adjustment_in" | "adjustment_out" | "transfer_in" | "transfer_out" | "vendor_return" | "customer_return"
+      purchase_status: "draft" | "sent" | "confirmed" | "received" | "billed" | "cancelled" | "closed"
       expense_status: "draft" | "submitted" | "approved" | "rejected" | "paid"
       record_type: "client" | "deal" | "quote" | "invoice" | "project" | "subscription" | "vendor" | "purchase_order" | "expense_claim"
           }
@@ -1438,9 +1461,9 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "accounting_conn_status": ["disconnected", "connected", "error"],"accounting_provider": ["flowaccount", "peak", "xero"],"accounting_sync_status": ["pending", "synced", "error"],"activity_type": ["note", "call", "email", "meeting", "follow_up"],"ai_output_kind": ["deal_summary", "followup_draft", "meeting_intake"],"cost_category": ["software", "contractor", "infra", "marketing", "salary", "other"],"deal_stage": ["lead", "contacted", "discovery", "proposal", "negotiation", "won", "lost"],"invitation_status": ["pending", "accepted", "revoked", "expired"],"invoice_status": ["draft", "sent", "partially_paid", "paid", "overdue", "cancelled"],"outbound_status": ["queued", "delivered", "failed"],"payment_method": ["transfer", "cash", "card", "promptpay", "cheque", "other"],"project_status": ["not_started", "in_progress", "review", "delivered", "support", "paused", "cancelled"],"quote_status": ["draft", "sent", "accepted", "declined", "expired", "converted"],"recurring_interval": ["weekly", "monthly", "quarterly", "yearly"],"reminder_channel": ["line", "email", "inapp"],"reminder_status": ["pending", "sent", "cancelled"],"role_enum": ["owner", "admin", "member"],"subscription_status": ["active", "paused", "cancelled"],"task_status": ["todo", "in_progress", "done"],
-            stock_move_kind: ["receipt", "delivery", "adjustment_in", "adjustment_out", "transfer_in", "transfer_out"],
-            purchase_status: ["draft", "sent", "confirmed", "received", "billed", "cancelled"],
+            "accounting_conn_status": ["disconnected", "connected", "error"],"accounting_provider": ["flowaccount", "peak", "xero"],"accounting_sync_status": ["pending", "synced", "error"],"activity_type": ["note", "call", "email", "meeting", "follow_up"],"ai_output_kind": ["deal_summary", "followup_draft", "meeting_intake"],"cost_category": ["software", "contractor", "infra", "marketing", "salary", "other", "inventory"],"deal_stage": ["lead", "contacted", "discovery", "proposal", "negotiation", "won", "lost"],"invitation_status": ["pending", "accepted", "revoked", "expired"],"invoice_status": ["draft", "sent", "partially_paid", "paid", "overdue", "cancelled"],"outbound_status": ["queued", "delivered", "failed"],"payment_method": ["transfer", "cash", "card", "promptpay", "cheque", "other"],"project_status": ["not_started", "in_progress", "review", "delivered", "support", "paused", "cancelled"],"quote_status": ["draft", "sent", "accepted", "declined", "expired", "converted"],"recurring_interval": ["weekly", "monthly", "quarterly", "yearly"],"reminder_channel": ["line", "email", "inapp"],"reminder_status": ["pending", "sent", "cancelled"],"role_enum": ["owner", "admin", "member"],"subscription_status": ["active", "paused", "cancelled"],"task_status": ["todo", "in_progress", "done"],
+            stock_move_kind: ["receipt", "delivery", "adjustment_in", "adjustment_out", "transfer_in", "transfer_out", "vendor_return", "customer_return"],
+            purchase_status: ["draft", "sent", "confirmed", "received", "billed", "cancelled", "closed"],
             expense_status: ["draft", "submitted", "approved", "rejected", "paid"],
             record_type: ["client", "deal", "quote", "invoice", "project", "subscription", "vendor", "purchase_order", "expense_claim"]
           }

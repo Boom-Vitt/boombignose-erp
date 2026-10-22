@@ -11,7 +11,7 @@ export const FACET_LISTS = {
   deals: { statuses: Constants.public.Enums.deal_stage, groups: ["stage", "client", "owner", "month"] },
   projects: { statuses: Constants.public.Enums.project_status, groups: ["status", "client", "owner", "month"] },
   purchases: { statuses: Constants.public.Enums.purchase_status, groups: ["status", "vendor", "month"] },
-  inventory: { statuses: ["receipt", "delivery", "adjustment_in", "adjustment_out", "transfer_in", "transfer_out"], groups: [] },
+  inventory: { statuses: ["receipt", "delivery", "adjustment_in", "adjustment_out", "transfer_in", "transfer_out", "vendor_return", "customer_return"], groups: [] },
   vendors: { statuses: ["active", "archived"], groups: ["status", "month"] },
 } as const
 export type FacetList = keyof typeof FACET_LISTS
@@ -39,7 +39,7 @@ export function parseFacets(params: SearchParams | URLSearchParams, list: FacetL
   if (get("mine") === "1") config.mine = "1"
   if ((FACET_LISTS[list].groups as readonly string[]).includes(get("groupBy"))) config.groupBy = get("groupBy")
   if (list === "inventory") for (const key of ["warehouse", "product", "sourceId"] as const) {
-    const parsed = z.uuid().safeParse(get(key))
+    const parsed = z.guid().safeParse(get(key))
     if (parsed.success) config[key] = parsed.data
   }
   return config

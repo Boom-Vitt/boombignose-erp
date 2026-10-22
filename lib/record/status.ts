@@ -21,6 +21,7 @@ export type Tone = "neutral" | "info" | "success" | "warning" | "danger"
 
 /** One label and tone per status value, shared by every enum that uses the value. */
 export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }> = {
+  closed: { label: "Closed", tone: "success" },
   confirmed: { label: "Confirmed", tone: "info" },
   received: { label: "Received", tone: "success" },
   billed: { label: "Billed", tone: "success" },
@@ -190,10 +191,12 @@ const CANCEL_PURCHASE = { label: "Cancel", to: "cancelled", confirm: "The purcha
 
 export const PURCHASE_FLOW: DocumentFlow<Enums<"purchase_status">> = {
   stages: ["draft", "sent", "confirmed", "received", "billed"],
+  on: { closed: "received" },
   next: {
     draft: { primary: { label: "Send RFQ", command: "send_rfq" }, secondary: [{ label: "Confirm", to: "confirmed" }, CANCEL_PURCHASE] },
     sent: { primary: { label: "Confirm", to: "confirmed" }, secondary: [CANCEL_PURCHASE] },
-    confirmed: { primary: { label: "Receive", command: "receive" }, secondary: [{ label: "Create bill", command: "bill" }, CANCEL_PURCHASE] },
+    confirmed: { primary: { label: "Receive", command: "receive" }, secondary: [{ label: "Create bill", command: "bill" }, { label: "Close remainder", to: "closed" }, CANCEL_PURCHASE] },
+    closed: { primary: { label: "Create bill", command: "bill" } },
     received: { primary: { label: "Create bill", command: "bill" } },
     billed: {},
     cancelled: {},

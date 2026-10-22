@@ -17,6 +17,7 @@ import {
   FileText,
   Clock,
   UserPlus,
+  Package,
 } from "lucide-react"
 
 import { getDashboardData } from "@/lib/queries/dashboard"
@@ -67,7 +68,13 @@ export default async function DashboardPage() {
           value={formatTHB(d.monthlyBurnSatang)}
           icon={Flame}
           tone="negative"
-          hint={`Net burn ${formatTHB(d.netBurnSatang)}`}
+          hint={`Operating costs · net burn ${formatTHB(d.netBurnSatang)}`}
+        />
+        <StatCard
+          label="Cost of goods sold this month"
+          value={formatTHB(d.monthlyCogsSatang)}
+          icon={Package}
+          hint="Delivered stock cost less customer returns"
         />
         <StatCard
           label="Runway"

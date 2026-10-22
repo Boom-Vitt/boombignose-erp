@@ -197,3 +197,198 @@ pnpm test
 ```
 
 `git diff --check` passed. There are no remaining conflict markers or unmerged entries. No database or browser runtime checks were run, and no Supabase or Docker startup was performed. Coordinator integration must apply migrations and execute both inventory SQL suites and `e2e/inventory.spec.ts`.
+
+
+## Procure-to-stock round 3, 2026-10-23
+
+Fast-forwarded the required upstream `odoo-parity` selector fixes to `7b3b579` before work. New migration is `supabase/migrations/20261025130000_procure_stock.sql`; the original two inventory migrations are unchanged. Audit findings supplied the behavior ideas only. No external Odoo/ERPNext source, CSS or assets were copied and no dependency was added.
+
+Implemented B1/B2/S3/S5/S7/S8/S9/S10/S11 across purchasing/inventory commands, forms and financial summaries:
+
+- Product-linked purchase, quote and invoice lines must match the catalog unit. Quote/invoice checks use a separate trigger, without redefining their owned guards. The coordinator approved locking a catalog unit after any document line references it, in addition to the stock-history lock. Catalog price/name/archive edits still preserve agreement snapshots. Existing mismatched units cause an explicit migration preflight failure; retained agreements are never rewritten automatically.
+- `closed` is reachable from a partially received confirmed PO, freezes the remaining quantity, stays closed when billed, and maps onto the Received status-bar step. All list/filter enum registrations include it. Forecast buying excludes closed POs and includes remaining quantities from draft/sent/confirmed POs, regardless of notes. Both SQL and TypeScript require positive reorder quantities and order the greater of reorder quantity and forecast shortfall.
+- Vendor returns keep cumulative returned quantities per PO line, cap both original line receipts and aggregate PO/product/warehouse receipts (including legacy moves without line IDs), and post only the new return delta. Credits cover only the returned portion exceeding the remaining unbilled quantity. Cumulative rounding prevents fractional credits from duplicating satang.
+- **Coordinator valuation override:** the initial dispatch asked for vendor stock returns at PO cost; the coordinator instead explicitly required CURRENT average cost for outgoing stock, original PO cost for vendor credits, and an `inventory` cost adjustment for the difference. The adjustment uses rounded before/after balance values so full depletion removes exactly the remaining value. The expensive-PO/cheap-current-stock regression expects current value 500 ->450, credit -1000 and adjustment +950, then value 0 on full return. `purchase_cost_kind` distinguishes bill/credit/return_adjustment; internal adjustments have no vendor ID/due date, and the UI and payment action do not treat them as payables. Existing vendor-bill guards retain valuation fields; they still allow a direct authenticated `paid_at` update, which does not make an internal adjustment a vendor payable.
+- Partial invoice deliveries use chosen cumulative quantities and displayed prior delivered quantities. Per-line delivery/return counters live in forced-RLS `invoice_line_stock`, exposed through `invoice_stock_lines`, because issued `invoice_items` are immutable and W4-a owns their guard. Legacy whole-invoice deliveries are backfilled without modifying ledger or financial lines. Customer returns reference the original move and restore its warehouse/cost. Returns do not reopen delivered remainder. Available quantity subtracts all undelivered issued invoice quantities; this is a warning/forecast, not a hard warehouse reservation.
+- Warehouse deactivation is serialized against posting and refuses any non-zero product balance, including deficits. Raising a count from zero/negative stock requires an explicit unit cost and updates catalog cost from the resulting warehouse average. Count recovery retains explicit cost and exact retry payloads across ambiguous transport failures; a confirmed SQL P0001 rejection releases the matching saved command for correction.
+- Receipt payloads carry the displayed `previous_received_quantity`. The SQL transaction checks it before posting, including when the submitted total happens to equal the newer stored total, returning `Receipt changed, reload` on mismatch.
+- New stock purchase bills/credits and return adjustments use cost category `inventory`; mixed new bills split inventory and operating lines. Dashboard, Finance burn and MCP burn exclude that category. Dashboard, all Reports views and report print show monthly delivery COGS, net of customer returns. The security-invoker COGS view uses cumulative return rounding per original move, including across month boundaries. Report inputs and invoice stock reads use the shared pager; live inventory forecasts/balances use the single SQL snapshot. Existing historic cost categories are retained; this migration does not guess how to reclassify already issued mixed legacy bills.
+
+Primary files are the new migration and `supabase/tests/procure_stock.sql`; `lib/{inventory,purchasing}/`; inventory/purchase pages and components; invoice detail; the shared status/database registries; dashboard cost query; finance cost helper/page; reports data/page/print; MCP burn helper; and matching unit tests. `e2e/inventory.spec.ts` now performs two chosen partial deliveries, passes receipt preconditions and supplies opening count cost. Older purchasing/inventory/product SQL fixtures follow the new contracts.
+
+Every created/replaced SQL function in this migration:
+
+```text
+private.guard_product_line_unit()
+private.guard_referenced_product_unit()
+private.guard_purchase_line()
+private.value_stock_move()
+public.transition_purchase_order(uuid,uuid,public.purchase_status)
+public.receive_purchase_order(uuid,uuid,jsonb,uuid)
+public.bill_purchase_order(uuid,uuid)
+public.return_purchase_order(uuid,uuid,jsonb,uuid)
+public.deliver_invoice(uuid,uuid,uuid,jsonb)
+public.return_invoice_delivery(uuid,uuid,uuid,numeric)
+public.adjust_stock(uuid,uuid,uuid,numeric,text,uuid,bigint)
+public.save_warehouse(uuid,uuid,text,text,text,boolean,boolean)
+public.inventory_snapshot(uuid,uuid,uuid)
+public.create_replenishment_rfq(uuid,uuid)
+```
+
+The previous three-argument delivery and six-argument count functions are replaced with trailing optional arguments. Existing full-delivery calls remain supported. No invoice issue/payment/quote conversion/subscription/invoice-line/quote guard function is redefined. Dashboard revenue logic is untouched, preserving W4-d's seam.
+
+Unit regressions were observed failing before fixes, including forecast ordering, stale receipt payloads, count-cost persistence/rejection recovery, zero-value billing, exact thousandths, internal adjustment payments, no-warehouse service returns, operating-cost exclusion, COGS report data and paging past 1,000 rows. Example cost regressions initially returned 135,000 instead of 50,000, dashboard 28,800,000 instead of 18,800,000, and MCP 13,000,000 instead of 5,000,000. Final independent application review passed 173 tests in 20 files. SQL regressions were authored before the migration and cover all requested database behaviors plus the review edge cases, but their RED/GREEN runtime status is **not claimed** here.
+
+Final gates all exited 0 on the completed application patch:
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+ Test Files  126 passed (126)
+      Tests  934 passed (934)
+   Start at  04:03:46
+   Duration  4.98s (transform 7.16s, setup 0ms, import 59.52s, tests 4.91s, environment 6ms)
+
+pnpm build
+├ ƒ /vendors/new
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+`git diff --check` and project-memory validation also pass. Independent source reviewers approved both the application patch and the exact migration/test artifacts. SQL approval hashes are migration `69d83630e78accc5edc43c0b2ad2b7f7077a23cd50bf1cf131b51d1b7e0c7cb9` and pgTAP `298520f3c6fe6422bd17c5eadae857f59630e669fee6c6c7c11747e82f62f594`. Source review is distinct from runtime SQL/browser validation.
+
+Coordinator integration must apply the migration after existing purchasing/inventory fixes, execute `supabase/tests/procure_stock.sql`, `inventory.sql`, `inventory_fixes.sql`, `purchasing.sql`, `purchasing_fixes.sql` and `products.sql`, then run inventory and purchasing browser tests. No Supabase/Docker startup, database connection, migration execution or browser run occurred in this worktree.
+
+Before applying, inspect existing mismatches with an authorized org-scoped query. This is the preflight shape, not an automatic repair:
+
+```sql
+select l.kind,l.id,l.product_id,l.unit as document_unit,p.unit as catalog_unit
+from (
+  select 'purchase' as kind,id,org_id,product_id,unit from public.purchase_order_items
+  union all select 'quote',id,org_id,product_id,unit from public.quote_items
+  union all select 'invoice',id,org_id,product_id,unit from public.invoice_items
+) l join public.products p on p.org_id=l.org_id and p.id=l.product_id
+where l.org_id = :org_id and l.unit is distinct from p.unit;
+```
+
+If it finds retained agreements, coordinate their repair through the owning track before applying. Multi-warehouse vendor returns require choosing a warehouse with unreturned original receipt allowance; legacy duplicate-product receipts are capped at the pooled original PO warehouse allowance. Opening count cost becomes the product's last counted warehouse average, not a new cross-warehouse valuation method.
+
+
+## Round 3 runtime validation, 2026-10-23
+
+Used only the newly assigned isolated `odoo-inv-db` stack (API 56001, DB 56002, app 3109), through the supplied git-ignored reset wrapper and Playwright configuration. No upstream merge or production-code change was made.
+
+Two outdated fixtures violated the approved B1 rules:
+
+- `supabase/tests/purchasing.sql` created its local product with the default `piece` unit, then inserted its valid agreed PO line with `day`. The real SQL run aborted after 14/44 assertions with `purchasing.sql:42: ERROR: Product line unit must match product unit`. The fixture now explicitly gives that product `day`; its foreign-tenant product remains `piece` and tenant assertions are unchanged.
+- `e2e/products.spec.ts` attempted to change a product unit from `day` to `hour` after quote/invoice lines referenced it, then expected success. The initial real browser run ended with 40 passed, 1 failed and 4 skipped at that success assertion. Removed only the prohibited unit edit; price editing, archiving, original price/unit snapshots and picker exclusion remain covered. SQL already separately verifies rejection of referenced-unit changes.
+
+Independent read-only review approved both fixture corrections. No product bug was found by these reproductions, and no SQL function was created/replaced in this runtime round. The complete migration/seed reset and SQL suite now pass:
+
+```text
+.local-stack/db-reset.sh "$PWD"
+All tests successful.
+Files=22, Tests=592,  2 wallclock secs ( 0.12 usr  0.05 sys +  0.12 cusr  0.12 csys =  0.41 CPU)
+Result: PASS
+```
+
+The prior section's SQL/browser-pending statement records the earlier source-only phase. SQL and browser behavior are now verified against the assigned isolated database and rebuilt production app.
+
+Final local gate results all exited 0:
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+
+ Test Files  126 passed (126)
+      Tests  934 passed (934)
+   Start at  04:11:37
+   Duration  8.03s (transform 16.33s, setup 0ms, import 97.17s, tests 6.90s, environment 7ms)
+
+
+pnpm build
+├ ƒ /vendors/new
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+
+
+pnpm e2e
+
+  4 skipped
+  41 passed (1.1m)
+```
+
+`git diff --check`, memory validation and final scoped ESLint also pass. The only source changes in this runtime round are the two fixture corrections described above; migrations and production code remain byte-identical to `b9b9532`. No environment file or local stack configuration is tracked. Four Pro-only browser cases remain intentionally skipped. The final browser server log also recorded one non-failing active-workspace lookup error during the passing subscription recovery scenario; no causal product defect was established or code changed for that log. There are no remaining failed SQL or browser tests in the assigned scope.
+
+
+## Integration round 3, 2026-10-23
+
+Merged the requested `odoo-parity` 702c7f5 as f89dac2, then the coordinator-approved test-only 4a98a8b as a8eac99. All seven conflicts preserve both sides:
+
+- `app/(app)/reports/_data.ts` and `lib/documents/report-data.test.ts` combine issued pre-VAT issue-month revenue with monthly COGS, complete shared paging, date/org boundaries and read failures.
+- `lib/documents/report.ts` retains COGS totals/monthly rows and the upstream Revenue before VAT label and issued-invoice terminology.
+- `lib/metrics/finance.ts`, `lib/queries/dashboard.test.ts` and `lib/supabase/active-org-pages.test.ts` preserve inventory exclusion from operating costs and COGS alongside issued revenue, verified cash burn and tenant coverage.
+- `lib/record/status.ts` keeps closed PO mapping/billing together with all upstream flows and destructive transition confirmations.
+
+The imported expense-cost fixture also sets `purchase_cost_kind:null` for its ordinary expense row, resolving the sole initial typecheck error. Automatically merged invoice/finance pages, types, seed, labour/billed-time sources and UX behavior retain upstream content. `lib/forms-submit.test.ts` is unchanged from 4a98a8b and passes. No SQL function was authored/redefined during these resolutions; incoming finance/time migrations are retained under their track ownership. The original inventory, inventory-fix and procure-stock migrations remain byte-identical to ea08f68.
+
+Independent source review approved the seven resolutions and expense fixture (107 focused tests in 10 files), then the one-file test-only merge (1/1). Initial combined verification passed all local gates, 698 SQL tests and 41 browser cases with 4 expected skips. Final gates after including the submit guard pass lint/typecheck/1,042 unit tests/build plus a fresh full SQL run; the final browser rerun also passes 41 scenarios with four expected Pro-only skips.
+
+Final gate excerpts after the approved form-submit test merge, all exit 0:
+
+```text
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+
+ Test Files  139 passed (139)
+      Tests  1042 passed (1042)
+   Start at  04:24:08
+   Duration  6.79s (transform 14.23s, setup 0ms, import 85.39s, tests 5.80s, environment 7ms)
+
+
+pnpm build
+├ ƒ /vendors/new
+└ ƒ /warehouse
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+
+
+.local-stack/db-reset.sh "$PWD"
+All tests successful.
+Files=24, Tests=698,  5 wallclock secs ( 0.10 usr  0.05 sys +  0.14 cusr  0.11 csys =  0.40 CPU)
+Result: PASS
+db-check ok: a8eac99
+
+pnpm e2e
+
+  4 skipped
+  41 passed (1.4m)
+```
+
+`git diff --check`, conflict-marker/unmerged-path checks and project-memory validation pass. The assigned API 56001/app 3109 stack alone was reset and exercised. `.env.local` and `.local-stack/` remain ignored and uncommitted. No dependency or lockfile change was needed. There are no unresolved conflicts or failed gates; only the four expected Pro-only browser cases are skipped. Coordinator integration of this branch is the next step.

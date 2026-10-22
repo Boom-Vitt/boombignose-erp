@@ -37,7 +37,6 @@ test("catalog selection snapshots quote and invoice lines across product edits a
 
   await page.goto(`${productUrl}/edit`)
   await page.getByLabel("Sales price (THB)").fill("2000.00")
-  await page.getByLabel("Unit", { exact: true }).fill("hour")
   await page.getByRole("button", { name: "Save product", exact: true }).click()
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Archive", exact: true }).click()

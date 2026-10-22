@@ -26,7 +26,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({
 }) }))
 
 import { redirect } from "next/navigation"
-import { adjustStock, createReplenishment, deleteWarehouse, deliverInvoice, saveReorder, saveWarehouse } from "./actions"
+import { adjustStock, createReplenishment, deleteWarehouse, deliverInvoice, saveReorder, saveWarehouse, returnInvoiceDelivery } from "./actions"
 import { CountInput } from "./schema"
 import InventoryPage from "@/app/(app)/inventory/page"
 import { createSavedView } from "@/app/(app)/views/actions"
@@ -84,4 +84,39 @@ it("persists inventory saved-view filters with seed database ids", async () => {
   const config = { warehouse, product, sourceId: invoice }
   expect(await createSavedView({ module: "inventory", name: "Seed stock", config })).toEqual({})
   expect(state.insert).toHaveBeenCalledWith({ org_id: state.orgId, user_id: "owner", module: "inventory", name: "Seed stock", config })
+})
+
+it("passes the chosen count unit cost without losing satang precision", async () => {
+  expect(await adjustStock({ product_id: product, warehouse_id: warehouse, quantity: 3, reason: "Opening count", key, unit_cost_satang: 12500 })).toEqual({})
+  expect(state.rpc).toHaveBeenCalledWith("adjust_stock", expect.objectContaining({ p_unit_cost_satang: 12500 }))
+})
+it("posts chosen cumulative delivery quantities and the displayed prior total", async () => {
+  const lines = [{ id: product, delivered_quantity: 2, previous_delivered_quantity: 1 }]
+  expect(await deliverInvoice(invoice, warehouse, lines)).toEqual({})
+  expect(state.rpc).toHaveBeenCalledWith("deliver_invoice", { p_org_id: state.orgId, p_invoice_id: invoice, p_warehouse_id: warehouse, p_lines: lines })
+})
+it("rejects invalid delivery quantities before posting", async () => {
+  expect(await deliverInvoice(invoice, warehouse, [{ id: product, delivered_quantity: -1, previous_delivered_quantity: 0 }])).toHaveProperty("error")
+  expect(state.rpc).not.toHaveBeenCalled()
+})
+it("returns against the original delivery move using a cumulative quantity", async () => {
+  expect(await returnInvoiceDelivery(invoice, product, 2)).toEqual({})
+  expect(state.rpc).toHaveBeenCalledWith("return_invoice_delivery", { p_org_id: state.orgId, p_invoice_id: invoice, p_move_id: product, p_returned_quantity: 2 })
+})
+it("surfaces the warehouse nonzero-stock guard and invalid unit costs", async () => {
+  state.rpc.mockResolvedValue({ error: { message: "Cannot deactivate a warehouse with stock" } })
+  expect(await saveWarehouse({ id: warehouse, code: "MAIN", name: "Main", address: "", is_default: false, active: false })).toEqual({ error: "Cannot deactivate a warehouse with stock" })
+  state.rpc.mockClear()
+  expect(await adjustStock({ product_id: product, warehouse_id: warehouse, quantity: 3, reason: "Opening", key, unit_cost_satang: -1 })).toHaveProperty("error")
+  expect(state.rpc).not.toHaveBeenCalled()
+})
+
+it("identifies an explicit database count rejection while preserving uncertain errors", async () => {
+  const count = { product_id: product, warehouse_id: warehouse, quantity: 3, reason: "Count", key, unit_cost_satang: null }
+  state.rpc.mockResolvedValue({ error: { code: "P0001", message: "Unit cost required when increasing stock from zero or below" } })
+  expect(await adjustStock(count)).toEqual({ error: "Unit cost required when increasing stock from zero or below", rejected: true })
+  for (const code of [undefined, "", "PGRST000"]) {
+    state.rpc.mockResolvedValue({ error: { code, message: "Connection lost" } })
+    expect(await adjustStock(count)).toEqual({ error: "Connection lost" })
+  }
 })
