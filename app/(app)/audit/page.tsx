@@ -1,12 +1,15 @@
+import Link from "next/link"
 import { ScrollText } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireCapability } from "@/lib/auth"
+import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { auditSentence, relativeTime } from "@/lib/audit/format"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState } from "@/components/empty-state"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 
 export const dynamic = "force-dynamic"
 
@@ -18,7 +21,18 @@ function entityLabel(entity: string): string {
 export default async function AuditPage() {
   const ctx = await requireOrgContext()
   // Activity history is settings-class data: owners/admins only.
-  requireCapability(ctx, "audit:view")
+  if (!can(ctx.role, "audit:view")) {
+    return (
+      <EmptyState
+        title="ไม่มีสิทธิ์เข้าถึง"
+        action={
+          <Button render={<Link href="/dashboard" />}>
+            กลับ Dashboard
+          </Button>
+        }
+      />
+    )
+  }
 
   const supabase = await createClient()
   const { data: rows } = await supabase
