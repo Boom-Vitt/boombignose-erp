@@ -131,16 +131,75 @@ The four browser skips are the existing Pro-only portal payment, workspace switc
 The SQL fixture correction is commit `eff4272`. The inventory fixture and this handover follow in a separate commit. There are no open failures on this integrated revision. The future W4-b correction and W4-c conversion contracts above still apply when those sibling tracks merge. No secrets or local stack configuration are committed.
 
 
-## Upgrade safety round, 2026-10-23 (in progress)
+## Upgrade safety round, 2026-10-23
 
-Merged `odoo-parity` at `c8be5f7`. The two review blockers are product upgrade bugs: retained payable invoices lack a legal snapshot adoption path, and retained issued numbers can collide with an absent/stale counter. The draft search finding is also a product bug, fixed in commit `81841f9` by separating the stored reference from its display label. These are distinct from the fixture-only integration corrections above.
+Completed the review fixes after merging `c8be5f7`, then `odoo-parity` at `5a065cd` (merge `a802af6`). The invoice detail conflict was resolved by retaining W4-f's save-before-issue wrapper and the new adoption form. Commits: `81841f9` draft search, `39ce824` adoption and counters, `c86e248` persisted-content postcondition, and `d66f181` final guard integration.
 
-New migration `20261025090500_finance_integrity_upgrade.sql` adds audited staff-only adoption with expected version, reason and retry identity, without reissuing, repricing or rewriting receipts. It introduces explicit legacy snapshots, reconciles INV/PO/EXP counters to retained high-water marks and adds locked invoice collision skipping. The parser preserves legacy stored totals and empty lines while ordinary issued snapshots remain strict. The action/form expose adoption to authorized staff.
+These findings were **product bugs**, unlike the fixture-only integration round above:
 
-Observed red evidence: `.audit/upgrade-red.log` fails missing adoption; `.audit/numbering-red.log` reproduces `invoices_org_id_number_key` with the old issue function inside a rolled-back transaction; the draft reference and parser/action unit tests each failed before their changes. Focused final unit run currently passes 35 tests; `.audit/numbering-green.log` passes retained-collision allocation.
+- Existing payable invoices without snapshots could not settle. Staff can now adopt them with a reason, expected version and retry key. Adoption freezes the original number, dates, header amounts and lines, retains receipt evidence, and writes one atomic audit event. It rejects drafts and cancelled records. A postcondition verifies the persisted content and snapshot linkage before commit; unexpected trigger changes or audit failure roll back the entire command.
+- Missing/stale counters could repeatedly allocate an occupied number. Migration reconciliation takes the highest retained INV/PO/EXP suffix per org/year without lowering an existing counter. Invoice allocation locks the counter and skips numbers retained by invoices or snapshots, preserves suffixes beyond six digits and fails explicitly on exhaustion. W4-c separately reconciles its QUO counter.
+- Draft references disappeared from search. Stored references and displayed `DRAFT-<short ID>` labels now remain separate and are both searchable.
+- The added coordinator request exposed CRM deletion repricing accepted/expired quotes. A deal-only change now preserves the complete quote body. Customer/project binding, terminal content, transition and acceptance checks remain intact; changing deal and commercial content together is denied.
 
-Pending: W4-c owns `private.guard_commercial_customer`, whose recomputation prevents preserving mismatched historical totals. Coordinator sequenced ownership transfer after W4-c lands: merge the integration branch, then retain its complete final guard body in `20261025100500_legacy_invoice_guard.sql` with a narrow legacy preservation branch. The upgrade SQL tests that depend on this guard are not yet passing; `.audit/upgrade-before-shared-guard.log` records the expected blocker. Full final SQL, browser and four gates remain required.
+Explicit `legacy_operational_invoice` snapshots may contain no lines or header/line differences. Their parser preserves stored safe amounts and tax breakdowns; ordinary snapshots still require lines and arithmetic agreement. Profiles are captured at adoption time, historical VAT registration stays unknown, and these snapshots print as Invoice. Adoption acknowledges historical records in closed periods; every new verified receipt still obeys its actual bank date and finance lock. Payment commands accept historical paid assertions only within the existing verified-cash and pending-claim balance limits.
 
-Pre-handoff verification completed: lint, typecheck, 945 unit tests, production build, the full browser suite (41 passed / 4 expected Pro-only skips), and 12 direct payment API checks pass. Independent read-only review found no additional concrete issue outside the known shared guard seam. These are preliminary checks before the requested final integration merge; full SQL remains pending.
+Changed files: three migrations (`20261025090500_finance_integrity_upgrade.sql`, `20261025100500_legacy_invoice_guard.sql`, `20261025120500_quote_deal_detach.sql`); `supabase/tests/{finance_integrity_upgrade,quote_deal_detach}.sql`; Finance actions, list/detail pages and `_components/adopt-legacy-invoice-form.tsx`; `lib/documents/invoice-snapshot.ts` and its tests; `lib/documents/vat-pages.test.ts`; `lib/payments/issuance-action.test.ts`; and `lib/types/database.ts`.
 
-Adoption additionally checks its persisted invoice result against the locked original before committing, including the snapshot linkage. A last-before-update test trigger reproduced an unnoticed content change without this check; the command now fails and rolls the transaction back. The dedicated regression passed (`.audit/adoption-postcondition-{red,green}.log`). This also prevents corruption during the interval before the later commercial guard migration is applied.
+Functions created/replaced in this round:
+
+1. `private.reconcile_document_counters()`
+2. `private.allocate_invoice_number(uuid,integer)`
+3. `public.issue_invoice(uuid,uuid,integer,uuid)`
+4. `public.adopt_legacy_invoice(uuid,uuid,integer,uuid,text)`
+5. `private.guard_invoice_settlement()`
+6. `public.submit_payment_claim(text,uuid,bigint,text,uuid)`
+7. `public.submit_internal_payment_claim(uuid,uuid,bigint,text,uuid)`
+8. `public.review_payment_claim_with_evidence(uuid,uuid,bigint,text,uuid,text,date,payment_method)`
+9. `private.guard_commercial_customer()`
+10. `private.guard_quote_record()`
+
+The coordinator transferred the last two guards after W4-c landed. Their new definitions start from W4-c's final bodies. W4-c's later VAT metadata guard, invoice line guard and quote-first draft cancellation remain intact; they are not replaced by this patch. Portal submission keeps its service-only grant. Adoption requires authenticated staff, and both counter helpers remain private. No tables or broad grants were added.
+
+Red evidence was observed before the corresponding fixes: missing adoption; retained `invoices_org_id_number_key` collision using the old issue function in a rolled-back test; a last-before-update trigger silently changing adopted content; draft reference search, parser and action unit failures; and quote detach changing both retained totals (`have 0`, `want 2` unchanged quotes). Logs are under ignored `.audit/`. The one final-suite fixture correction changed the new price-mode assertion to the earlier existing guard's message, `Document price mode is frozen; create a new draft`; the requested denial already worked.
+
+Final checks all exited 0 on the assigned API 55701, DB 55702 and app 3106:
+
+```text
+SB="$PWD/node_modules/.bin/supabase" .local-stack/db-reset.sh "$PWD"
+All tests successful.
+Files=30, Tests=977
+Result: PASS
+
+pnpm lint
+$ eslint
+
+pnpm typecheck
+$ tsc --noEmit
+
+pnpm test
+ Test Files  147 passed (147)
+      Tests  1171 passed (1171)
+   Duration  8.70s
+
+pnpm build
+✓ Compiled successfully in 4.1s
+  Finished TypeScript in 8.6s ...
+✓ Generating static pages using 17 workers (23/23) in 241ms
+ƒ Proxy (Middleware)
+ƒ  (Dynamic)  server-rendered on demand
+
+pnpm e2e
+  4 skipped
+  45 passed (1.5m)
+
+node --test e2e/payment-security.api.test.mjs
+ℹ tests 12
+ℹ pass 12
+ℹ fail 0
+ℹ skipped 0
+```
+
+The new upgrade SQL file has 55 assertions; quote detach has 8. Independent patch-current read-only review approved the production patch that became `d66f181`, preserving W4-c's bindings and acceptance rules. `git diff --check` and the project memory reader check pass. No screenshots were required. Final logs are `.audit/upgrade-final-{sql-reset,lint,typecheck,unit,build,e2e,payment-api}.log`.
+
+No unresolved task failures remain. Four existing Pro-only browser scenarios are skipped. Adoption intentionally retains historical discrepancies and captures available profiles now; staff must review those facts rather than treating adoption as proof of historical tax registration. No push, main merge, dependency installation, other-stack mutation or local configuration commit occurred.
