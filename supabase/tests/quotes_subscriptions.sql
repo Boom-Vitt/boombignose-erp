@@ -111,6 +111,20 @@ select throws_ok($$select public.cancel_quote_invoice(pg_temp.w4c_id(10),current
 select lives_ok($$select public.cancel_quote_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_final')::uuid)$$,'cancelling the final invoice releases its deposit application');
 select lives_ok($$select public.cancel_quote_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_deposit')::uuid)$$,'released unapplied deposit can be cancelled');
 
+select pg_temp.w4c_quote(150,10,1000);
+select set_config('test.w4c_reserved_deposit',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(150),pg_temp.w4c_id(450),null,8000)::text,true);
+select throws_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(150),pg_temp.w4c_id(451),jsonb_build_array(jsonb_build_object('quote_item_id',pg_temp.w4c_id(1150),'quantity',5)))$$,
+  'P0001','Partial invoice exceeds quote value reserved by deposits','a partial cannot spend the value already reserved by a deposit');
+select is((select invoiced_quantity from public.quote_items where id=pg_temp.w4c_id(1150)),0::numeric,'rejected partial rolls back its quantity reservation');
+select is((select count(*) from public.invoices where source_quote_id=pg_temp.w4c_id(150)),1::bigint,'rejected partial leaves only the original deposit');
+select public.cancel_quote_invoice(pg_temp.w4c_id(10),id) from public.invoices where source_quote_id=pg_temp.w4c_id(150) and quote_invoice_kind='lines';
+select set_config('test.w4c_reserved_partial',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(150),pg_temp.w4c_id(452),jsonb_build_array(jsonb_build_object('quote_item_id',pg_temp.w4c_id(1150),'quantity',1)))::text,true);
+select set_config('test.w4c_reserved_final',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(150),pg_temp.w4c_id(453))::text,true);
+select is((select sum(total_satang) from public.invoices where source_quote_id=pg_temp.w4c_id(150) and status<>'cancelled'),10000::numeric,'valid partial and final leave the deposit deducted exactly once');
+select lives_ok($$select public.issue_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_reserved_deposit')::uuid,(select version from public.invoices where id=current_setting('test.w4c_reserved_deposit')::uuid),pg_temp.w4c_id(454))$$,'reserved deposit remains issuable');
+select lives_ok($$select public.issue_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_reserved_partial')::uuid,(select version from public.invoices where id=current_setting('test.w4c_reserved_partial')::uuid),pg_temp.w4c_id(455))$$,'a partial within the remaining value remains issuable');
+select lives_ok($$select public.issue_invoice(pg_temp.w4c_id(10),current_setting('test.w4c_reserved_final')::uuid,(select version from public.invoices where id=current_setting('test.w4c_reserved_final')::uuid),pg_temp.w4c_id(456))$$,'the final balance remains issuable after deposit reservation');
+
 select pg_temp.w4c_quote(130,10,1000,700,1000);
 select set_config('test.w4c_cycle_deposit',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(130),pg_temp.w4c_id(232),null,null,2500)::text,true);
 select set_config('test.w4c_cycle_partial',public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(130),pg_temp.w4c_id(233),

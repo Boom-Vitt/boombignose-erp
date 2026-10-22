@@ -1,5 +1,21 @@
 begin;
 
+create or replace function private.guard_line_vat_registration()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare registered boolean;
+begin
+  if tg_op='UPDATE' and
+    (to_jsonb(new)-array['position','updated_at','invoiced_quantity','quote_item_id'])=
+    (to_jsonb(old)-array['position','updated_at','invoiced_quantity','quote_item_id']) then return new;end if;
+  if new.tax_rate_bps>0 then
+    select vat_registered into registered from public.org_settings where org_id=new.org_id for share;
+    if not coalesce(registered,false) then raise exception 'VAT registration required for taxable lines';end if;
+  end if;
+  return new;
+end;
+$$;
+
+
 alter table public.quotes
   add column accepted_at timestamptz,
   add column accepted_by_name text check(length(accepted_by_name)<=200),
@@ -355,6 +371,28 @@ $$;
 revoke all on function public.cancel_quote_invoice(uuid,uuid) from public,anon,service_role;
 grant execute on function public.cancel_quote_invoice(uuid,uuid) to authenticated;
 
+create or replace function public.cancel_draft_invoice(p_org_id uuid,p_invoice_id uuid)
+returns void language plpgsql security definer set search_path='' as $$
+declare i public.invoices;source uuid;
+begin
+  if not private.is_org_staff(p_org_id) then raise exception 'Only staff may cancel drafts';end if;
+  select source_quote_id into source from public.invoices where org_id=p_org_id and id=p_invoice_id;
+  if source is not null then
+    perform public.cancel_quote_invoice(p_org_id,p_invoice_id);
+    return;
+  end if;
+  select * into i from public.invoices where org_id=p_org_id and id=p_invoice_id for update;
+  if not found or i.issued_snapshot_id is not null or i.status not in ('draft','cancelled') then raise exception 'Unissued draft required';end if;
+  if i.source_quote_id is not null then raise exception 'Invoice source changed; retry cancellation';end if;
+  if i.status='cancelled' then return;end if;
+  update public.invoices set status='cancelled' where org_id=p_org_id and id=i.id;
+  insert into public.audit_log(org_id,actor_id,entity,entity_id,action,summary)
+    values(p_org_id,auth.uid(),'invoice',i.id,'invoice_draft_cancelled','Cancelled unissued invoice draft');
+end;
+$$;
+revoke all on function public.cancel_draft_invoice(uuid,uuid) from public,anon,service_role;
+grant execute on function public.cancel_draft_invoice(uuid,uuid) to authenticated;
+
 create function private.guard_invoice_quote_item()
 returns trigger language plpgsql set search_path='' as $$
 begin
@@ -456,6 +494,8 @@ begin
       div(2*q.discount_satang::numeric*(previous_raw+raw_amount)+q.subtotal_satang,2*q.subtotal_satang)-previous_discount))::bigint end;
     deposit_deduction:=case when final_invoice then deposits else 0 end;
     if discount+deposit_deduction>raw_amount then raise exception 'Invoice remaining quantities together to deduct deposits';end if;
+    if not final_invoice and previous_raw-previous_discount+raw_amount-discount+deposits>q.subtotal_satang-q.discount_satang then
+      raise exception 'Partial invoice exceeds quote value reserved by deposits';end if;
     update public.invoices set discount_satang=discount+deposit_deduction,
       quote_discount_satang=discount,quote_deposit_deduction_satang=deposit_deduction where org_id=p_org_id and id=invoice;
   end if;
