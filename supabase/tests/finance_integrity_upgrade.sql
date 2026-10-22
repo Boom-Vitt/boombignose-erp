@@ -92,6 +92,7 @@ insert into upgrade_claims select public.submit_internal_payment_claim(pg_temp.u
 select lives_ok($$select public.review_payment_claim_with_evidence(pg_temp.upgrade_id(10),(select id from upgrade_claims),800,'Synthetic mismatch bank evidence',pg_temp.upgrade_id(115),'verified',(now() at time zone 'Asia/Bangkok')::date,'transfer')$$,'adopted mismatched header settles without recomputing');
 select is((select subtotal_satang from public.invoices where id=pg_temp.upgrade_id(31)),1500::bigint,'settlement preserves historical header discrepancy');
 select throws_ok($$update public.invoices set subtotal_satang=777 where id=pg_temp.upgrade_id(31)$$,'P0001','Issued tax content is frozen','adoption never permits later header mutation');
+select throws_ok($$update public.invoices set prices_include_vat=true where id=pg_temp.upgrade_id(31)$$,'P0001','Document price mode is frozen; create a new draft','adoption freezes tax mode as well as header amounts');
 select throws_ok($$update public.invoice_items set description='Changed' where invoice_id=pg_temp.upgrade_id(31)$$,'P0001','Issued or payment evidence locks invoice lines','adoption freezes historical lines');
 select set_config('request.jwt.claims',jsonb_build_object('role','authenticated','sub',pg_temp.upgrade_id(2))::text,true);
 select throws_ok($$select public.adopt_legacy_invoice(pg_temp.upgrade_id(10),pg_temp.upgrade_id(30),1,pg_temp.upgrade_id(120),'Member attempt')$$,'P0001','Only staff may adopt legacy invoices','member cannot adopt');
