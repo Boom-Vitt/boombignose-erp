@@ -9,7 +9,7 @@ import { submitLead } from "./actions"
 import LeadFormUnavailable from "./unavailable"
 
 export const dynamic = "force-dynamic"
-export const metadata: Metadata = { title: "Contact us", robots: { index: false, follow: false }, referrer: "no-referrer" }
+export const metadata: Metadata = { title: "Contact us", robots: { index: false, follow: false }, referrer: "same-origin" }
 
 export default async function LeadFormPage({ params, searchParams }: {
   params: Promise<{ token: string }>
