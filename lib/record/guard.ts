@@ -1,7 +1,7 @@
 /** A header form on a record page. `save` resolves false when the edits were not saved. */
 export type GuardedForm = { dirty: boolean; save: () => Promise<boolean> }
-export type GuardState = { busy: boolean; dirty: boolean }
-export type RunResult = "done" | "busy" | "unsaved"
+type GuardState = { busy: boolean; dirty: boolean }
+type RunResult = "done" | "busy" | "unsaved"
 
 /**
  * One page-wide lock for record actions (status moves, email, convert) plus the header forms
@@ -9,16 +9,17 @@ export type RunResult = "done" | "busy" | "unsaved"
  */
 export function createRecordGuard() {
   const forms = new Map<string, GuardedForm>()
+  const holds = new Set<string>()
   const listeners = new Set<() => void>()
+  let running = false
   let state: GuardState = { busy: false, dirty: false }
 
-  function publish(next: Partial<GuardState>) {
-    state = { ...state, ...next }
-    for (const listener of listeners) listener()
-  }
-  function syncDirty() {
+  function publish() {
+    const busy = running || holds.size > 0
     const dirty = [...forms.values()].some((form) => form.dirty)
-    if (dirty !== state.dirty) publish({ dirty })
+    if (busy === state.busy && dirty === state.dirty) return
+    state = { busy, dirty }
+    for (const listener of listeners) listener()
   }
 
   return {
@@ -30,16 +31,23 @@ export function createRecordGuard() {
     setForm(id: string, form: GuardedForm | null) {
       if (form) forms.set(id, form)
       else forms.delete(id)
-      syncDirty()
+      publish()
     },
     /** The user chose to leave without saving. */
     discard() {
       for (const [id, form] of forms) forms.set(id, { ...form, dirty: false })
-      syncDirty()
+      publish()
+    },
+    /** Keeps the page locked while `id` waits, e.g. for the refreshed page after its action. */
+    hold(id: string, on: boolean) {
+      if (on) holds.add(id)
+      else holds.delete(id)
+      publish()
     },
     async run(action: () => Promise<unknown>): Promise<RunResult> {
       if (state.busy) return "busy"
-      publish({ busy: true })
+      running = true
+      publish()
       try {
         for (const form of [...forms.values()]) {
           if (form.dirty && !(await form.save())) return "unsaved"
@@ -47,13 +55,12 @@ export function createRecordGuard() {
         await action()
         return "done"
       } finally {
-        publish({ busy: false })
+        running = false
+        publish()
       }
     },
   }
 }
-
-export type RecordGuard = ReturnType<typeof createRecordGuard>
 
 type Click = { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }
 

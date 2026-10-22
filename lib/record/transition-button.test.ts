@@ -11,6 +11,8 @@ vi.mock("react", async (importOriginal) => ({
     return [hooks.slots[slot], (next: unknown) => { hooks.slots[slot] = next }]
   },
   useId: () => "reason",
+  useEffect: () => {},
+  useTransition: () => [false, (task: () => unknown) => { void task() }],
   useCallback: (fn: unknown) => fn,
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }))

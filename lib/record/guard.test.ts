@@ -44,6 +44,20 @@ describe("record guard", () => {
     expect(guard.snapshot().busy).toBe(false)
   })
 
+  it("stays locked until every holder has seen its refreshed page", async () => {
+    const guard = createRecordGuard()
+    guard.hold("status", true)
+    expect(guard.snapshot().busy).toBe(true)
+    expect(await guard.run(vi.fn())).toBe("busy")
+    guard.hold("email", true)
+    guard.hold("status", false)
+    expect(guard.snapshot().busy).toBe(true)
+    guard.hold("email", false)
+    expect(guard.snapshot().busy).toBe(false)
+    expect(await guard.run(async () => { guard.hold("status", true) })).toBe("done")
+    expect(guard.snapshot().busy).toBe(true)
+  })
+
   it("releases the lock when the action throws", async () => {
     const guard = createRecordGuard()
     await expect(guard.run(async () => { throw new Error("boom") })).rejects.toThrow("boom")

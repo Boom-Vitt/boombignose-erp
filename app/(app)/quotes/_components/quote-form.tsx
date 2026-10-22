@@ -1,6 +1,5 @@
 "use client"
 
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -61,7 +60,6 @@ export function QuoteForm({
   submitLabel: string
   action: (values: Values) => Promise<{ error?: string } | void>
 }) {
-  const router = useRouter()
   const form = useForm<z.input<typeof Schema>, unknown, Values>({
     resolver: zodResolver(Schema),
     defaultValues,
@@ -74,7 +72,6 @@ export function QuoteForm({
     }
     // createQuote redirects on success (no return); update returns {}.
     toast.success("Quote saved")
-    router.refresh()
     return true
   })
 

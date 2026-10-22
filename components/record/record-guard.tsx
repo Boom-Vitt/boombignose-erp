@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useId, useSyncExternalStore, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useSyncExternalStore, useTransition, type BaseSyntheticEvent, type ReactNode } from "react"
+import { useRouter } from "next/navigation"
 import type { FieldValues, UseFormReturn } from "react-hook-form"
 import { toast } from "sonner"
 
@@ -42,30 +43,50 @@ function installLeaveGuard() {
   document.addEventListener("click", onLinkClick, true)
 }
 
+// A transition stays pending until the router.refresh() it started has rendered, so holding
+// the lock for it keeps the page from offering actions for the status it just left.
+function useHeldTransition() {
+  const id = useId()
+  const [pending, startTransition] = useTransition()
+  useEffect(() => {
+    recordGuard.hold(id, pending)
+  }, [id, pending])
+  useEffect(() => () => recordGuard.hold(id, false), [id])
+  return [pending, startTransition] as const
+}
+
 export function useRecordGuard() {
   // The server never runs an action, so its snapshot is the same idle state.
   const state = useSyncExternalStore(recordGuard.subscribe, recordGuard.snapshot, recordGuard.snapshot)
-  const run = useCallback(async (action: () => Promise<unknown>): Promise<void> => {
+  const [pending, startTransition] = useHeldTransition()
+  const run = useCallback((action: () => Promise<unknown>) => startTransition(async () => {
     const result = await recordGuard.run(action)
     if (result === "unsaved") toast.error("Nothing ran because your changes could not be saved. Fix them and try again.")
-  }, [])
-  return { ...state, run }
+  }), [startTransition])
+  return { ...state, pending, run }
 }
 
 /**
  * Registers a record's header form: record actions save it first, and leaving with unsaved
- * edits asks first. `onValid` returns true once saved; the form is then clean again.
- * Returns the form's own submit handler.
+ * edits asks first. `onValid` returns true once saved; the form is then clean again and the
+ * page refreshes. Returns the form's own submit handler.
  */
 export function useGuardedForm<V extends FieldValues, O>(
   form: UseFormReturn<V, unknown, O>,
   onValid: (values: O) => Promise<boolean | void>
 ) {
   const id = useId()
+  const router = useRouter()
+  const [, startRefresh] = useHeldTransition()
   const dirty = form.formState.isDirty
   async function commit(values: O) {
+    // Edits typed while the save is in flight stay dirty.
+    const sent = form.getValues()
     const saved = (await onValid(values)) === true
-    if (saved) form.reset(form.getValues())
+    if (saved) {
+      form.reset(sent)
+      startRefresh(() => router.refresh())
+    }
     return saved
   }
   // Re-registers after every render so the guard always saves with the latest handler.
@@ -79,9 +100,15 @@ export function useGuardedForm<V extends FieldValues, O>(
     installLeaveGuard()
   })
   useEffect(() => () => recordGuard.setForm(id, null), [id])
-  return form.handleSubmit(async (values) => {
-    await commit(values)
-  })
+  // Its own Save holds the page too, so a record action cannot save the same edits again meanwhile.
+  return async (event?: BaseSyntheticEvent) => {
+    recordGuard.hold(`${id}:save`, true)
+    try {
+      await form.handleSubmit(async (values) => { await commit(values) })(event)
+    } finally {
+      recordGuard.hold(`${id}:save`, false)
+    }
+  }
 }
 
 /** Record action buttons, all disabled while any record action runs. */

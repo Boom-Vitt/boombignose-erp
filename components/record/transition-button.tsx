@@ -50,7 +50,7 @@ export function TransitionButton<S extends RecordStatus>({
   const asksWhy = reason && record
 
   function move(note: string) {
-    void run(async () => {
+    run(async () => {
       const res = await transition(to)
       if (res?.error) {
         toast.error(res.error)

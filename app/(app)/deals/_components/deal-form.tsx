@@ -91,7 +91,6 @@ export function DealForm({
       return false
     }
     toast.success("Saved")
-    router.refresh()
     return true
   })
 

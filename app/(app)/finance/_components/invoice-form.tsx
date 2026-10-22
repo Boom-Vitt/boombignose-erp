@@ -1,6 +1,5 @@
 "use client"
 
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -89,7 +88,6 @@ export function InvoiceForm({
   submitLabel: string
   action: (values: Values) => Promise<{ error?: string } | void>
 }) {
-  const router = useRouter()
   const form = useForm<z.input<typeof Schema>, unknown, Values>({
     resolver: zodResolver(Schema),
     defaultValues,
@@ -111,7 +109,6 @@ export function InvoiceForm({
     }
     // createInvoice redirects on success (no return); update returns {}.
     toast.success("Invoice saved")
-    router.refresh()
     return true
   })
 

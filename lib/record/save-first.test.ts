@@ -7,6 +7,8 @@ vi.mock("react", async (importOriginal) => ({
   useTransition: () => [false, (task: () => unknown) => { void task() }],
   useRef: (initial: unknown) => ({ current: initial }),
   useCallback: (fn: unknown) => fn,
+  useId: () => "button",
+  useEffect: () => {},
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), unstable_rethrow: vi.fn() }))
