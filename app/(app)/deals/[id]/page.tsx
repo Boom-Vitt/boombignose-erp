@@ -1,3 +1,4 @@
+import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Pencil, FolderPlus, ArrowLeft } from "lucide-react"
@@ -150,6 +151,7 @@ export default async function DealDetailPage({
           </Card>
         </div>
       </div>
+      <RecordHistory recordType="deal" recordId={id} />
     </div>
   )
 }

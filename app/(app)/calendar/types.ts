@@ -6,6 +6,7 @@ export type CalendarTone =
   | "neutral"
   | "red"
   | "emerald"
+  | "orange"
 
 /** A single dated thing rendered on the calendar. `date` is ISO 'YYYY-MM-DD'. */
 export type CalendarItem = {

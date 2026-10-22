@@ -1,3 +1,4 @@
+import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
@@ -422,6 +423,7 @@ export default async function ProjectDetailPage({
           />
         </CardContent>
       </Card>
+      <RecordHistory recordType="project" recordId={id} />
     </div>
   )
 }

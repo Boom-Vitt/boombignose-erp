@@ -11,6 +11,7 @@ const DOT: Record<CalendarItem["tone"], string> = {
   neutral: "bg-muted-foreground",
   red: "bg-red-500",
   emerald: "bg-emerald-500",
+  orange: "bg-orange-500",
 }
 
 /** A single chip for one dated item; links to its record when a href exists. */

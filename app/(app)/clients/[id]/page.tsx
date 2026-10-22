@@ -1,3 +1,6 @@
+import { ActivityDue } from "@/components/record/activity-due"
+import { todayISO } from "@/lib/dates"
+import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
@@ -242,15 +245,14 @@ export default async function ClientDetailPage({
                   <span className="min-w-0 flex-1">
                     {item.body ?? "—"}
                   </span>
-                  <span className="text-muted-foreground shrink-0 text-xs">
-                    {formatDate(item.due_date ?? item.created_at)}
-                  </span>
+                  <ActivityDue dueDate={item.due_date} today={todayISO()} done={item.done} />
                 </li>
               ))}
             </ul>
           )}
         </CardContent>
       </Card>
+      <RecordHistory recordType="client" recordId={id} />
     </div>
   )
 }

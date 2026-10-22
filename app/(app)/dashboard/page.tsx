@@ -1,3 +1,5 @@
+import { todayISO } from "@/lib/dates"
+import { ActivityDue } from "@/components/record/activity-due"
 import {
   Wallet,
   TrendingUp,
@@ -177,6 +179,7 @@ export default async function DashboardPage() {
                       {f.type.replace("_", " ")}
                     </Badge>
                     <span className="truncate">{f.body ?? "Follow up"}</span>
+                    <ActivityDue dueDate={f.due_date} today={todayISO()} />
                   </li>
                 ))}
               </ul>
@@ -211,9 +214,7 @@ export default async function DashboardPage() {
                         {f.type.replace("_", " ")}
                       </Badge>
                       <span className="truncate">{f.body ?? "Follow up"}</span>
-                      <span className="text-muted-foreground ml-auto shrink-0 text-xs">
-                        {f.due_date}
-                      </span>
+                      <ActivityDue dueDate={f.due_date} today={todayISO()} />
                     </li>
                   ))}
                 </ul>

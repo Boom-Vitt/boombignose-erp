@@ -1,3 +1,4 @@
+import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft, FileText, Wallet } from "lucide-react"
@@ -341,6 +342,7 @@ export default async function InvoiceDetailPage({
           />
         </CardContent>
       </Card> : null}
+      <RecordHistory recordType="invoice" recordId={id} />
     </div>
   )
 }
