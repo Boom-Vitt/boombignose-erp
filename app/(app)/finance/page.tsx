@@ -125,7 +125,7 @@ export default async function FinancePage({
     const paid = paidByInvoice.get(inv.id) ?? 0
     return {
       ...inv,
-      number: invoiceDisplayNumber(inv),
+      displayNumber: invoiceDisplayNumber(inv),
       paid_satang: paid,
       outstanding: outstandingSatang(inv.amount_satang, paid),
       effectiveStatus: deriveInvoiceStatus(inv, paid, today),
@@ -134,7 +134,7 @@ export default async function FinancePage({
 
   // Status filter uses the same verified-receipt effective status as the export.
   const filteredInvoiceRows = invoiceRows.filter((inv) => matchesFacets(config, {
-    text: `${inv.number} ${inv.clients?.name ?? ""}`, status: inv.effectiveStatus, date: inv.issue_date, owner: inv.clients?.owner ?? null,
+    text: `${inv.number} ${inv.displayNumber} ${inv.clients?.name ?? ""}`, status: inv.effectiveStatus, date: inv.issue_date, owner: inv.clients?.owner ?? null,
   }, ctx.userId, now))
 
   // Metrics.
@@ -274,7 +274,7 @@ export default async function FinancePage({
                             href={`/finance/invoices/${inv.id}`}
                             className="hover:underline"
                           >
-                            {inv.number}
+                            {inv.displayNumber}
                           </Link>
                           {inv.is_recurring ? (
                             <Repeat

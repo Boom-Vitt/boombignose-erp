@@ -58,6 +58,7 @@ import {
   type InvoiceItemRow,
 } from "../../_components/invoice-items-editor"
 import { IssueInvoiceForm } from "../../_components/issue-invoice-form"
+import { AdoptLegacyInvoiceForm } from "../../_components/adopt-legacy-invoice-form"
 import { PaymentForm } from "../../_components/payment-form"
 import { ReviewClaimForm } from "../../_components/review-claim-form"
 import { getInvoiceAccounting, InvoiceAccountingControls, InvoiceAccountingStatus } from "@edition"
@@ -259,7 +260,7 @@ export default async function InvoiceDetailPage({
       {manageStock && stock.moves.some(move => move.kind === "delivery") && <section className="space-y-3"><h2 className="font-semibold">Customer returns</h2>{stock.moves.filter(move => move.kind === "delivery").map(move => <CustomerReturnForm key={move.id} invoiceId={id} move={move} returnedQuantity={stock.moves.filter(row => row.return_of_move_id === move.id).reduce((sum, row) => sum + Math.round(row.quantity * 1000), 0) / 1000} description={stock.lines.find(line => line.id === move.source_line_id)?.description ?? inventory.products.find(product => product.id === move.product_id)?.name ?? "product"} warehouse={inventory.warehouses.find(warehouse => warehouse.id === move.warehouse_id)?.name ?? "Original warehouse"} />)}</section>}
       <p className="text-sm text-muted-foreground">เอกสารเพื่อการดำเนินงาน / Operational records. VAT and withholding are document calculations only, not a legal tax system, accounting ledger, filing service or e-Tax Invoice. <Link className="underline" href="/finance/business-profile">Business profile</Link></p>
       {invoice.status === "draft" && ctx.role !== "member" ? <Card id="issue-invoice"><CardHeader><CardTitle className="text-base">ออกใบแจ้งหนี้ / Issue invoice</CardTitle></CardHeader><CardContent><RequireSaved message="Save your invoice changes below before issuing it."><IssueInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /></RequireSaved><CancelDraftButton invoiceId={invoice.id} /></CardContent></Card> : null}
-      {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p> : null}
+      {invoice.issued_snapshot_id ? <p className="text-sm">Issued snapshot retained. Corrections must preserve the original document.</p> : invoice.status !== "draft" ? <div className="space-y-3"><p role="alert" className="text-sm">This legacy record has no issued snapshot. Review it before treating the printable record as an issued document.</p>{can(ctx.role, "payment:verify") && ["sent", "partially_paid", "paid", "overdue"].includes(invoice.status) ? <AdoptLegacyInvoiceForm orgId={ctx.orgId} invoiceId={invoice.id} version={invoice.version} /> : null}</div> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>

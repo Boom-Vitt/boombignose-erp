@@ -1,6 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest"
 import { isValidElement, type ReactElement, type ReactNode } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
 import { databaseFixture, pageContent } from "@/lib/supabase/__tests__/tenant-fixture"
+import { GroupedTableRows } from "@/components/search/grouped-table-rows"
 import { DocumentTotals } from "@/components/document-totals"
 import { SmartButtons } from "@/components/record/smart-buttons"
 import { WithholdingForm } from "@/app/(app)/finance/_components/withholding-form"
@@ -61,6 +63,17 @@ it("Finance keeps vendor bill metadata beyond the row cap alongside net receivab
   expect(content).toContain("/purchases/purchase")
   expect(content).toContain("Mark paid")
   expect(content).toContain("8,899.00")
+})
+
+it.each(["ACME-PO-42", "DRAFT-12345678", "Acme Buyer"])("Finance finds a draft by %s while displaying its draft label", async (q) => {
+  const id = "12345678-abcd-4000-8000-000000000001"
+  state.client = databaseFixture({ invoices: [{ ...header, id, number: "ACME-PO-42", issued_snapshot_id: null, clients: { name: "Acme Buyer", owner: "user" } }] })
+  const page = await FinancePage({ searchParams: Promise.resolve({ q, status: "draft" }) })
+  const rows = elements(page).find(node => node.type === GroupedTableRows)
+  const html = renderToStaticMarkup(rows ?? null)
+  expect(html).toContain(`href="/finance/invoices/${id}"`)
+  expect(html).toContain(">DRAFT-12345678</a>")
+  expect(html).not.toContain("ACME-PO-42")
 })
 
 it("project profit counts every invoice and cost beyond the row cap, before WHT", async () => {

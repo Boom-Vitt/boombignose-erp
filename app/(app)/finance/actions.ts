@@ -336,6 +336,22 @@ export async function issueInvoice(input: z.input<typeof IssueInvoice>): Promise
   return {}
 }
 
+const AdoptLegacyInvoice = IssueInvoice.extend({ reason: z.string().trim().min(1).max(1000) })
+export async function adoptLegacyInvoice(input: z.input<typeof AdoptLegacyInvoice>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "payment:verify") }
+  catch { return { error: "Only owners and admins can adopt legacy invoices." } }
+  const parsed = AdoptLegacyInvoice.safeParse(input)
+  if (!parsed.success) return { error: "Enter a reason of 1 to 1000 characters and a valid invoice version and retry key." }
+  const d = parsed.data
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.rpc("adopt_legacy_invoice", { p_org_id: ctx.orgId, p_invoice_id: d.invoiceId, p_expected_version: d.expectedVersion, p_key: d.key, p_reason: d.reason })
+  if (error) return { error: error.message }
+  revalidatePath("/finance")
+  revalidatePath(`/finance/invoices/${d.invoiceId}`)
+  return {}
+}
+
 const BusinessProfile = z.object({
   expectedOrgId: z.guid(),
   legalName: z.string().trim().min(1).max(200), address: z.string().trim().min(1).max(1000),
