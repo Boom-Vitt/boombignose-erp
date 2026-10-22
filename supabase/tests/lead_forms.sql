@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(40);
+select plan(43);
 
 insert into auth.users(id,email,email_confirmed_at) values
   ('b6000000-0000-4000-8000-000000000001','synthetic-form-owner@example.invalid',now()),
@@ -34,6 +34,9 @@ reset role;
 select set_config('request.jwt.claims','{"role":"authenticated","sub":"b6000000-0000-4000-8000-000000000001"}',true);
 set local role authenticated;
 select is((select count(*)::int from public.lead_forms),1,'owners see only forms in their workspace');
+select is((select count(*)::int from public.memberships where org_id='b6000000-0000-4000-8000-000000000010' and user_id='b6000000-0000-4000-8000-000000000002'),0,'direct membership reads cannot validate a teammate under own-only RLS');
+select ok(exists(select 1 from public.record_activity_assignees('b6000000-0000-4000-8000-000000000010') where user_id='b6000000-0000-4000-8000-000000000002'),'org-scoped assignees RPC exposes the selected teammate');
+select lives_ok($$insert into public.lead_forms(org_id,token,name,default_owner) values('b6000000-0000-4000-8000-000000000010',repeat('t',43),'Teammate form','b6000000-0000-4000-8000-000000000002')$$,'owner can assign a form to a teammate while the tenant FK remains enforced');
 select throws_ok($$insert into public.lead_forms(org_id,token,name) values('b6000000-0000-4000-8000-000000000011',repeat('c',43),'Forged')$$,'42501',null,'owners cannot create forms in other workspaces');
 select throws_ok($$update public.lead_forms set default_owner='b6000000-0000-4000-8000-000000000003' where token=repeat('a',43)$$,'23503',null,'default owner must belong to the form workspace');
 select throws_ok($$select public.submit_lead_form(repeat('a',43),repeat('c',64),'Visitor','','visitor@example.invalid','','Hello','')$$,'42501',null,'authenticated clients cannot bypass server validation');

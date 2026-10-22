@@ -17,9 +17,8 @@ export async function createLeadForm(form: FormData): Promise<void> {
   const parsed = LeadFormInput.safeParse(Object.fromEntries(form))
   if (!parsed.success) redirect("/settings/lead-forms?error=invalid")
   const supabase = await createClient() as SupabaseClient<LeadFormsDatabase>
-  const { data: member, error: memberError } = await supabase.from("memberships").select("user_id")
-    .eq("org_id", ctx.orgId).eq("user_id", parsed.data.defaultOwner).maybeSingle()
-  if (memberError || !member) redirect("/settings/lead-forms?error=invalid")
+  const { data: members, error: memberError } = await supabase.rpc("record_activity_assignees", { p_org_id: ctx.orgId })
+  if (memberError || !members?.some(member => member.user_id === parsed.data.defaultOwner)) redirect("/settings/lead-forms?error=invalid")
   const { data, error } = await supabase.from("lead_forms").insert({
     org_id: ctx.orgId, token: generateLeadToken(), name: parsed.data.name,
     default_owner: parsed.data.defaultOwner, success_message: parsed.data.successMessage,
