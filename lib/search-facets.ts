@@ -13,9 +13,14 @@ export const FACET_LISTS = {
   vendors: { statuses: ["active", "archived"], groups: ["status", "month"] },
 } as const
 export type FacetList = keyof typeof FACET_LISTS
+/** `status` is one value or a comma list of values (`draft,sent`) that match any of them. */
 export type FacetConfig = { q?: string; status?: string; period?: Period; mine?: "1"; groupBy?: string }
 export type SearchParams = Record<string, string | string[] | undefined>
 const KEYS = ["q", "status", "period", "mine", "groupBy"] as const
+
+export function facetValues(value?: string): string[] {
+  return value?.split(",").map((part) => part.trim()).filter(Boolean) ?? []
+}
 
 export function parseFacets(params: SearchParams | URLSearchParams, list: FacetList): FacetConfig {
   const get = (key: string) => {
@@ -25,8 +30,9 @@ export function parseFacets(params: SearchParams | URLSearchParams, list: FacetL
   const config: FacetConfig = {}
   if (get("q")) config.q = get("q").slice(0, 200)
   // Deal links and saved views from before facets name the stage `stage`.
-  const status = get("status") || (list === "deals" ? get("stage") : "")
-  if ((FACET_LISTS[list].statuses as readonly string[]).includes(status)) config.status = status
+  const picked = facetValues(get("status") || (list === "deals" ? get("stage") : ""))
+  const statuses = (FACET_LISTS[list].statuses as readonly string[]).filter((value) => picked.includes(value))
+  if (statuses.length) config.status = statuses.join(",")
   if (Object.hasOwn(PERIODS, get("period"))) config.period = get("period") as Period
   if (get("mine") === "1") config.mine = "1"
   if ((FACET_LISTS[list].groups as readonly string[]).includes(get("groupBy"))) config.groupBy = get("groupBy")
@@ -46,7 +52,7 @@ export function facetLabel(value: string): string {
 
 export function matchesFacets(config: FacetConfig, row: { text: string; status?: string; date: string | null; owner: string | null }, userId: string, now: Date = new Date()): boolean {
   return (!config.q || row.text.toLowerCase().includes(config.q.toLowerCase()))
-    && (!config.status || row.status === config.status)
+    && (!config.status || (row.status !== undefined && facetValues(config.status).includes(row.status)))
     && (!config.period || (row.date !== null && inPeriod(row.date, config.period, now)))
     && (!config.mine || row.owner === userId)
 }

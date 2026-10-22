@@ -33,6 +33,14 @@ describe("facet saved views", () => {
     expect(state.filters).toEqual([["org_id", "org"], ["user_id", "me"], ["module", "quotes"]])
     expect(views[0].config).toEqual({ q: "Acme", status: "sent", mine: "1", groupBy: "client", period: "this_month" })
   })
+  it.each([
+    { saved: { status: "draft,sent", mine: "1" }, loaded: { status: "draft,sent", mine: "1" } },
+    { saved: { status: "sent,nope,draft,sent" }, loaded: { status: "draft,sent" } },
+    { saved: { status: "draft" }, loaded: { status: "draft" } },
+  ])("loads a saved status filter $saved as $loaded", async ({ saved, loaded }) => {
+    state.config = saved
+    expect((await getFacetSavedViews("quotes"))[0].config).toEqual(loaded)
+  })
   it.each([{ config: null }, { config: [] }, { config: ["q", "Acme"] }])("ignores non-object config %j", async ({ config }) => {
     state.config = config
     const views = await getFacetSavedViews("clients")
