@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto"
 import { todayISO } from "@/lib/dates"
 import { recordHistory } from "@/lib/record-history/queries"
 import { ACTIVITY_LABELS, type RecordRef } from "@/lib/record-history/model"
@@ -24,9 +23,8 @@ export async function RecordHistory(ref: RecordRef) {
         {history.canWrite ? <ActivityDone id={activity.id} /> : null}
       </li>)}</ul> : <p className="text-muted-foreground text-sm">No planned activities.</p>}
     </section>
-    {/* Refresh older pages too when an activity is reopened beyond the first page. */}
     <ActivityTimeline
-      key={randomUUID()}
+      key={`${ref.recordType}:${ref.recordId}`}
       record={ref}
       initial={{ timeline: history.timeline, nextCursor: history.nextCursor }}
       people={history.people}
