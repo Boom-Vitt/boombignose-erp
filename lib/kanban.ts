@@ -73,10 +73,14 @@ export function moveCard<S extends string>(
   return unchanged ? cards : next
 }
 
-/** The card a drop lands after: the hovered card on its lower half, else the one above it. */
-export function afterForDrop(ids: readonly string[], overId: string, below: boolean): string | null {
-  const i = ids.indexOf(overId)
-  return below ? overId : (ids[i - 1] ?? null)
+/**
+ * The card a drop lands after: the hovered card on its lower half, else the one above it. A card
+ * never lands after itself; that slot means "where it already is", so it keeps its predecessor.
+ */
+export function afterForDrop(ids: readonly string[], overId: string, below: boolean, dragged?: string): string | null {
+  const before = (id: string) => ids[ids.indexOf(id) - 1] ?? null
+  const after = below ? overId : before(overId)
+  return after !== null && after === dragged ? before(after) : after
 }
 
 /** `after` for a one-step keyboard reorder; undefined when the card is already at that edge. */
@@ -124,17 +128,13 @@ export function dueState(due: string, today: string): DueState {
   return due < today ? "overdue" : due === today ? "today" : "planned"
 }
 
-const activityState = (card: KanbanCard, today: string): ActivityState =>
+export const activityState = (card: KanbanCard, today: string): ActivityState =>
   card.due ? dueState(card.due, today) : "none"
 
 export function activityCounts(cards: readonly KanbanCard[], today: string): Record<ActivityState, number> {
   const counts = { overdue: 0, today: 0, planned: 0, none: 0 }
   for (const card of cards) counts[activityState(card, today)]++
   return counts
-}
-
-export function filterByDue<C extends KanbanCard>(cards: readonly C[], state: ActivityState, today: string): C[] {
-  return cards.filter((card) => activityState(card, today) === state)
 }
 
 /** True when any quick-create field holds non-blank text, so Escape must not silently drop it. */

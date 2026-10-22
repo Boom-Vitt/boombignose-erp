@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest"
 
 import {
   activityCounts,
+  activityState,
   afterForDrop,
   dueState,
   earliestDate,
-  filterByDue,
   groupCards,
   hasTypedInput,
   initials,
@@ -121,6 +121,14 @@ describe("drop position", () => {
     expect(afterForDrop(ids, "a", false)).toBeNull()
   })
 
+  it("keeps the dragged card in place when it hovers itself or the slot it already fills", () => {
+    const withDragged = ["a", "x", "b"]
+    expect(afterForDrop(withDragged, "b", false, "x")).toBe("a")
+    expect(afterForDrop(withDragged, "x", true, "x")).toBe("a")
+    expect(afterForDrop(withDragged, "b", true, "x")).toBe("b")
+    expect(afterForDrop(["x", "a"], "a", false, "x")).toBeNull()
+  })
+
   it("moves one place up or down from the keyboard, undefined at the edges", () => {
     expect(reorderAfter(ids, "d", "up")).toBe("a")
     expect(reorderAfter(ids, "c", "up")).toBeNull()
@@ -171,9 +179,9 @@ describe("activity bar", () => {
     expect(activityCounts(dated, today)).toEqual({ overdue: 2, today: 1, planned: 1, none: 1 })
   })
 
-  it("filters a column to one state", () => {
-    expect(filterByDue(dated, "overdue", today).map((c) => c.id)).toEqual(["a", "e"])
-    expect(filterByDue(dated, "none", today).map((c) => c.id)).toEqual(["f"])
+  it("gives each card the state its column filter matches", () => {
+    expect(dated.filter((c) => activityState(c, today) === "overdue").map((c) => c.id)).toEqual(["a", "e"])
+    expect(dated.filter((c) => activityState(c, today) === "none").map((c) => c.id)).toEqual(["f"])
   })
 })
 

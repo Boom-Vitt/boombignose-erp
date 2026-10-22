@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowRightLeft } from "lucide-react"
+import { ArrowDown, ArrowRightLeft, ArrowUp } from "lucide-react"
 
 import { dueState, initials, type DueState, type KanbanCard as Card, type KanbanColumn } from "@/lib/kanban"
 import { formatTHB } from "@/lib/money"
@@ -13,6 +13,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
@@ -30,6 +31,8 @@ export function KanbanCard<S extends string>({
   onDragStart,
   onDragEnd,
   onMove,
+  onMoveUp,
+  onMoveDown,
 }: {
   card: Card<S>
   columns: readonly KanbanColumn<S>[]
@@ -38,6 +41,9 @@ export function KanbanCard<S extends string>({
   onDragStart: () => void
   onDragEnd: () => void
   onMove: (to: S) => void
+  /** Keyboard reorder within the column; omitted at the column's edge or on unordered boards. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   const due = card.due ? DUE[dueState(card.due, today)] : null
 
@@ -64,7 +70,15 @@ export function KanbanCard<S extends string>({
         {card.title}
       </Link>
       {card.amountSatang !== null ? (
-        <div className="mt-1 text-sm font-semibold">{formatTHB(card.amountSatang)}</div>
+        <div className="mt-1 text-sm font-semibold">
+          {formatTHB(card.amountSatang)}
+          {card.probability !== undefined ? (
+            <span className="text-muted-foreground ms-1.5 text-xs font-normal">
+              <span className="sr-only">win probability </span>
+              {card.probability}%
+            </span>
+          ) : null}
+        </div>
       ) : null}
       <div className="mt-1 flex items-center justify-between gap-2">
         <span className="text-muted-foreground truncate text-xs">{card.client ?? "—"}</span>
@@ -116,6 +130,23 @@ export function KanbanCard<S extends string>({
                 </DropdownMenuItem>
               ))}
           </DropdownMenuGroup>
+          {onMoveUp || onMoveDown ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                {onMoveUp ? (
+                  <DropdownMenuItem onClick={onMoveUp}>
+                    <ArrowUp /> Move up
+                  </DropdownMenuItem>
+                ) : null}
+                {onMoveDown ? (
+                  <DropdownMenuItem onClick={onMoveDown}>
+                    <ArrowDown /> Move down
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuGroup>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

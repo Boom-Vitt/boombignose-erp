@@ -4,6 +4,7 @@ import { Download, Plus, Target } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { todayISO } from "@/lib/dates"
 import { formatTHB, formatTHBWhole } from "@/lib/money"
 import { earliestDate, type KanbanCard, type KanbanColumn } from "@/lib/kanban"
@@ -56,7 +57,7 @@ export default async function DealsPage({
   const view = params.view === "list" ? "list" : "board"
   const facetQuery = serializeFacets(config, "deals")
 
-  const [allDeals, clientsRes, savedViews, nextRes] = await Promise.all([
+  const [allDeals, clientsRes, savedViews, nextRes, reasonsRes] = await Promise.all([
     readAllOrThrow((from, to) =>
       supabase
         .from("deals")
@@ -79,6 +80,7 @@ export default async function DealsPage({
         .order("deal_id")
         .range(from, to)
     ),
+    supabase.from("deal_lost_reasons").select("id,name").eq("org_id", ctx.orgId).eq("active", true).order("name"),
   ])
 
   const clients = clientsRes.data ?? []
@@ -230,6 +232,8 @@ export default async function DealsPage({
           clients={clients}
           today={today}
           storageKey={`kanban:deals:${ctx.userId}`}
+          lostReasons={reasonsRes.data ?? []}
+          canManageReasons={can(ctx.role, "settings:manage")}
         />
       )}
     </div>
