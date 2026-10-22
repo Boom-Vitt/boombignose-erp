@@ -28,6 +28,7 @@ export function KanbanCard<S extends string>({
   columns,
   today,
   dragging,
+  dropMark,
   onDragStart,
   onDragEnd,
   onMove,
@@ -38,6 +39,8 @@ export function KanbanCard<S extends string>({
   columns: readonly KanbanColumn<S>[]
   today: string
   dragging: boolean
+  /** Where a drag in progress would land, drawn in the gap so the cards don't shift. */
+  dropMark?: "before" | "after"
   onDragStart: () => void
   onDragEnd: () => void
   onMove: (to: S) => void
@@ -62,6 +65,13 @@ export function KanbanCard<S extends string>({
         dragging && "opacity-50"
       )}
     >
+      {dropMark ? (
+        <span
+          aria-hidden
+          data-testid="kanban-drop-line"
+          className={cn("bg-primary pointer-events-none absolute inset-x-0 h-0.5 rounded-full", dropMark === "before" ? "-top-[5px]" : "-bottom-[5px]")}
+        />
+      ) : null}
       <Link
         href={card.href}
         draggable={false}

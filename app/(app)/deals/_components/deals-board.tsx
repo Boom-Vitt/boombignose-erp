@@ -62,6 +62,7 @@ export function DealsBoard({
         }
         quickCreate={{
           titleLabel: "Deal title",
+          canCreateIn: (stage) => stage !== "lost",
           fields: <ClientField clients={clients} />,
           onCreate: (stage, { title, amount, form }) =>
             quickCreateDeal({
@@ -81,6 +82,7 @@ export function DealsBoard({
       />
       {losing ? (
         <LostReasonDialog
+          key={losing.id}
           open
           onOpenChange={(open) => {
             if (open) return

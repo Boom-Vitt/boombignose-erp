@@ -53,7 +53,9 @@ export function ChangeStageSelect({
     setValue(nextStage)
     return new Promise<{ error?: string }>((done) =>
       startTransition(async () => {
-        const res = await updateDealStage(dealId, nextStage, { lostReasonId })
+        const res = await updateDealStage(dealId, nextStage, { lostReasonId }).catch(() => ({
+          error: "Couldn't reach the server. Please try again.",
+        }))
         done(res)
         if (res?.error) {
           setValue(prev)

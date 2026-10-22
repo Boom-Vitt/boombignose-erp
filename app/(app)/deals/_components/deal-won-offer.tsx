@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { updateDealStage } from "../actions"
 import { MarkWonButton } from "./mark-won-button"
 
-/** On an accepted quote, offers to close its still-open deal as won. */
+/** On an accepted quote, offers to mark its deal won (open or lost: the customer said yes). */
 export async function DealWonOffer({ quoteId }: { quoteId: string }) {
   const ctx = await requireOrgContext()
   const supabase = await createClient()

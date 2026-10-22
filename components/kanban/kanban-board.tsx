@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useEffect, useId, useOptimistic, useRef, useState, useTransition } from "react"
+import { useEffect, useId, useOptimistic, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronsLeftRight, ChevronsRightLeft, Plus, X } from "lucide-react"
 import { toast } from "sonner"
@@ -39,6 +39,8 @@ export type QuickCreateConfig<S extends string> = {
   /** Extra inputs (named form fields) rendered under title and amount. */
   fields?: React.ReactNode
   onCreate: (stage: S, values: QuickCreateValues) => Promise<Result>
+  /** Columns that offer quick create; all of them when omitted. */
+  canCreateIn?: (stage: S) => boolean
   /** The full form, prefilled from what was typed so far. */
   fullFormHref: (stage: S, values: QuickCreateValues) => string
 }
@@ -123,7 +125,7 @@ export function KanbanBoard<S extends string>({
 
   function move(id: string, to: S, after: string | null = null) {
     const card = shown.find((c) => c.id === id)
-    if (!card || moveCard(shown, id, to, after) === shown) return
+    if (!card || (!reorderable && card.stage === to) || moveCard(shown, id, to, after) === shown) return
     const target = moveTargets.find((c) => c.id === to)?.label ?? to
     startTransition(async () => {
       applyMove({ id, to, after })
@@ -139,25 +141,25 @@ export function KanbanBoard<S extends string>({
     move(id, to, after)
   }
 
-  const columnIds = (column: S) => shown.filter((c) => c.stage === column).map((c) => c.id)
+  const filtered = shown.filter((c) => !dueFilter[c.stage] || activityState(c, today) === dueFilter[c.stage])
+  // Drops and keyboard moves are relative to the cards the user can see.
+  const columnIds = (column: S) => filtered.filter((c) => c.stage === column).map((c) => c.id)
 
-  /** Where a drop in `column` would land: after the hovered card's slot, or last on empty space. */
-  function dropSlot(e: React.DragEvent, column: S): string | null {
+  /** Where a drop in `column` would land: before the first card whose middle is below the pointer. */
+  function dropSlot(e: React.DragEvent<HTMLElement>, column: S): string | null {
     if (!reorderable) return null
     const ids = columnIds(column)
-    const hovered = (e.target as HTMLElement).closest<HTMLElement>("[data-card]")
-    const id = hovered?.dataset.card
-    if (!hovered || !id || !ids.includes(id)) {
-      const last = ids.at(-1)
-      return last ? afterForDrop(ids, last, true, dragging ?? undefined) : null
-    }
-    const box = hovered.getBoundingClientRect()
-    return afterForDrop(ids, id, e.clientY > box.top + box.height / 2, dragging ?? undefined)
+    const next = [...e.currentTarget.querySelectorAll<HTMLElement>("[data-card]")].find((el) => {
+      const box = el.getBoundingClientRect()
+      return e.clientY < box.top + box.height / 2
+    })?.dataset.card
+    const anchor = next ?? ids.at(-1)
+    return anchor && ids.includes(anchor) ? afterForDrop(ids, anchor, !next, dragging ?? undefined) : null
   }
 
   function dropProps(column: S) {
     return {
-      onDragOver: (e: React.DragEvent) => {
+      onDragOver: (e: React.DragEvent<HTMLElement>) => {
         if (!dragging) return
         e.preventDefault()
         e.dataTransfer.dropEffect = "move"
@@ -167,7 +169,7 @@ export function KanbanBoard<S extends string>({
       onDragLeave: (e: React.DragEvent) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(null)
       },
-      onDrop: (e: React.DragEvent) => {
+      onDrop: (e: React.DragEvent<HTMLElement>) => {
         e.preventDefault()
         const id = dragging ?? e.dataTransfer.getData("text/plain")
         const after = over?.column === column ? over.after : dropSlot(e, column)
@@ -178,8 +180,8 @@ export function KanbanBoard<S extends string>({
     }
   }
 
-  const filtered = shown.filter((c) => !dueFilter[c.stage] || activityState(c, today) === dueFilter[c.stage])
   const groups = groupCards(columns, filtered)
+  const idsByColumn = new Map(groups.map((g) => [g.id, g.cards.map((c) => c.id)]))
   // A single (filtered) column is never folded away.
   const canFold = columns.length > 1
 
@@ -209,7 +211,7 @@ export function KanbanBoard<S extends string>({
                 <span className="text-muted-foreground ms-auto text-xs tabular-nums">
                   {formatTHBWhole(group.sumSatang)}
                 </span>
-                {quickCreate ? (
+                {quickCreate && (quickCreate.canCreateIn?.(group.id) ?? true) ? (
                   <Button
                     variant="ghost"
                     size="icon-xs"
@@ -263,29 +265,28 @@ export function KanbanBoard<S extends string>({
                 {group.cards.length === 0 && creatingIn !== group.id ? (
                   <p className="text-muted-foreground px-2 py-6 text-center text-xs">{emptyLabel}</p>
                 ) : null}
-                {reorderable && over?.column === group.id && over.after === null ? <DropLine /> : null}
-                {group.cards.map((card) => {
-                  const ids = columnIds(group.id)
+                {group.cards.map((card, i) => {
+                  const ids = idsByColumn.get(group.id)!
                   const up = reorderable ? reorderAfter(ids, card.id, "up") : undefined
                   const down = reorderable ? reorderAfter(ids, card.id, "down") : undefined
+                  const dropHere = reorderable && over?.column === group.id
                   return (
-                    <Fragment key={card.id}>
-                      <KanbanCard
-                        card={card}
-                        columns={moveTargets}
-                        today={today}
-                        dragging={dragging === card.id}
-                        onDragStart={() => setDragging(card.id)}
-                        onDragEnd={() => {
-                          setDragging(null)
-                          setOver(null)
-                        }}
-                        onMove={(to) => moveFromMenu(card.id, to)}
-                        onMoveUp={up === undefined ? undefined : () => moveFromMenu(card.id, card.stage, up)}
-                        onMoveDown={down === undefined ? undefined : () => moveFromMenu(card.id, card.stage, down)}
-                      />
-                      {reorderable && over?.column === group.id && over.after === card.id ? <DropLine /> : null}
-                    </Fragment>
+                    <KanbanCard
+                      key={card.id}
+                      card={card}
+                      columns={moveTargets}
+                      today={today}
+                      dragging={dragging === card.id}
+                      dropMark={dropHere && over.after === card.id ? "after" : dropHere && i === 0 && over.after === null ? "before" : undefined}
+                      onDragStart={() => setDragging(card.id)}
+                      onDragEnd={() => {
+                        setDragging(null)
+                        setOver(null)
+                      }}
+                      onMove={(to) => moveFromMenu(card.id, to)}
+                      onMoveUp={up === undefined ? undefined : () => moveFromMenu(card.id, card.stage, up)}
+                      onMoveDown={down === undefined ? undefined : () => moveFromMenu(card.id, card.stage, down)}
+                    />
                   )
                 })}
               </div>
@@ -295,10 +296,6 @@ export function KanbanBoard<S extends string>({
       </div>
     </section>
   )
-}
-
-function DropLine() {
-  return <div aria-hidden data-testid="kanban-drop-line" className="bg-primary h-0.5 rounded-full" />
 }
 
 const ACTIVITY_SEGMENTS: { state: DueState; label: string; className: string }[] = [
@@ -333,7 +330,7 @@ function ActivityBar({
           title={`${counts[s.state]} ${s.label}`}
           style={{ flexGrow: counts[s.state] }}
           className={cn(
-            "relative min-w-3 rounded-full transition-opacity after:absolute after:-inset-y-2 after:inset-x-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+            "relative min-w-3 rounded-full transition-opacity after:absolute after:-inset-y-2.5 after:inset-x-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
             s.className,
             active && active !== s.state && "opacity-30"
           )}

@@ -12,9 +12,10 @@ create table public.deal_lost_reasons (
 create unique index deal_lost_reasons_org_name_key on public.deal_lost_reasons(org_id,lower(name));
 alter table public.deal_lost_reasons enable row level security;
 alter table public.deal_lost_reasons force row level security;
-revoke all on public.deal_lost_reasons from anon;
+revoke all on public.deal_lost_reasons from anon,authenticated;
 -- Reasons are archived (active=false), never deleted, so lost deals keep their reason.
 grant select,insert,update on public.deal_lost_reasons to authenticated;
+grant all on public.deal_lost_reasons to service_role;
 create policy tenant_read on public.deal_lost_reasons for select to authenticated using(private.is_org_member(org_id));
 create policy tenant_insert on public.deal_lost_reasons for insert to authenticated with check(private.is_org_staff(org_id));
 create policy tenant_update on public.deal_lost_reasons for update to authenticated using(private.is_org_staff(org_id)) with check(private.is_org_staff(org_id));
@@ -65,7 +66,6 @@ where o.id=d.id;
 alter table public.deals enable trigger set_updated_at;
 alter table public.deals alter column probability set not null;
 create index deals_board_order_idx on public.deals(org_id,stage,sequence);
-create index deals_lost_reason_idx on public.deals(org_id,lost_reason_id) where lost_reason_id is not null;
 
 -- Stage-owned fields stay consistent on every write path (forms, board, web forms):
 -- a stage change resets probability unless the same write sets it, won and lost pin it,
@@ -118,8 +118,8 @@ declare
   pos integer;
 begin
   if not private.is_org_member(p_org_id) then raise exception 'Workspace membership required' using errcode='42501'; end if;
-  -- One reorder per column at a time, so two drops can't interleave their renumbering.
-  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_org_id::text||':deal_column:'||p_stage::text,0));
+  -- One move per board at a time: per-column locks deadlock when two cards swap columns.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_org_id::text||':deal_board',0));
   select * into moving from public.deals where org_id=p_org_id and id=p_deal_id for update;
   if not found then raise exception 'Deal not found' using errcode='P0002'; end if;
 
@@ -134,7 +134,7 @@ begin
   ordered := ordered[1:pos] || p_deal_id || ordered[pos+1:];
   update public.deals d set sequence=o.n::integer
     from unnest(ordered) with ordinality o(id,n)
-    where d.org_id=p_org_id and d.id=o.id and d.sequence is distinct from o.n::integer;
+    where d.org_id=p_org_id and d.id=o.id and d.stage=p_stage and d.sequence is distinct from o.n::integer;
   return moving.stage;
 end;
 $$;
@@ -146,9 +146,14 @@ alter table public.quotes
   add constraint quotes_deal_tenant_fkey foreign key(org_id,deal_id) references public.deals(org_id,id) on delete set null (deal_id);
 create index quotes_deal_idx on public.quotes(org_id,deal_id) where deal_id is not null;
 
+-- A new quote for a project takes that project's deal, so a project-only pick still links it.
 create function private.guard_quote_deal()
 returns trigger language plpgsql set search_path='' as $$
 begin
+  if tg_op='INSERT' and new.deal_id is null and new.project_id is not null then
+    select p.deal_id into new.deal_id from public.projects p join public.deals d on d.org_id=p.org_id and d.id=p.deal_id
+      where p.org_id=new.org_id and p.id=new.project_id and d.client_id=new.client_id;
+  end if;
   if new.deal_id is not null and not exists(
     select 1 from public.deals where org_id=new.org_id and id=new.deal_id and client_id=new.client_id
   ) then raise exception 'Deal and quote customer must match'; end if;
@@ -213,9 +218,11 @@ begin
     insert into public.deals(org_id,client_id,title,stage,source,owner)
       values(form.org_id,customer,'Web form: '||btrim(p_name),'lead','Web form',form.default_owner) returning id into opportunity;
   else
+    -- A deal owner who has left the workspace can't be assigned; the form's owner follows up instead.
     insert into public.activities(org_id,record_type,record_id,type,due_date,body,owner)
       values(form.org_id,'deal',opportunity,'follow_up',(now() at time zone 'Asia/Bangkok')::date,
-        'Reply to the new web form enquiry from '||btrim(p_name),coalesce(opportunity_owner,form.default_owner));
+        'Reply to the new web form enquiry from '||btrim(p_name),
+        coalesce((select user_id from public.memberships where org_id=form.org_id and user_id=opportunity_owner),form.default_owner));
   end if;
   insert into public.record_notes(org_id,record_type,record_id,author,body)
     values(form.org_id,'deal',opportunity,form.default_owner,

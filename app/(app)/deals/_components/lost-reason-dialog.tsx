@@ -41,7 +41,7 @@ export function LostReasonDialog({
       return
     }
     startTransition(async () => {
-      const res = await onConfirm(reason)
+      const res = await onConfirm(reason).catch(() => ({ error: "Couldn't reach the server. Please try again." }))
       setError(res.error ?? "")
     })
   }

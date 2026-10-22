@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(49);
+select plan(51);
 
 insert into auth.users(id,email,email_confirmed_at) values
   ('b6000000-0000-4000-8000-000000000001','synthetic-form-owner@example.invalid',now()),
@@ -65,6 +65,12 @@ select is((select count(distinct deal_id)::int from public.lead_submissions wher
 select ok((select type='follow_up' and not done and owner='b6000000-0000-4000-8000-000000000001' and due_date=(now() at time zone 'Asia/Bangkok')::date
   from public.activities where org_id='b6000000-0000-4000-8000-000000000010'),'the repeat enquiry schedules a follow-up for the deal owner today');
 select is((select count(*)::int from public.audit_log where org_id='b6000000-0000-4000-8000-000000000010' and action='web_form_submitted' and summary='Web form enquiry added to open deal' and (meta->>'attached')::boolean),1,'the repeat is audited as attached');
+reset role;
+-- A deal owner who left the workspace no longer blocks the follow-up.
+update public.deals set owner='b6000000-0000-4000-8000-000000000003' where org_id='b6000000-0000-4000-8000-000000000010';
+set local role service_role;
+select is(public.submit_lead_form(repeat('t',43),repeat('9',64),'Visitor','',(select email from public.contacts where org_id='b6000000-0000-4000-8000-000000000010'),'','Still there?',''),'success','a repeat enquiry survives a deal owner outside the workspace');
+select is((select count(*)::int from public.activities where org_id='b6000000-0000-4000-8000-000000000010' and type='follow_up' and owner='b6000000-0000-4000-8000-000000000002'),1,'the form owner takes the follow-up instead');
 reset role;
 update public.deals set stage='won' where org_id='b6000000-0000-4000-8000-000000000010';
 set local role service_role;

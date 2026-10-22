@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(39);
+select plan(40);
 create function pg_temp.crm_id(n integer) returns uuid language sql immutable as $$
   select ('c4e00000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid;
 $$;
@@ -77,14 +77,14 @@ select is(pg_temp.lead_column(),'Second renamed,Third','a reopened deal goes to 
 
 -- Board moves.
 select is(public.move_deal(pg_temp.crm_id(10),pg_temp.crm_id(202),'lead',pg_temp.crm_id(203))::text,'lead','move_deal returns the previous stage');
-select is(pg_temp.lead_column(),'Third,Second, renamed','a drop after a card reorders the column');
+select is(pg_temp.lead_column(),'Third,Second renamed','a drop after a card reorders the column');
 select public.move_deal(pg_temp.crm_id(10),pg_temp.crm_id(201),'lead',pg_temp.crm_id(203));
-select is(pg_temp.lead_column(),'Third,First,Second, renamed','a drop from another column lands after the given card');
+select is(pg_temp.lead_column(),'Third,First,Second renamed','a drop from another column lands after the given card');
 select ok((select probability=10 from public.deals where id=pg_temp.crm_id(201)),'a board move to another stage resets probability');
 select public.move_deal(pg_temp.crm_id(10),pg_temp.crm_id(202),'lead',null);
 select is(pg_temp.lead_column(),'Second renamed,Third,First','no anchor puts the card on top');
 select public.move_deal(pg_temp.crm_id(10),pg_temp.crm_id(203),'lead',gen_random_uuid());
-select is(pg_temp.lead_column(),'Third,Second, renamed,First','an anchor that left the column falls back to the top');
+select is(pg_temp.lead_column(),'Third,Second renamed,First','an anchor that left the column falls back to the top');
 select is((select string_agg(sequence::text,',' order by sequence) from public.deals where org_id=pg_temp.crm_id(10) and stage='lead'),'1,2,3','the column is renumbered densely');
 select throws_ok($$select public.move_deal(pg_temp.crm_id(10),pg_temp.crm_id(203),'lost',null)$$,'23514','Pick a lost reason','a board move to lost needs a reason');
 select public.move_deal(pg_temp.crm_id(10),pg_temp.crm_id(203),'lost',null,(select id from public.deal_lost_reasons where name='No response'));
@@ -98,6 +98,9 @@ insert into public.quotes(id,org_id,client_id,number,status,deal_id) values
   (pg_temp.crm_id(301),pg_temp.crm_id(10),pg_temp.crm_id(100),'CRM-Q-1','draft',pg_temp.crm_id(201));
 select is((select deal_id from public.quotes where id=pg_temp.crm_id(301)),pg_temp.crm_id(201),'a quote links to a deal of the same client');
 select throws_ok($$insert into public.quotes(org_id,client_id,number,status,deal_id) values(pg_temp.crm_id(10),pg_temp.crm_id(101),'CRM-Q-2','draft',pg_temp.crm_id(201))$$,null,'Deal and quote customer must match','a quote cannot link to another client''s deal');
+insert into public.projects(id,org_id,client_id,deal_id,name) values(pg_temp.crm_id(401),pg_temp.crm_id(10),pg_temp.crm_id(100),pg_temp.crm_id(202),'CRM project');
+insert into public.quotes(id,org_id,client_id,project_id,number,status) values(pg_temp.crm_id(302),pg_temp.crm_id(10),pg_temp.crm_id(100),pg_temp.crm_id(401),'CRM-Q-3','draft');
+select is((select deal_id from public.quotes where id=pg_temp.crm_id(302)),pg_temp.crm_id(202),'a new quote for a project takes the project''s deal');
 
 select set_config('request.jwt.claims',json_build_object('role','authenticated','sub',pg_temp.crm_id(3))::text,true);
 set local role authenticated;
