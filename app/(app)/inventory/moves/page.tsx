@@ -5,7 +5,7 @@ import { readAll } from "@/lib/supabase/read-all"
 import { inventoryData } from "@/lib/inventory/queries"
 import type { Enums } from "@/lib/types/database"
 import { signedQuantity } from "@/lib/inventory/math"
-import { facetLabel, parseFacets, type SearchParams } from "@/lib/search-facets"
+import { facetLabel, facetValues, parseFacets, type SearchParams } from "@/lib/search-facets"
 import { periodRange } from "@/lib/periods"
 import { getFacetSavedViews } from "@/lib/queries/saved-views"
 import { formatTHB } from "@/lib/money"
@@ -22,7 +22,7 @@ export default async function StockMovesPage({ searchParams }: { searchParams: P
     inventoryData(), getFacetSavedViews("inventory"),
     readAll((from, to) => {
       let query = db.from("stock_moves").select("*").eq("org_id", ctx.orgId)
-      if (config.status) query = query.eq("kind", config.status as Enums<"stock_move_kind">)
+      if (config.status) query = query.in("kind", facetValues(config.status) as Enums<"stock_move_kind">[])
       if (config.warehouse) query = query.eq("warehouse_id", config.warehouse)
       if (config.product) query = query.eq("product_id", config.product)
       if (config.sourceId) query = query.eq("source_id", config.sourceId)
