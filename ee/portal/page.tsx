@@ -1,3 +1,5 @@
+import { readAll } from "@/lib/supabase/read-all"
+import { DocumentTotals } from "@/components/document-totals"
 import { FileText, Receipt, FolderKanban, Lock } from "lucide-react"
 
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -82,28 +84,29 @@ export default async function ClientPortalPage({
       .select("name")
       .eq("id", client.org_id)
       .maybeSingle(),
-    supabase
+    readAll((from, to) => supabase
       .from("quotes")
-      .select("id, number, status, total_satang")
+      .select("id, number, status, subtotal_satang, discount_satang, vat_satang, tax_breakdown, prices_include_vat, total_satang")
       .eq("client_id", client.id)
       .eq("org_id", client.org_id)
       .in("status", PORTAL_QUOTE_STATUSES)
-      .order("created_at", { ascending: false }),
-    supabase
+      .order("created_at", { ascending: false }).order("id").range(from, to)),
+    readAll((from, to) => supabase
       .from("invoices")
-      .select("id, number, status, amount_satang, issue_date, due_date")
+      .select("id, number, status, amount_satang, subtotal_satang, discount_satang, vat_satang, wht_satang, wht_rate_bps, total_satang, tax_breakdown, prices_include_vat, issue_date, due_date")
       .eq("client_id", client.id)
       .eq("org_id", client.org_id)
       .in("status", PORTAL_INVOICE_STATUSES)
-      .order("created_at", { ascending: false }),
-    supabase
+      .order("created_at", { ascending: false }).order("id").range(from, to)),
+    readAll((from, to) => supabase
       .from("projects")
       .select("id, name, status")
       .eq("client_id", client.id)
       .eq("org_id", client.org_id)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false }).order("id").range(from, to)),
   ])
 
+  if (quotesRes.error || invoicesRes.error || projectsRes.error) return <Unavailable />
   const quotes = quotesRes.data ?? []
   const invoices = invoicesRes.data ?? []
   const projects = projectsRes.data ?? []
@@ -114,30 +117,31 @@ export default async function ClientPortalPage({
   const invoiceIds = invoices.map((i) => i.id)
   const [paymentsRes, itemsRes, claimsRes] = await Promise.all([
     invoiceIds.length
-      ? supabase
+      ? readAll((from, to) => supabase
           .from("payments")
-          .select("invoice_id, amount_satang").eq("verification_state", "verified")
-          .in("invoice_id", invoiceIds)
-          .eq("org_id", client.org_id)
-      : Promise.resolve({ data: [] as { invoice_id: string; amount_satang: number }[] }),
+          .select("invoice_id, amount_satang, invoices!inner(client_id)").eq("verification_state", "verified")
+          .eq("invoices.client_id", client.id)
+          .eq("org_id", client.org_id).order("id").range(from, to))
+      : Promise.resolve({ data: [] as { invoice_id: string; amount_satang: number }[], error: null }),
     invoiceIds.length
-      ? supabase
+      ? readAll((from, to) => supabase
           .from("invoice_items")
-          .select("invoice_id, description, quantity, amount_satang")
-          .in("invoice_id", invoiceIds)
+          .select("invoice_id, description, quantity, amount_satang, invoices!inner(client_id)")
+          .eq("invoices.client_id", client.id)
           .eq("org_id", client.org_id)
-          .order("position", { ascending: true })
+          .order("position", { ascending: true }).order("id").range(from, to))
       : Promise.resolve({
           data: [] as {
             invoice_id: string
             description: string
             quantity: number
             amount_satang: number
-          }[],
+          }[], error: null,
         }),
-    supabase.from("payment_claims").select("invoice_id, status").eq("org_id",client.org_id).eq("client_id",client.id).eq("status","pending"),
+    readAll((from, to) => supabase.from("payment_claims").select("invoice_id, status").eq("org_id",client.org_id).eq("client_id",client.id).eq("status","pending").order("id").range(from, to)),
   ])
 
+  if (paymentsRes.error || itemsRes.error || claimsRes.error) return <Unavailable />
   const pendingInvoiceIds = new Set((claimsRes.data ?? []).map(c=>c.invoice_id))
 
   const paidByInvoice = new Map<string, number>()
@@ -170,7 +174,7 @@ export default async function ClientPortalPage({
         <p className="text-muted-foreground text-sm font-medium">{orgName}</p>
         <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
         <p className="text-muted-foreground text-sm">
-          Your quotes, invoices, and projects.
+          Your quotes, invoices, and projects. VAT and withholding are document calculations only, not a legal tax system, accounting ledger, tax filing or e-Tax Invoice.
         </p>
       </header>
 
@@ -202,7 +206,7 @@ export default async function ClientPortalPage({
                       <QuoteStatusBadge status={q.status} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatTHB(q.total_satang)}
+                      <DocumentTotals subtotal={q.subtotal_satang ?? q.total_satang} discount={q.discount_satang ?? 0} vat={q.vat_satang ?? 0} total={q.total_satang} breakdown={q.tax_breakdown ?? []} inclusive={q.prices_include_vat} />
                     </TableCell>
                     <TableCell className="text-right">
                       {q.status === "sent" ? (
@@ -248,6 +252,7 @@ export default async function ClientPortalPage({
                     ) : null}
                   </div>
 
+                  <DocumentTotals subtotal={inv.subtotal_satang ?? inv.amount_satang} discount={inv.discount_satang ?? 0} vat={inv.vat_satang ?? 0} total={inv.total_satang ?? inv.amount_satang} wht={inv.wht_satang ?? 0} whtRate={inv.wht_rate_bps ?? 0} amountDue={inv.amount_satang} breakdown={inv.tax_breakdown ?? []} inclusive={inv.prices_include_vat} />
                   <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
                     <div className="space-y-0.5">
                       <dt className="text-muted-foreground text-xs font-medium">

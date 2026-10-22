@@ -5,7 +5,7 @@ import { z } from "zod"
 import { ProductLineInput } from "@/lib/products/schema"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
-import { requireOrgContext, requireRole } from "@/lib/auth"
+import { requireOrgContext, requireCapability } from "@/lib/auth"
 import { invoiceLineAmount, moneyInput } from "@/lib/payments/input"
 import { writeAudit } from "@/lib/audit"
 
@@ -14,6 +14,7 @@ import { writeAudit } from "@/lib/audit"
 
 const AddInvoiceItem = z.object({
   ...ProductLineInput.shape,
+  tax_rate_bps: z.number().int().min(0).max(10000).optional(),
   invoice_id: z.string().min(1),
   description: z.string().trim().min(1, "Description is required"),
   quantity: z.string().refine(v => { try { invoiceLineAmount(v, 0); return true } catch { return false } }, "Enter a positive quantity with up to three decimals"),
@@ -24,7 +25,7 @@ export async function addInvoiceItem(
   input: z.input<typeof AddInvoiceItem>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  try { requireRole(ctx, ["owner", "admin"]) }
+  try { requireCapability(ctx, "payment:verify") }
   catch { return { error: "Only owners and admins can edit invoice lines." } }
   const parsed = AddInvoiceItem.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
@@ -55,12 +56,19 @@ export async function addInvoiceItem(
 
   if (countErr) return { error: countErr.message }
 
+  let taxRate = d.tax_rate_bps
   const unitPriceSatang = moneyInput(d.unitPriceBaht)
   if (d.product_id) {
-    const { data: product, error: productError } = await supabase.from("products").select("id")
+    const { data: product, error: productError } = await supabase.from("products").select("id, tax_rate_bps")
       .eq("org_id", ctx.orgId).eq("id", d.product_id).eq("active", true).maybeSingle()
     if (productError) return { error: productError.message }
     if (!product) return { error: "Product unavailable. Choose an active product or a free-text line." }
+    taxRate ??= product.tax_rate_bps
+  }
+  if (taxRate === undefined) {
+    const { data: settings, error: settingsError } = await supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle()
+    if (settingsError) return { error: settingsError.message }
+    taxRate = settings?.vat_registered ? settings.vat_rate_bps : 0
   }
   let amount: number
   try { amount = invoiceLineAmount(d.quantity, unitPriceSatang) }
@@ -71,6 +79,7 @@ export async function addInvoiceItem(
     description: d.description,
     product_id: d.product_id ?? null,
     unit: d.unit ?? null,
+    tax_rate_bps: taxRate ?? 0,
     quantity: Number(d.quantity),
     unit_price_satang: unitPriceSatang,
     amount_satang: amount,
@@ -97,7 +106,7 @@ export async function deleteInvoiceItem(
   input: z.input<typeof DeleteInvoiceItem>
 ): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
-  try { requireRole(ctx, ["owner", "admin"]) }
+  try { requireCapability(ctx, "payment:verify") }
   catch { return { error: "Only owners and admins can edit invoice lines." } }
   const parsed = DeleteInvoiceItem.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }

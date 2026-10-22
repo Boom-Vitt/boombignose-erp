@@ -11,7 +11,7 @@ export function IssueInvoiceForm({ orgId, invoiceId, version }: { orgId: string;
   const [pending, startTransition] = useTransition()
   const request = useRef<string | null>(null)
   const router = useRouter()
-  return <div className="space-y-3"><p className="text-sm text-muted-foreground">ออกใบแจ้งหนี้เพื่อการดำเนินงาน / Issuance freezes this version’s issuer, buyer, priced lines, discount and dates. It does not calculate VAT or create a tax invoice.</p><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={pending} onChange={event => setConfirmed(event.target.checked)} />I checked the business profile, buyer, lines, discount and dates.</label><Button disabled={!confirmed || pending} onClick={() => {
+  return <div className="space-y-3"><p className="text-sm text-muted-foreground">ออกใบแจ้งหนี้เพื่อการดำเนินงาน / Issuance freezes this version’s issuer, buyer, priced lines, discount and dates. It freezes document VAT and withholding calculations. This is not a legal tax system, accounting ledger, filing service or e-Tax Invoice.</p><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={pending} onChange={event => setConfirmed(event.target.checked)} />I checked the business profile, buyer, lines, discount and dates.</label><Button disabled={!confirmed || pending} onClick={() => {
     if (!request.current) {
       try { request.current = paymentCommandKey(sessionStorage, `${orgId}/${invoiceId}/issue`, [String(version)], () => crypto.randomUUID()) }
       catch { request.current = crypto.randomUUID() }

@@ -38,10 +38,12 @@ export type InvoiceItemRow = {
   quantity: string
   unitPrice: string
   amount: string
+  taxRate?: string
 }
 
 const Schema = z.object({
   ...ProductLineInput.shape,
+  tax_rate_bps: z.number().int().min(0).max(10000),
   description: z.string().min(1, "Description is required"),
   quantity: z.string().refine(v => { try { invoiceLineAmount(v, 0); return true } catch { return false } }, "Positive quantity, up to three decimals"),
   unitPriceBaht: z.string().refine(v => { try { moneyInput(v); return true } catch { return false } }, "Enter an exact THB amount"),
@@ -57,6 +59,7 @@ export function InvoiceItemsEditor({
   locked = false,
   products = [],
   canManageProducts = false,
+  defaultTaxRate = 0,
 }: {
   invoiceId: string
   items: InvoiceItemRow[]
@@ -67,11 +70,13 @@ export function InvoiceItemsEditor({
     unitPriceBaht: string
     product_id?: string | null
     unit?: string | null
+    tax_rate_bps?: number
   }) => Promise<{ error?: string }>
   deleteAction: (input: { id: string }) => Promise<{ error?: string }>
   /** When true (invoice paid), render items read-only: no add row, no delete. */
   locked?: boolean
   products?: ProductOption[]
+  defaultTaxRate?: number
   canManageProducts?: boolean
 }) {
   const router = useRouter()
@@ -84,6 +89,7 @@ export function InvoiceItemsEditor({
       unitPriceBaht: "0.00",
       product_id: null,
       unit: "piece",
+      tax_rate_bps: defaultTaxRate,
     },
   })
   const selectedProductId = useWatch({ control: form.control, name: "product_id" })
@@ -109,6 +115,7 @@ export function InvoiceItemsEditor({
               <TableHead>Description</TableHead>
               <TableHead className="text-right">Qty</TableHead>
               <TableHead className="text-right">Unit price</TableHead>
+              <TableHead className="text-right">VAT</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               {locked ? null : <TableHead className="w-10" />}
             </TableRow>
@@ -123,6 +130,7 @@ export function InvoiceItemsEditor({
                 <TableCell className="text-right tabular-nums">
                   {item.unitPrice}
                 </TableCell>
+                <TableCell className="text-right">{item.taxRate ?? "0%"}</TableCell>
                 <TableCell className="text-right tabular-nums">
                   {item.amount}
                 </TableCell>
@@ -164,19 +172,20 @@ export function InvoiceItemsEditor({
               return
             }
             toast.success("Line item added")
-            form.reset({ description: "", quantity: "1", unitPriceBaht: "0.00", product_id: null, unit: "piece" })
+            form.reset({ description: "", quantity: "1", unitPriceBaht: "0.00", product_id: null, unit: "piece", tax_rate_bps: defaultTaxRate })
             router.refresh()
           })}
-          className="grid gap-4 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-start"
+          className="grid gap-4 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] sm:items-start"
         >
           <div className="sm:col-span-full">
             <ProductPicker products={products} value={selectedProductId} canManage={canManageProducts} onChange={product => {
-              if (!product) { form.setValue("product_id", null); return }
+              if (!product) { form.setValue("product_id", null); form.setValue("tax_rate_bps", defaultTaxRate); return }
               const values = productToLineValues(product)
               form.setValue("product_id", values.product_id)
               form.setValue("description", values.description, { shouldValidate: true })
               form.setValue("unitPriceBaht", values.unitPriceBaht, { shouldValidate: true })
               form.setValue("unit", values.unit, { shouldValidate: true })
+              form.setValue("tax_rate_bps", product.tax_rate_bps ?? defaultTaxRate, { shouldValidate: true })
             }} />
           </div>
           <FormField
@@ -245,6 +254,9 @@ export function InvoiceItemsEditor({
               </FormItem>
             )}
           />
+        <FormField control={form.control} name="tax_rate_bps" render={({ field }) => (
+          <FormItem className="sm:w-32"><FormLabel>VAT rate (bps)</FormLabel><FormControl><Input type="number" min={0} max={10000} step={1} {...field} onChange={event => field.onChange(Number(event.target.value))} /></FormControl><p className="text-xs text-muted-foreground">700 = 7%</p><FormMessage /></FormItem>
+        )} />
           <div className="flex flex-col justify-end sm:pt-[1.625rem]">
             <Button type="submit" disabled={form.formState.isSubmitting}>
               Add item

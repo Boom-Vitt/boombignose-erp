@@ -26,6 +26,7 @@ import { ProductPicker } from "../../products/_components/product-picker"
 
 const Schema = z.object({
   ...ProductLineInput.shape,
+  tax_rate_bps: z.number().int().min(0).max(10000),
   description: z.string().min(1, "Description is required"),
   quantity: serviceQuantityInput,
   unitPriceBaht: serviceMoneyInput,
@@ -33,9 +34,10 @@ const Schema = z.object({
 
 type Values = z.infer<typeof Schema>
 
-export function QuoteItemForm({ quoteId, products = [], canManageProducts = false }: {
+export function QuoteItemForm({ quoteId, products = [], canManageProducts = false, defaultTaxRate = 0 }: {
   quoteId: string
   products?: ProductOption[]
+  defaultTaxRate?: number
   canManageProducts?: boolean
 }) {
   const router = useRouter()
@@ -47,6 +49,7 @@ export function QuoteItemForm({ quoteId, products = [], canManageProducts = fals
       unitPriceBaht: 0,
       product_id: null,
       unit: "piece",
+      tax_rate_bps: defaultTaxRate,
     },
   })
   const selectedProductId = useWatch({ control: form.control, name: "product_id" })
@@ -61,19 +64,20 @@ export function QuoteItemForm({ quoteId, products = [], canManageProducts = fals
             return
           }
           toast.success("Item added")
-          form.reset({ description: "", quantity: 1, unitPriceBaht: 0, product_id: null, unit: "piece" })
+          form.reset({ description: "", quantity: 1, unitPriceBaht: 0, product_id: null, unit: "piece", tax_rate_bps: defaultTaxRate })
           router.refresh()
         })}
-        className="grid items-start gap-3 sm:grid-cols-[1fr_auto_auto_auto_auto]"
+        className="grid items-start gap-3 sm:grid-cols-[1fr_auto_auto_auto_auto_auto]"
       >
         <div className="sm:col-span-full">
           <ProductPicker products={products} value={selectedProductId} canManage={canManageProducts} onChange={product => {
-            if (!product) { form.setValue("product_id", null); return }
+            if (!product) { form.setValue("product_id", null); form.setValue("tax_rate_bps", defaultTaxRate); return }
             const values = productToLineValues(product)
             form.setValue("product_id", values.product_id)
             form.setValue("description", values.description, { shouldValidate: true })
             form.setValue("unitPriceBaht", values.unitPriceBaht, { shouldValidate: true })
             form.setValue("unit", values.unit, { shouldValidate: true })
+              form.setValue("tax_rate_bps", product.tax_rate_bps ?? defaultTaxRate, { shouldValidate: true })
           }} />
         </div>
         <FormField
@@ -140,6 +144,9 @@ export function QuoteItemForm({ quoteId, products = [], canManageProducts = fals
             </FormItem>
           )}
         />
+        <FormField control={form.control} name="tax_rate_bps" render={({ field }) => (
+          <FormItem className="sm:w-32"><FormLabel>VAT rate (bps)</FormLabel><FormControl><Input type="number" min={0} max={10000} step={1} {...field} onChange={event => field.onChange(Number(event.target.value))} /></FormControl><p className="text-xs text-muted-foreground">700 = 7%</p><FormMessage /></FormItem>
+        )} />
         <div className="flex items-end">
           <Button type="submit" disabled={form.formState.isSubmitting}>
             <Plus /> Add

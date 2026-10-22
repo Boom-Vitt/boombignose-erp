@@ -7,11 +7,18 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
     from(table: string) {
       let rows = [...(tables[table] ?? [])]
       let single = false
+      let limit: number | undefined
       let countDeals = false
+      let embedClient = false
+      let exactCount = false
+      let head = false
       const dealFilters: [string, readonly unknown[]][] = []
       const query = {
-        select: (columns = '') => {
+        select: (columns = '', options?: { count?: 'exact'; head?: boolean }) => {
+          exactCount = options?.count === 'exact'
+          head = options?.head ?? false
           countDeals = columns.includes('deals(count)')
+          embedClient = columns.includes('client:clients(')
           return query
         },
         insert: (row: Record<string, unknown>) => {
@@ -21,6 +28,10 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
         },
         eq: (key: string, value: unknown) => {
           rows = rows.filter((row) => row[key] === value)
+          return query
+        },
+        neq: (key: string, value: unknown) => {
+          rows = rows.filter((row) => row[key] !== value)
           return query
         },
         is: (key: string, value: unknown) => {
@@ -53,8 +64,8 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
           return query
         },
         order: () => query,
-        limit: (value: number) => { rows = rows.slice(0, value); return query },
         range: (from: number, to: number) => { rows = rows.slice(from, to + 1); return query },
+        limit: (value: number) => { limit = value; return query },
         maybeSingle: () => { single = true; return query },
         then: (resolve: (result: unknown) => unknown, reject?: (error: unknown) => unknown) => {
           const data = countDeals ? rows.map((row) => ({
@@ -63,8 +74,11 @@ export function databaseFixture(tables: Record<string, Record<string, unknown>[]
               deal.org_id === row.org_id && deal.client_id === row.id &&
               dealFilters.every(([key, values]) => values.includes(deal[key]))
             ).length }],
-          })) : rows.slice(0, MAX_ROWS)
-          return Promise.resolve({ data: single ? data[0] ?? null : data, count: rows.length, error: null }).then(resolve, reject)
+          })) : embedClient ? rows.slice(0, Math.min(limit ?? MAX_ROWS, MAX_ROWS)).map((row) => ({
+            ...row,
+            client: (tables.clients ?? []).find((client) => client.id === row.client_id) ?? null,
+          })) : rows.slice(0, Math.min(limit ?? MAX_ROWS, MAX_ROWS))
+          return Promise.resolve({ data: head ? null : single ? data[0] ?? null : data, count: exactCount ? rows.length : null, error: null }).then(resolve, reject)
         },
       }
       return query

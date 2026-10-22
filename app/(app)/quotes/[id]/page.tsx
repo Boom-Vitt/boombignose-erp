@@ -1,3 +1,5 @@
+import { readAll } from "@/lib/supabase/read-all"
+import { DocumentTotals } from "@/components/document-totals"
 import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -62,23 +64,24 @@ export default async function QuoteDetailPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [quoteRes, itemsRes, clientsRes, projectsRes, invoicesRes] = await Promise.all([
+  const [quoteRes, itemsRes, clientsRes, projectsRes, invoicesRes, settingsRes] = await Promise.all([
     supabase
       .from("quotes")
       .select(
-        "id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, notes, client_id, project_id, converted_invoice_id, clients(name)"
+        "id, number, status, issue_date, valid_until, subtotal_satang, discount_satang, total_satang, vat_satang, tax_breakdown, prices_include_vat, notes, client_id, project_id, converted_invoice_id, clients(name)"
       ).eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
-    supabase
+    readAll((from, to) => supabase
       .from("quote_items")
-      .select("id, description, quantity, unit_price_satang, amount_satang, position, unit")
+      .select("id, description, quantity, unit_price_satang, amount_satang, position, unit, tax_rate_bps")
       .eq("org_id", ctx.orgId)
       .eq("quote_id", id)
-      .order("position", { ascending: true }),
+      .order("position", { ascending: true }).order("id").range(from, to)),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("invoices").select("id", { count: "exact" }).eq("org_id", ctx.orgId).eq("source_quote_id", id).limit(1),
+    supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle(),
   ])
 
   const quote = quoteRes.data
@@ -92,6 +95,7 @@ export default async function QuoteDetailPage({
     .order("created_at", { ascending: true })
   if (milestoneError) throw new Error(milestoneError.message)
 
+  if (itemsRes.error || settingsRes.error) throw new Error("Quote details unavailable")
   const items = itemsRes.data ?? []
   const canConvert = (ctx.role === "owner" || ctx.role === "admin") && (!quote.valid_until || quote.valid_until >= todayISO())
   const editable = quoteIsEditable(quote.status)
@@ -184,15 +188,8 @@ export default async function QuoteDetailPage({
           <QuoteStatusBadge status={quote.status} />
         </CardHeader>
         <CardContent className="space-y-4">
+          <DocumentTotals subtotal={quote.subtotal_satang} discount={quote.discount_satang} vat={quote.vat_satang} total={quote.total_satang} breakdown={quote.tax_breakdown} inclusive={quote.prices_include_vat} />
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <Field label="Subtotal" value={formatTHB(quote.subtotal_satang)} />
-            <Field label="Discount" value={formatTHB(quote.discount_satang)} />
-            <Field
-              label="Total"
-              value={
-                <span className="font-medium">{formatTHB(quote.total_satang)}</span>
-              }
-            />
             <Field label="Issue date" value={quote.issue_date ?? "—"} />
             <Field label="Valid until" value={quote.valid_until ?? "—"} />
             <Field label="Client" value={quote.clients?.name ?? "—"} />
@@ -257,6 +254,7 @@ export default async function QuoteDetailPage({
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unit price</TableHead>
+                  <TableHead className="text-right">VAT</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   {locked ? null : (
                     <TableHead className="w-10" aria-label="Actions" />
@@ -273,6 +271,7 @@ export default async function QuoteDetailPage({
                     <TableCell className="text-right tabular-nums">
                       {formatTHB(it.unit_price_satang)}
                     </TableCell>
+                    <TableCell className="text-right">{it.tax_rate_bps / 100}%</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatTHB(it.amount_satang)}
                     </TableCell>
@@ -291,7 +290,7 @@ export default async function QuoteDetailPage({
           {locked ? (
             <p className="text-muted-foreground text-sm">{quote.status === "accepted" ? "Accepted scope is locked." : "This quote is locked."}</p>
           ) : (
-            <QuoteItemForm quoteId={quote.id} products={await activeProductOptions()} canManageProducts={can(ctx.role, "product:manage")} />
+            <QuoteItemForm defaultTaxRate={settingsRes.data?.vat_registered ? settingsRes.data.vat_rate_bps : 0} quoteId={quote.id} products={await activeProductOptions()} canManageProducts={can(ctx.role, "product:manage")} />
           )}
         </CardContent>
       </Card>

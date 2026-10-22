@@ -1,29 +1,31 @@
 import { z } from "zod"
-import { sumSatang } from "@/lib/money"
 import { outstandingSatang } from "@/lib/metrics/invoice-status"
+import { calculateTax, WHT_RATES } from "@/lib/tax/totals"
 import type { PrintableDocument } from "./printable"
 
 const satang = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
 const InvoiceSnapshot = z.object({
   version: z.literal(1),
-  seller: z.object({ legalName: z.string().min(1), address: z.string(), taxId: z.string().nullable(), taxStatus: z.enum(["unknown", "not_registered", "registered"]) }),
-  buyer: z.object({ id: z.string(), name: z.string(), address: z.string().nullable(), taxId: z.string().nullable() }),
-  document: z.object({ number: z.string(), issueDate: z.string().nullable(), dueDate: z.string().nullable(), notes: z.string().nullable(), subtotalSatang: satang, discountSatang: satang, totalSatang: satang }),
-  lines: z.array(z.object({ description: z.string(), quantity: z.number().positive().max(999999999.999), unit: z.string().nullable().optional(), unitPriceSatang: satang, amountSatang: satang, position: z.number().int().min(0) })).min(1),
+  seller: z.object({ legalName: z.string().min(1), address: z.string(), taxId: z.string().nullable(), taxStatus: z.enum(["unknown", "not_registered", "registered"]), vatRegistered: z.boolean().default(false), branchLabel: z.string().nullable().optional() }),
+  buyer: z.object({ id: z.string(), name: z.string(), address: z.string().nullable(), taxId: z.string().nullable(), branchLabel: z.string().nullable().optional() }),
+  document: z.object({ number: z.string(), issueDate: z.string().nullable(), dueDate: z.string().nullable(), notes: z.string().nullable(), subtotalSatang: satang, discountSatang: satang, totalSatang: satang, vatSatang: satang.default(0), whtSatang: satang.default(0), whtRateBps: z.number().refine(value => (WHT_RATES as readonly number[]).includes(value)).default(0), amountDueSatang: satang.optional(), pricesIncludeVat: z.boolean().default(false) }),
+  lines: z.array(z.object({ description: z.string(), quantity: z.number().positive().max(999999999.999), unit: z.string().nullable().optional(), unitPriceSatang: satang, amountSatang: satang, position: z.number().int().min(0), taxRateBps: z.number().int().min(0).max(10000).default(0) })).min(1),
 })
 
-/** Read the immutable issued content, never substitute the customer's live profile. */
+/** Read immutable issued content; live seller and buyer profiles never substitute. */
 export function invoiceSnapshotDocument(value: unknown, status: string, verifiedPaidSatang: number): PrintableDocument {
   const snapshot = InvoiceSnapshot.parse(value)
   const document = snapshot.document
-  if (sumSatang(snapshot.lines.map(line => line.amountSatang)) !== document.subtotalSatang || document.discountSatang > document.subtotalSatang || document.subtotalSatang - document.discountSatang !== document.totalSatang) throw new Error("Invalid issued snapshot totals")
+  const totals = calculateTax(snapshot.lines.map(line => ({ amount_satang: line.amountSatang, tax_rate_bps: line.taxRateBps })), document.discountSatang, document.pricesIncludeVat, document.whtRateBps)
+  if (totals.subtotalSatang !== document.subtotalSatang || totals.totalSatang !== document.totalSatang || totals.vatSatang !== document.vatSatang || totals.whtSatang !== document.whtSatang || totals.amountDueSatang !== (document.amountDueSatang ?? document.totalSatang)) throw new Error("Invalid issued snapshot totals")
   return {
-    kind: "ใบแจ้งหนี้ / Operational invoice", number: document.number, status,
-    orgName: snapshot.seller.legalName, sellerAddress: snapshot.seller.address, sellerTaxId: snapshot.seller.taxId,
-    clientName: snapshot.buyer.name, buyerAddress: snapshot.buyer.address, buyerTaxId: snapshot.buyer.taxId,
+    kind: snapshot.seller.vatRegistered ? "Tax Invoice / ใบกำกับภาษี" : "Invoice", number: document.number, status,
+    orgName: snapshot.seller.legalName, sellerAddress: snapshot.seller.address, sellerTaxId: snapshot.seller.taxId, sellerBranch: snapshot.seller.branchLabel,
+    clientName: snapshot.buyer.name, buyerAddress: snapshot.buyer.address, buyerTaxId: snapshot.buyer.taxId, buyerBranch: snapshot.buyer.branchLabel,
     issueDate: document.issueDate, dueDate: document.dueDate, notes: document.notes,
     items: snapshot.lines.map(line => ({ description: line.description, quantity: line.quantity, unit: line.unit, unit_price_satang: line.unitPriceSatang, amount_satang: line.amountSatang })),
-    subtotalSatang: document.subtotalSatang, discountSatang: document.discountSatang, totalSatang: document.totalSatang,
-    verifiedPaidSatang, outstandingSatang: outstandingSatang(document.totalSatang, verifiedPaidSatang),
+    subtotalSatang: totals.subtotalSatang, discountSatang: totals.discountSatang, totalSatang: totals.totalSatang,
+    vatSatang: totals.vatSatang, vatByRate: totals.vatByRate, whtSatang: totals.whtSatang, whtRateBps: document.whtRateBps, amountDueSatang: totals.amountDueSatang, pricesIncludeVat: document.pricesIncludeVat,
+    verifiedPaidSatang, outstandingSatang: outstandingSatang(totals.amountDueSatang, verifiedPaidSatang),
   }
 }

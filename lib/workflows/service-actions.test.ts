@@ -141,6 +141,6 @@ describe("service action amount boundaries", () => {
     fixture.from.mockReturnValue(chain)
     expect(await addQuoteItem({ quote_id: quoteId, description: "Service", quantity: "1.005", unitPriceBaht: "1.00" })).toEqual({})
     expect(inserted).toMatchObject({ org_id: fixture.ctx.orgId, quote_id: quoteId, unit_price_satang: 100, amount_satang: 101 })
-    expect(fixture.from.mock.calls.map((call) => call[0])).toEqual(["quotes", "quote_items", "quote_items"])
+    expect(fixture.from.mock.calls.map((call) => call[0])).toEqual(["quotes", "quote_items", "org_settings", "quote_items"])
   })
 })
