@@ -17,6 +17,9 @@ describe("service quote lifecycle", () => {
     expect(quoteTransitionError("sent", "sent", null, "2026-10-13")).toBeNull()
     expect(quoteTransitionError("sent", "accepted", "2026-10-12", "2026-10-13")).toBeTruthy()
   })
+  it("keeps an acceptance retry valid after the agreed validity date", () => {
+    expect(quoteTransitionError("accepted", "accepted", "2026-10-12", "2026-10-13")).toBeNull()
+  })
   it("freezes accepted and terminal quote content", () => {
     expect(quoteIsEditable("draft")).toBe(true)
     expect(quoteIsEditable("sent")).toBe(true)

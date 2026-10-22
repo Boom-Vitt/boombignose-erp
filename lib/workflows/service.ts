@@ -16,8 +16,8 @@ export function quoteTransitionError(
   today: string
 ): string | null {
   if (to === "converted") return "Use quote conversion to create the linked records."
-  if (to === "accepted" && validUntil && validUntil < today) return "This quote has expired."
   if (from === to) return null
+  if (to === "accepted" && validUntil && validUntil < today) return "This quote has expired."
   if (from === "draft" && to === "sent") return null
   if (from === "sent" && ["accepted", "declined", "expired"].includes(to)) return null
   return `Cannot change a ${from} quote to ${to}.`
