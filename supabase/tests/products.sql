@@ -60,7 +60,7 @@ delete from public.products where id='b5000000-0000-4000-8000-000000000022';
 select is((select product_id from public.invoice_items where invoice_id='b5000000-0000-4000-8000-000000000050'),null::uuid,'product removal clears only nullable reference');
 select is((select org_id::text||':'||description||':'||unit||':'||amount_satang from public.invoice_items where invoice_id='b5000000-0000-4000-8000-000000000050'),'b5000000-0000-4000-8000-000000000010:Agreed training:day:253','reference removal preserves tenant and line snapshot');
 reset role;
-select is((select count(*)::int from public.products where sku='TRAINING'),2,'same SKU allowed in different workspaces');
+select is((select count(*)::int from public.products where sku='TRAINING' and org_id in ('b5000000-0000-4000-8000-000000000010','b5000000-0000-4000-8000-000000000011')),2,'same SKU allowed in different workspaces');
 set local role anon;
 select throws_ok($$select * from public.products$$,'42501',null,'anonymous product access denied');
 reset role;
