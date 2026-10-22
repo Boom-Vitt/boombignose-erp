@@ -13,7 +13,7 @@ async function signIn(page: Page, email: string, password: string) {
   await page.waitForURL("**/dashboard")
 }
 
-test("staff rates stay private while members see labour totals and cancelled time rebills once", async ({ page, browser }) => {
+test("rates, labour cost and profit stay staff-only while members keep hours, and cancelled time rebills once", async ({ page, browser }) => {
   const org = randomUUID(), project = randomUUID(), entry = randomUUID()
   const password = `Local-${randomUUID()}!`
   const ownerEmail = `time-owner-${randomUUID()}@example.invalid`
@@ -63,8 +63,14 @@ test("staff rates stay private while members see labour totals and cancelled tim
       await memberPage.getByRole("dialog").getByLabel("Notes", { exact: true }).fill("Reviewed time")
       await memberPage.getByRole("button", { name: "Save time", exact: true }).click()
       await expect.poll(async () => (await admin.from("time_entries").select("notes").eq("id", entry).single()).data?.notes).toBe("Reviewed time")
+      expect((await memberApi.from("project_labour_totals").select("*").eq("org_id", org)).data).toEqual([])
       await memberPage.goto(`/projects/${project}`)
-      await expect(memberPage.getByText("Cost incl. labour", { exact: true }).locator("../..")).toContainText("0.28")
+      await expect(memberPage.locator("#time")).toContainText("0.2h")
+      for (const label of ["Revenue", "Cost incl. labour", "Profit", "Margin"]) await expect(memberPage.getByText(label, { exact: true })).toHaveCount(0)
+      await page.goto(`/projects/${project}`)
+      await expect(page.getByText("Cost incl. labour", { exact: true }).locator("../..")).toContainText("0.28")
+      await expect(page.getByText("Profit", { exact: true })).toBeVisible()
+      await page.goto("/timesheets")
 
       await page.getByRole("button", { name: "Bill time", exact: true }).click()
       await page.waitForURL(/\/finance\/invoices\/[^/]+$/)
