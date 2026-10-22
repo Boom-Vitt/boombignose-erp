@@ -17,10 +17,11 @@ import {
 } from "@/lib/search-facets"
 import { PERIODS } from "@/lib/periods"
 
-export function SearchFacets({ list, config, savedViews }: {
+export function SearchFacets({ list, config, savedViews, selectors = [] }: {
   list: FacetList
   config: FacetConfig
   savedViews: SavedView[]
+  selectors?: { key: "warehouse" | "product"; label: string; options: { id: string; name: string }[] }[]
 }) {
   const pathname = usePathname()
   const definition = FACET_LISTS[list]
@@ -32,20 +33,22 @@ export function SearchFacets({ list, config, savedViews }: {
   }
 
   const filters = [
-    { key: "mine" as const, value: "1", label: "My records" },
+    ...(list === "inventory" ? [] : [{ key: "mine" as const, value: "1", label: "My records" }]),
     ...definition.statuses.map((value) => ({ key: "status" as const, value, label: facetLabel(value) })),
     ...Object.entries(PERIODS).map(([value, label]) => ({ key: "period" as const, value, label })),
   ]
   const chips = [
     ...(config.q ? [{ key: "q" as const, label: `Search: ${config.q}` }] : []),
     ...filters.filter(({ key, value }) => config[key] === value),
+    ...selectors.filter(s => config[s.key]).map(s => ({ key: s.key, label: `${s.label}: ${s.options.find(o => o.id === config[s.key])?.name ?? config[s.key]}` })),
+    ...(config.sourceId ? [{ key: "sourceId" as const, label: "Source document" }] : []),
     ...(config.groupBy ? [{ key: "groupBy" as const, label: `Group by: ${facetLabel(config.groupBy)}` }] : []),
   ]
 
   return (
     <section aria-label="Search and facets" className="space-y-3 rounded-xl border p-3">
       <form action={pathname} className="flex flex-wrap gap-2">
-        {Object.entries(config).filter(([key]) => key !== "q").map(([key, value]) => (
+        {Object.entries(config).filter(([key]) => key !== "q" && !selectors.some(s => s.key === key)).map(([key, value]) => (
           <input key={key} type="hidden" name={key} value={value} />
         ))}
         <Input
@@ -56,6 +59,7 @@ export function SearchFacets({ list, config, savedViews }: {
           defaultValue={config.q ?? ""}
           className="w-full sm:w-72"
         />
+        {selectors.map(s => <label key={s.key} className="flex items-center gap-2 text-sm">{s.label}<select key={`${s.key}-${config[s.key] ?? ""}`} name={s.key} defaultValue={config[s.key] ?? ""} className="h-9 max-w-56 rounded-md border bg-background px-2"><option value="">All</option>{s.options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>)}
         <Button type="submit" variant="outline">Search</Button>
         {chips.map(({ key, label }) => (
           <Button

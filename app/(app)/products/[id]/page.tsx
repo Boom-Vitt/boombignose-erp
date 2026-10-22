@@ -1,3 +1,6 @@
+import { Package, ScrollText } from "lucide-react"
+import { SmartButtons } from "@/components/record/smart-buttons"
+import { productStock, stockMoveCount } from "@/lib/inventory/queries"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { z } from "zod"
@@ -21,11 +24,16 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const { data: product, error } = await supabase.from("products").select("*").eq("org_id", ctx.orgId).eq("id", id).maybeSingle()
   if (error) throw new Error(error.message)
   if (!product) notFound()
+  const [onHand, moves] = product.is_stockable ? await Promise.all([productStock(id), stockMoveCount({ productId: id })]) : [0, 0]
   return <div className="space-y-6">
     <PageHeader title={product.name} description="Catalog defaults for future line items.">
       <Button variant="outline" render={<Link href="/products" />}>Back to products</Button>
       {can(ctx.role, "product:manage") && <><ArchiveProductButton id={id} active={product.active} /><Button render={<Link href={`/products/${id}/edit`} />}>Edit product</Button></>}
     </PageHeader>
+    {product.is_stockable && <SmartButtons buttons={[
+      { label: "On hand", icon: Package, count: 1, value: `${onHand} ${product.unit}`, href: `/inventory?product=${id}` },
+      { label: "Moves", icon: ScrollText, count: moves, href: `/inventory/moves?product=${id}`, nextStep: true },
+    ]} />}
     <Card className="max-w-2xl"><CardContent className="space-y-5">
       <Badge variant={product.active ? "secondary" : "outline"}>{product.active ? "Active" : "Archived"}</Badge>
       <dl className="grid gap-4 sm:grid-cols-2">

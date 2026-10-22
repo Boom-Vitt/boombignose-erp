@@ -52,7 +52,7 @@ export const STATUS_DISPLAY: Record<RecordStatus, { label: string; tone: Tone }>
 }
 
 /** Steps a page performs with its own control instead of a plain status change. */
-export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill"
+export type FlowCommand = "convert" | "issue" | "pay" | "create_project" | "send_rfq" | "receive" | "bill" | "deliver"
 
 export type FlowAction<S extends string> =
   | { label: string; to: S }
@@ -90,10 +90,10 @@ export const INVOICE_FLOW: DocumentFlow<InvoiceStatus> = {
   on: { partially_paid: "sent", overdue: "sent" },
   next: {
     draft: { primary: { label: "Issue invoice", command: "issue" } },
-    sent: { primary: { label: "Record payment", command: "pay" } },
-    partially_paid: { primary: { label: "Record payment", command: "pay" } },
-    overdue: { primary: { label: "Record payment", command: "pay" } },
-    paid: {},
+    sent: { primary: { label: "Record payment", command: "pay" }, secondary: [{ label: "Deliver", command: "deliver" }] },
+    partially_paid: { primary: { label: "Record payment", command: "pay" }, secondary: [{ label: "Deliver", command: "deliver" }] },
+    overdue: { primary: { label: "Record payment", command: "pay" }, secondary: [{ label: "Deliver", command: "deliver" }] },
+    paid: { secondary: [{ label: "Deliver", command: "deliver" }] },
     cancelled: {},
   },
 }

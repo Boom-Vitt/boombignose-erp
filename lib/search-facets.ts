@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { PERIODS, inPeriod, type Period } from "@/lib/periods"
 import { sumSatang } from "@/lib/money"
 import { Constants } from "@/lib/types/database"
@@ -8,12 +9,13 @@ export const FACET_LISTS = {
   clients: { statuses: [], groups: ["industry", "source", "month"] },
   timesheets: { statuses: ["billable", "non_billable"], groups: ["project", "month"] },
   purchases: { statuses: Constants.public.Enums.purchase_status, groups: ["status", "vendor", "month"] },
+  inventory: { statuses: ["receipt", "delivery", "adjustment_in", "adjustment_out", "transfer_in", "transfer_out"], groups: [] },
   vendors: { statuses: ["active", "archived"], groups: ["status", "month"] },
 } as const
 export type FacetList = keyof typeof FACET_LISTS
-export type FacetConfig = { q?: string; status?: string; period?: Period; mine?: "1"; groupBy?: string }
+export type FacetConfig = { q?: string; status?: string; period?: Period; mine?: "1"; groupBy?: string; warehouse?: string; product?: string; sourceId?: string }
 export type SearchParams = Record<string, string | string[] | undefined>
-const KEYS = ["q", "status", "period", "mine", "groupBy"] as const
+const KEYS = ["q", "status", "period", "mine", "groupBy", "warehouse", "product", "sourceId"] as const
 
 export function parseFacets(params: SearchParams | URLSearchParams, list: FacetList): FacetConfig {
   const get = (key: string) => {
@@ -26,6 +28,10 @@ export function parseFacets(params: SearchParams | URLSearchParams, list: FacetL
   if (Object.hasOwn(PERIODS, get("period"))) config.period = get("period") as Period
   if (get("mine") === "1") config.mine = "1"
   if ((FACET_LISTS[list].groups as readonly string[]).includes(get("groupBy"))) config.groupBy = get("groupBy")
+  if (list === "inventory") for (const key of ["warehouse", "product", "sourceId"] as const) {
+    const parsed = z.uuid().safeParse(get(key))
+    if (parsed.success) config[key] = parsed.data
+  }
   return config
 }
 

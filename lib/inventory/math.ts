@@ -11,23 +11,23 @@ export function signedQuantity(kind: Enums<"stock_move_kind">, quantity: number)
 }
 
 function roundedDivide(value: bigint, divisor: bigint): bigint {
-  return value < 0n ? -roundedDivide(-value, divisor) : (value + divisor / 2n) / divisor
+  return value < BigInt(0) ? -roundedDivide(-value, divisor) : (value + divisor / BigInt(2)) / divisor
 }
 
 /** Uses the ledger's thousandth quantities and ten-decimal average cost without float rounding. */
 export function stockBalance(moves: { kind: Enums<"stock_move_kind">; quantity: number; unit_cost_satang: number }[]) {
-  let quantity = 0n
-  let average = 0n
-  const costScale = 10_000_000_000n
+  let quantity = BigInt(0)
+  let average = BigInt(0)
+  const costScale = BigInt(10_000_000_000)
   for (const move of moves) {
     const delta = BigInt(Math.round(signedQuantity(move.kind, move.quantity) * 1000))
     if (!Number.isSafeInteger(move.unit_cost_satang) || move.unit_cost_satang < 0) throw new Error("Invalid unit cost")
     const cost = BigInt(move.unit_cost_satang) * costScale
-    if (delta > 0n && !(move.kind === "adjustment_in" && quantity > 0n)) average = quantity <= 0n ? cost : roundedDivide(quantity * average + delta * cost, quantity + delta)
+    if (delta > BigInt(0) && !(move.kind === "adjustment_in" && quantity > BigInt(0))) average = quantity <= BigInt(0) ? cost : roundedDivide(quantity * average + delta * cost, quantity + delta)
     quantity += delta
-    if (quantity === 0n) average = 0n
+    if (quantity === BigInt(0)) average = BigInt(0)
   }
-  const value = Number(roundedDivide(quantity * average, 1000n * costScale))
+  const value = Number(roundedDivide(quantity * average, BigInt(1000) * costScale))
   if (!Number.isSafeInteger(value)) throw new Error("Stock value exceeds safe satang bounds")
   if (!Number.isSafeInteger(Number(quantity))) throw new Error("Stock quantity exceeds safe precision")
   return { quantity: Number(quantity) / 1000, average_cost_satang: Number(roundedDivide(average, costScale)), value_satang: value }

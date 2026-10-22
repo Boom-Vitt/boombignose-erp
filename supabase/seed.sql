@@ -226,3 +226,21 @@ on conflict(id) do nothing;
 insert into public.document_counters(org_id,kind,year,value)
 values('a0000000-0000-0000-0000-000000000001','PO',extract(year from current_date)::integer,2)
 on conflict(org_id,kind,year) do update set value=greatest(document_counters.value,excluded.value);
+
+-- Synthetic opening inventory; stable IDs make a seed retry leave the ledger unchanged.
+insert into public.products(id,org_id,sku,name,type,unit,is_stockable,list_price_satang,cost_satang,reorder_min,reorder_qty,default_vendor_id) values
+ ('a8100000-0000-4000-8000-000000000001','a0000000-0000-0000-0000-000000000001','DEMO-HUB','Demo USB hub','goods','piece',true,150000,80000,5,10,'a6000000-0000-4000-8000-000000000001'),
+ ('a8100000-0000-4000-8000-000000000002','a0000000-0000-0000-0000-000000000001','DEMO-MIC','Demo studio microphone','goods','piece',true,350000,200000,4,6,'a6000000-0000-4000-8000-000000000002')
+on conflict(id) do nothing;
+insert into public.stock_moves(id,org_id,product_id,warehouse_id,kind,quantity,unit_cost_satang,source_type,source_id,note,balance_after,average_cost_after)
+select v.id,'a0000000-0000-0000-0000-000000000001',v.product,w.id,'receipt'::public.stock_move_kind,v.qty,v.cost,'adjustment',v.id,'Synthetic opening receipt',0,0
+from (values
+ ('a8200000-0000-4000-8000-000000000001'::uuid,'a8100000-0000-4000-8000-000000000001'::uuid,12,80000),
+ ('a8200000-0000-4000-8000-000000000002'::uuid,'a8100000-0000-4000-8000-000000000002'::uuid,3,200000)
+) v(id,product,qty,cost)
+join public.warehouses w on w.org_id='a0000000-0000-0000-0000-000000000001' and w.is_default
+where not exists(select 1 from public.stock_moves m where m.id=v.id);
+insert into public.stock_moves(id,org_id,product_id,warehouse_id,kind,quantity,unit_cost_satang,source_type,source_id,note,balance_after,average_cost_after)
+select 'a8200000-0000-4000-8000-000000000003','a0000000-0000-0000-0000-000000000001','a8100000-0000-4000-8000-000000000001',w.id,'delivery',2,0,'adjustment','a8200000-0000-4000-8000-000000000003','Synthetic demo delivery',0,0
+from public.warehouses w where w.org_id='a0000000-0000-0000-0000-000000000001' and w.is_default
+and not exists(select 1 from public.stock_moves where id='a8200000-0000-4000-8000-000000000003');

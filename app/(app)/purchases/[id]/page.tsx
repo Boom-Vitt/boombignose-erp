@@ -1,6 +1,7 @@
 import Link from "next/link"
-import { Receipt, Users } from "lucide-react"
+import { Receipt, Users, Package } from "lucide-react"
 import { requireOrgContext } from "@/lib/auth"
+import { inventoryData, stockMoveCount } from "@/lib/inventory/queries"
 import { can } from "@/lib/permissions"
 import { purchaseDetail, purchaseOptions } from "@/lib/purchasing/queries"
 import { billAmount, purchaseTotal } from "@/lib/purchasing/quantities"
@@ -24,7 +25,7 @@ export const dynamic = "force-dynamic"
 export default async function PurchasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const ctx = await requireOrgContext()
-  const { order, lines, bills } = await purchaseDetail(id)
+  const [{ order, lines, bills }, { warehouses }, receiptCount] = await Promise.all([purchaseDetail(id), inventoryData(), stockMoveCount({ sourceId: id })])
   const manage = can(ctx.role, "purchase:manage")
   const editable = manage && order.status === "draft"
   const products = editable ? (await purchaseOptions()).products : []
@@ -41,6 +42,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
       ...(billable ? { bill: ({ label, variant }: { label: string; variant: "default" | "outline" }) => <PurchaseAction action={createPurchaseBill.bind(null, id)} label={label} variant={variant} /> } : {}),
     } : {}} />
     <SmartButtons buttons={[
+      { label: "Receipts", icon: Package, href: `/inventory/moves?sourceId=${id}`, count: receiptCount, nextStep: true },
       { label: "Bills", icon: Receipt, href: "#bills", count: bills.length, nextStep: true },
       { label: "Vendor", icon: Users, href: `/vendors/${order.vendor_id}`, count: 1, value: order.vendors?.name },
     ]} />
@@ -50,7 +52,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
     </Table>
     {!lines.length && <p className="text-sm text-muted-foreground">Add a line before sending or confirming this order.</p>}
     {editable && <PurchaseLineForm orderId={id} products={products} />}
-    {manage && receivable && <ReceiptForm orderId={id} lines={lines} />}
+    {manage && receivable && <ReceiptForm orderId={id} lines={lines} warehouses={warehouses.filter(w => w.active)} />}
     {unbilled > 0 && <p className="text-sm">Received and not yet billed: {formatTHB(unbilled)}</p>}
     <VendorBills bills={bills} canManage={manage} />
     <RecordHistory recordType="purchase_order" recordId={id} />

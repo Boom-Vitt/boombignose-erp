@@ -1,7 +1,7 @@
 import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { FileSignature, FileText, FolderKanban, Wallet } from "lucide-react"
+import { FileSignature, FileText, FolderKanban, Wallet, Truck } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -12,6 +12,9 @@ import {
   outstandingSatang,
 } from "@/lib/metrics/invoice-status"
 import type { Enums } from "@/lib/types/database"
+import { deliverInvoice } from "@/lib/inventory/actions"
+import { invoiceStockableCount, stockMoveCount } from "@/lib/inventory/queries"
+import { InventoryAction } from "@/app/(app)/inventory/_components/action-button"
 import { INVOICE_FLOW } from "@/lib/record/status"
 
 import { PageHeader } from "@/components/page-header"
@@ -85,6 +88,7 @@ export default async function InvoiceDetailPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
   const today = todayISO()
+  const [deliveryCount, stockableCount] = await Promise.all([stockMoveCount({ sourceId: id }), invoiceStockableCount(id)])
 
   const [
     claimsRes,
@@ -202,6 +206,7 @@ export default async function InvoiceDetailPage({
 
       <SmartButtons
         buttons={[
+          { label: "Deliveries", icon: Truck, count: deliveryCount, href: `/inventory/moves?sourceId=${id}`, nextStep: !!invoice.issued_snapshot_id && stockableCount > 0 },
           { label: "Payments", icon: Wallet, count: paymentsRes.count ?? 0, href: "#payments" },
           {
             label: "Source quote",
@@ -226,6 +231,9 @@ export default async function InvoiceDetailPage({
             ? {}
             : {
                 issue: "#issue-invoice",
+                ...(can(ctx.role, "inventory:manage") && invoice.issued_snapshot_id && deliveryCount === 0 && stockableCount > 0
+                  ? { deliver: ({ label, variant }: { label: string; variant: "default" | "outline" }) => <InventoryAction label={label} variant={variant} action={deliverInvoice.bind(null, id, undefined)} /> }
+                  : {}),
                 ...(outstanding > 0 && !["draft", "cancelled"].includes(invoice.status)
                   ? { pay: "#payment-claims" }
                   : {}),
