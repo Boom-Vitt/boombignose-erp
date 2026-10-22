@@ -66,10 +66,64 @@ An independent reviewer read the whole diff (`4bd97d0..HEAD`) and traced the unr
 
 W4-f had turned Mark lost into a confirm dialog with a free-text reason kept as a record note. Under this track a move to lost without a lost reason is refused by the database, so Mark lost stays this track's `lose` command. The reason dialog now also takes W4-f's optional note, which is saved as "Lost: …" in the record history from all three entry points: status bar, stage select and board. The status-bar Mark lost runs under W4-f's record guard, so the whole bar locks while it is pending. W4-f's `status-bar.test.ts` gives the bar a `lose` handler so Mark lost still renders there. Every form here has a submit control, so the new `forms-submit` guard passes.
 
+## Fix round 1 (Codex review `reviews/w4e.md`)
+
+Branch merged `odoo-parity` at `87851f8` first (clean). All six findings are fixed in `supabase/migrations/20261025160000_crm_fixes.sql` plus small action changes, with the failing tests committed first (`ba1c5e3`) and the fixes on top (`9af2f6a`).
+
+- **Atomic deal delete.** New `public.delete_deal(org, deal)` (security invoker, deals RLS applies) locks the deal, moves its activities to the client, deletes it and returns the title, all in one transaction. `deleteDeal` calls it instead of two separate writes, and a deal that is already gone now returns the "no longer exists" error instead of auditing a phantom delete. With W4-a's link-only exemption in `guard_quote_record`, a deal whose accepted quote is past its valid-until date now deletes; the quote stays accepted with its content unchanged and loses only `deal_id`.
+- **Quote and deal customer match from both sides.** `quotes_deal_tenant_fkey (org_id,deal_id)` is replaced by `quotes_deal_client_fkey (org_id,deal_id,client_id) -> deals(org_id,id,client_id) on delete set null (deal_id)`, backed by a new unique key `deals_org_id_id_client_id_key`. Changing the client of a deal that has quotes is refused (23503), and `updateDeal` turns that into "This deal has quotes for its current client. Unlink them before changing the client." Quotes already sitting on another customer's deal are unlinked by the migration, with `guard_quote_record` and `set_updated_at` off for that link-only statement as in the original backfill. `guard_quote_deal` still gives the friendly quote-side message. `deal-won-offer.tsx` now embeds through the new constraint name, and `lib/types/database.ts` lists it, so typecheck catches a stale embed hint.
+- **Web-form deal lock.** `submit_lead_form` selects the reused open deal `for update` and keeps the lock until commit (only that line changed). A deal closed concurrently fails the recheck, so the enquiry goes to the next open deal or a new one.
+- **Explicit probability.** A column-list trigger `apply_deal_probability_flag` (`before update of probability`, sorts before `apply_deal_stage`) flags the row in a transaction-local setting (`crm.deal_probability_named`); `apply_deal_stage` resets probability on a stage change only when the write did not name it, and clears the flag on every update. An explicit value equal to the old one now survives; an explicit null takes the stage default.
+- **Exact expected revenue.** `expectedRevenue` multiplies and rounds half up in `BigInt`, so `9007199254740991 x 30%` gives `2702159776422297`. The deal form's live preview rounds a typed decimal probability before calling it.
+- **Lost note in the same transaction.** `move_deal` gains `p_note` (dropped and recreated, grants re-issued). `updateDealStage` passes `Lost: <note>` for lost moves, so a note that cannot be saved fails the whole move and the board, select and status bar never disagree with the database. `logRecordNote` is no longer called from deal actions.
+
+SQL functions created or replaced in this round: `public.delete_deal` (new), `private.flag_deal_probability` (new), `private.apply_deal_stage` (replaced), `public.move_deal` (dropped and recreated with `p_note`), `public.submit_lead_form` (replaced). No W4-a function (`guard_quote_record`, `guard_commercial_customer`) or W4-c quote function was redefined; the migration only disables and re-enables `guard_quote_record` around the one repair statement.
+
+### Verification, fix round 1
+
+Failing first. `supabase/tests/crm_fixes.sql` (22 assertions) against the pre-fix schema: the two new RPCs did not exist; with those lines stripped, the client change succeeded (wanted 23503), an explicit 40% became 50%, and the reused deal held only `{"For Key Share"}`. Vitest: 6 new assertions failed before the fix (`lib/deals/actions.test.ts`, `lib/metrics/pipeline.test.ts` got `2702159776422298`), and the review-found form crash failed with `RangeError: The number 33.5 cannot be converted to a BigInt` (`lib/deals/deal-form.test.ts`).
+
+Runtime checks on the isolated stack:
+- Two sessions, one closing the deal while the other submits a repeat enquiry. Old function: no wait, enquiry on "Open deal (won)". New function: waited 1.5 s for the close, then opened "Web form: Race visitor (lead)".
+- Repair statement on a database seeded with one mismatched link: 1 mismatch before, 0 after, the valid seed link kept.
+- A temporary Playwright spec (not committed; it needs `docker exec` to fake an expired acceptance) deleted a deal with an expired accepted quote through the edit page's Delete button: deal gone, quote `accepted` and unlinked, activity on the client, audit "Deleted deal ...".
+- PostgREST: the old embed hint `deals!quotes_deal_tenant_fkey` returns `PGRST200` after the migration; the new hint resolves.
+
+Gates on the final commit (`9af2f6a`), all on the exclusive stack (API 55901, app 3108):
+
+```text
+.local-stack/db-reset.sh "$PWD"
+Files=33, Tests=1047
+Result: PASS
+
+pnpm lint
+$ eslint                                  (exit 0)
+
+pnpm typecheck
+$ tsc --noEmit                            (exit 0)
+
+pnpm test
+ Test Files  149 passed (149)
+      Tests  1181 passed (1181)
+
+pnpm build
+✓ Compiled successfully in 3.8s
+
+pnpm e2e
+  1 failed
+    [chromium] › e2e/v2.spec.ts:18:5 › invoices CSV exports amounts in baht, not satang
+  4 skipped
+  45 passed (1.5m)
+$ pnpm e2e e2e/v2.spec.ts
+  5 passed (2.7s)
+```
+
+An independent reviewer read the round's diff. It confirmed all six fixes and found three regressions in this round's own change, all fixed before the gates above: the won offer's embed hint named the dropped constraint, the form preview crashed on a decimal probability, and the repair statement could abort the migration on a legacy quote whose project client also differed.
+
 ## Open issues
 
-- Needs W4-c: deleting a deal sets `quotes.deal_id` to null, which fires `guard_quote_record`, and that guard rejects any update to an accepted quote past its valid-until date ("Quote expired"). Such a deal (and a client cascade through it) cannot be deleted. Worse, `deleteDeal` detaches the deal's activities before the delete, and that is not rolled back. Suggested fix in the guard: return early when `deal_id` is the only changed column. The non-atomic detach in `deleteDeal` predates this track.
-- Changing a deal's client leaves its quotes linked to it; the next edit of such a quote fails "Deal and quote customer must match" until the deal field is cleared.
 - Reordering bumps `updated_at` on the renumbered deals.
-- A write that changes the stage and sets probability to exactly its old value gets the stage default (the trigger cannot tell "unchanged" from "re-typed"). The form always sends the new stage's default on a stage change, so this needs a deliberate re-type.
-- No Playwright spec was added for the dialogs, drop slots or activity bar; they are covered by unit tests of the pure helpers and component logic only.
+- Changing a quoted deal's client is refused. The user must unlink the quotes first; there is no "move quotes with the deal" option.
+- `delete_deal` moves activities to the client but leaves the deal's record notes and attachments without a parent record (unchanged from before this round).
+- No Playwright spec was added for the dialogs, drop slots or activity bar; they are covered by unit tests of the pure helpers and component logic only. The expired-quote delete was checked live but is not a committed spec, because no API path can produce an accepted quote past its valid-until date.
+- Full `pnpm e2e` drops one test per run on this stack, a different one each time: `time-metrics.spec.ts:16`, `v2-batch2.spec.ts:70` (twice) and `v2.spec.ts:18` in four runs on this branch. Each of those failures sits on the sign-in page (redirected back to `/login`) while GoTrue logs `Session not found` for `/user`, and each spec passes when run alone. None touches code changed here. The `odoo-parity` baseline (`87851f8`), built and run the same way, also failed one test (`time-metrics.spec.ts:16`, 30 s timeout; 45 passed), so this predates the round. Suspected cause, not verified: session churn between specs under refresh-token rotation (`refresh_token_reuse_interval = 10`). Owner: whoever owns the shared e2e auth helpers.
