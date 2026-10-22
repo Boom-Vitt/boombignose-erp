@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(43);
+select plan(49);
 
 insert into auth.users(id,email,email_confirmed_at) values
   ('b6000000-0000-4000-8000-000000000001','synthetic-form-owner@example.invalid',now()),
@@ -59,7 +59,17 @@ select is((select count(*)::int from public.audit_log where org_id='b6000000-000
 select is((select ip_hash from public.lead_submissions where form_id='b6000000-0000-4000-8000-000000000020'),repeat('c',64),'submission stores only the provided keyed hash');
 select is(public.submit_lead_form(repeat('a',43),repeat('c',64),'Visitor again','Other company','visitor@example.invalid','','New message',''),'success','same email can submit another enquiry');
 select is((select count(*)::int from public.clients where org_id='b6000000-0000-4000-8000-000000000010'),1,'same tenant email reuses existing client');
-select is((select count(*)::int from public.deals where org_id='b6000000-0000-4000-8000-000000000010'),2,'each enquiry creates a deal');
+select is((select count(*)::int from public.deals where org_id='b6000000-0000-4000-8000-000000000010'),1,'a repeat enquiry from a known email opens no duplicate deal');
+select is((select count(*)::int from public.record_notes where org_id='b6000000-0000-4000-8000-000000000010' and record_type='deal'),2,'the repeat enquiry is a note on the open deal');
+select is((select count(distinct deal_id)::int from public.lead_submissions where form_id='b6000000-0000-4000-8000-000000000020'),1,'both submissions point at the same deal');
+select ok((select type='follow_up' and not done and owner='b6000000-0000-4000-8000-000000000001' and due_date=(now() at time zone 'Asia/Bangkok')::date
+  from public.activities where org_id='b6000000-0000-4000-8000-000000000010'),'the repeat enquiry schedules a follow-up for the deal owner today');
+select is((select count(*)::int from public.audit_log where org_id='b6000000-0000-4000-8000-000000000010' and action='web_form_submitted' and summary='Web form enquiry added to open deal' and (meta->>'attached')::boolean),1,'the repeat is audited as attached');
+reset role;
+update public.deals set stage='won' where org_id='b6000000-0000-4000-8000-000000000010';
+set local role service_role;
+select is(public.submit_lead_form(repeat('t',43),repeat('f',64),'Visitor','',(select email from public.contacts where org_id='b6000000-0000-4000-8000-000000000010'),'','After the win',''),'success','a known email can still enquire after its deal closed');
+select is((select count(*)::int from public.deals where org_id='b6000000-0000-4000-8000-000000000010'),2,'a client with no open deal gets a new deal');
 select public.submit_lead_form(repeat('a',43),repeat('c',64),'Visitor','','visitor@example.invalid','','Hello','') from generate_series(1,3);
 select is(public.submit_lead_form(repeat('a',43),repeat('c',64),'Visitor','','visitor@example.invalid','','Hello',''),'rate_limited','sixth request from one IP is limited');
 select is((select count(*)::int from public.lead_submissions where form_id='b6000000-0000-4000-8000-000000000020'),5,'rate limited request creates no partial submission');

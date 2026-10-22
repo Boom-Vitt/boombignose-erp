@@ -23,6 +23,12 @@ export type Database = {
           }
         },"public": {
           Tables: {
+      deal_lost_reasons: {
+        Row: { id: string; org_id: string; name: string; active: boolean; created_at: string }
+        Insert: { id?: string; org_id: string; name: string; active?: boolean; created_at?: string }
+        Update: { id?: string; org_id?: string; name?: string; active?: boolean; created_at?: string }
+        Relationships: [{ foreignKeyName: "deal_lost_reasons_org_id_fkey"; columns: ["org_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] }]
+      }
       vendors: {
         Row: { id: string; org_id: string; name: string; tax_id: string | null; email: string | null; phone: string | null; address: string | null; payment_terms_days: number; notes: string | null; active: boolean; created_at: string; updated_at: string }
         Insert: { id?: string; org_id: string; name: string; tax_id?: string | null; email?: string | null; phone?: string | null; address?: string | null; payment_terms_days?: number; notes?: string | null; active?: boolean; created_at?: string; updated_at?: string }
@@ -273,16 +279,20 @@ isOneToOne: false
                   ]
                 },"deals": {
                   Row: {
+"probability": number,"lost_reason_id": string | null,"won_at": string | null,"lost_at": string | null,"sequence": number,
                     "client_id": string,"created_at": string,"currency": string,"expected_close_date": string | null,"id": string,"next_follow_up_date": string | null,"notes": string | null,"org_id": string,"owner": string | null,"source": string | null,"stage": Database["public"]['Enums']["deal_stage"],"title": string,"updated_at": string,"value_satang": number
                   }
                   ComputedFields: never
                   Insert: {
+"probability"?: number,"lost_reason_id"?: string | null,"won_at"?: string | null,"lost_at"?: string | null,"sequence"?: number,
                     "client_id": string,"created_at"?: string,"currency"?: string,"expected_close_date"?: string | null,"id"?: string,"next_follow_up_date"?: string | null,"notes"?: string | null,"org_id": string,"owner"?: string | null,"source"?: string | null,"stage"?: Database["public"]['Enums']["deal_stage"],"title": string,"updated_at"?: string,"value_satang"?: number
                   }
                   Update: {
+"probability"?: number,"lost_reason_id"?: string | null,"won_at"?: string | null,"lost_at"?: string | null,"sequence"?: number,
                     "client_id"?: string,"created_at"?: string,"currency"?: string,"expected_close_date"?: string | null,"id"?: string,"next_follow_up_date"?: string | null,"notes"?: string | null,"org_id"?: string,"owner"?: string | null,"source"?: string | null,"stage"?: Database["public"]['Enums']["deal_stage"],"title"?: string,"updated_at"?: string,"value_satang"?: number
                   }
                   Relationships: [
+                    { foreignKeyName: "deals_lost_reason_tenant_fkey"; columns: ["org_id", "lost_reason_id"]; isOneToOne: false; referencedRelation: "deal_lost_reasons"; referencedColumns: ["org_id", "id"] },
                     {
       foreignKeyName: "deals_client_id_fkey_tenant"
       columns: ["org_id","client_id"]
@@ -913,19 +923,23 @@ isOneToOne: false
                   ]
                 },"quotes": {
                   Row: {
+"deal_id": string | null,
 "prices_include_vat": boolean,"vat_satang": number,"tax_breakdown": Json,
                     "client_id": string,"converted_invoice_id": string | null,"created_at": string,"discount_satang": number,"id": string,"issue_date": string,"notes": string | null,"number": string,"org_id": string,"owner": string | null,"project_id": string | null,"status": Database["public"]['Enums']["quote_status"],"subtotal_satang": number,"total_satang": number,"updated_at": string,"valid_until": string | null
                   }
                   ComputedFields: never
                   Insert: {
+"deal_id"?: string | null,
 "prices_include_vat"?: boolean,"vat_satang"?: number,"tax_breakdown"?: Json,
                     "client_id": string,"converted_invoice_id"?: string | null,"created_at"?: string,"discount_satang"?: number,"id"?: string,"issue_date"?: string,"notes"?: string | null,"number": string,"org_id": string,"owner"?: string | null,"project_id"?: string | null,"status"?: Database["public"]['Enums']["quote_status"],"subtotal_satang"?: number,"total_satang"?: number,"updated_at"?: string,"valid_until"?: string | null
                   }
                   Update: {
+"deal_id"?: string | null,
 "prices_include_vat"?: boolean,"vat_satang"?: number,"tax_breakdown"?: Json,
                     "client_id"?: string,"converted_invoice_id"?: string | null,"created_at"?: string,"discount_satang"?: number,"id"?: string,"issue_date"?: string,"notes"?: string | null,"number"?: string,"org_id"?: string,"owner"?: string | null,"project_id"?: string | null,"status"?: Database["public"]['Enums']["quote_status"],"subtotal_satang"?: number,"total_satang"?: number,"updated_at"?: string,"valid_until"?: string | null
                   }
                   Relationships: [
+                    { foreignKeyName: "quotes_deal_tenant_fkey"; columns: ["org_id", "deal_id"]; isOneToOne: false; referencedRelation: "deals"; referencedColumns: ["org_id", "id"] },
                     {
       foreignKeyName: "quotes_client_id_fkey_tenant"
       columns: ["org_id","client_id"]
@@ -1211,6 +1225,9 @@ isOneToOne: false
                            },
 "finish_outbound_event":
 { Args: { "p_error"?: string,"p_event_id": string,"p_lease_token": string }; Returns: boolean
+                           },
+"move_deal":
+{ Args: { "p_org_id": string,"p_deal_id": string,"p_stage": Database["public"]['Enums']["deal_stage"],"p_after_id"?: string | null,"p_lost_reason_id"?: string | null }; Returns: Database["public"]['Enums']["deal_stage"]
                            },
 "generate_subscription_occurrence":
 { Args: { "p_occurrence": string,"p_org_id": string,"p_subscription_id": string }; Returns: string
