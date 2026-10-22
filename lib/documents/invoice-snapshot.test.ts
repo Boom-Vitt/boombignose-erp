@@ -1,5 +1,6 @@
 import { expect, it } from "vitest"
 import { invoiceSnapshotDocument } from "./invoice-snapshot"
+import { renderDocumentHtml } from "./printable"
 const snapshot = {
   version: 1,
   seller: { legalName: "ร้านเดิม", address: "ที่อยู่เดิม", taxId: null, taxStatus: "unknown" },
@@ -20,4 +21,15 @@ it("fails closed for unknown snapshot versions or corrupted unsafe totals", () =
   expect(() => invoiceSnapshotDocument({ ...snapshot, version: 2 }, "sent", 0)).toThrow()
   expect(() => invoiceSnapshotDocument({ ...snapshot, document: { ...snapshot.document, totalSatang: Number.MAX_SAFE_INTEGER + 1 } }, "sent", 0)).toThrow()
   expect(() => invoiceSnapshotDocument({ ...snapshot, document: { ...snapshot.document, totalSatang: 9999 } }, "sent", 0)).toThrow()
+})
+
+it("preserves issued units through parsing and printable rendering", () => {
+  const doc = invoiceSnapshotDocument({ ...snapshot, lines: [{ ...snapshot.lines[0], unit: "hour" }] }, "sent", 0)
+  expect(doc.items[0]).toMatchObject({ unit: "hour" })
+  expect(renderDocumentHtml(doc)).toContain('<td class="num">1 hour</td>')
+})
+
+it.each([undefined, null])("renders legacy or null-unit snapshots without inventing a unit (%s)", (unit) => {
+  const doc = invoiceSnapshotDocument({ ...snapshot, lines: [{ ...snapshot.lines[0], unit }] }, "sent", 0)
+  expect(renderDocumentHtml(doc)).toContain('<td class="num">1</td>')
 })
