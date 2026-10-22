@@ -25,9 +25,9 @@
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 <br/>
-[![Tests](https://img.shields.io/badge/tests-125%20passing-brightgreen)](#-คำสั่งที่ใช้บ่อย-scripts)
-[![Status](https://img.shields.io/badge/status-internal%20MVP-blue)](#-สถานะโปรเจกต์)
-[![License](https://img.shields.io/badge/license-proprietary%20·%20open--core%20planned-orange)](./LICENSE.md)
+[![Tests](https://img.shields.io/badge/tests-510%20passing-brightgreen)](#-คำสั่งที่ใช้บ่อย-scripts)
+[![Status](https://img.shields.io/badge/status-open--core-blue)](#license)
+[![License](https://img.shields.io/badge/license-AGPL--3.0%20%7C%20Commercial-blue)](./COMMERCIAL-LICENSE.md)
 ![Made in Thailand](https://img.shields.io/badge/made%20in-Bangkok%20🇹🇭-ED1C24)
 
 <br/>
@@ -58,7 +58,7 @@
 - [โมเดล Open-core](#-โมเดล-open-core)
 - [การมีส่วนร่วม](#-การมีส่วนร่วม-contributing)
 - [ความปลอดภัยและ PDPA](#-ความปลอดภัยและ-pdpa)
-- [สัญญาอนุญาต](#-สัญญาอนุญาต-license)
+- [License / สัญญาอนุญาต](#license)
 
 ---
 
@@ -151,6 +151,8 @@ node scripts/verify-seed.mjs
 pnpm dev                 # http://localhost:3000
 ```
 
+สำหรับ Community ที่ต้องการสร้างองค์กรใหม่ ให้เริ่มจากฐานข้อมูลว่างโดยไม่โหลด demo seed (`supabase db reset --no-seed` สำหรับฐานข้อมูล local ใหม่) จากนั้นสมัครที่ `/signup` ยืนยันบัญชี สร้างองค์กรที่ `/onboarding` และเชิญทีมจาก Settings โดยไม่ต้องมี `ee/` การโหลด demo seed จะสร้างองค์กรเดโมไว้แล้ว
+
 ### เข้าสู่ระบบด้วยบัญชีเดโม
 
 | อีเมล | รหัสผ่าน | บทบาท |
@@ -179,6 +181,7 @@ pnpm dev                 # http://localhost:3000
 | `NEXT_PUBLIC_APP_URL` | ✅ | URL ของแอป (ใช้ทำลิงก์/redirect ตอนยืนยันอีเมล) |
 | `OPENROUTER_API_KEY` | ⬜ | เปิดใช้ผู้ช่วย AI (Gemini 4 ผ่าน OpenRouter) — ถ้าไม่ใส่ ฟีเจอร์ AI จะ degrade อย่างสวยงาม |
 | `OPENROUTER_MODEL` | ⬜ | override โมเดล (ดีฟอลต์ `google/gemini-4-argon`) |
+| `BBN_EDITION` | ⬜ | เลือกตอน build: `community` เป็นค่าเริ่มต้น, `pro` สำหรับ Pro ที่มีข้อตกลงเชิงพาณิชย์ |
 
 ---
 
@@ -210,8 +213,10 @@ components/           app-sidebar, nav registry, UI ที่ใช้ร่ว�
 lib/
   supabase/           client ฝั่ง server / browser / middleware / admin
   metrics/            business logic แบบ PURE ที่ unit-test ครบ (finance, pipeline, projects, ...)
-  ai/  accounting/    ผู้ช่วย AI + โครง sync บัญชี (V2)
+  ai/                 ผู้ช่วย AI พื้นฐาน (Community)
   money.ts  dates.ts  auth.ts  audit.ts  export/  automation/
+ee/                   Pro: client portal, accounting sync, multi-org UX (commercial)
+bignose/              BigNose OS แยกผลิตภัณฑ์ (proprietary/commercial)
 supabase/
   migrations/         schema + RLS
   seed.sql            ข้อมูลเดโม SME ไทยจำลอง
@@ -242,17 +247,15 @@ docs/                 MVP_SPEC, ROADMAP, OPEN_CORE_STRATEGY, PDPA_SECURITY_NOTES
 
 ## 🧩 โมเดล Open-core
 
-โปรเจกต์วางไว้ให้เป็น **open-core**: แกนหลัก (Community) + ฟีเจอร์ระดับองค์กร (Pro) แนวทางที่แนะนำคือ **dual license: AGPLv3 หรือ Commercial** — อ่านการเทียบและเส้นแบ่ง Community vs Pro ได้ที่ [`docs/OPEN_CORE_STRATEGY.md`](./docs/OPEN_CORE_STRATEGY.md)
+โปรเจกต์เป็น **open-core**: Community Edition ใช้ **AGPL-3.0-only หรือ Commercial** ส่วน Pro แยกไว้ใน `ee/` ภายใต้สัญญาอนุญาตเชิงพาณิชย์ ดูเส้นแบ่งที่ [`docs/OPEN_CORE_BOUNDARY.md`](./docs/OPEN_CORE_BOUNDARY.md) และแนวทางที่ [`docs/OPEN_CORE_STRATEGY.md`](./docs/OPEN_CORE_STRATEGY.md)
 
 ---
 
 ## 🤝 การมีส่วนร่วม (Contributing)
 
-ยินดีรับ issue และข้อเสนอแนะ! เนื่องจาก **ยังไม่ได้เลือกสัญญาอนุญาตอย่างเป็นทางการ** (ดูด้านล่าง) เราจะเปิดรับ pull request จากภายนอกหลังจากตั้งค่าไลเซนส์ + CLA เรียบร้อยแล้ว ระหว่างนี้:
+ยินดีรับ issue และ pull request! อ่าน [`CONTRIBUTING.md`](./CONTRIBUTING.md) และยอมรับ [`CLA.md`](./CLA.md) พร้อมติ๊กช่องยืนยันใน PR ก่อนส่งผลงาน โดยผู้ร่วมพัฒนายังคงเป็นเจ้าของผลงาน และอนุญาตให้ BoomBigNose AI Co., Ltd. ออกสัญญาอนุญาตทั้งแบบโอเพนซอร์สและเชิงพาณิชย์ได้
 
-1. เปิด [issue](https://github.com/Boom-Vitt/boombignose-erp/issues) เพื่อคุยเรื่องบั๊กหรือฟีเจอร์ก่อน
-2. ให้ `pnpm lint && pnpm typecheck && pnpm test && pnpm build` ผ่านทั้งหมด
-3. เขียนโค้ดให้เข้ากับสไตล์เดิม และคง business logic ที่ต้องเทสต์ให้อยู่ใน `lib/` แบบ pure
+ให้ `pnpm lint`, `pnpm typecheck`, `pnpm test` และ `pnpm build` ผ่านก่อนส่ง PR และคงขอบเขต Community / Pro ตามเอกสาร
 
 ---
 
@@ -264,12 +267,15 @@ docs/                 MVP_SPEC, ROADMAP, OPEN_CORE_STRATEGY, PDPA_SECURITY_NOTES
 
 ---
 
-## 📄 สัญญาอนุญาต (License)
+<a id="license"></a>
 
-> [!IMPORTANT]
-> **ยังไม่ได้เลือกสัญญาอนุญาต** — ปัจจุบันซอฟต์แวร์นี้เป็น **proprietary / สงวนสิทธิ์ทั้งหมด** สำหรับใช้ภายในเท่านั้น ยังไม่อนุญาตให้เผยแพร่ต่อ
+## 📄 License / สัญญาอนุญาต
 
-ทิศทางที่วางไว้คือ open-core แบบ **dual license (AGPLv3 หรือ Commercial)** — รายละเอียดที่ [`LICENSE.md`](./LICENSE.md) และ [`docs/OPEN_CORE_STRATEGY.md`](./docs/OPEN_CORE_STRATEGY.md)
+**ไทย:** Community รองรับการสมัคร สร้างองค์กรแรก และเชิญ/รับสมาชิกในองค์กรเดียวด้วยบทบาท owner/admin/member โดยไม่ต้องใช้ `ee/` ส่วนการสลับหลายองค์กรและการ provision องค์กรเพิ่มเติมสำหรับ hosted อยู่ใน Pro เท่านั้น Community Edition ใช้ [AGPL-3.0-only](./LICENSE) หรือ [Commercial license](./COMMERCIAL-LICENSE.md) ตามข้อตกลงกับบริษัท ใช้งานเชิงพาณิชย์ภายใต้ AGPL ได้เมื่อปฏิบัติตามเงื่อนไข รวมถึงการให้ซอร์สตามข้อกำหนด Pro ใน [`ee/`](./ee/) ใช้ [สัญญาอนุญาตเชิงพาณิชย์](./ee/LICENSE) แยกต่างหาก และต้องมีข้อตกลงก่อนใช้ใน production ส่วน [`bignose/`](./bignose/LICENSE) เป็น BigNose OS แยกผลิตภัณฑ์และไม่อยู่ใต้ AGPL
+
+**English:** Community includes signup, first-org setup, and team invitations/acceptance with owner/admin/member roles, without `ee/`. Multi-org switching and additional or hosted workspace provisioning are Pro. Community Edition is dual-licensed under [AGPL-3.0-only](./LICENSE) or a separately agreed [Commercial license](./COMMERCIAL-LICENSE.md). Pro implementations in [`ee/`](./ee/) are commercial source-available software under [`ee/LICENSE`](./ee/LICENSE); production use requires a commercial agreement. [`bignose/`](./bignose/LICENSE) is the separate proprietary BigNose OS product and is excluded from the AGPL.
+
+The default build is Community. Licensed Pro builds use `BBN_EDITION=pro`; see [the boundary and setup instructions](./docs/OPEN_CORE_BOUNDARY.md). Third-party licenses are preserved in [NOTICE](./NOTICE). The BoomBigNose name and logo are reserved; forks must rebrand under [TRADEMARK.md](./TRADEMARK.md). For commercial terms, contact [boombignose.org](https://boombignose.org).
 
 Copyright © 2026 BoomBigNose AI Co., Ltd.
 

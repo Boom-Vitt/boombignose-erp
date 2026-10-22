@@ -18,7 +18,7 @@ import {
   connectAccounting,
   disconnectAccounting,
   type ConnectAccountingInput,
-} from "../actions"
+} from "@/ee/accounting/actions"
 
 type ProviderKey = ConnectAccountingInput["provider"]
 

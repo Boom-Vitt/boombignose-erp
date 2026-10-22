@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/card"
 
 import { signOutTo } from "@/app/onboarding/actions"
-import { AcceptInvitationButton } from "./accept-button"
+import { AcceptInvitationButton } from "@/app/invite/[token]/accept-button"
 
 export const dynamic = "force-dynamic"
 

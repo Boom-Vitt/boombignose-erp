@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { portalMarkInvoicePaid } from "../portal-actions"
+import { portalMarkInvoicePaid } from "@/ee/portal/actions"
 
 export function MarkInvoicePaidButton({ token, invoiceId }: { token: string; invoiceId: string }) {
   const router = useRouter()

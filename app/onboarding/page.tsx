@@ -2,8 +2,9 @@ import { redirect } from "next/navigation"
 import { getAuthenticatedUser, getOrgContext } from "@/lib/auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { signOutTo } from "./actions"
-import { WorkspaceForm } from "./workspace-form"
+import { signOutTo } from "@/app/onboarding/actions"
+import { createWorkspace } from "@edition"
+import { WorkspaceForm } from "@/app/onboarding/workspace-form"
 
 export const dynamic = "force-dynamic"
 
@@ -21,7 +22,7 @@ export default async function OnboardingPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           <p className="text-muted-foreground text-sm">Signed in as <span className="font-medium">{user.email}</span></p>
-          <WorkspaceForm userId={user.id} />
+          <WorkspaceForm userId={user.id} action={createWorkspace} />
           <form action={signOutTo.bind(null, "/onboarding")}>
             <Button type="submit" variant="outline" className="w-full">Use another account</Button>
           </form>

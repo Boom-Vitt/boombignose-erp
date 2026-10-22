@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation"
 import { LogOut } from "lucide-react"
 
 import { NAV_ITEMS } from "@/components/nav"
-import { OrgSwitcher, type OrgOption } from "@/components/org-switcher"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,20 +23,18 @@ import {
 export function AppSidebar({
   email,
   role,
-  orgs,
-  currentOrgId,
+  workspaceHeader,
 }: {
   email: string | null
   role: string
-  orgs: OrgOption[]
-  currentOrgId: string
+  workspaceHeader: React.ReactNode
 }) {
   const pathname = usePathname()
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <OrgSwitcher orgs={orgs} currentOrgId={currentOrgId} />
+        {workspaceHeader}
       </SidebarHeader>
 
       <SidebarContent>

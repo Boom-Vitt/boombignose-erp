@@ -2,7 +2,7 @@ import { createElement, Fragment, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
 
-vi.mock('@/app/(app)/settings/org-actions', () => ({ setActiveOrg: vi.fn() }))
+vi.mock('@/ee/workspaces/actions', () => ({ setActiveOrg: vi.fn() }))
 // A portal renders no popup during SSR. Render that boundary inline so the real
 // Base UI group/label/item components exercise the switcher's popup content.
 vi.mock('@/components/ui/dropdown-menu', async importOriginal => ({
@@ -10,7 +10,7 @@ vi.mock('@/components/ui/dropdown-menu', async importOriginal => ({
  DropdownMenuContent: ({ children }: { children: ReactNode }) => createElement(Fragment, null, children),
 }))
 
-import { OrgSwitcher } from '@/components/org-switcher'
+import { OrgSwitcher } from '@/ee/workspaces/components/org-switcher'
 import { SidebarProvider } from '@/components/ui/sidebar'
 
 it('multiple workspace options render without missing the menu label context', () => {

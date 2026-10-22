@@ -2,13 +2,15 @@
 
 import { useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
-import { provisionWorkspace } from "@/app/(app)/settings/org-actions"
 import { workspaceProvisionRequest, type WorkspaceProvisionRequest } from "@/lib/supabase/workspace-request"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export function WorkspaceForm({ userId }: { userId: string }) {
+export function WorkspaceForm({ userId, action }: {
+  userId: string
+  action: (input: WorkspaceProvisionRequest) => Promise<{ error?: string }>
+}) {
   const [name, setName] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,7 +25,7 @@ export function WorkspaceForm({ userId }: { userId: string }) {
     try { storage = window.sessionStorage } catch { /* Memory keeps this attempt retryable. */ }
     request.current = workspaceProvisionRequest(userId, name, storage, request.current)
     try {
-      const result = await provisionWorkspace(request.current)
+      const result = await action(request.current)
       if (result?.error) setError(result.error)
     } catch {
       setError("Unable to confirm workspace creation. Retry with the same name to continue safely.")

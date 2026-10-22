@@ -1093,6 +1093,9 @@ isOneToOne: false
 "issue_invoice":
 { Args: { "p_expected_version": number,"p_invoice_id": string,"p_key": string,"p_org_id": string }; Returns: string
                            },
+"provision_hosted_workspace":
+{ Args: { "p_key": string,"p_name": string }; Returns: string
+                           },
 "provision_workspace":
 { Args: { "p_key": string,"p_name": string }; Returns: string
                            },

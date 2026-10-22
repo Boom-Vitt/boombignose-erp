@@ -1,0 +1,25 @@
+BoomBigNose Company OS — license boundaries and third-party notices
+Copyright © 2026 BoomBigNose AI Co., Ltd.
+
+ERP Community Edition: company-owned materials outside the exceptions below
+are offered under AGPL-3.0-only (LICENSE) or a separately agreed commercial
+license (COMMERCIAL-LICENSE.md). The license text itself is unmodified.
+
+Exceptions:
+- ee/: Pro implementations and their tests/documentation are commercial
+  source-available software under ee/LICENSE. The Community license does not
+  license these files. Thin imports in app/ and components/ do not relicense
+  the code they import; production use of Pro requires a commercial agreement.
+- bignose/: BigNose OS is a separate proprietary/commercial product under
+  bignose/LICENSE. Its packages and workspace paths are excluded from the ERP
+  AGPL and commercial-alternative offer.
+- BoomBigNose names and logos: reserved trademarks; see TRADEMARK.md.
+- Third-party materials: their original licenses and notices control. Nothing
+  in the company licenses or CLA relicenses third-party material.
+
+Bundled third-party license files (retained unchanged):
+- bignose/core/src/skills/bundled/reverse-engineer-anything/LICENSE
+  MIT License — see that file for its original copyright and full terms.
+
+Package-manager dependencies retain their respective licenses. This NOTICE
+lists bundled third-party license files; it is not a dependency license audit.

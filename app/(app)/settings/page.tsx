@@ -1,5 +1,4 @@
-import Link from "next/link"
-import { Wallet, Flame, Users, Lock, PlugZap, ChevronRight } from "lucide-react"
+import { Wallet, Flame, Users, Lock } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -18,7 +17,8 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { SettingsForm } from "./_components/settings-form"
-import { TeamInvitations } from "./_components/team-invitations"
+import { InvitationsCard } from "./_components/invitations-card"
+import { AccountingIntegrationCard } from "@edition"
 import { updateOrgSettings } from "./actions"
 
 export const dynamic = "force-dynamic"
@@ -65,18 +65,6 @@ export default async function SettingsPage() {
   const nameById = new Map(
     (profiles ?? []).map((p) => [p.id, p.full_name] as const)
   )
-
-  // Pending invitations (owner/admin manage these).
-  const { data: pendingInvites } = canEdit
-    ? await supabase
-        .from("invitations")
-        .select("id, email, role, token")
-        .eq("org_id", ctx.orgId)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
-    : { data: [] as { id: string; email: string; role: string; token: string }[] }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
 
   const team = (members ?? []).map((m) => ({
     userId: m.user_id,
@@ -216,54 +204,9 @@ export default async function SettingsPage() {
         </Card>
       </div>
 
-      {canEdit ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Invitations</CardTitle>
-            <CardDescription>
-              Invite teammates by email. They join this workspace when they
-              accept the link.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TeamInvitations
-              invites={(pendingInvites ?? []).map((i) => ({
-                id: i.id,
-                email: i.email,
-                role: i.role,
-                token: i.token,
-              }))}
-              appUrl={appUrl}
-            />
-          </CardContent>
-        </Card>
-      ) : null}
+      <InvitationsCard />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Integrations</CardTitle>
-          <CardDescription>
-            Connect BoomBigNose to the tools you already use.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Link
-            href="/settings/accounting"
-            className="hover:bg-accent flex items-center gap-3 rounded-lg border p-3 transition-colors"
-          >
-            <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-md">
-              <PlugZap className="size-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Accounting sync</p>
-              <p className="text-muted-foreground truncate text-xs">
-                Scaffold invoice syncing to FlowAccount, PEAK or Xero.
-              </p>
-            </div>
-            <ChevronRight className="text-muted-foreground size-4 shrink-0" />
-          </Link>
-        </CardContent>
-      </Card>
+      <AccountingIntegrationCard />
     </div>
   )
 }

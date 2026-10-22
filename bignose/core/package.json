@@ -1,5 +1,6 @@
 {
   "name": "@bignose/core",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "engines": { "node": ">=24" },

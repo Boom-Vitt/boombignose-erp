@@ -10,7 +10,7 @@
  * we convert via `satangToBaht` (satang / 100) exactly once, here.
  */
 import { satangToBaht } from "@/lib/money"
-import type { ExternalInvoicePayload } from "@/lib/accounting/provider"
+import type { ExternalInvoicePayload } from "@/ee/accounting/provider"
 
 /** The minimal shape of an invoice this mapper needs. Mirrors the DB row. */
 export type InvoiceForMapping = {

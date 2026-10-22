@@ -13,7 +13,7 @@ import {
   enableClientPortal,
   disableClientPortal,
   regeneratePortalToken,
-} from "../portal-actions"
+} from "@/ee/portal/manage-actions"
 
 export function PortalShareCard({
   clientId,

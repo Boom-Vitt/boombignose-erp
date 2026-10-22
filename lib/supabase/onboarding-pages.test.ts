@@ -1,12 +1,12 @@
 import {beforeEach, expect, it, vi} from 'vitest'
-import {databaseFixture,pageContent} from './__tests__/tenant-fixture'
+import {databaseFixture,pageContent} from '@/lib/supabase/__tests__/tenant-fixture'
 const state=vi.hoisted(()=>({user:{id:'invitee',email:'invitee@example.test'},org:null as null|{orgId:string},client:{} as unknown}))
 vi.mock('@/lib/auth',()=>({getAuthenticatedUser:async()=>state.user,getOrgContext:async()=>state.org}))
 vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({auth:{getUser:async()=>({data:{user:state.user},error:null})}})}))
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>state.client}))
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error(`REDIRECT:${path}`)}}))
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}))
-vi.mock('@/app/(app)/settings/org-actions',()=>({acceptInvitation:vi.fn(),provisionWorkspace:vi.fn()}))
+vi.mock('@/app/(app)/settings/org-actions',()=>({acceptInvitation:vi.fn()}))
 import OnboardingPage from '@/app/onboarding/page'
 import InvitePage from '@/app/invite/[token]/page'
 beforeEach(()=>{
