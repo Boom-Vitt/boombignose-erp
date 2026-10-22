@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({
 vi.mock("@supabase/ssr", () => ({
   createServerClient: () => ({
     auth: {
-      getUser: async () => ({ data: { user: state.user }, error: null }),
+      getClaims: async () => ({ data: state.user ? { claims: state.user } : null, error: null }),
     },
   }),
 }))

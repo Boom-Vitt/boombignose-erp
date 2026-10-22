@@ -19,7 +19,7 @@ function isPublic(pathname: string): boolean {
 /**
  * Refreshes the Supabase session cookie on every request and guards app routes.
  * Must be invoked from `proxy.ts` (Next.js 16 proxy convention). Do NOT run
- * logic between `createServerClient` and `auth.getUser()`.
+ * logic between `createServerClient` and `auth.getClaims()`.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -46,9 +46,10 @@ export async function updateSession(request: NextRequest) {
   )
 
   // IMPORTANT: refreshes tokens; keep this immediately after client creation.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getClaims verifies the signed JWT locally; getUser cost an auth-server round trip on every prefetch.
+  // Pages and actions still call getUser through requireOrgContext.
+  const { data } = await supabase.auth.getClaims()
+  const user = data?.claims
 
   const { pathname } = request.nextUrl
 

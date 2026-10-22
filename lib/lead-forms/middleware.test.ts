@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 vi.mock("@supabase/ssr", () => ({
-  createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: null }, error: null }) } }),
+  createServerClient: () => ({ auth: { getClaims: async () => ({ data: null, error: null }) } }),
 }))
 import { updateSession } from "@/lib/supabase/middleware"
 
