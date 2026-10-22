@@ -77,7 +77,7 @@ $$;
 
 create function public.adopt_legacy_invoice(p_org_id uuid,p_invoice_id uuid,p_expected_version integer,p_key uuid,p_reason text)
 returns uuid language plpgsql security definer set search_path='' as $$
-declare i public.invoices;profile public.org_settings;buyer public.clients;cmd public.payment_command_results;req jsonb;target uuid;lines jsonb;doc jsonb;seller_name text;
+declare i public.invoices;adopted public.invoices;profile public.org_settings;buyer public.clients;cmd public.payment_command_results;req jsonb;target uuid;lines jsonb;doc jsonb;seller_name text;
 begin
   if not private.is_org_staff(p_org_id) then raise exception 'Only staff may adopt legacy invoices';end if;
   if p_key is null or p_expected_version is null or p_expected_version<1 or p_reason is null or length(btrim(p_reason)) not between 1 and 1000 then raise exception 'Invalid legacy adoption command';end if;
@@ -100,7 +100,8 @@ begin
     'buyer',jsonb_build_object('id',buyer.id,'name',buyer.name,'address',buyer.billing_address,'taxId',buyer.tax_id,'branchLabel',buyer.branch_label),
     'document',jsonb_build_object('number',i.number,'issueDate',i.issue_date,'dueDate',i.due_date,'notes',i.notes,'subtotalSatang',i.subtotal_satang,'discountSatang',i.discount_satang,'totalSatang',i.total_satang,'vatSatang',i.vat_satang,'whtSatang',i.wht_satang,'whtRateBps',i.wht_rate_bps,'amountDueSatang',i.amount_satang,'pricesIncludeVat',i.prices_include_vat,'vatByRate',i.tax_breakdown),'lines',lines);
   insert into public.invoice_snapshots(org_id,invoice_id,source_version,number,snapshot,issued_by) values(p_org_id,i.id,i.version,i.number,doc,auth.uid()) returning id into target;
-  update public.invoices set issued_snapshot_id=target where org_id=p_org_id and id=i.id;
+  update public.invoices set issued_snapshot_id=target where org_id=p_org_id and id=i.id returning * into adopted;
+  if adopted.issued_snapshot_id is distinct from target or to_jsonb(adopted)-array['version','updated_at','issued_snapshot_id'] is distinct from to_jsonb(i)-array['version','updated_at','issued_snapshot_id'] then raise exception 'Legacy adoption must preserve original invoice';end if;
   insert into public.audit_log(org_id,actor_id,entity,entity_id,action,summary,meta)
     values(p_org_id,auth.uid(),'invoice',i.id,'invoice_legacy_adopted','Adopted historical invoice without reissuing or changing receipt evidence',jsonb_build_object('snapshotId',target,'sourceVersion',i.version,'number',i.number,'reason',btrim(p_reason),'profilesCapturedAt',now()));
   update public.payment_command_results set result=target where org_id=p_org_id and key=p_key;

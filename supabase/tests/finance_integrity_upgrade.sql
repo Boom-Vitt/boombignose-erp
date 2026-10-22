@@ -42,7 +42,19 @@ begin
 end;
 $$;
 create trigger fail_adoption_audit before insert on public.audit_log for each row execute function pg_temp.fail_adoption_audit();
+create function pg_temp.mutate_adoption() returns trigger language plpgsql as $$
+begin
+  if old.issued_snapshot_id is null and new.issued_snapshot_id is not null then new.notes:='Unexpected trigger change';end if;
+  return new;
+end;
+$$;
+create trigger zz_mutate_adoption before update on public.invoices for each row execute function pg_temp.mutate_adoption();
+
 select set_config('request.jwt.claims',jsonb_build_object('role','authenticated','sub',pg_temp.upgrade_id(1))::text,true);
+set local role authenticated;
+select throws_ok($$select public.adopt_legacy_invoice(pg_temp.upgrade_id(10),pg_temp.upgrade_id(30),1,pg_temp.upgrade_id(97),'Reviewed legacy record')$$,'P0001','Legacy adoption must preserve original invoice','adoption fails closed if a trigger changes original content');
+reset role;
+drop trigger zz_mutate_adoption on public.invoices;
 set local role authenticated;
 select throws_ok($$select public.adopt_legacy_invoice(pg_temp.upgrade_id(10),pg_temp.upgrade_id(30),2,pg_temp.upgrade_id(98),'Stale review')$$,'P0001','Legacy payable invoice at expected version required','stale adoption version refused');
 select throws_ok($$select public.adopt_legacy_invoice(pg_temp.upgrade_id(10),pg_temp.upgrade_id(30),1,pg_temp.upgrade_id(99),'   ')$$,'P0001','Invalid legacy adoption command','blank audit reason refused');
