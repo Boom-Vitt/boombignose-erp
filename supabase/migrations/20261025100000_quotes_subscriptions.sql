@@ -382,7 +382,7 @@ create function public.convert_accepted_quote(p_org_id uuid,p_quote_id uuid,p_ke
 returns uuid language plpgsql security definer set search_path='' as $$
 declare q public.quotes;request public.quote_conversion_requests;project uuid;milestone uuid;invoice uuid;item record;
   payload jsonb;chosen jsonb;qty numeric;raw_amount numeric:=0;previous_raw numeric;previous_discount numeric;discount bigint;
-  deposits bigint;deposit bigint;rate integer;final_invoice boolean;previous_total numeric;target_total bigint;actual_total bigint;adjustment bigint:=0;attempt integer:=0;tax_lines jsonb;settlement_discount bigint;
+  deposits bigint;deposit bigint;deposit_deduction bigint;rate integer;final_invoice boolean;previous_total numeric;target_total bigint;actual_total bigint;adjustment bigint:=0;attempt integer:=0;tax_lines jsonb;settlement_discount bigint;
   today date:=(now() at time zone 'Asia/Bangkok')::date;
 begin
   if not private.is_org_staff(p_org_id) then raise exception 'Only owners and admins may convert quotes';end if;
@@ -455,9 +455,10 @@ begin
     select sum(amount_satang) into raw_amount from public.invoice_items where org_id=p_org_id and invoice_id=invoice;
     discount:=case when final_invoice then q.discount_satang-previous_discount else greatest(0,least(q.discount_satang-previous_discount,
       div(2*q.discount_satang::numeric*(previous_raw+raw_amount)+q.subtotal_satang,2*q.subtotal_satang)-previous_discount))::bigint end;
-    if discount+case when final_invoice then deposits else 0 end>raw_amount then raise exception 'Invoice remaining quantities together to deduct deposits';end if;
-    update public.invoices set discount_satang=discount+case when final_invoice then deposits else 0 end,
-      quote_discount_satang=discount,quote_deposit_deduction_satang=case when final_invoice then deposits else 0 end where org_id=p_org_id and id=invoice;
+    deposit_deduction:=case when final_invoice then deposits else 0 end;
+    if discount+deposit_deduction>raw_amount then raise exception 'Invoice remaining quantities together to deduct deposits';end if;
+    update public.invoices set discount_satang=discount+deposit_deduction,
+      quote_discount_satang=discount,quote_deposit_deduction_satang=deposit_deduction where org_id=p_org_id and id=invoice;
     if final_invoice then
       target_total:=q.total_satang-previous_total;
       select jsonb_agg(jsonb_build_object('amount_satang',l.amount_satang,'tax_rate_bps',l.tax_rate_bps)),max(i.discount_satang)
