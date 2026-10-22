@@ -32,7 +32,7 @@ export function InvoiceAccountingControls({ invoiceId, connected }: { invoiceId:
 }
 
 export function InvoiceAccountingStatus({ sync }: { sync: Awaited<ReturnType<typeof getInvoiceAccounting>>["sync"] }) {
-  return sync?.external_id ? (
+  const value = sync?.external_id ? (
     <span className="space-y-0.5">
       <span className="block font-medium">{ACCOUNTING_PROVIDER_LABEL[sync.provider]} · {sync.external_id}</span>
       {sync.last_synced_at ? (
@@ -40,4 +40,5 @@ export function InvoiceAccountingStatus({ sync }: { sync: Awaited<ReturnType<typ
       ) : null}
     </span>
   ) : <span className="text-muted-foreground">Not synced</span>
+  return <div className="space-y-1"><dt className="text-muted-foreground text-xs font-medium">Accounting sync</dt><dd className="text-sm">{value}</dd></div>
 }

@@ -6,7 +6,7 @@ vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({auth:{getUser:asyn
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>state.client}))
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error(`REDIRECT:${path}`)}}))
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}))
-vi.mock('@/ee/workspaces/actions',()=>({acceptInvitation:vi.fn(),provisionWorkspace:vi.fn()}))
+vi.mock('@/app/(app)/settings/org-actions',()=>({acceptInvitation:vi.fn()}))
 import OnboardingPage from '@/app/onboarding/page'
 import InvitePage from '@/app/invite/[token]/page'
 beforeEach(()=>{

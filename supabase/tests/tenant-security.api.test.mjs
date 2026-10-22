@@ -78,13 +78,13 @@ test("nullable tenant parent keeps org when ON DELETE SET NULL runs",async()=>{
   const remaining=ok(await owner.from("projects").select("org_id,client_id").eq("id",p.id).single())
   assert.equal(remaining.org_id,orgs[0]); assert.equal(remaining.client_id,null)
 })
-test("workspace provisioning is authenticated and concurrency/idempotency safe",async()=>{
+test("Community bootstrap is authenticated and refuses another workspace",async()=>{
   assert.ok((await anon.rpc("provision_workspace",{p_name:"New workspace",p_key:randomUUID()})).error)
-  const key=randomUUID()
-  const results=await Promise.all([owner.rpc("provision_workspace",{p_name:"New workspace",p_key:key}),owner.rpc("provision_workspace",{p_name:"New workspace",p_key:key})])
-  const id=ok(results[0]);orgs.push(id); assert.equal(ok(results[1]),id)
-  assert.equal(ok(await admin.from("memberships").select().eq("org_id",id)).length,1)
-  assert.ok((await owner.rpc("provision_workspace",{p_name:"Changed workspace",p_key:key})).error)
+  const results=await Promise.all([
+    owner.rpc("provision_workspace",{p_name:"New workspace",p_key:randomUUID()}),
+    owner.rpc("provision_workspace",{p_name:"New workspace",p_key:randomUUID()}),
+  ])
+  for (const result of results) assert.match(result.error?.message??"",/already has a workspace/)
 })
 test("invitation acceptance checks intended recipient and preserves existing roles on retry",async()=>{
   const email=ok(await admin.auth.admin.getUserById(users[1])).user.email

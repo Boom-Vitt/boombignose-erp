@@ -22,7 +22,7 @@ function from(table: string) {
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from }) }))
 vi.mock("@/ee/portal/components/accept-quote-button", () => ({ AcceptQuoteButton: () => null }))
 vi.mock("@/ee/portal/components/mark-invoice-paid-button", () => ({ MarkInvoicePaidButton: () => null }))
-import ClientPortalPage from "@/app/portal/[token]/page"
+import ClientPortalPage from "./page"
 
 const org = "org-1"
 const client_id = "client-1"

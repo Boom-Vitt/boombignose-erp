@@ -29,7 +29,7 @@ the ERP Community Edition. Preserve third-party notices listed in [NOTICE](NOTIC
 Reuse the existing TypeScript, React, Zod, Supabase/RLS, and UI conventions.
 Keep tenant scope, permission checks, validation, accessibility, error handling,
 and integer-satang money calculations intact. Add focused tests for new logic
-or changed behavior. Follow the project's instruction and memory files.
+or changed behavior. Keep single-org setup and ordinary team invitations in Community.
 
 ## Local checks
 
@@ -43,6 +43,8 @@ pnpm test
 pnpm build
 ```
 
+The default build is Community. Use `BBN_EDITION=pro pnpm build` and
+`pnpm exec tsc --noEmit -p tsconfig.pro.json` to verify Pro as well.
 The ERP suite includes both `lib/**/*.test.ts` and `ee/**/*.test.ts` and needs
 no live database. Integration/browser tests require a separate isolated local
 Supabase setup; see [the QA gates](docs/testing/erp-gates.md). BigNose has its

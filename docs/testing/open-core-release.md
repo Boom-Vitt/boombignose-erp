@@ -1,48 +1,71 @@
-# Open-core preparation verification — 2026-10-22
+# Open-core preparation verification
 
-Scope: current worktree branch `Boom-Vitt/erp-open-core`. Pro isolation was
-committed before Community relicensing as `4633aef` (English commit message).
-No push, merge to the base branch, deployment, or database migration was run.
+Verified on 2026-10-22 in worktree branch `Boom-Vitt/erp-open-core`.
+The two preparation commits were rewritten only to remove root-local assistant
+bookkeeping. Pro separation still precedes Community relicensing. The inherited
+base commit `a7b3e97` and `bignose/INSTRUCTIONS.md` are unchanged. No push,
+base-branch merge, deployment, or existing database migration was performed.
 
-Runtime actually used: Node.js v24.20.0, pnpm 12.3.4; locked Next.js 16.2.9,
-TypeScript 5.9.3, ESLint 9.39.4, Vitest 4.1.9. No dependencies were changed.
+Runtime used: Node.js v24.20.0 and pnpm 12.3.4. Locked versions remain Next.js
+16.2.9, TypeScript 5.9.3, ESLint 9.39.4, and Vitest 4.1.9. No dependency or
+lockfile change was required.
 
-| Check | Observed result |
+| Check | Final result |
 | --- | --- |
-| `pnpm install --frozen-lockfile` | Exit 0; 672 packages reused from cache, none downloaded |
-| `pnpm install --frozen-lockfile --offline` (final) | Exit 0; lockfile current, no changes |
-| `pnpm exec tsc --noEmit` (final) | Exit 0, no diagnostics |
-| `pnpm lint` (final) | Exit 0, no errors or warnings |
-| `pnpm test` (final) | 66 test files, 500 tests passed; 0 failures |
-| `pnpm build` (final) | Exit 0; optimized build and TypeScript succeeded, 20/20 static pages generated, all existing routes compiled |
-| `python3 .project-memory/read.py --check` | 9 files checked; no problems |
-| `git diff --check -- . ':!LICENSE'` | Clean; canonical AGPL checked byte-for-byte separately |
+| `pnpm install --frozen-lockfile` | Exit 0, lockfile current |
+| `pnpm install --frozen-lockfile --offline` | Exit 0, no downloads |
+| `pnpm exec tsc --noEmit` | Exit 0, no diagnostics |
+| `pnpm exec tsc --noEmit -p tsconfig.pro.json` | Exit 0, no diagnostics |
+| `pnpm lint` | Exit 0, no diagnostics |
+| `pnpm test` | 70 files and 510 tests passed, zero failures |
+| `pnpm build` | Exit 0, optimized Community build and all routes compiled |
+| `BBN_EDITION=pro pnpm build` | Exit 0, optimized Pro build and all routes compiled |
+| `node scripts/verify-community.mjs` | Exit 0, all five checks pass in a copied checkout with `ee/` physically absent |
+| `node scripts/test-community-workspace.mjs` | 17 isolated PostgreSQL checks pass with Pro sources, 14 pass without `ee/` |
+| `git diff --check` | Clean for the correction |
 
-Vitest's existing Vite plugin deprecation advisory remains non-failing; its
-configuration/dependencies were otherwise preserved. The source's initial
-suite already had 496 tests; 125 in the old README was stale. Four added tests
-cover org/entity/invoice filtering for accounting queries and access/scoping
-of portal bearer-token reads. Pro feature tests moved with their implementations
-and remain included through `ee/**/*.test.ts`.
+The no-Pro checkout passed frozen offline install, TypeScript, ESLint, 486 tests
+in 61 files, and its production build. Both production builds generated 20 of
+20 static pages. The copy excludes ignored files and Pro sources, clones local
+dependencies, and is removed after verification. It never moves or deletes the
+working repository's `ee/` directory.
 
-The GitHub license body ends with a blank line; it is retained to preserve the
-requested unmodified text rather than applying a whitespace cleanup to LICENSE.
+The database checks run the actual new SQL against a disposable `postgres:17`
+container with a minimal contract fixture, a temporary in-memory data directory,
+and no external network. They cover anonymous rejection, input validation,
+same-key replay, changed-input conflict, cross-key and cross-user races,
+rollback, revoked-membership replay, and separate hosted provisioning. The
+container is removed afterward. These checks do not certify the complete
+Supabase schema or browser signup flow.
 
-Additional assertion-based checks passed:
+One interim test run needed a `server-only` mock for the new Pro adapter test.
+An existing subprocess test also exceeded its five-second timeout during
+concurrent compiler runs. The final unmodified-timeout full suite passed.
+Repeated SQL checks exposed an initdb startup race in the test driver. It now
+waits through TCP on container loopback, which excludes PostgreSQL's temporary
+initialization socket. Final checks passed after that correction.
 
-- `LICENSE` equals the unmodified `gh api licenses/agpl-3.0 --jq .body` output.
-- ERP manifest uses `AGPL-3.0-only OR LicenseRef-BoomBigNose-Commercial`;
-  all three BigNose manifests use `UNLICENSED`.
-- The four Pro Next page entry points contain only a re-export plus static
-  `dynamic = "force-dynamic"` configuration.
-- README's complete BBN header and footer blocks equal their pre-task bytes.
-- The bundled `reverse-engineer-anything/LICENSE` equals its pre-task bytes
-  and is the only bundled third-party license file found outside dependencies.
-- No new address literal was added to the license, contribution, PR-template,
-  README, metadata, or notice files.
+The new tests also cover Community-only rendering and unavailable Pro routes,
+default/Pro/invalid edition selection, guarded first-org errors, and Pro
+onboarding dispatch to the hosted action. The initial source already had 496
+tests; the old README's 125-test count was stale. Vitest's preexisting plugin
+deprecation advisory remains non-failing.
 
-Not exercised: live Supabase/API integration, browser E2E, the independent
-BigNose workspace suite, and legal review. Shared historical SQL/types are
-unchanged, and no standalone Community-only packaging was added. The precise
-feature interpretation and production licensing scope are documented in
-[OPEN_CORE_BOUNDARY.md](../OPEN_CORE_BOUNDARY.md).
+Additional checked invariants:
+
+- `LICENSE` matches the unmodified GitHub license API body. Its canonical
+  trailing blank line is preserved and verified separately from whitespace checks.
+- Both rewritten preparation commits omit `.project-memory/`, `AGENTS.md`,
+  `INSTRUCTIONS.md`, and `agent.md` at the repository root.
+- A dependency walk from Community signup, onboarding, invitation, settings,
+  and layout entry points reaches 49 local files and no `ee/` file.
+- README's complete BBN header/footer blocks match their pre-task bytes.
+- The bundled MIT license is unchanged. BigNose remains separately proprietary.
+
+Independent read-only re-review approved the correction after fixing Pro
+onboarding's selected action. Final scope and the complete Pro file list are
+in [OPEN_CORE_BOUNDARY.md](../OPEN_CORE_BOUNDARY.md).
+
+Not run: full live Supabase/API integration, browser E2E, the independent
+BigNose suite, or legal review. New SQL was executed only in the disposable
+contract-test containers.

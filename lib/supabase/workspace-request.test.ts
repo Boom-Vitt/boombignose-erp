@@ -1,5 +1,5 @@
 import { expect,it } from 'vitest'
-import { workspaceProvisionRequest } from '@/ee/workspaces/workspace-request'
+import { workspaceProvisionRequest } from '@/lib/supabase/workspace-request'
 it('interrupted onboarding reuses the same actor/name command after reload',async()=>{
  const values=new Map<string,string>()
  const storage={getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value)}}

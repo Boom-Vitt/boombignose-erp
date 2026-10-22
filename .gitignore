@@ -39,3 +39,10 @@ yarn-error.log*
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Local assistant context stays out of the public repository.
+/.project-memory/
+/AGENTS.md
+/INSTRUCTIONS.md
+/agent.md
+/.audit/

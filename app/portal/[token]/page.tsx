@@ -1,3 +1,3 @@
-export { default } from "@/ee/portal/page"
+export { PortalPage as default } from "@edition"
 
 export const dynamic = "force-dynamic"

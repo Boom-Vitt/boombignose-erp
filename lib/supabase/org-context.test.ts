@@ -7,7 +7,6 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => ({ value: st
 vi.mock('next/navigation', () => ({ redirect: (path: string) => { throw new Error(`REDIRECT:${path}`) } }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: async () => ({ ...(state.client as object), auth: { getUser: async () => ({ data: {user:state.user}, error:null }) } }) }))
 import { getOrgContext, requireOrgContext } from '@/lib/auth'
-import { getUserOrgs } from '@/ee/workspaces/queries'
 
 beforeEach(() => {
  state.user = {id:'user',email:'owner@example.test'}
@@ -37,5 +36,4 @@ it('unauthenticated accounts still reach login', async () => {
 it('membership read failure does not pretend the user has no workspaces', async () => {
  state.client = {from: () => ({select: () => ({eq: () => ({order: async () => ({data:null,error:{message:'connection failed'}})})})})}
  await expect(getOrgContext()).rejects.toThrow('Unable to load workspace memberships')
- await expect(getUserOrgs()).rejects.toThrow('Unable to load workspace memberships')
 })

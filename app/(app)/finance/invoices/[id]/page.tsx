@@ -46,7 +46,7 @@ import {
 import { IssueInvoiceForm } from "../../_components/issue-invoice-form"
 import { PaymentForm } from "../../_components/payment-form"
 import { ReviewClaimForm } from "../../_components/review-claim-form"
-import { getInvoiceAccounting, InvoiceAccountingControls, InvoiceAccountingStatus } from "@/ee/accounting/invoice-sync"
+import { getInvoiceAccounting, InvoiceAccountingControls, InvoiceAccountingStatus } from "@edition"
 import { EmailInvoiceButton } from "../../_components/email-invoice-button"
 import type { Option } from "../../_components/form-fields"
 
@@ -239,10 +239,7 @@ export default async function InvoiceDetailPage({
                   label="Stored status"
                   value={<InvoiceStatusBadge status={invoice.status} />}
                 />
-                <Field
-                  label="Accounting sync"
-                  value={<InvoiceAccountingStatus sync={accounting.sync} />}
-                />
+                <InvoiceAccountingStatus sync={accounting.sync} />
               </dl>
               {invoice.source_quote_id ? <p className="mt-4 text-sm">Accepted quote terms are authoritative. Linked corrections are needed for changes. Source quote: <Link className="underline" href={`/quotes/${invoice.source_quote_id}`}>View accepted quote</Link></p> : null}
               {invoice.source_milestone_id && invoice.project_id ? <p className="text-sm">Delivery milestone: <Link className="underline" href={`/projects/${invoice.project_id}`}>View project and milestones</Link></p> : null}

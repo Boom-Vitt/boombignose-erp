@@ -1,7 +1,7 @@
 import { requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { TeamInvitations } from "./components/team-invitations"
+import { TeamInvitations } from "@/app/(app)/settings/_components/team-invitations"
 
 export async function InvitationsCard() {
   const ctx = await requireOrgContext()

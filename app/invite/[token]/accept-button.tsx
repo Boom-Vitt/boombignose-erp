@@ -4,7 +4,7 @@ import { useTransition } from "react"
 import { Check } from "lucide-react"
 import { toast } from "sonner"
 
-import { acceptInvitation } from "@/ee/workspaces/actions"
+import { acceptInvitation } from "@/app/(app)/settings/org-actions"
 import { Button } from "@/components/ui/button"
 
 /** Accepts the invitation; on success the action redirects to the dashboard. */

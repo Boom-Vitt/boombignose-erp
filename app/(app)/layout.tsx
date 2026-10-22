@@ -1,5 +1,5 @@
 import { requireOrgContext } from "@/lib/auth"
-import { getUserOrgs } from "@/ee/workspaces/queries"
+import { WorkspaceHeader } from "@edition"
 import { AppSidebar } from "@/components/app-sidebar"
 import {
   SidebarInset,
@@ -14,15 +14,13 @@ export default async function AppLayout({
   children: React.ReactNode
 }) {
   const ctx = await requireOrgContext()
-  const orgs = await getUserOrgs()
 
   return (
     <SidebarProvider>
       <AppSidebar
         email={ctx.email}
         role={ctx.role}
-        orgs={orgs}
-        currentOrgId={ctx.orgId}
+        workspaceHeader={<WorkspaceHeader context={ctx} />}
       />
       <SidebarInset>
         <header className="bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex h-14 items-center gap-2 border-b px-4 backdrop-blur">

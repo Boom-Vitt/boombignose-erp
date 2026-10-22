@@ -25,7 +25,7 @@
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 <br/>
-[![Tests](https://img.shields.io/badge/tests-500%20passing-brightgreen)](#-คำสั่งที่ใช้บ่อย-scripts)
+[![Tests](https://img.shields.io/badge/tests-510%20passing-brightgreen)](#-คำสั่งที่ใช้บ่อย-scripts)
 [![Status](https://img.shields.io/badge/status-open--core-blue)](#license)
 [![License](https://img.shields.io/badge/license-AGPL--3.0%20%7C%20Commercial-blue)](./COMMERCIAL-LICENSE.md)
 ![Made in Thailand](https://img.shields.io/badge/made%20in-Bangkok%20🇹🇭-ED1C24)
@@ -151,6 +151,8 @@ node scripts/verify-seed.mjs
 pnpm dev                 # http://localhost:3000
 ```
 
+สำหรับ Community ที่ต้องการสร้างองค์กรใหม่ ให้เริ่มจากฐานข้อมูลว่างโดยไม่โหลด demo seed (`supabase db reset --no-seed` สำหรับฐานข้อมูล local ใหม่) จากนั้นสมัครที่ `/signup` ยืนยันบัญชี สร้างองค์กรที่ `/onboarding` และเชิญทีมจาก Settings โดยไม่ต้องมี `ee/` การโหลด demo seed จะสร้างองค์กรเดโมไว้แล้ว
+
 ### เข้าสู่ระบบด้วยบัญชีเดโม
 
 | อีเมล | รหัสผ่าน | บทบาท |
@@ -179,6 +181,7 @@ pnpm dev                 # http://localhost:3000
 | `NEXT_PUBLIC_APP_URL` | ✅ | URL ของแอป (ใช้ทำลิงก์/redirect ตอนยืนยันอีเมล) |
 | `OPENROUTER_API_KEY` | ⬜ | เปิดใช้ผู้ช่วย AI (Gemini 4 ผ่าน OpenRouter) — ถ้าไม่ใส่ ฟีเจอร์ AI จะ degrade อย่างสวยงาม |
 | `OPENROUTER_MODEL` | ⬜ | override โมเดล (ดีฟอลต์ `google/gemini-4-argon`) |
+| `BBN_EDITION` | ⬜ | เลือกตอน build: `community` เป็นค่าเริ่มต้น, `pro` สำหรับ Pro ที่มีข้อตกลงเชิงพาณิชย์ |
 
 ---
 
@@ -268,11 +271,11 @@ docs/                 MVP_SPEC, ROADMAP, OPEN_CORE_STRATEGY, PDPA_SECURITY_NOTES
 
 ## 📄 License / สัญญาอนุญาต
 
-**ไทย:** Community Edition ใช้ [AGPL-3.0-only](./LICENSE) หรือ [Commercial license](./COMMERCIAL-LICENSE.md) ตามข้อตกลงกับบริษัท ใช้งานเชิงพาณิชย์ภายใต้ AGPL ได้เมื่อปฏิบัติตามเงื่อนไข รวมถึงการให้ซอร์สตามข้อกำหนด Pro ใน [`ee/`](./ee/) ใช้ [สัญญาอนุญาตเชิงพาณิชย์](./ee/LICENSE) แยกต่างหาก และต้องมีข้อตกลงก่อนใช้ใน production ส่วน [`bignose/`](./bignose/LICENSE) เป็น BigNose OS แยกผลิตภัณฑ์และไม่อยู่ใต้ AGPL
+**ไทย:** Community รองรับการสมัคร สร้างองค์กรแรก และเชิญ/รับสมาชิกในองค์กรเดียวด้วยบทบาท owner/admin/member โดยไม่ต้องใช้ `ee/` ส่วนการสลับหลายองค์กรและการ provision องค์กรเพิ่มเติมสำหรับ hosted อยู่ใน Pro เท่านั้น Community Edition ใช้ [AGPL-3.0-only](./LICENSE) หรือ [Commercial license](./COMMERCIAL-LICENSE.md) ตามข้อตกลงกับบริษัท ใช้งานเชิงพาณิชย์ภายใต้ AGPL ได้เมื่อปฏิบัติตามเงื่อนไข รวมถึงการให้ซอร์สตามข้อกำหนด Pro ใน [`ee/`](./ee/) ใช้ [สัญญาอนุญาตเชิงพาณิชย์](./ee/LICENSE) แยกต่างหาก และต้องมีข้อตกลงก่อนใช้ใน production ส่วน [`bignose/`](./bignose/LICENSE) เป็น BigNose OS แยกผลิตภัณฑ์และไม่อยู่ใต้ AGPL
 
-**English:** Community Edition is dual-licensed under [AGPL-3.0-only](./LICENSE) or a separately agreed [Commercial license](./COMMERCIAL-LICENSE.md). Pro implementations in [`ee/`](./ee/) are commercial source-available software under [`ee/LICENSE`](./ee/LICENSE); production use requires a commercial agreement. [`bignose/`](./bignose/LICENSE) is the separate proprietary BigNose OS product and is excluded from the AGPL.
+**English:** Community includes signup, first-org setup, and team invitations/acceptance with owner/admin/member roles, without `ee/`. Multi-org switching and additional or hosted workspace provisioning are Pro. Community Edition is dual-licensed under [AGPL-3.0-only](./LICENSE) or a separately agreed [Commercial license](./COMMERCIAL-LICENSE.md). Pro implementations in [`ee/`](./ee/) are commercial source-available software under [`ee/LICENSE`](./ee/LICENSE); production use requires a commercial agreement. [`bignose/`](./bignose/LICENSE) is the separate proprietary BigNose OS product and is excluded from the AGPL.
 
-This checkout builds the combined application; see [the boundary and packaging notes](./docs/OPEN_CORE_BOUNDARY.md). Third-party licenses are preserved in [NOTICE](./NOTICE). The BoomBigNose name and logo are reserved; forks must rebrand under [TRADEMARK.md](./TRADEMARK.md). For commercial terms, contact [boombignose.org](https://boombignose.org).
+The default build is Community. Licensed Pro builds use `BBN_EDITION=pro`; see [the boundary and setup instructions](./docs/OPEN_CORE_BOUNDARY.md). Third-party licenses are preserved in [NOTICE](./NOTICE). The BoomBigNose name and logo are reserved; forks must rebrand under [TRADEMARK.md](./TRADEMARK.md). For commercial terms, contact [boombignose.org](https://boombignose.org).
 
 Copyright © 2026 BoomBigNose AI Co., Ltd.
 

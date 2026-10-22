@@ -36,8 +36,9 @@ The Community offer applies to company-owned repository materials except:
 - **Trademarks**: no rights to the BoomBigNose name or logo are granted;
   [TRADEMARK.md](TRADEMARK.md) applies to branding and forks.
 
-The current checkout builds Community together with Pro integrations. Merely
-importing Pro from a Community route does not make the Pro implementation AGPL.
+The default build is Community and supports single-org setup and invitations
+without Pro sources. An explicit `BBN_EDITION=pro` build includes the commercial
+integrations. Importing Pro through an edition entry point does not make it AGPL.
 Production deployment using Pro requires commercial rights covering the
 combined application. See [the boundary inventory](docs/OPEN_CORE_BOUNDARY.md).
 

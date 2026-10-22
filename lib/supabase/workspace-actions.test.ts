@@ -11,7 +11,8 @@ vi.mock('next/headers', () => ({cookies: async () => ({set:state.setCookie})}))
 vi.mock('next/navigation', () => ({redirect: (path:string) => {throw new Error(`REDIRECT:${path}`)}}))
 vi.mock('next/cache', () => ({revalidatePath: vi.fn()}))
 vi.mock('@/lib/audit', () => ({writeAudit: vi.fn()}))
-import * as actions from '@/ee/workspaces/actions'
+import * as actions from '@/app/(app)/settings/org-actions'
+import { createFirstWorkspace } from '@/app/onboarding/actions'
 const orgId = '00000000-0000-4000-8000-000000000001'
 const key = '00000000-0000-4000-8000-000000000002'
 
@@ -39,19 +40,19 @@ it('signed-out acceptance preserves the invitation through sign-in', async () =>
  expect(state.rpc).not.toHaveBeenCalled()
 })
 it('provisioning sends a normalized name and the caller retry key to one authenticated command', async () => {
- const provision = actions.provisionWorkspace
+ const provision = createFirstWorkspace
  await expect(provision({name:'  My workspace  ',key})).rejects.toThrow('REDIRECT:/dashboard')
  expect(state.rpc).toHaveBeenCalledExactlyOnceWith('provision_workspace',{p_name:'My workspace',p_key:key})
  expect(state.setCookie).toHaveBeenCalledWith('active_org',orgId,expect.objectContaining({httpOnly:true}))
 })
 
 it.each([{name:'   ',key},{name:'x'.repeat(101),key},{name:'Workspace',key:'invalid'}])('invalid provision requests never reach the database: %j',async input=>{
- expect(await actions.provisionWorkspace(input)).toHaveProperty('error')
+ expect(await createFirstWorkspace(input)).toHaveProperty('error')
  expect(state.rpc).not.toHaveBeenCalled();expect(state.setCookie).not.toHaveBeenCalled()
 })
 it('signed-out provisioning reaches login without a database command',async()=>{
  state.user=null
- await expect(actions.provisionWorkspace({name:'Workspace',key})).rejects.toThrow('REDIRECT:/login?redirect=%2Fonboarding')
+ await expect(createFirstWorkspace({name:'Workspace',key})).rejects.toThrow('REDIRECT:/login?redirect=%2Fonboarding')
  expect(state.rpc).not.toHaveBeenCalled()
 })
 
@@ -74,6 +75,13 @@ it.each([
 ] as const)('production workspace cookie uses only trusted configured loopback HTTP for its insecure exception: %s', async (appUrl, secure) => {
  vi.stubEnv('NODE_ENV', 'production')
  vi.stubEnv('NEXT_PUBLIC_APP_URL', appUrl)
- await expect(actions.provisionWorkspace({name:'Workspace',key})).rejects.toThrow('REDIRECT:/dashboard')
+ await expect(createFirstWorkspace({name:'Workspace',key})).rejects.toThrow('REDIRECT:/dashboard')
  expect(state.setCookie).toHaveBeenCalledWith('active_org',orgId,expect.objectContaining({secure,httpOnly:true,sameSite:'lax',path:'/'}))
+})
+
+it('a completed installation cannot create or activate another org through Community setup', async () => {
+ state.rpc.mockResolvedValue({data:null,error:{message:'This installation already has a workspace. Ask an owner or admin for an invitation.'}})
+ expect(await createFirstWorkspace({name:'Another workspace',key})).toHaveProperty('error')
+ expect(state.rpc).toHaveBeenCalledExactlyOnceWith('provision_workspace',{p_name:'Another workspace',p_key:key})
+ expect(state.setCookie).not.toHaveBeenCalled()
 })

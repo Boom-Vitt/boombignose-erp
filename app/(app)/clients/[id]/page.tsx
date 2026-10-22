@@ -27,7 +27,7 @@ import { formatDate } from "../_lib/format"
 import { AddContactDialog } from "../_components/add-contact-dialog"
 import { DeleteContactButton } from "../_components/delete-contact-button"
 import { DeleteClientButton } from "../_components/delete-client-button"
-import { ClientPortalCard } from "@/ee/portal/client-card"
+import { ClientPortalCard } from "@edition"
 
 export default async function ClientDetailPage({
   params,

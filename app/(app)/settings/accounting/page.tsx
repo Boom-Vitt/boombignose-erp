@@ -1,3 +1,3 @@
-export { default } from "@/ee/accounting/settings-page"
+export { AccountingSettingsPage as default } from "@edition"
 
 export const dynamic = "force-dynamic"
