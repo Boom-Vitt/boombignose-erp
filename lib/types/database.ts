@@ -65,14 +65,14 @@ isOneToOne: false
                   ]
                 },"activities": {
                   Row: {
-                    "body": string | null,"client_id": string | null,"created_at": string,"deal_id": string | null,"done": boolean,"due_date": string | null,"id": string,"org_id": string,"owner": string | null,"type": Database["public"]['Enums']["activity_type"],"updated_at": string,"record_type": Database["public"]["Enums"]["record_type"] | null,"record_id": string | null,"completed_at": string | null
+                    "body": string | null,"client_id": string | null,"created_at": string,"deal_id": string | null,"done": boolean,"due_date": string | null,"id": string,"org_id": string,"owner": string | null,"type": Database["public"]['Enums']["activity_type"],"updated_at": string,"record_type": Database["public"]["Enums"]["record_type"] | null,"record_id": string | null,"completed_at": string | null,"completed_by": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id": string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null
+                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id": string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null,"completed_by"?: string | null
                   }
                   Update: {
-                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id"?: string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null
+                    "body"?: string | null,"client_id"?: string | null,"created_at"?: string,"deal_id"?: string | null,"done"?: boolean,"due_date"?: string | null,"id"?: string,"org_id"?: string,"owner"?: string | null,"type"?: Database["public"]['Enums']["activity_type"],"updated_at"?: string,"record_type"?: Database["public"]["Enums"]["record_type"] | null,"record_id"?: string | null,"completed_at"?: string | null,"completed_by"?: string | null
                   }
                   Relationships: [
                     {

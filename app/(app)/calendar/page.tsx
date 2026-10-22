@@ -1,4 +1,4 @@
-import { activityDueState } from "@/lib/record-history/due"
+import { activityDueState, DUE_LABELS } from "@/lib/record-history/due"
 import { recordHref } from "@/lib/record-history/model"
 import Link from "next/link"
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react"
@@ -89,11 +89,13 @@ export default async function CalendarPage({
     if (!a.due_date) continue
     const meta = ACTIVITY_META[a.type]
     const client = a.clients?.name
+    const state = activityDueState(a.due_date, today, a.done)
+    const status = a.done ? "Completed" : `Pending · ${DUE_LABELS[state]}`
     items.push({
       id: `activity-${a.id}`,
       date: a.due_date,
-      label: client ? `${meta.label} · ${client}` : meta.label,
-      tone: ({ overdue: "red", today: "orange", future: "emerald", none: "neutral" } as const)[activityDueState(a.due_date, today, a.done)],
+      label: `${status} · ${meta.label}${client ? ` · ${client}` : ""}`,
+      tone: ({ overdue: "red", today: "orange", future: "emerald", none: "neutral" } as const)[state],
       href: a.record_type && a.record_id ? recordHref(a.record_type, a.record_id) : a.client_id ? `/clients/${a.client_id}` : undefined,
     })
   }

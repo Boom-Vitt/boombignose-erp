@@ -14,9 +14,10 @@ function databaseFixture(tables: Record<string, Row[]>) {
       let start = 0
       let end = 999
       let countOnly = false
+      let exactCount = false
       const orders: { key: string; ascending: boolean; nullsFirst: boolean }[] = []
       const query = {
-        select: (_columns = "*", options?: { head?: boolean; count?: string }) => { countOnly = options?.head === true; return query },
+        select: (_columns: string, options?: { head?: boolean; count?: string }) => { countOnly = options?.head === true; exactCount = options?.count === "exact"; return query },
         eq: (key: string, value: unknown) => { rows = rows.filter(row => row[key] === value); return query },
         lt: (key: string, value: string) => { rows = rows.filter(row => row[key] != null && String(row[key]) < value); return query },
         lte: (key: string, value: string) => { rows = rows.filter(row => row[key] != null && String(row[key]) <= value); return query },
@@ -25,6 +26,12 @@ function databaseFixture(tables: Record<string, Row[]>) {
         range: (from: number, to: number) => { start = from; end = to; return query },
         limit: (limit: number) => { end = start + limit - 1; return query },
         or: (expression: string) => {
+          const single = expression.match(/^(\w+)\.(lt|lte)\.(.+)$/)
+          if (single && !expression.includes(",")) {
+            const [, key, operator, value] = single
+            rows = rows.filter(row => operator === "lt" ? String(row[key]) < value : String(row[key]) <= value)
+            return query
+          }
           const match = expression.match(/^(\w+)\.lt\.([^,]+),and\(\1\.eq\.([^,]+),id\.gt\.([^)]+)\)$/)
           if (!match) throw new Error(`Unsupported test filter ${expression}`)
           const [, key, before, equal, id] = match
@@ -44,7 +51,7 @@ function databaseFixture(tables: Record<string, Row[]>) {
             }
             return 0
           })
-          return Promise.resolve({ data: countOnly ? null : rows.slice(start, Math.min(end + 1, start + 1000)), count: rows.length, error: null }).then(resolve, reject)
+          return Promise.resolve({ data: countOnly ? null : rows.slice(start, Math.min(end + 1, start + 1000)), count: exactCount ? rows.length : null, error: null }).then(resolve, reject)
         },
       }
       return query
@@ -147,4 +154,21 @@ it("starts history with the newest notes beyond the API cap", async () => {
   const history = await recordHistory({ recordType: "quote", recordId: "q" })
   expect(history.timeline[0].text).toBe("Note 1204")
   expect(history.timeline).toHaveLength(50)
+})
+it("keeps microsecond cursor boundaries exact while newer notes arrive", async () => {
+  const notes = Array.from({ length: 130 }, (_, index) => ({
+    id: id(index), org_id: "A", record_type: "quote", record_id: "q", body: `Note ${index}`,
+    created_at: `2026-10-23T10:00:00.${String(index).padStart(6, "0")}+00:00`,
+  }))
+  fixture({ record_notes: notes })
+  const ref = { recordType: "quote" as const, recordId: "q" }
+  const first = await recordTimelinePage(ref)
+  expect(first.timeline[0].text).toBe("Note 129")
+  expect(first.nextCursor?.at).toBe("2026-10-23T10:00:00.000080+00:00")
+  notes.unshift({ ...notes[0], id: id(9999), body: "Just arrived", created_at: "2026-10-23T11:00:00.000000+00:00" })
+  const second = await recordTimelinePage(ref, first.nextCursor!)
+  const third = await recordTimelinePage(ref, second.nextCursor!)
+  const all = [...first.timeline, ...second.timeline, ...third.timeline]
+  expect(third.nextCursor).toBeNull()
+  expect(all.map(entry => entry.text)).toEqual(Array.from({ length: 130 }, (_, index) => `Note ${129 - index}`))
 })
