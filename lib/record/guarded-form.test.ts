@@ -13,10 +13,10 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn() } }))
 
 import { useGuardedForm } from "@/components/record/record-guard"
 
-type Header = { title: string; notes: string }
+type Header = { title: string; meta: { notes: string } }
 
 function GuardedHeader() {
-  const control = createFormControl<Header>({ defaultValues: { title: "Old", notes: "" } })
+  const control = createFormControl<Header>({ defaultValues: { title: "Old", meta: { notes: "" } } })
   let state = {} as Partial<FormState<Header>>
   control.subscribe({ formState: { isDirty: true, dirtyFields: true, defaultValues: true }, callback: (next) => { state = next } })
   const form = { ...control, get formState() { return state } } as unknown as UseFormReturn<Header>
@@ -31,12 +31,13 @@ it("keeps edits typed while the header save is pending, and keeps them dirty", a
   control.setValue("title", "Saved", { shouldDirty: true })
   const saving = submit()
   const finish = await inFlight()
-  control.setValue("notes", "Typed during save", { shouldDirty: true })
+  control.setValue("meta.notes", "Typed during save", { shouldDirty: true })
   finish(true)
   await saving
 
-  expect(control.getValues()).toEqual({ title: "Saved", notes: "Typed during save" })
-  expect(state()).toMatchObject({ isDirty: true, dirtyFields: { notes: true }, defaultValues: { title: "Saved", notes: "" } })
+  expect(control.getValues()).toEqual({ title: "Saved", meta: { notes: "Typed during save" } })
+  expect(state()).toMatchObject({ isDirty: true, defaultValues: { title: "Saved", meta: { notes: "" } } })
+  expect(state().dirtyFields).toEqual({ meta: { notes: true } })
 })
 
 it("is clean against the saved values when nothing changed during the save", async () => {
@@ -46,6 +47,7 @@ it("is clean against the saved values when nothing changed during the save", asy
   ;(await inFlight())(true)
   await saving
 
-  expect(control.getValues()).toEqual({ title: "Saved", notes: "" })
-  expect(state()).toMatchObject({ isDirty: false, dirtyFields: {}, defaultValues: { title: "Saved", notes: "" } })
+  expect(control.getValues()).toEqual({ title: "Saved", meta: { notes: "" } })
+  expect(state()).toMatchObject({ isDirty: false, defaultValues: { title: "Saved", meta: { notes: "" } } })
+  expect(state().dirtyFields).toEqual({})
 })
