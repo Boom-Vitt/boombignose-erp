@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { Enums } from "@/lib/types/database"
 import { deadlineMeta } from "./_lib/dates"
+import { profileNames } from "./_lib/profile-names"
 
 export const dynamic = "force-dynamic"
 
@@ -55,6 +56,7 @@ export default async function ProjectsPage() {
     owner: string | null
     client: { name: string } | null
   }>
+  const ownerNames = await profileNames(supabase, rows.map((p) => p.owner))
 
   const newButton = (
     <Button render={<Link href="/projects/new" />}>
@@ -151,7 +153,7 @@ export default async function ProjectsPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-muted-foreground">
-                              {p.owner ?? "—"}
+                              {(p.owner && ownerNames.get(p.owner)) || "—"}
                             </TableCell>
                           </TableRow>
                         )

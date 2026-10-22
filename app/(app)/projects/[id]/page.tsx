@@ -33,6 +33,7 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import type { Enums } from "@/lib/types/database"
 import { deadlineMeta, formatDate } from "../_lib/dates"
+import { profileNames } from "../_lib/profile-names"
 import { StatusSelect } from "../_components/status-select"
 import { TaskToggle, MilestoneToggle } from "../_components/toggle-check"
 import { AddTaskForm } from "../_components/add-task-form"
@@ -154,6 +155,10 @@ export default async function ProjectDetailPage({
     source_milestone_id: string | null
   }>
   const costs = (costsData ?? []) as Array<{ amount_satang: number }>
+  const names = await profileNames(supabase, [
+    p.owner,
+    ...tasks.map((t) => t.assignee),
+  ])
   const timeEntries = (timeData ?? []) as Array<{
     project_id: string
     minutes: number
@@ -221,7 +226,7 @@ export default async function ProjectDetailPage({
               {p.budget_satang != null ? formatTHBWhole(p.budget_satang) : "—"}
             </Field>
             <Field icon={User} label="Owner">
-              {p.owner ?? "—"}
+              {(p.owner && names.get(p.owner)) || "—"}
             </Field>
           </div>
         </CardContent>
@@ -311,9 +316,9 @@ export default async function ProjectDetailPage({
                   >
                     {t.title}
                   </span>
-                  {t.assignee ? (
+                  {t.assignee && names.get(t.assignee) ? (
                     <span className="text-muted-foreground hidden shrink-0 text-xs sm:inline">
-                      {t.assignee}
+                      {names.get(t.assignee)}
                     </span>
                   ) : null}
                   {t.due_date ? (
