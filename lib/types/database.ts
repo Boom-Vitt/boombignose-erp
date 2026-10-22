@@ -23,6 +23,24 @@ export type Database = {
           }
         },"public": {
           Tables: {
+      warehouses: {
+        Row: { id: string; org_id: string; code: string; name: string; address: string | null; is_default: boolean; active: boolean }
+        Insert: { id?: string; org_id: string; code: string; name: string; address?: string | null; is_default?: boolean; active?: boolean }
+        Update: { code?: string; name?: string; address?: string | null; is_default?: boolean; active?: boolean }
+        Relationships: []
+      }
+      stock_counts: {
+        Row: { org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
+        Insert: { org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
+        Update: never
+        Relationships: []
+      }
+      stock_moves: {
+        Row: { id: string; sequence: number; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: "purchase_order" | "invoice" | "adjustment" | "transfer"; source_id: string; note: string | null; moved_at: string; created_by: string | null; balance_after: number; average_cost_after: number }
+        Insert: { id?: string; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: string; source_id: string; note?: string | null; balance_after: number; average_cost_after: number }
+        Update: never
+        Relationships: []
+      }
       vendors: {
         Row: { id: string; org_id: string; name: string; tax_id: string | null; email: string | null; phone: string | null; address: string | null; payment_terms_days: number; notes: string | null; active: boolean; created_at: string; updated_at: string }
         Insert: { id?: string; org_id: string; name: string; tax_id?: string | null; email?: string | null; phone?: string | null; address?: string | null; payment_terms_days?: number; notes?: string | null; active?: boolean; created_at?: string; updated_at?: string }
@@ -536,14 +554,14 @@ isOneToOne: false
                   ]
                 },"org_settings": {
                   Row: {
-                    "business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
+                    "allow_negative_stock": boolean,"business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
+                    "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
+                    "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -1103,17 +1121,17 @@ isOneToOne: false
               Row: {
                 id: string; org_id: string; sku: string | null; name: string; description: string | null;
                 type: "service" | "goods"; unit: string; list_price_satang: number; cost_satang: number;
-                tax_rate_bps: number; is_stockable: boolean; active: boolean; created_at: string; updated_at: string;
+                reorder_min: number; reorder_qty: number; default_vendor_id: string | null; tax_rate_bps: number; is_stockable: boolean; active: boolean; created_at: string; updated_at: string;
               }
               Insert: {
                 id?: string; org_id: string; sku?: string | null; name: string; description?: string | null;
                 type?: "service" | "goods"; unit?: string; list_price_satang?: number; cost_satang?: number;
-                tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
+                reorder_min?: number; reorder_qty?: number; default_vendor_id?: string | null; tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
               }
               Update: {
                 id?: string; org_id?: string; sku?: string | null; name?: string; description?: string | null;
                 type?: "service" | "goods"; unit?: string; list_price_satang?: number; cost_satang?: number;
-                tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
+                reorder_min?: number; reorder_qty?: number; default_vendor_id?: string | null; tax_rate_bps?: number; is_stockable?: boolean; active?: boolean; created_at?: string; updated_at?: string;
               }
               ComputedFields: never
               Relationships: [{
@@ -1140,6 +1158,14 @@ isOneToOne: false
       }
 }
           Views: {
+            stock_on_hand: {
+              Row: { org_id: string; product_id: string; warehouse_id: string; quantity: number; average_cost_satang: number; value_satang: number }
+              Relationships: []
+            }
+            inventory_totals: {
+              Row: { org_id: string; product_id: string; quantity: number; value_satang: number }
+              Relationships: []
+            }
             deal_next_activity: {
               Row: { org_id: string | null; deal_id: string | null; next_due_date: string | null; open_count: number | null }
               Relationships: []
@@ -1164,6 +1190,11 @@ isOneToOne: false
             }
           }
           Functions: {
+            save_warehouse: { Args: { p_org_id: string; p_id: string | null; p_code: string; p_name: string; p_address: string | null; p_default: boolean; p_active: boolean }; Returns: string }
+            delete_warehouse: { Args: { p_org_id: string; p_id: string }; Returns: undefined }
+            deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string }; Returns: undefined }
+            adjust_stock: { Args: { p_org_id: string; p_product_id: string; p_warehouse_id: string; p_count: number; p_reason: string; p_key: string }; Returns: string | null }
+            create_replenishment_rfq: { Args: { p_org_id: string; p_vendor_id: string }; Returns: string }
             "accept_integration_event":
 { Args: { "p_event_type": string,"p_key": string,"p_org_id": string,"p_payload": Json }; Returns: Json
                            },
@@ -1217,12 +1248,13 @@ isOneToOne: false
                            }
             create_purchase_order: { Args: { p_org_id: string; p_vendor_id: string; p_order_date: string; p_expected_date?: string | null; p_notes?: string | null }; Returns: string }
             transition_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_status: Database["public"]["Enums"]["purchase_status"] }; Returns: undefined }
-            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json }; Returns: undefined }
+            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string }; Returns: undefined }
             bill_purchase_order: { Args: { p_org_id: string; p_order_id: string }; Returns: string }
             record_activity_assignees: { Args: { p_org_id: string }; Returns: { user_id: string; full_name: string | null }[] }
           }
           Enums: {
             "accounting_conn_status": "disconnected"|"connected"|"error","accounting_provider": "flowaccount"|"peak"|"xero","accounting_sync_status": "pending"|"synced"|"error","activity_type": "note"|"call"|"email"|"meeting"|"follow_up","ai_output_kind": "deal_summary"|"followup_draft"|"meeting_intake","cost_category": "software"|"contractor"|"infra"|"marketing"|"salary"|"other","deal_stage": "lead"|"contacted"|"discovery"|"proposal"|"negotiation"|"won"|"lost","invitation_status": "pending"|"accepted"|"revoked"|"expired","invoice_status": "draft"|"sent"|"partially_paid"|"paid"|"overdue"|"cancelled","outbound_status": "queued"|"delivered"|"failed","payment_method": "transfer"|"cash"|"card"|"promptpay"|"cheque"|"other","project_status": "not_started"|"in_progress"|"review"|"delivered"|"support"|"paused"|"cancelled","quote_status": "draft"|"sent"|"accepted"|"declined"|"expired"|"converted","recurring_interval": "weekly"|"monthly"|"quarterly"|"yearly","reminder_channel": "line"|"email"|"inapp","reminder_status": "pending"|"sent"|"cancelled","role_enum": "owner"|"admin"|"member","subscription_status": "active"|"paused"|"cancelled","task_status": "todo"|"in_progress"|"done"
+      stock_move_kind: "receipt" | "delivery" | "adjustment_in" | "adjustment_out" | "transfer_in" | "transfer_out"
       purchase_status: "draft" | "sent" | "confirmed" | "received" | "billed" | "cancelled"
       record_type: "client" | "deal" | "quote" | "invoice" | "project" | "subscription" | "vendor" | "purchase_order"
           }
@@ -1345,7 +1377,8 @@ export const Constants = {
         },"public": {
           Enums: {
             "accounting_conn_status": ["disconnected", "connected", "error"],"accounting_provider": ["flowaccount", "peak", "xero"],"accounting_sync_status": ["pending", "synced", "error"],"activity_type": ["note", "call", "email", "meeting", "follow_up"],"ai_output_kind": ["deal_summary", "followup_draft", "meeting_intake"],"cost_category": ["software", "contractor", "infra", "marketing", "salary", "other"],"deal_stage": ["lead", "contacted", "discovery", "proposal", "negotiation", "won", "lost"],"invitation_status": ["pending", "accepted", "revoked", "expired"],"invoice_status": ["draft", "sent", "partially_paid", "paid", "overdue", "cancelled"],"outbound_status": ["queued", "delivered", "failed"],"payment_method": ["transfer", "cash", "card", "promptpay", "cheque", "other"],"project_status": ["not_started", "in_progress", "review", "delivered", "support", "paused", "cancelled"],"quote_status": ["draft", "sent", "accepted", "declined", "expired", "converted"],"recurring_interval": ["weekly", "monthly", "quarterly", "yearly"],"reminder_channel": ["line", "email", "inapp"],"reminder_status": ["pending", "sent", "cancelled"],"role_enum": ["owner", "admin", "member"],"subscription_status": ["active", "paused", "cancelled"],"task_status": ["todo", "in_progress", "done"],
-            purchase_status: ["draft", "sent", "confirmed", "received", "billed", "cancelled"],
+            stock_move_kind: ["receipt", "delivery", "adjustment_in", "adjustment_out", "transfer_in", "transfer_out"],
+      purchase_status: ["draft", "sent", "confirmed", "received", "billed", "cancelled"],
             record_type: ["client", "deal", "quote", "invoice", "project", "subscription", "vendor", "purchase_order"]
           }
         }
