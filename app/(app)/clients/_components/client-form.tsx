@@ -19,6 +19,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 
 const ClientSchema = z.object({
+  tax_id: z.string().trim().regex(/^([0-9]{13})?$/, "Enter a 13-digit tax ID").optional(),
+  branch_label: z.string().trim().max(200).optional(),
   name: z.string().min(1, "Name is required"),
   industry: z.string().optional(),
   source: z.string().optional(),
@@ -43,6 +45,8 @@ export function ClientForm({
   const form = useForm<ClientValues>({
     resolver: zodResolver(ClientSchema),
     defaultValues: {
+      tax_id: defaultValues?.tax_id ?? "",
+      branch_label: defaultValues?.branch_label ?? "",
       name: defaultValues?.name ?? "",
       industry: defaultValues?.industry ?? "",
       source: defaultValues?.source ?? "",
@@ -128,6 +132,8 @@ export function ClientForm({
           )}
         />
 
+        <FormField control={form.control} name="tax_id" render={({ field }) => <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} maxLength={13} inputMode="numeric" /></FormControl><FormMessage /></FormItem>} />
+        <FormField control={form.control} name="branch_label" render={({ field }) => <FormItem><FormLabel>Branch</FormLabel><FormControl><Input {...field} maxLength={200} placeholder="Head office" /></FormControl><FormMessage /></FormItem>} />
         <div className="flex items-center gap-2">
           <Button type="submit" disabled={form.formState.isSubmitting}>
             {submitLabel}

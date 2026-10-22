@@ -31,7 +31,7 @@ export async function saveProduct(input: ProductFormValues, id?: string): Promis
   const mutation = id
     ? supabase.from("products").update(values).eq("org_id", ctx.orgId).eq("id", id)
     : supabase.from("products").insert({ org_id: ctx.orgId, ...values })
-  const { data, error } = await mutation.select("id, sku, name, description, unit, list_price_satang").maybeSingle()
+  const { data, error } = await mutation.select("id, sku, name, description, unit, list_price_satang, tax_rate_bps").maybeSingle()
   if (error) return { error: error.code === "23505" ? "This SKU is already used in your workspace." : error.message }
   if (!data) return { error: "Product not found" }
   await writeAudit(ctx, {

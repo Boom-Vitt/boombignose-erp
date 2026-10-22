@@ -10,6 +10,7 @@ import { can } from "@/lib/permissions"
 import { recordHref } from "@/lib/record-history/model"
 import { DEAL_FLOW, INVOICE_FLOW, PROJECT_FLOW, QUOTE_FLOW, SUBSCRIPTION_FLOW } from "@/lib/record/status"
 import { createClient } from "@/lib/supabase/server"
+import { readAll } from "@/lib/supabase/read-all"
 import type { Enums } from "@/lib/types/database"
 import { updateDealStage } from "@/app/(app)/deals/actions"
 import { setSubscriptionStatus } from "@/app/(app)/finance/subscription-actions"
@@ -49,28 +50,21 @@ export async function searchRecords(raw: string): Promise<SearchHit[]> {
   return results.flat()
 }
 
-const PAGE = 1000
-
 /** Verified payments on one invoice, paged so the API row cap cannot truncate the sum; null on error. */
 async function verifiedPaidSatang(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orgId: string,
   invoiceId: string
 ): Promise<number | null> {
-  const amounts: number[] = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("amount_satang")
-      .eq("verification_state", "verified")
-      .eq("org_id", orgId)
-      .eq("invoice_id", invoiceId)
-      .order("id")
-      .range(from, from + PAGE - 1)
-    if (error) return null
-    amounts.push(...data.map((p) => p.amount_satang))
-    if (data.length < PAGE) return sumSatang(amounts)
-  }
+  const { data, error } = await readAll((from, to) => supabase
+    .from("payments")
+    .select("amount_satang")
+    .eq("verification_state", "verified")
+    .eq("org_id", orgId)
+    .eq("invoice_id", invoiceId)
+    .order("id")
+    .range(from, to))
+  return error || !data ? null : sumSatang(data.map(payment => payment.amount_satang))
 }
 
 type RecordContext = { actions: PaletteAction[]; transition?: (to: string) => Promise<{ error?: string }> }

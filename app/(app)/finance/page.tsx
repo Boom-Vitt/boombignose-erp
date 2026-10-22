@@ -1,4 +1,4 @@
-import { readAllOrThrow } from "@/lib/supabase/read-all"
+import { readAll } from "@/lib/supabase/read-all"
 import { can } from "@/lib/permissions"
 import { markBillPaid } from "@/app/(app)/purchases/actions"
 import { PurchaseAction } from "@/app/(app)/purchases/_components/action-button"
@@ -79,17 +79,17 @@ export default async function FinancePage({
   const config = parseFacets(params, "finance")
   const now = new Date()
 
-  const [invoicesRes, paymentsRes, costs, savedViews, subscriptionsRes] =
+  const [invoicesRes, paymentsRes, costsRes, savedViews, subscriptionsRes] =
     await Promise.all([
-      supabase
+      readAll((from, to) => supabase
         .from("invoices")
         .select(
           "id, number, amount_satang, status, due_date, issue_date, is_recurring, recurring_interval, client_id, clients(name, owner)"
         )
         .eq("org_id", ctx.orgId)
-        .order("issue_date", { ascending: false }),
-      supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified").eq("org_id", ctx.orgId),
-      readAllOrThrow((from, to) => supabase
+        .order("issue_date", { ascending: false }).order("id").range(from, to)),
+      readAll((from, to) => supabase.from("payments").select("invoice_id, amount_satang, paid_at").eq("verification_state", "verified").eq("org_id", ctx.orgId).order("id").range(from, to)),
+      readAll((from, to) => supabase
         .from("costs")
         .select(
           "id, category, amount_satang, incurred_on, vendor, project_id, projects(name), vendor_id, purchase_order_id, bill_number, bill_date, due_date, paid_at"
@@ -97,16 +97,17 @@ export default async function FinancePage({
         .eq("org_id", ctx.orgId)
         .order("incurred_on", { ascending: false }).order("id").range(from, to)),
       getFacetSavedViews("finance"),
-      supabase
+      readAll((from, to) => supabase
         .from("subscriptions")
         .select("status, amount_satang, interval")
         .eq("org_id", ctx.orgId)
-        .eq("status", "active"),
+        .eq("status", "active").order("id").range(from, to)),
     ])
 
-  if (invoicesRes.error || paymentsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
+  if (invoicesRes.error || paymentsRes.error || costsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
   const invoices = invoicesRes.data ?? []
   const payments = paymentsRes.data ?? []
+  const costs = costsRes.data ?? []
   const activeSubscriptions = subscriptionsRes.data ?? []
 
   // Sum payments per invoice.

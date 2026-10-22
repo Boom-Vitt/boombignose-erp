@@ -1,3 +1,4 @@
+import { readAll } from "@/lib/supabase/read-all"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { toCsv } from "@/lib/export/csv"
@@ -12,8 +13,8 @@ export async function GET(request: Request) {
   const today = todayISO()
   const status = new URL(request.url).searchParams.get("status") ?? ""
   const [invoicesRes, receiptsRes] = await Promise.all([
-    supabase.from("invoices").select("id, number, amount_satang, discount_satang, status, due_date, issue_date, source_quote_id, source_milestone_id, clients(name)").eq("org_id", ctx.orgId).order("issue_date", { ascending: false }),
-    supabase.from("payments").select("id, invoice_id, verification_state, amount_satang, paid_at, verification_reference, method").eq("org_id", ctx.orgId).eq("verification_state", "verified"),
+    readAll((from, to) => supabase.from("invoices").select("id, number, amount_satang, discount_satang, status, due_date, issue_date, source_quote_id, source_milestone_id, clients(name)").eq("org_id", ctx.orgId).order("issue_date", { ascending: false }).order("id").range(from, to)),
+    readAll((from, to) => supabase.from("payments").select("id, invoice_id, verification_state, amount_satang, paid_at, verification_reference, method").eq("org_id", ctx.orgId).eq("verification_state", "verified").order("id").range(from, to)),
   ])
   if (invoicesRes.error || receiptsRes.error) return new Response("Receivables export unavailable", { status: 503 })
   let rows = invoiceExportRows((invoicesRes.data ?? []).map(invoice => ({ ...invoice, clientName: invoice.clients?.name ?? "" })), receiptsRes.data ?? [], today)

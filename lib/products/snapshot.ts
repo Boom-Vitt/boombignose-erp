@@ -2,7 +2,7 @@ import { serviceAmountBaht } from "@/lib/workflows/service"
 import type { Tables } from "@/lib/types/database"
 
 export type ProductOption = Pick<Tables<"products">,
-  "id" | "sku" | "name" | "description" | "unit" | "list_price_satang">
+  "id" | "sku" | "name" | "description" | "unit" | "list_price_satang"> & { tax_rate_bps?: number }
 
 export function productToLineValues(product: ProductOption) {
   return {

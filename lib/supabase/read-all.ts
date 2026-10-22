@@ -6,9 +6,9 @@ export const PAGE_ROWS = 1000
  * order and `.range(from, to)`. Any failed page fails the whole read, so totals are never partial.
  * Rows that carry an `id` are kept once.
  */
-export async function readAll<T>(
-  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
-): Promise<{ data: T[] | null; error: unknown }> {
+export async function readAll<T, E = unknown>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: E }>
+): Promise<{ data: T[] | null; error: E | null }> {
   const rows: T[] = []
   const seen = new Set<unknown>()
   for (let from = 0; ; from += PAGE_ROWS) {
