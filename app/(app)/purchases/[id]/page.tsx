@@ -62,7 +62,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
     {unbilled > 0 && <p className="text-sm">Received and not yet billed: {formatTHB(unbilled)}</p>}
     {manage && billable && ["confirmed", "received", "closed", "billed"].includes(order.status) && <BillForm key={lines.map(line => `${line.id}:${line.received_quantity}:${line.returned_quantity}:${line.billed_quantity}`).join(",")} orderId={id} lines={lines} terms={order.vendors?.payment_terms_days ?? 30} toleranceBps={toleranceBps} />}
     {matches.filter(match => match.variance_reason).map(match => <p key={match.id} className="rounded-lg border p-3 text-sm">{match.vendor_reference} · Accepted variance · {match.variance_reason}</p>)}
-    <VendorBills bills={bills} canManage={manage} lines={lines} />
+    <VendorBills bills={bills} canManage={manage} lines={lines} matches={matches} />
     <RecordHistory recordType="purchase_order" recordId={id} />
   </div>
 }

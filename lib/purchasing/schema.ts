@@ -60,8 +60,12 @@ const BillFields = z.object({
   lines: z.array(z.object({ id: z.guid(), quantity: serviceQuantityInput, expected_quantity: serviceQuantityInput, unit_cost_satang: satangInput })).min(1),
 })
 export const BillInput = BillFields.refine(value => value.due_date >= value.bill_date && value.vendor_total_satang >= value.input_vat_satang)
-export const CreditInput = BillFields.pick({ vendor_reference: true, bill_date: true, input_vat_rate: true, input_vat_satang: true, variance_reason: true }).extend({
-  original_bill_id: z.guid(),
-  cost_ids: z.array(z.guid()).min(1).optional(),
-  lines: z.array(z.object({ id: z.guid(), quantity: serviceQuantityInput })).min(1),
+const CreditFields = BillFields.pick({ vendor_reference: true, bill_date: true, input_vat_satang: true }).extend({
+  variance_reason: BillFields.shape.variance_reason.default(""),
+  cost_ids: z.array(z.guid()).min(1).refine(ids => new Set(ids.map(id => id.toLowerCase())).size === ids.length).optional(),
 })
+const CreditLines = z.array(z.object({ id: z.guid(), quantity: serviceQuantityInput })).min(1).refine(lines => new Set(lines.map(line => line.id.toLowerCase())).size === lines.length)
+export const CreditInput = z.union([
+  CreditFields.extend({ allocations: z.array(z.object({ original_bill_id: z.guid(), lines: CreditLines })).min(1).refine(allocations => new Set(allocations.map(allocation => allocation.original_bill_id.toLowerCase())).size === allocations.length) }),
+  CreditFields.extend({ original_bill_id: z.guid(), lines: CreditLines }).transform(({ original_bill_id, lines, ...credit }) => ({ ...credit, allocations: [{ original_bill_id, lines }] })),
+])
