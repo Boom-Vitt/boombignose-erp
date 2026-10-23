@@ -7,5 +7,5 @@ export default async function TransferPage() {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "inventory:manage")
   const { products, warehouses } = await inventoryData()
-  return <div className="space-y-6"><PageHeader title="Warehouse transfer" description="Move stock atomically at its retained average cost." /><TransferForm products={products.filter(p => p.active)} warehouses={warehouses.filter(w => w.active)} scope={`${ctx.orgId}/${ctx.userId}`} /></div>
+  return <div className="space-y-6"><PageHeader title="Warehouse transfer" description="Move stock atomically at its retained average cost." /><TransferForm products={products} warehouses={warehouses} scope={`${ctx.orgId}/${ctx.userId}`} /></div>
 }
