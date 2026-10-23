@@ -1,5 +1,16 @@
 import { test, expect } from "@playwright/test"
 import { loginDemo } from "./auth"
+import { createClient } from "@supabase/supabase-js"
+import type { Database } from "@/lib/types/database"
+import { todayISO } from "@/lib/dates"
+
+const org = "a0000000-0000-0000-0000-000000000001"
+async function owner() {
+  const db = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } })
+  const login = await db.auth.signInWithPassword({ email: "demo@boombignose.org", password: "BoomDemo123!" })
+  expect(login.error).toBeNull()
+  return { db }
+}
 
 test("create, confirm, partially receive and bill a purchase order", async ({ page }) => {
   await loginDemo(page)
@@ -57,4 +68,74 @@ test("create, confirm, partially receive and bill a purchase order", async ({ pa
   await page.getByRole("tab", { name: "Costs", exact: false }).click()
   await expect(page.getByRole("row").filter({ hasText: `${number}-B1` })).toContainText("Paid")
   await expect(page.getByRole("row").filter({ hasText: `${number}-B2` })).toContainText("Unpaid")
+})
+
+test("receipt tolerance preserves vendor invoice matching and multi-invoice credit allocation", async ({ page }) => {
+  const { db } = await owner()
+  const policy = await db.from("org_settings").select("over_receipt_tolerance_percent,purchase_approval_threshold_satang").eq("org_id", org).single()
+  expect(policy.error).toBeNull()
+  try {
+    expect((await db.from("org_settings").update({ over_receipt_tolerance_percent: 10, purchase_approval_threshold_satang: null }).eq("org_id", org)).error).toBeNull()
+    const name = `Receipt capacity ${crypto.randomUUID()}`
+    const product = await db.from("products").insert({ org_id: org, name, type: "goods", is_stockable: true, unit: "piece", cost_satang: 100 }).select("id").single()
+    expect(product.error).toBeNull()
+    const order = await db.rpc("create_purchase_order", { p_org_id: org, p_vendor_id: "a6000000-0000-4000-8000-000000000001", p_order_date: todayISO() })
+    expect(order.error).toBeNull()
+    expect((await db.from("purchase_order_items").insert({ org_id: org, purchase_order_id: order.data!, product_id: product.data!.id, description: name, quantity: 10, unit: "piece", unit_cost_satang: 100 })).error).toBeNull()
+    expect((await db.rpc("transition_purchase_order", { p_org_id: org, p_order_id: order.data!, p_status: "confirmed" })).error).toBeNull()
+    await loginDemo(page)
+    await page.goto(`/purchases/${order.data}`)
+    const quantity = page.getByLabel(`Received total for ${name}`, { exact: true })
+    await quantity.fill("10")
+    await page.getByRole("button", { name: "Record receipt", exact: true }).click()
+    await expect(page.getByRole("link", { name: "Receipts 1", exact: true })).toBeVisible()
+    expect((await db.from("purchase_orders").select("status").eq("id", order.data!).single()).data?.status).toBe("received")
+    await expect(quantity).toBeVisible()
+    await expect(page.getByText("Up to 11 piece total; 1 piece still allowed.", { exact: true })).toBeVisible()
+    await expect(quantity).toHaveAttribute("max", "11")
+    await quantity.fill("11.001")
+    expect(await quantity.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(false)
+    await quantity.fill("10.5")
+    await page.getByRole("button", { name: "Record receipt", exact: true }).click()
+    await expect(page.getByRole("link", { name: "Receipts 2", exact: true })).toBeVisible()
+    expect((await db.rpc("bill_purchase_order", { p_org_id: org, p_order_id: order.data!, p_bill: { vendor_reference: `${name}-A`, bill_date: todayISO(), input_vat_rate: 0, input_vat_satang: 0, vendor_total_satang: 1050 } })).error).toBeNull()
+    await page.reload()
+    expect((await db.from("purchase_orders").select("status").eq("id", order.data!).single()).data?.status).toBe("billed")
+    await expect(quantity).toBeVisible()
+    await expect(page.getByText("Up to 11 piece total; 0.5 piece still allowed.", { exact: true })).toBeVisible()
+    await quantity.fill("11")
+    await page.getByRole("button", { name: "Record receipt", exact: true }).click()
+    await expect(page.getByRole("link", { name: "Receipts 3", exact: true })).toBeVisible()
+    await expect(quantity).toHaveCount(0)
+    expect((await db.from("purchase_order_items").select("received_quantity").eq("purchase_order_id", order.data!).single()).data?.received_quantity).toBe(11)
+    const line = await db.from("purchase_order_items").select("id").eq("purchase_order_id", order.data!).single()
+    expect(line.error).toBeNull()
+    expect((await db.rpc("bill_purchase_order", { p_org_id: org, p_order_id: order.data!, p_bill: { vendor_reference: `${name}-B`, bill_date: todayISO(), input_vat_rate: 7, input_vat_satang: 7, vendor_total_satang: 107, variance_reason: "Accepted price for the additional receipt", lines: [{ id: line.data!.id, expected_quantity: 0.5, quantity: 0.5, unit_cost_satang: 200 }] } })).error).toBeNull()
+    expect((await db.rpc("return_purchase_order", { p_org_id: org, p_order_id: order.data!, p_lines: [{ id: line.data!.id, returned_quantity: 11 }] })).error).toBeNull()
+    await page.reload()
+    const bills = page.getByRole("region", { name: "Vendor bills", exact: true })
+    await bills.getByText("Link vendor credit note", { exact: true }).click()
+    await bills.getByLabel(`Credit quantity for ${name} from ${name}-A`, { exact: true }).fill("10.5")
+    await bills.getByLabel(`Credit quantity for ${name} from ${name}-B`, { exact: true }).fill("0.5")
+    await bills.getByLabel("Credit note reference", { exact: true }).fill(`${name}-CN`)
+    await bills.getByLabel("Credit VAT (THB)", { exact: true }).fill("0.07")
+    await bills.getByRole("button", { name: "Link credit note", exact: true }).click()
+    await expect(bills.getByRole("row").filter({ hasText: `${name}-CN` })).toHaveCount(2)
+    const costs = await db.from("costs").select("amount_satang,input_vat_satang").eq("purchase_order_id", order.data!).in("purchase_cost_kind", ["bill", "credit"])
+    expect(costs.error).toBeNull()
+    expect(costs.data!.reduce((sum, cost) => sum + cost.amount_satang, 0)).toBe(0)
+    expect(costs.data!.reduce((sum, cost) => sum + cost.input_vat_satang, 0)).toBe(0)
+    const credits = await db.from("vendor_bill_matches").select("original_bill_id,lines").eq("purchase_order_id", order.data!).eq("kind", "credit")
+    expect(credits.error).toBeNull()
+    expect(credits.data).toHaveLength(1)
+    expect(credits.data![0].original_bill_id).toBeNull()
+    expect(credits.data![0].lines).toEqual(expect.arrayContaining([expect.objectContaining({ id: line.data!.id, quantity: 10.5, amount_satang: 1050 }), expect.objectContaining({ id: line.data!.id, quantity: 0.5, amount_satang: 100, input_vat_satang: 7 })]))
+    const moves = await db.from("stock_moves").select("kind,quantity,stock_value_satang").eq("source_id", order.data!)
+    expect(moves.error).toBeNull()
+    expect(moves.data).toHaveLength(4)
+    expect(moves.data!.reduce((sum, move) => sum + (move.kind === "receipt" ? move.quantity : -move.quantity), 0)).toBe(0)
+    expect(moves.data!.reduce((sum, move) => sum + (move.kind === "receipt" ? move.stock_value_satang : -move.stock_value_satang), 0)).toBe(0)
+  } finally {
+    expect((await db.from("org_settings").update(policy.data!).eq("org_id", org)).error).toBeNull()
+  }
 })

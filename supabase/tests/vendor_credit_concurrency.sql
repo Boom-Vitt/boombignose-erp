@@ -55,6 +55,8 @@ do $$begin
   delete from public.audit_log where org_id='b9540000-0000-4000-8000-000000000010';
   delete from public.costs where org_id='b9540000-0000-4000-8000-000000000010';
   delete from public.vendor_bill_matches where org_id='b9540000-0000-4000-8000-000000000010';
+  delete from public.stock_document_lines where org_id='b9540000-0000-4000-8000-000000000010';
+  delete from public.stock_documents where org_id='b9540000-0000-4000-8000-000000000010';
   delete from public.purchase_order_items where org_id='b9540000-0000-4000-8000-000000000010';
   delete from public.purchase_orders where org_id='b9540000-0000-4000-8000-000000000010';
   delete from public.vendors where org_id='b9540000-0000-4000-8000-000000000010';

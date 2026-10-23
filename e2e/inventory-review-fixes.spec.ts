@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/types/database"
-import { todayISO } from "@/lib/dates"
 import { loginDemo } from "./auth"
 
 const org = "a0000000-0000-0000-0000-000000000001"
@@ -12,48 +11,6 @@ async function owner() {
   return { db, userId: login.data.user!.id }
 }
 
-test("received and billed orders allow additional receipts up to the tolerance", async ({ page }) => {
-  const { db } = await owner()
-  const policy = await db.from("org_settings").select("over_receipt_tolerance_percent,purchase_approval_threshold_satang").eq("org_id", org).single()
-  expect(policy.error).toBeNull()
-  try {
-    expect((await db.from("org_settings").update({ over_receipt_tolerance_percent: 10, purchase_approval_threshold_satang: null }).eq("org_id", org)).error).toBeNull()
-    const name = `Receipt capacity ${crypto.randomUUID()}`
-    const product = await db.from("products").insert({ org_id: org, name, type: "goods", is_stockable: true, unit: "piece", cost_satang: 100 }).select("id").single()
-    expect(product.error).toBeNull()
-    const order = await db.rpc("create_purchase_order", { p_org_id: org, p_vendor_id: "a6000000-0000-4000-8000-000000000001", p_order_date: todayISO() })
-    expect(order.error).toBeNull()
-    expect((await db.from("purchase_order_items").insert({ org_id: org, purchase_order_id: order.data!, product_id: product.data!.id, description: name, quantity: 10, unit: "piece", unit_cost_satang: 100 })).error).toBeNull()
-    expect((await db.rpc("transition_purchase_order", { p_org_id: org, p_order_id: order.data!, p_status: "confirmed" })).error).toBeNull()
-    await loginDemo(page)
-    await page.goto(`/purchases/${order.data}`)
-    const quantity = page.getByLabel(`Received total for ${name}`, { exact: true })
-    await quantity.fill("10")
-    await page.getByRole("button", { name: "Record receipt", exact: true }).click()
-    await expect(page.getByRole("link", { name: "Receipts 1", exact: true })).toBeVisible()
-    expect((await db.from("purchase_orders").select("status").eq("id", order.data!).single()).data?.status).toBe("received")
-    await expect(quantity).toBeVisible()
-    await expect(page.getByText("Up to 11 piece total; 1 piece still allowed.", { exact: true })).toBeVisible()
-    await expect(quantity).toHaveAttribute("max", "11")
-    await quantity.fill("11.001")
-    expect(await quantity.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(false)
-    await quantity.fill("10.5")
-    await page.getByRole("button", { name: "Record receipt", exact: true }).click()
-    await expect(page.getByRole("link", { name: "Receipts 2", exact: true })).toBeVisible()
-    expect((await db.rpc("bill_purchase_order", { p_org_id: org, p_order_id: order.data! })).error).toBeNull()
-    await page.reload()
-    expect((await db.from("purchase_orders").select("status").eq("id", order.data!).single()).data?.status).toBe("billed")
-    await expect(quantity).toBeVisible()
-    await expect(page.getByText("Up to 11 piece total; 0.5 piece still allowed.", { exact: true })).toBeVisible()
-    await quantity.fill("11")
-    await page.getByRole("button", { name: "Record receipt", exact: true }).click()
-    await expect(page.getByRole("link", { name: "Receipts 3", exact: true })).toBeVisible()
-    await expect(quantity).toHaveCount(0)
-    expect((await db.from("purchase_order_items").select("received_quantity").eq("purchase_order_id", order.data!).single()).data?.received_quantity).toBe(11)
-  } finally {
-    expect((await db.from("org_settings").update(policy.data!).eq("org_id", org)).error).toBeNull()
-  }
-})
 
 for (const archived of [false, true]) {
   test(`reloaded saved transfer displays the retried command${archived ? " with filtered records" : ""}`, async ({ page }) => {
