@@ -5,7 +5,7 @@ import { inventoryData, stockMoveCount } from "@/lib/inventory/queries"
 import { createClient } from "@/lib/supabase/server"
 import { can } from "@/lib/permissions"
 import { purchaseDetail, purchaseOptions } from "@/lib/purchasing/queries"
-import { billAmount, hasUnbilledQuantities, purchaseTotal } from "@/lib/purchasing/quantities"
+import { billAmount, hasUnbilledQuantities, purchaseTotal, receiptLimit } from "@/lib/purchasing/quantities"
 import { serviceLineAmount } from "@/lib/workflows/service"
 import { formatTHB } from "@/lib/money"
 import { PURCHASE_FLOW } from "@/lib/record/status"
@@ -35,7 +35,8 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
   const editable = manage && order.status === "draft"
   const options = editable ? await purchaseOptions() : { products: [], vendors: [] }
   const products = options.products
-  const receivable = order.status === "confirmed"
+  const tolerancePercent = policy?.over_receipt_tolerance_percent ?? 0
+  const receivable = ["confirmed", "received", "billed"].includes(order.status) && lines.some(line => line.received_quantity < receiptLimit(line, tolerancePercent))
   const unbilled = billAmount(lines)
   const billable = hasUnbilledQuantities(lines)
   const hasReceipts = lines.some(line => line.received_quantity > 0)
@@ -65,7 +66,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
     {!lines.length && <p className="text-sm text-muted-foreground">Add a line before sending or confirming this order.</p>}
     {editable && <PurchaseForm vendors={options.vendors} today={order.order_date} order={order} />}
     {editable && <PurchaseLineForm orderId={id} products={products} />}
-    {manage && receivable && <ReceiptForm orderId={id} lines={lines} warehouses={warehouses.filter(w => w.active)} tolerancePercent={policy?.over_receipt_tolerance_percent ?? 0} />}
+    {manage && receivable && <ReceiptForm orderId={id} lines={lines} warehouses={warehouses.filter(w => w.active)} tolerancePercent={tolerancePercent} />}
     {manage && can(ctx.role, "inventory:manage") && hasReceipts && <PurchaseReturnForm orderId={id} lines={lines.filter(line => line.received_quantity > 0)} warehouses={warehouses.filter(w => w.active)} />}
     {order.status === "closed" && <p className="text-sm">The remaining quantities are closed. Received quantities can still be billed or returned.</p>}
     {unbilled > 0 && <p className="text-sm">Received and not yet billed: {formatTHB(unbilled)}</p>}

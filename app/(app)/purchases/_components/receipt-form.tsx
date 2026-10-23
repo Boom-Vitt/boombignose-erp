@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { todayISO } from "@/lib/dates"
+import { receiptLimit } from "@/lib/purchasing/quantities"
 import { receivePurchase, returnPurchase } from "../actions"
 
 export function ReceiptForm({ orderId, lines, warehouses = [], tolerancePercent = 0 }: { orderId: string; lines: Tables<"purchase_order_items">[]; warehouses?: Tables<"warehouses">[]; tolerancePercent?: number }) {
@@ -24,10 +25,15 @@ export function ReceiptForm({ orderId, lines, warehouses = [], tolerancePercent 
     <p className="text-muted-foreground text-sm">Enter cumulative received totals. Partial receipts leave the remaining quantities open. Over-receipt tolerance is {tolerancePercent}%.</p>
     <div><Label htmlFor="receipt-date">Receipt date</Label><Input id="receipt-date" name="date" type="date" required defaultValue={todayISO()} /></div>
     {warehouses.length > 0 && <div><Label htmlFor="receipt-warehouse">Receive into warehouse</Label><select id="receipt-warehouse" name="warehouse" className="h-9 rounded-md border bg-background px-3 text-sm" defaultValue={warehouses.find(w => w.is_default)?.id ?? warehouses[0]?.id}>{warehouses.map(w => <option key={w.id} value={w.id}>{w.code} · {w.name}</option>)}</select></div>}
-    {lines.map(line => <div key={`${line.id}-${line.received_quantity}`} className="space-y-2">
-      <Label htmlFor={`receive-${line.id}`}>Received total for {line.description}</Label>
-      <div className="flex items-center gap-3"><Input id={`receive-${line.id}`} name={line.id} className="max-w-48" type="number" min={line.received_quantity} max={Math.max(line.received_quantity, Math.floor(line.quantity * (100 + tolerancePercent) * 10 + 0.00001) / 1000)} step="0.001" required defaultValue={Math.max(line.quantity, line.received_quantity)} /><span className="text-muted-foreground text-sm">of {line.quantity} {line.unit}, previously {line.received_quantity}</span></div>
-    </div>)}
+    {lines.map(line => {
+      const limit = receiptLimit(line, tolerancePercent)
+      const remaining = (Math.round(limit * 1000) - Math.round(line.received_quantity * 1000)) / 1000
+      return <div key={`${line.id}-${line.received_quantity}`} className="space-y-2">
+        <Label htmlFor={`receive-${line.id}`}>Received total for {line.description}</Label>
+        <div className="flex items-center gap-3"><Input id={`receive-${line.id}`} name={line.id} className="max-w-48" type="number" min={line.received_quantity} max={limit} step="0.001" required defaultValue={Math.max(line.quantity, line.received_quantity)} /><span className="text-muted-foreground text-sm">of {line.quantity} {line.unit}, previously {line.received_quantity}</span></div>
+        <p className="text-muted-foreground text-sm">Up to {limit} {line.unit} total; {remaining} {line.unit} still allowed.</p>
+      </div>
+    })}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <Button disabled={pending} type="submit">{pending ? "Recording…" : "Record receipt"}</Button>
   </form>

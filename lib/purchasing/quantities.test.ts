@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest"
-import { applyReceipt, billAmount, hasUnbilledQuantities, purchaseTotal, type PurchaseLine } from "./quantities"
+import { applyReceipt, billAmount, hasUnbilledQuantities, purchaseTotal, receiptLimit, type PurchaseLine } from "./quantities"
 
 const lines: PurchaseLine[] = [
   { id: "a", quantity: 2.5, unit_cost_satang: 101, received_quantity: 0, billed_quantity: 0 },
   { id: "b", quantity: 3, unit_cost_satang: 1000, received_quantity: 1, billed_quantity: 0 },
 ]
+it.each([
+  [10, 10, 10, 11],
+  [0.001, 0, 10, 0.001],
+  [0.01, 0, 10, 0.011],
+  [6, 6.6, 0, 6.6],
+  [999999999.999, 0, 0.01, 1000099999.998],
+])("shares the exact receipt cap for %s ordered, %s received and %s percent", (quantity, received_quantity, tolerance, expected) => {
+  expect(receiptLimit({ quantity, received_quantity }, tolerance)).toBe(expected)
+})
 describe("purchase satang totals", () => {
   it("rounds each decimal line exactly like PostgreSQL", () => {
     expect(purchaseTotal(lines)).toBe(3253)
