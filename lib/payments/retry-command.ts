@@ -12,3 +12,14 @@ export function paymentCommandKey(store: BrowserStore, scope: string, details: r
   try { store.setItem(name, JSON.stringify({ fingerprint, key })) } catch { /* Caller retains command in memory. */ }
   return key
 }
+
+export function financialCommandKey(store: BrowserStore, scope: string, details: readonly string[], createKey: () => string): string {
+  const key = paymentCommandKey(store, scope, details, createKey)
+  if (JSON.parse(store.getItem(`erp/payment-command/${scope}`) ?? "null")?.key !== key) throw new Error("Browser storage is unavailable. Enable it before submitting financial commands.")
+  return key
+}
+
+export function completePaymentCommand(store: BrowserStore, scope: string, key: string): void {
+  const name = `erp/payment-command/${scope}`
+  if (JSON.parse(store.getItem(name) ?? "null")?.key === key) store.setItem(name, "null")
+}

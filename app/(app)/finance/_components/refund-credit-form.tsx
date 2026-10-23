@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { paymentCommandKey } from "@/lib/payments/retry-command"
+import { financialCommandKey, completePaymentCommand } from "@/lib/payments/retry-command"
 import { refundCustomerCredit } from "../receipt-actions"
 import type { Enums } from "@/lib/types/database"
 
@@ -20,9 +20,10 @@ export function RefundCreditForm({ orgId, paymentId, today }: { orgId: string; p
     event.preventDefault()
     startTransition(async () => {
       try {
-        const key = paymentCommandKey(sessionStorage, `${orgId}/${paymentId}/refund`, [amount, reference, date, method], () => crypto.randomUUID())
+        const key = financialCommandKey(sessionStorage, `${orgId}/${paymentId}/refund`, [amount, reference, date, method], () => crypto.randomUUID())
         const result = await refundCustomerCredit({ paymentId, amountBaht: amount, reference, paidOn: date, method, key })
         if (result.error) { toast.error(result.error); return }
+        completePaymentCommand(sessionStorage, `${orgId}/${paymentId}/refund`, key)
         toast.success("Customer credit refunded"); setAmount(""); setReference(""); router.refresh()
       } catch { toast.error("Could not confirm refund. Retry unchanged details.") }
     })

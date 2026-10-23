@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { moneyInput } from "@/lib/payments/input"
-import { paymentCommandKey } from "@/lib/payments/retry-command"
+import { financialCommandKey, completePaymentCommand } from "@/lib/payments/retry-command"
 import { issueCreditNote } from "../correction-actions"
 
 export function CreditNoteForm({ orgId, invoiceId, lines }: { orgId: string; invoiceId: string; lines: { id: string; description: string; headerOnly?: boolean }[] }) {
@@ -22,9 +22,10 @@ export function CreditNoteForm({ orgId, invoiceId, lines }: { orgId: string; inv
         const selected = lines.filter(line => values[line.id]?.trim()).map(line => mode === "amount"
           ? { mode, invoiceItemId: line.headerOnly ? undefined : line.id, amountSatang: moneyInput(values[line.id]) }
           : { mode, invoiceItemId: line.id, quantity: Number(values[line.id]) })
-        const key = paymentCommandKey(sessionStorage, `${orgId}/${invoiceId}/credit`, [mode, reason, JSON.stringify(selected)], () => crypto.randomUUID())
+        const key = financialCommandKey(sessionStorage, `${orgId}/${invoiceId}/credit`, [mode, reason, JSON.stringify(selected)], () => crypto.randomUUID())
         const result = await issueCreditNote({ invoiceId, key, reason, lines: selected })
         if (result.error) { toast.error(result.error); return }
+        completePaymentCommand(sessionStorage, `${orgId}/${invoiceId}/credit`, key)
         toast.success("Credit note issued")
         setValues({}); setReason(""); router.refresh()
       } catch (error) { toast.error(error instanceof Error ? error.message : "Could not confirm the credit note. Retry unchanged details.") }

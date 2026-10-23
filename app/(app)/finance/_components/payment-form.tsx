@@ -7,7 +7,7 @@ import type { Enums } from "@/lib/types/database"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { paymentAmount } from "@/lib/payments/input"
-import { paymentCommandKey } from "@/lib/payments/retry-command"
+import { paymentCommandKey, completePaymentCommand } from "@/lib/payments/retry-command"
 import { recordPayment, reconcileLegacyPayment } from "../actions"
 
 /** Bank reports stay pending. Legacy matching creates a new linked receipt. */
@@ -43,6 +43,8 @@ export function PaymentForm({ orgId, invoiceId, suggestedBaht, legacyPaymentId, 
           ? await reconcileLegacyPayment({ ...input, legacyPaymentId, paidOn, method })
           : await recordPayment(input)
         if (result.error) { toast.error(result.error); return }
+        completePaymentCommand(sessionStorage, scope, key)
+        command.current = null
         toast.success(reconcile ? "สร้างใบรับเงินที่ตรวจสอบแล้ว / Legacy receipt reconciled" : "รอตรวจสอบ / Payment claim submitted")
         router.refresh()
       } catch { toast.error("Could not confirm the response. Retry unchanged details to recover the original result.") }

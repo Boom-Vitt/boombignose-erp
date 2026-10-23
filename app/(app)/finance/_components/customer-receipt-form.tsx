@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { paymentAmount } from "@/lib/payments/input"
-import { paymentCommandKey } from "@/lib/payments/retry-command"
+import { financialCommandKey, completePaymentCommand } from "@/lib/payments/retry-command"
 import { formatTHB } from "@/lib/money"
 import { reportCustomerReceipt, applyCustomerCredit } from "../receipt-actions"
 
@@ -21,10 +21,11 @@ export function CustomerReceiptForm({ orgId, clientId, invoices, mode }: { orgId
     startTransition(async () => {
       try {
         const allocations = invoices.filter(i => values[i.id]?.trim()).map(i => ({ invoiceId: i.id, amountSatang: paymentAmount(values[i.id]) }))
-        const key = paymentCommandKey(sessionStorage, `${orgId}/${clientId}/${mode}`, [amount, reference, JSON.stringify(allocations)], () => crypto.randomUUID())
+        const key = financialCommandKey(sessionStorage, `${orgId}/${clientId}/${mode}`, [amount, reference, JSON.stringify(allocations)], () => crypto.randomUUID())
         const common = { clientId, key, allocations }
         const result = mode === "report" ? await reportCustomerReceipt({ ...common, amountBaht: amount, reference }) : await applyCustomerCredit(common)
         if (result.error) { toast.error(result.error); return }
+        completePaymentCommand(sessionStorage, `${orgId}/${clientId}/${mode}`, key)
         toast.success(mode === "report" ? "Receipt reported for verification" : "Customer credit applied")
         setValues({}); setAmount(""); setReference(""); router.refresh()
       } catch (error) { toast.error(error instanceof Error ? error.message : "Could not confirm. Retry unchanged details.") }

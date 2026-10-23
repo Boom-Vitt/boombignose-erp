@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { paymentCommandKey } from "@/lib/payments/retry-command"
+import { financialCommandKey, completePaymentCommand } from "@/lib/payments/retry-command"
 import { reversePayment } from "../correction-actions"
 
 export function ReversePaymentForm({ orgId, invoiceId, paymentId, today }: { orgId: string; invoiceId?: string; paymentId: string; today: string }) {
@@ -17,9 +17,10 @@ export function ReversePaymentForm({ orgId, invoiceId, paymentId, today }: { org
     event.preventDefault()
     startTransition(async () => {
       try {
-        const key = paymentCommandKey(sessionStorage, `${orgId}/${paymentId}/reverse`, [reason, date], () => crypto.randomUUID())
+        const key = financialCommandKey(sessionStorage, `${orgId}/${paymentId}/reverse`, [reason, date], () => crypto.randomUUID())
         const result = await reversePayment({ paymentId, invoiceId, key, reason, reversedOn: date })
         if (result.error) { toast.error(result.error); return }
+        completePaymentCommand(sessionStorage, `${orgId}/${paymentId}/reverse`, key)
         toast.success("Receipt reversed"); router.refresh()
       } catch { toast.error("Could not confirm reversal. Retry unchanged details.") }
     })
