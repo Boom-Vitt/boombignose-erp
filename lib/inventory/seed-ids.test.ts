@@ -65,8 +65,7 @@ it("delivers a seed-id invoice to a seed-id warehouse", async () => {
 
 it("saves replenishment with seeded product and vendor ids under the current organization", async () => {
   expect(await saveReorder({ product_id: product, reorder_min: 5, reorder_qty: 10, default_vendor_id: vendor })).toEqual({})
-  expect(state.update).toHaveBeenCalledWith({ reorder_min: 5, reorder_qty: 10, default_vendor_id: vendor })
-  expect(state.filters).toEqual([["org_id", state.orgId], ["id", product], ["is_stockable", true]])
+  expect(state.rpc).toHaveBeenCalledWith("save_reorder_rule", { p_org_id: state.orgId, p_product_id: product, p_vendor_id: vendor, p_min: 5, p_quantity: 10, p_lead_days: 0 })
 })
 
 it("creates a replenishment RFQ for a seed-id vendor", async () => {

@@ -1,0 +1,12 @@
+begin;
+select no_plan();
+insert into auth.users(id,email,email_confirmed_at) values('be510000-0000-4000-8000-000000000001','transfer-owner@example.invalid',now());
+insert into public.organizations(id,name,slug) values('be510000-0000-4000-8000-000000000010','Transfer test','w5d-transfer');
+insert into public.memberships(org_id,user_id,role) values('be510000-0000-4000-8000-000000000010','be510000-0000-4000-8000-000000000001','owner');
+insert into public.products(id,org_id,name,type,is_stockable) values('be510000-0000-4000-8000-000000000030','be510000-0000-4000-8000-000000000010','Transfer goods','goods',true);
+insert into public.warehouses(id,org_id,code,name) values('be510000-0000-4000-8000-000000000040','be510000-0000-4000-8000-000000000010','A','A'),('be510000-0000-4000-8000-000000000041','be510000-0000-4000-8000-000000000010','B','B');
+select set_config('request.jwt.claims','{"role":"authenticated","sub":"be510000-0000-4000-8000-000000000001"}',true);
+select public.adjust_stock('be510000-0000-4000-8000-000000000010','be510000-0000-4000-8000-000000000030','be510000-0000-4000-8000-000000000040',0,'No history count',gen_random_uuid());
+update public.products set is_stockable=false where id='be510000-0000-4000-8000-000000000030';
+select throws_ok($$insert into public.stock_moves(org_id,product_id,warehouse_id,kind,quantity,unit_cost_satang,source_type,source_id,balance_after,average_cost_after) values('be510000-0000-4000-8000-000000000010','be510000-0000-4000-8000-000000000030','be510000-0000-4000-8000-000000000040','receipt',1,100,'adjustment',gen_random_uuid(),0,0)$$,'P0001','Stockable workspace product required','zero balance row does not bypass stockable validation');
+select * from finish();rollback;

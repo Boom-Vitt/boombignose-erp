@@ -47,18 +47,20 @@ export async function transitionPurchase(id: string, status: Enums<"purchase_sta
   return {}
 }
 
-export async function receivePurchase(id: string, input: unknown, warehouseId?: string): Promise<{ error?: string }> {
+export async function receivePurchase(id: string, input: unknown, warehouseId?: string, date?: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
   const parsed = ReceiptInput.safeParse(input)
-  if (!z.guid().safeParse(id).success || !parsed.success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success)) return { error: "Invalid receipt" }
+  if ((date !== undefined && !z.iso.date().safeParse(date).success) || !z.guid().safeParse(id).success || !parsed.success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success)) return { error: "Invalid receipt" }
   const db = await createClient()
   let receipt
   try {
     const lines = await readAllOrThrow((from, to) => db.from("purchase_order_items").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("id").range(from, to))
-    receipt = applyReceipt(lines, parsed.data)
+    const { data: policy, error: policyError } = await db.from("org_settings").select("over_receipt_tolerance_percent").eq("org_id", ctx.orgId).maybeSingle()
+    if (policyError) return { error: "Receipt policy unavailable" }
+    receipt = applyReceipt(lines, parsed.data, policy?.over_receipt_tolerance_percent ?? 0)
   } catch (error) { return { error: error instanceof Error ? error.message : "Invalid receipt" } }
-  const { error } = await receivePurchaseStock(db, ctx.orgId, id, receipt, warehouseId)
+  const { error } = await receivePurchaseStock(db, ctx.orgId, id, receipt, warehouseId, date)
   if (error) return { error: error.message }
   refresh(id)
   revalidatePath("/inventory", "layout")
@@ -135,5 +137,40 @@ export async function updateBillTolerance(input: unknown): Promise<{ error?: str
   await writeAudit(ctx, { entity: "organization", entityId: ctx.orgId, action: "bill_tolerance_updated", summary: "Updated vendor bill matching tolerance", meta: { tolerance_bps: parsed.data } })
   revalidatePath("/settings/finance")
   revalidatePath("/purchases", "layout")
+  return {}
+}
+
+export async function approvePurchase(id: string): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "purchase:approve")
+  if (!z.guid().safeParse(id).success) return { error: "Invalid purchase" }
+  const db = await createClient()
+  const { error } = await db.rpc("approve_purchase_order", { p_org_id: ctx.orgId, p_order_id: id })
+  if (error) return { error: error.message }
+  refresh(id)
+  return {}
+}
+
+export async function reopenPurchaseRFQ(id: string, deliveryKey: string, verified: boolean): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "purchase:manage")
+  if (!z.guid().safeParse(id).success || !z.guid().safeParse(deliveryKey).success || verified !== true) return { error: "Verify non-delivery before reopening this RFQ" }
+  const db = await createClient()
+  const { error } = await db.rpc("reopen_purchase_rfq", { p_org_id: ctx.orgId, p_order_id: id, p_delivery_key: deliveryKey, p_verified_not_delivered: verified })
+  if (error) return { error: error.message }
+  refresh(id)
+  return {}
+}
+
+export async function updatePurchase(id: string, input: unknown): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "purchase:manage")
+  const parsed = PurchaseInput.safeParse(input)
+  if (!z.guid().safeParse(id).success || !parsed.success) return { error: "Invalid purchase details" }
+  const db = await createClient()
+  const d = parsed.data
+  const { error } = await db.rpc("update_purchase_order", { p_org_id: ctx.orgId, p_order_id: id, p_vendor_id: d.vendor_id, p_order_date: d.order_date, p_expected_date: d.expected_date, p_notes: d.notes })
+  if (error) return { error: error.message }
+  refresh(id)
   return {}
 }

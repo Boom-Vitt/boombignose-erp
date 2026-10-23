@@ -57,6 +57,30 @@ export type Database = {
           { foreignKeyName: "member_cost_rates_org_id_user_id_fkey"; columns: ["org_id", "user_id"]; isOneToOne: true; referencedRelation: "memberships"; referencedColumns: ["org_id", "user_id"] }
         ]
       }
+      stock_balances: {
+        Row: { org_id: string; product_id: string; warehouse_id: string; quantity: number; average_cost: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      stock_transfers: {
+        Row: { org_id: string; key: string; product_id: string; from_warehouse_id: string; to_warehouse_id: string; quantity: number; reason: string; created_at: string; created_by: string | null }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      product_vendor_lead_times: {
+        Row: { org_id: string; product_id: string; vendor_id: string; lead_days: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      scheduled_replenishment_runs: {
+        Row: { org_id: string; run_date: string; vendor_id: string; purchase_order_id: string; created_at: string }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       warehouses: {
         Row: { id: string; org_id: string; code: string; name: string; address: string | null; is_default: boolean; active: boolean }
         Insert: { id?: string; org_id: string; code: string; name: string; address?: string | null; is_default?: boolean; active?: boolean }
@@ -69,6 +93,18 @@ export type Database = {
         Update: { delivered_quantity?: number; returned_quantity?: number }
         Relationships: []
       }
+      stock_documents: {
+        Row: { id: string; org_id: string; kind: "receipt" | "delivery"; number: string; document_date: string; warehouse_id: string | null; purchase_order_id: string | null; invoice_id: string | null; created_at: string; created_by: string | null }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      stock_document_lines: {
+        Row: { id: string; org_id: string; document_id: string; product_id: string | null; source_line_id: string; description: string; unit: string; quantity: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       stock_counts: {
         Row: { unit_cost_satang: number | null; org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
         Insert: { unit_cost_satang?: number | null; org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
@@ -76,8 +112,8 @@ export type Database = {
         Relationships: []
       }
       stock_moves: {
-        Row: { stock_value_satang: number; source_line_id: string | null; return_of_move_id: string | null; id: string; sequence: number; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: "purchase_order" | "invoice" | "adjustment" | "transfer"; source_id: string; note: string | null; moved_at: string; created_by: string | null; balance_after: number; average_cost_after: number }
-        Insert: { stock_value_satang?: number; source_line_id?: string | null; return_of_move_id?: string | null; id?: string; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: string; source_id: string; note?: string | null; balance_after: number; average_cost_after: number }
+        Row: { document_id: string | null; stock_value_satang: number; source_line_id: string | null; return_of_move_id: string | null; id: string; sequence: number; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: "purchase_order" | "invoice" | "adjustment" | "transfer"; source_id: string; note: string | null; moved_at: string; created_by: string | null; balance_after: number; average_cost_after: number }
+        Insert: { document_id?: string | null; stock_value_satang?: number; source_line_id?: string | null; return_of_move_id?: string | null; id?: string; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: string; source_id: string; note?: string | null; balance_after: number; average_cost_after: number }
         Update: never
         Relationships: []
       }
@@ -88,9 +124,9 @@ export type Database = {
         Relationships: [{ foreignKeyName: "vendors_org_id_fkey"; columns: ["org_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] }]
       }
       purchase_orders: {
-        Row: { rfq_snapshot: Json | null; rfq_delivery_key: string | null; rfq_delivered_at: string | null; rfq_delivery_error: string | null; id: string; org_id: string; number: string; vendor_id: string; status: Database["public"]["Enums"]["purchase_status"]; order_date: string; expected_date: string | null; notes: string | null; created_by: string | null; created_at: string; updated_at: string }
-        Insert: { rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id: string; number: string; vendor_id: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
-        Update: { rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id?: string; number?: string; vendor_id?: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Row: { approved_by: string | null; approved_at: string | null; approval_snapshot: Json | null; rfq_snapshot: Json | null; rfq_delivery_key: string | null; rfq_delivered_at: string | null; rfq_delivery_error: string | null; id: string; org_id: string; number: string; vendor_id: string; status: Database["public"]["Enums"]["purchase_status"]; order_date: string; expected_date: string | null; notes: string | null; created_by: string | null; created_at: string; updated_at: string }
+        Insert: { approved_by?: string | null; approved_at?: string | null; approval_snapshot?: Json | null; rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id: string; number: string; vendor_id: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Update: { approved_by?: string | null; approved_at?: string | null; approval_snapshot?: Json | null; rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id?: string; number?: string; vendor_id?: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
         Relationships: [{ foreignKeyName: "purchase_orders_org_id_vendor_id_fkey"; columns: ["org_id", "vendor_id"]; isOneToOne: false; referencedRelation: "vendors"; referencedColumns: ["org_id", "id"] }]
       }
       expense_claims: {
@@ -650,20 +686,23 @@ isOneToOne: false
                   ]
                 },"org_settings": {
                   Row: { require_different_payment_reviewer: boolean;
-bill_variance_tolerance_bps: number, "wht_rate_bps": number,
+bill_variance_tolerance_bps: number, "scheduled_replenishment_enabled": boolean,"purchase_approval_threshold_satang": number | null,"over_receipt_tolerance_percent": number,
+"wht_rate_bps": number,
 
 "lock_date": string | null,"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
                     "allow_negative_stock": boolean,"business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: { require_different_payment_reviewer?: boolean;
-bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,
+bill_variance_tolerance_bps?: number, "scheduled_replenishment_enabled"?: boolean,"purchase_approval_threshold_satang"?: number | null,"over_receipt_tolerance_percent"?: number,
+"wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: { require_different_payment_reviewer?: boolean;
-bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,
+bill_variance_tolerance_bps?: number, "scheduled_replenishment_enabled"?: boolean,"purchase_approval_threshold_satang"?: number | null,"over_receipt_tolerance_percent"?: number,
+"wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
@@ -1379,12 +1418,22 @@ isOneToOne: false
 "reserve_document_number": { Args: { p_org_id: string; p_kind: string; p_year: number }; Returns: string },
 "accept_portal_quote": { Args: { p_token: string; p_quote_id: string; p_name: string; p_email: string }; Returns: string },
 "update_subscription_schedule": { Args: { p_org_id: string; p_subscription_id: string; p_start_date?: string | null; p_status?: Database["public"]["Enums"]["subscription_status"] | null; p_bill_missed_periods?: boolean; p_changes?: Json }; Returns: undefined },
-            inventory_snapshot: { Args: { p_org_id: string; p_warehouse_id?: string; p_product_id?: string }; Returns: Json }
+            reopen_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_verified_not_delivered: boolean }; Returns: undefined }
+      update_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_vendor_id: string; p_order_date: string; p_expected_date: string | null; p_notes: string | null }; Returns: undefined }
+      save_reorder_rule: { Args: { p_org_id: string; p_product_id: string; p_vendor_id: string | null; p_min: number; p_quantity: number; p_lead_days: number }; Returns: undefined }
+      replenishment_plan: { Args: { p_org_id: string; p_date?: string }; Returns: { product_id: string; vendor_id: string; product_name: string; unit: string; order_quantity: number; unit_cost_satang: number; lead_days: number; expected_date: string }[] }
+      approve_purchase_order: { Args: { p_org_id: string; p_order_id: string }; Returns: undefined }
+      transfer_stock: { Args: { p_org_id: string; p_product_id: string; p_from_warehouse_id: string; p_to_warehouse_id: string; p_quantity: number; p_reason: string; p_key: string }; Returns: string }
+      stock_moves_page: {
+        Args: { p_org_id: string; p_before?: number; p_kinds?: string[]; p_warehouse_id?: string; p_product_id?: string; p_source_id?: string; p_actor_id?: string; p_start?: string; p_end?: string; p_query?: string }
+        Returns: Database["public"]["Tables"]["stock_moves"]["Row"][]
+      }
+      inventory_snapshot: { Args: { p_org_id: string; p_warehouse_id?: string; p_product_id?: string }; Returns: Json }
             save_warehouse: { Args: { p_org_id: string; p_id: string | null; p_code: string; p_name: string; p_address: string | null; p_default: boolean; p_active: boolean }; Returns: string }
             delete_warehouse: { Args: { p_org_id: string; p_id: string }; Returns: undefined }
-            deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string; p_lines?: Json }; Returns: undefined }
+            deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string; p_lines?: Json; p_date?: string }; Returns: undefined }
             adjust_stock: { Args: { p_org_id: string; p_product_id: string; p_warehouse_id: string; p_count: number; p_reason: string; p_key: string; p_unit_cost_satang?: number | null }; Returns: string | null }
-            return_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string }; Returns: undefined }
+            return_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string; p_date?: string }; Returns: undefined }
             return_invoice_delivery: { Args: { p_org_id: string; p_invoice_id: string; p_move_id: string; p_returned_quantity: number }; Returns: undefined }
             create_replenishment_rfq: { Args: { p_org_id: string; p_vendor_id: string }; Returns: string }
             "bill_project_time": { Args: { p_org_id: string; p_project_id: string; p_key: string }; Returns: string }
@@ -1458,7 +1507,7 @@ isOneToOne: false
             finish_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_error?: string | null }; Returns: undefined }
             create_purchase_order: { Args: { p_org_id: string; p_vendor_id: string; p_order_date: string; p_expected_date?: string | null; p_notes?: string | null }; Returns: string }
             transition_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_status: Database["public"]["Enums"]["purchase_status"] }; Returns: undefined }
-            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string }; Returns: undefined }
+            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string; p_date?: string }; Returns: undefined }
             bill_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_bill: Json }; Returns: string }
             link_vendor_credit: { Args: { p_org_id: string; p_cost_id: string; p_bill: Json }; Returns: string }
             create_expense_claim: { Args: { p_org_id: string; p_title: string }; Returns: string }

@@ -83,6 +83,7 @@ export default async function SettingsPage() {
         title="Settings"
         description="Workspace finances and your team. Cash here drives the dashboard."
       />
+      {canEdit ? <Link href="/settings/purchasing" className="mr-4 text-sm underline">Purchasing</Link> : null}
       {canEdit ? <Link href="/settings/finance" className="mr-4 text-sm underline">Finance</Link> : null}
       {canEdit ? <Link href="/settings/lead-forms" className="text-sm underline">Lead forms</Link> : null}
 

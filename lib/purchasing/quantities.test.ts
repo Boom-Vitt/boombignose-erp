@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest"
-import { applyReceipt, billAmount, hasUnbilledQuantities, purchaseTotal, type PurchaseLine } from "./quantities"
+import { applyReceipt, billAmount, hasUnbilledQuantities, purchaseTotal, receiptLimit, type PurchaseLine } from "./quantities"
 
 const lines: PurchaseLine[] = [
   { id: "a", quantity: 2.5, unit_cost_satang: 101, received_quantity: 0, billed_quantity: 0 },
   { id: "b", quantity: 3, unit_cost_satang: 1000, received_quantity: 1, billed_quantity: 0 },
 ]
+it.each([
+  [10, 10, 10, 11],
+  [0.001, 0, 10, 0.001],
+  [0.01, 0, 10, 0.011],
+  [6, 6.6, 0, 6.6],
+  [999999999.999, 0, 0.01, 1000099999.998],
+])("shares the exact receipt cap for %s ordered, %s received and %s percent", (quantity, received_quantity, tolerance, expected) => {
+  expect(receiptLimit({ quantity, received_quantity }, tolerance)).toBe(expected)
+})
 describe("purchase satang totals", () => {
   it("rounds each decimal line exactly like PostgreSQL", () => {
     expect(purchaseTotal(lines)).toBe(3253)
@@ -69,4 +78,16 @@ it("keeps unbilled quantities actionable when their rounded amount is zero", () 
 it("compares and bills returned decimal quantities in exact thousandths", () => {
   expect(hasUnbilledQuantities([{ received_quantity: 0.4, returned_quantity: 0.1, billed_quantity: 0.3 }])).toBe(false)
   expect(billAmount([{ received_quantity: 0.4, returned_quantity: 0.1, billed_quantity: 0.2, unit_cost_satang: 100 }])).toBe(10)
+})
+
+it("accepts only over-receipts within the configured percentage without rounding the ceiling up", () => {
+  expect(applyReceipt(lines, [{ id: "a", received_quantity: 2.75, previous_received_quantity: 0 }], 10)[0].received_quantity).toBe(2.75)
+  expect(() => applyReceipt(lines, [{ id: "a", received_quantity: 2.751, previous_received_quantity: 0 }], 10)).toThrow()
+  expect(() => applyReceipt([{ ...lines[0], quantity: 0.001 }], [{ id: "a", received_quantity: 0.002, previous_received_quantity: 0 }], 10)).toThrow()
+})
+
+it("preserves an unchanged over-receipt after tolerance is tightened", () => {
+  const received = [{ ...lines[0], received_quantity: 2.75 }]
+  expect(applyReceipt(received, [{ id: "a", received_quantity: 2.75, previous_received_quantity: 2.75 }], 0)[0].received_quantity).toBe(2.75)
+  expect(() => applyReceipt(received, [{ id: "a", received_quantity: 2.751, previous_received_quantity: 2.75 }], 0)).toThrow()
 })

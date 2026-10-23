@@ -6,7 +6,7 @@ import { redirect } from "next/navigation"
 import { requireCapability, requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { writeAudit } from "@/lib/audit"
-import { CountInput, DeliveryInput, ReorderInput, StockQuantity, WarehouseInput } from "./schema"
+import { CountInput, DeliveryInput, ReorderInput, StockQuantity, TransferInput, WarehouseInput } from "./schema"
 
 function refresh() {
   revalidatePath("/inventory", "layout")
@@ -50,13 +50,13 @@ export async function adjustStock(input: unknown): Promise<{ error?: string; rej
   return {}
 }
 
-export async function deliverInvoice(id: string, warehouseId?: string, input?: unknown): Promise<{ error?: string }> {
+export async function deliverInvoice(id: string, warehouseId?: string, input?: unknown, date?: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "inventory:manage")
   const lines = input === undefined ? undefined : DeliveryInput.safeParse(input)
-  if (!z.guid().safeParse(id).success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success) || (lines && !lines.success)) return { error: "Invalid delivery" }
+  if ((date !== undefined && !z.iso.date().safeParse(date).success) || !z.guid().safeParse(id).success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success) || (lines && !lines.success)) return { error: "Invalid delivery" }
   const db = await createClient()
-  const { error } = await db.rpc("deliver_invoice", { p_org_id: ctx.orgId, p_invoice_id: id, ...(warehouseId ? { p_warehouse_id: warehouseId } : {}), ...(lines?.success ? { p_lines: lines.data } : {}) })
+  const { error } = await db.rpc("deliver_invoice", { p_org_id: ctx.orgId, p_invoice_id: id, ...(warehouseId ? { p_warehouse_id: warehouseId } : {}), ...(lines?.success ? { p_lines: lines.data } : {}), ...(date ? { p_date: date } : {}) })
   if (error) return { error: error.message }
   refresh()
   revalidatePath(`/finance/invoices/${id}`)
@@ -84,12 +84,10 @@ export async function saveReorder(input: unknown): Promise<{ error?: string }> {
   requireCapability(ctx, "inventory:manage")
   const parsed = ReorderInput.safeParse(input)
   if (!parsed.success) return { error: "Invalid replenishment rule" }
-  const { product_id, ...values } = parsed.data
+  const d = parsed.data
   const db = await createClient()
-  const { data, error } = await db.from("products").update(values).eq("org_id", ctx.orgId).eq("id", product_id).eq("is_stockable", true).select("id").maybeSingle()
+  const { error } = await db.rpc("save_reorder_rule", { p_org_id: ctx.orgId, p_product_id: d.product_id, p_vendor_id: d.default_vendor_id, p_min: d.reorder_min, p_quantity: d.reorder_qty, p_lead_days: d.lead_days })
   if (error) return { error: error.message }
-  if (!data) return { error: "Stockable product unavailable" }
-  await writeAudit(ctx, { entity: "product", entityId: product_id, action: "reorder_updated", summary: "Updated replenishment rule" })
   refresh()
   return {}
 }
@@ -116,5 +114,32 @@ export async function setNegativeStock(allow: boolean): Promise<{ error?: string
   if (error) return { error: error.message }
   await writeAudit(ctx, { entity: "settings", action: "stock_policy_updated", summary: `Negative stock ${allow ? "allowed" : "blocked"}` })
   refresh()
+  return {}
+}
+
+export async function transferStock(input: unknown): Promise<{ error?: string; rejected?: true }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "inventory:manage")
+  const parsed = TransferInput.safeParse(input)
+  if (!parsed.success) return { error: "Choose different warehouses, a positive quantity and a reason." }
+  const d = parsed.data
+  const db = await createClient()
+  const { error } = await db.rpc("transfer_stock", { p_org_id: ctx.orgId, p_product_id: d.product_id, p_from_warehouse_id: d.from_warehouse_id, p_to_warehouse_id: d.to_warehouse_id, p_quantity: d.quantity, p_reason: d.reason, p_key: d.key })
+  if (error) return { error: error.message, ...(error.code === "P0001" ? { rejected: true as const } : {}) }
+  refresh()
+  return {}
+}
+
+export async function savePurchasingPolicy(input: unknown): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "settings:manage")
+  const parsed = z.object({ scheduled_replenishment_enabled: z.boolean(), purchase_approval_threshold_satang: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable(), over_receipt_tolerance_percent: z.number().finite().min(0).max(100).refine(value => Math.abs(value * 100 - Math.round(value * 100)) < 0.00001) }).safeParse(input)
+  if (!parsed.success) return { error: "Enter a tolerance from 0 to 100 with up to two decimals." }
+  const db = await createClient()
+  const { error } = await db.from("org_settings").upsert({ org_id: ctx.orgId, ...parsed.data }, { onConflict: "org_id" })
+  if (error) return { error: error.message }
+  await writeAudit(ctx, { entity: "settings", action: "purchase_policy_updated", summary: "Updated purchasing policy" })
+  revalidatePath("/settings/purchasing")
+  revalidatePath("/purchases", "layout")
   return {}
 }

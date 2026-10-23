@@ -17,7 +17,7 @@ test("create, confirm, partially receive and bill a purchase order", async ({ pa
   const lines = page.getByRole("form", { name: "Edit line items" })
   await lines.getByRole("button", { name: "Add a line", exact: true }).click()
   await lines.getByRole("combobox", { name: "Product, row 1" }).click()
-  await page.getByRole("option").filter({ hasNotText: "Free-text line" }).first().click()
+  await page.getByRole("listbox", { name: "Suggestions", exact: true }).getByRole("option").filter({ hasNotText: "Free-text line" }).first().click()
   await expect(lines.getByLabel("Unit cost, row 1")).not.toHaveValue("")
   await lines.getByLabel("Description, row 1", { exact: true }).fill("Smoke purchase line")
   await lines.getByLabel("Quantity, row 1", { exact: true }).fill("4")

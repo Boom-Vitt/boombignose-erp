@@ -102,7 +102,7 @@ export function CountForm({ products, warehouses, balances, scope }: { products:
   </form>
 }
 
-export function ReorderForm({ product, vendors }: { product: Pick<Tables<"products">, "id" | "name" | "reorder_min" | "reorder_qty" | "default_vendor_id">; vendors: { id: string; name: string }[] }) {
+export function ReorderForm({ product, vendors }: { product: Pick<Tables<"products">, "id" | "name" | "reorder_min" | "reorder_qty" | "default_vendor_id"> & { lead_days?: number }; vendors: { id: string; name: string }[] }) {
   const [pending, start] = useTransition()
   const [message, setMessage] = useState("")
   const router = useRouter()
@@ -110,7 +110,7 @@ export function ReorderForm({ product, vendors }: { product: Pick<Tables<"produc
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     start(async () => {
-      const result = await saveReorder({ product_id: product.id, reorder_min: form.get("min"), reorder_qty: form.get("qty"), default_vendor_id: form.get("vendor") })
+      const result = await saveReorder({ product_id: product.id, reorder_min: form.get("min"), reorder_qty: form.get("qty"), default_vendor_id: form.get("vendor"), lead_days: form.get("lead") })
       setMessage(result.error ?? "Rule saved.")
       if (!result.error) router.refresh()
     })
@@ -120,6 +120,7 @@ export function ReorderForm({ product, vendors }: { product: Pick<Tables<"produc
     <div><Label htmlFor={`${product.id}-min`}>Minimum quantity</Label><Input id={`${product.id}-min`} name="min" type="number" min="0" max="999999999.999" step="0.001" required defaultValue={product.reorder_min} /></div>
     <div><Label htmlFor={`${product.id}-qty`}>Reorder quantity</Label><Input id={`${product.id}-qty`} name="qty" type="number" min="0.001" max="999999999.999" step="0.001" required defaultValue={product.reorder_qty} /></div>
     <div><Label htmlFor={`${product.id}-vendor`}>Default vendor</Label><select id={`${product.id}-vendor`} name="vendor" className={selectStyle} defaultValue={product.default_vendor_id ?? ""}><option value="">Unassigned</option>{vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></div>
+    <div><Label htmlFor={`${product.id}-lead`}>Vendor lead time (days)</Label><Input id={`${product.id}-lead`} name="lead" type="number" min="0" max="3650" step="1" required defaultValue={product.lead_days ?? 0} /></div>
     <Button className="self-end" type="submit" variant="outline" disabled={pending}>Save rule</Button>
     {message && <p role="status" className="text-sm sm:col-span-4">{message}</p>}
   </form>
