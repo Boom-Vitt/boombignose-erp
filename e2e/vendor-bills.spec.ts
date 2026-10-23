@@ -1,0 +1,85 @@
+import { test, expect } from "@playwright/test"
+import { createClient } from "@supabase/supabase-js"
+import type { Database } from "@/lib/types/database"
+import { billDueDate } from "@/lib/purchasing/bill-matching"
+import { todayISO } from "@/lib/dates"
+import { formatTHB } from "@/lib/money"
+import { loginDemo } from "./auth"
+
+test("match vendor invoices, reject duplicates, accept explained variances and link input VAT credits", async ({ page }) => {
+  const db = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } })
+  const auth = await db.auth.signInWithPassword({ email: "demo@boombignose.org", password: "BoomDemo123!" })
+  expect(auth.error).toBeNull()
+  const membership = await db.from("memberships").select("org_id").eq("user_id", auth.data.user!.id).single()
+  const org = membership.data!.org_id
+  const reference = `SUP-MATCH-${Date.now()}`
+  const vendor = await db.from("vendors").insert({ org_id: org, name: reference, payment_terms_days: 14 }).select().single()
+  expect(vendor.error).toBeNull()
+  async function receivedOrder() {
+    const po = await db.rpc("create_purchase_order", { p_org_id: org, p_vendor_id: vendor.data!.id, p_order_date: todayISO() })
+    expect(po.error).toBeNull()
+    const line = await db.from("purchase_order_items").insert({ org_id: org, purchase_order_id: po.data!, description: "Vendor matching service", quantity: 10, unit_cost_satang: 100 }).select().single()
+    expect(line.error).toBeNull()
+    expect((await db.rpc("transition_purchase_order", { p_org_id: org, p_order_id: po.data!, p_status: "confirmed" })).error).toBeNull()
+    expect((await db.rpc("receive_purchase_order", { p_org_id: org, p_order_id: po.data!, p_lines: [{ id: line.data!.id, previous_received_quantity: 0, received_quantity: 10 }] })).error).toBeNull()
+    return { id: po.data!, lineId: line.data!.id }
+  }
+  const first = await receivedOrder()
+  const second = await receivedOrder()
+  await loginDemo(page)
+  await page.goto(`/purchases/${first.id}`)
+  await expect(page.getByLabel("Bill due date", { exact: true })).toHaveValue(billDueDate(todayISO(), 14))
+  await expect(page.getByLabel("Invoice quantity for Vendor matching service")).toHaveValue("10")
+  await page.getByLabel("Vendor invoice reference", { exact: true }).fill(reference)
+  await page.getByLabel("Input VAT rate (%)", { exact: true }).fill("7")
+  await page.getByLabel("Invoice unit cost for Vendor matching service").fill("2")
+  await expect(page.getByRole("region", { name: "Match vendor invoice", exact: true }).getByRole("alert")).toContainText("Variance reason required")
+  await page.getByRole("button", { name: "Create bill", exact: true }).click()
+  await expect(page.getByRole("region", { name: "Vendor bills", exact: true })).toContainText("No bills yet")
+  await page.getByLabel("Variance reason", { exact: true }).fill("Supplier price accepted after review")
+  await page.getByRole("button", { name: "Create bill", exact: true }).click()
+  const bills = page.getByRole("region", { name: "Vendor bills", exact: true })
+  await expect(bills).toContainText(reference)
+  await expect(bills).toContainText("21.40")
+  await expect(bills).toContainText("1.40")
+  await expect(page.getByText("Supplier price accepted after review", { exact: false })).toBeVisible()
+  await page.goto(`/purchases/${second.id}`)
+  await page.getByLabel("Vendor invoice reference", { exact: true }).fill(reference.toLowerCase())
+  await page.getByLabel("Input VAT rate (%)", { exact: true }).fill("7")
+  await page.getByLabel("Vendor total (THB)", { exact: true }).fill("11")
+  await page.getByLabel("Variance reason", { exact: true }).fill("Supplier total accepted")
+  await page.getByRole("button", { name: "Create bill", exact: true }).click()
+  await expect(page.getByText("Duplicate vendor invoice reference", { exact: true })).toBeVisible()
+  await page.getByLabel("Vendor invoice reference", { exact: true }).fill(`${reference}-2`)
+  await page.getByRole("button", { name: "Create bill", exact: true }).click()
+  await expect(bills).toContainText(`${reference}-2`)
+  expect((await db.rpc("return_purchase_order", { p_org_id: org, p_order_id: first.id, p_lines: [{ id: first.lineId, returned_quantity: 1 }] })).error).toBeNull()
+  await page.goto(`/purchases/${first.id}`)
+  await page.getByText("Link vendor credit note", { exact: true }).click()
+  await page.getByLabel("Credit note reference", { exact: true }).fill(`${reference}-CN`)
+  await page.getByLabel("Credit VAT rate (%)", { exact: true }).fill("7")
+  await page.getByLabel("Credit VAT (THB)", { exact: true }).fill("0.07")
+  await page.getByRole("button", { name: "Link credit note", exact: true }).click()
+  await expect(bills).toContainText(`${reference}-CN`)
+  const credit = bills.getByRole("row").filter({ hasText: `${reference}-CN` })
+  await expect(credit).toContainText(formatTHB(-107))
+  await expect(credit).toContainText(formatTHB(-7))
+  await page.goto("/finance?tab=costs")
+  await expect(page.getByRole("row").filter({ hasText: `${reference}-CN` })).toContainText(formatTHB(-7))
+  const vat = await db.from("monthly_purchase_vat").select("input_vat_satang").eq("org_id", org).eq("month", `${todayISO().slice(0, 7)}-01`).single()
+  expect(vat.error).toBeNull()
+  await page.goto("/reports")
+  await expect(page.getByRole("heading", { name: "Purchase VAT by month", exact: true })).toBeVisible()
+  const vatTable = page.getByRole("table").filter({ has: page.getByRole("columnheader", { name: "Input VAT", exact: true }) })
+  await expect(vatTable.getByRole("row").filter({ hasText: todayISO().slice(0, 7) })).toContainText(formatTHB(vat.data!.input_vat_satang))
+  await page.goto("/reports/print")
+  await expect(page.getByRole("heading", { name: "Purchase VAT by month", exact: true })).toBeVisible()
+  const racedOrders = await Promise.all([receivedOrder(), receivedOrder()])
+  const racedReference = `${reference}-RACE`
+  const attempts = await Promise.all(racedOrders.map(order => db.rpc("bill_purchase_order", { p_org_id: org, p_order_id: order.id, p_bill: { vendor_reference: racedReference, bill_date: todayISO(), input_vat_rate: 0, input_vat_satang: 0, vendor_total_satang: 1000 } })))
+  expect(attempts.filter(result => !result.error)).toHaveLength(1)
+  expect(attempts.filter(result => result.error?.message === "Duplicate vendor invoice reference")).toHaveLength(1)
+  const racedCosts = await db.from("costs").select("id").eq("org_id", org).eq("vendor_invoice_reference", racedReference)
+  expect(racedCosts.data).toHaveLength(1)
+
+})

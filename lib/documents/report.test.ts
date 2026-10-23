@@ -24,6 +24,7 @@ function buildData(overrides: Partial<ReportData> = {}): ReportData {
     rangeLabel: "2026-05 – 2026-06",
     totalRevenueSatang: 180_000,
     totalCogsSatang: 35_000,
+    purchaseVatByMonth: [{ month: "2026-06", base_satang: 10000, input_vat_satang: 700, total_satang: 10700 }],
     cogsByMonth: [{ month: "2026-05", amount_satang: 40_000 }, { month: "2026-06", amount_satang: -5_000 }],
     revenue: revenueByClientMonth(payments, (p) => p.slice(0, 7)),
     hours: hoursByProject(entries),

@@ -56,7 +56,7 @@ it("quote detail keeps VAT totals and the complete linked invoice count", async 
 })
 
 it("Finance keeps vendor bill metadata beyond the row cap alongside net receivables", async () => {
-  const costs = Array.from({ length: 1001 }, (_, n) => ({ id: `cost-${n}`, org_id: "A", category: "software", amount_satang: 1, incurred_on: "2026-10-23", vendor: "Vendor", vendor_id: "vendor", purchase_order_id: "purchase", bill_number: `BILL-${n}`, due_date: "2026-10-22", paid_at: null }))
+  const costs = Array.from({ length: 1001 }, (_, n) => ({ id: `cost-${n}`, org_id: "A", category: "software", input_vat_satang: 0, input_vat_rate: 0, vendor_invoice_reference: null, amount_satang: 1, incurred_on: "2026-10-23", vendor: "Vendor", vendor_id: "vendor", purchase_order_id: "purchase", bill_number: `BILL-${n}`, due_date: "2026-10-22", paid_at: null }))
   state.client = databaseFixture({ invoices: [{ ...header, status: "sent" }], payments, costs })
   const content = pageContent(await FinancePage({ searchParams: Promise.resolve({}) }))
   expect(content).toContain("BILL-1000")

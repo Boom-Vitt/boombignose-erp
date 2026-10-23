@@ -26,6 +26,7 @@ export type ReportAggregates = {
   hours: ReturnType<typeof hoursByProject>
   totalRevenueSatang: number
   cogsByMonth: { month: string; amount_satang: number }[]
+  purchaseVatByMonth: { month: string; base_satang: number; input_vat_satang: number; total_satang: number }[]
   totalCogsSatang: number
 }
 
@@ -42,7 +43,7 @@ export async function getReportData(): Promise<ReportAggregates> {
   const months = lastNMonths(RANGE_MONTHS, currentMonthKey())
   const startDate = `${months[0]}-01`
 
-  const [invoicesRes, entriesRes, cogs] = await Promise.all([
+  const [invoicesRes, entriesRes, cogs, purchaseVat] = await Promise.all([
     readAll((from, to) => supabase
       .from("invoices")
       .select("id, status, total_satang, vat_satang, issue_date, clients(name)")
@@ -56,6 +57,9 @@ export async function getReportData(): Promise<ReportAggregates> {
       .gte("work_date", startDate).order("id").range(from, to)),
     readAllOrThrow((from, to) => supabase.from("monthly_inventory_cogs")
       .select("month,amount_satang").eq("org_id", ctx.orgId).gte("month", startDate)
+      .order("month").range(from, to)),
+    readAllOrThrow((from, to) => supabase.from("monthly_purchase_vat")
+      .select("month,base_satang,input_vat_satang,total_satang").eq("org_id", ctx.orgId).gte("month", startDate)
       .order("month").range(from, to)),
   ])
 
@@ -93,6 +97,10 @@ export async function getReportData(): Promise<ReportAggregates> {
     revenue,
     hours,
     totalRevenueSatang: totalRevenueSatang(payments),
+    purchaseVatByMonth: months.map(month => {
+      const rows = purchaseVat.filter(row => row.month.slice(0, 7) === month)
+      return { month, base_satang: sumSatang(rows.map(row => row.base_satang)), input_vat_satang: sumSatang(rows.map(row => row.input_vat_satang)), total_satang: sumSatang(rows.map(row => row.total_satang)) }
+    }),
     cogsByMonth,
     totalCogsSatang: sumSatang(cogsByMonth.map((row) => row.amount_satang)),
   }
