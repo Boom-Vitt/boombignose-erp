@@ -281,7 +281,12 @@ isOneToOne: false
     }
                   ]
                 },"vendor_bill_matches": {
-                  Row: { id: string; org_id: string; vendor_id: string; purchase_order_id: string; vendor_reference: string; kind: "bill" | "credit"; bill_date: string; due_date: string; original_bill_id: string | null; lines: Json; variances: Json; variance_reason: string | null; tolerance_bps: number; created_at: string }
+                  Row: { id: string; org_id: string; vendor_id: string; purchase_order_id: string; vendor_reference: string; kind: "bill" | "credit"; bill_date: string; due_date: string; original_bill_id: string | null; credit_request: Json | null; lines: Json; variances: Json; variance_reason: string | null; tolerance_bps: number; created_at: string }
+                  Insert: never
+                  Update: never
+                  Relationships: []
+                },"vendor_return_credit_sources": {
+                  Row: { org_id: string; cost_id: string; purchase_order_item_id: string; quantity: number }
                   Insert: never
                   Update: never
                   Relationships: []
