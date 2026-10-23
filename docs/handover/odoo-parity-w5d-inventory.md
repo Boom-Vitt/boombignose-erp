@@ -63,10 +63,24 @@ The opposite-transfer schedule verifies blocking and successful completion while
 
 Negative tests reproduced absent APIs/storage, exact tolerance refusal, stale approval after same-total edits, old delivery keys, no-op retries after warehouse deactivation and a stockable guard bypass through an existing zero balance. Fix regressions retain their failure and passing evidence in ignored `.audit/w5d-*` logs. The legacy-schema preflight test drops the later retained-value column inside a rollback-only transaction and still reports the known difference.
 
-Independent source reviewers approved production source at `119c607`, including valuation/locking, function ownership, preflight, security and new tests. A later purchasing browser selector is scoped to the product listbox because adding the editable vendor select exposed its previously broad option locator. Comment review found no added comments or suppressions.
+Independent source reviewers approved production source at `119c607`, including valuation/locking, function ownership, preflight, security and new tests. Their final reports also inspected the locator-only change through `a1694c5`. That purchasing selector is scoped to the product listbox because adding the editable vendor select exposed its previously broad option locator. Comment review found no unnecessary comments or suppressions. The recovery commit's additional transfer assertions were checked by the replacement worker and the full SQL suite, without a new independent review.
 
-Current completed checks are lint, typecheck and 1,205 unit tests. A clean full SQL run at `0338008` passed 1,146 assertions. The production build passed. Final fresh reset including migration 209 and final full browser results are pending below. The first full browser run ended with 48 passed, four expected skips and three failures. The purchasing selector collision is fixed. The unchanged subscription-resume and labour tests, together with purchasing, passed an isolated three-test rerun. The cause of those two initial failures was not established, and no subscription/labour implementation or timeout setting changed.
+On 2026-10-23, the replacement worker found both unfinished paths already saved in recovery commit `2cfc3f6`. The worktree was clean. The retained transfer test forces the incoming leg to fail and verifies that the outgoing quantity, both ledger legs, and the command header all roll back. No production code changed during pickup.
+
+Fresh gates ran one at a time at `2cfc3f6`, in the required order. Every command exited 0. Local execution logs remain in the ignored `.audit/` directory.
+
+| Command | Result | Local evidence |
+| --- | --- | --- |
+| `.local-stack/db-reset.sh "$PWD"` | Clean migrations and seed, 46 SQL files, 1,151 assertions passed | `.audit/w5d-resume-sql.log` |
+| `pnpm lint` | Passed | `.audit/w5d-resume-lint.log` |
+| `pnpm typecheck` | Passed | `.audit/w5d-resume-typecheck.log` |
+| `pnpm test` | 155 files, 1,205 tests passed | `.audit/w5d-resume-unit.log` |
+| `pnpm build` | Production build passed | `.audit/w5d-resume-build.log` |
+| `pnpm e2e` | Full suite, 51 passed, four expected Community skips, zero failures or timeouts | `.audit/w5d-resume-e2e.log` |
+| `pnpm lint` | Final lint passed | `.audit/w5d-resume-final-lint.log` |
+
+The earlier full browser run had 48 passes, four skips, and three failures. The purchasing selector collision was fixed in `a1694c5`. Purchasing, subscription resume, and labour privacy then passed a focused three-test rerun. All three also passed in the fresh full suite, without retries. The earlier subscription and labour timeouts did not recur. These results do not establish their original cause. No subscription or labour implementation, timeout setting, or sibling-owned database function changed during pickup.
 
 ## Remaining operational limits
 
-Existing incompatible historical returns require an approved reconciliation before the earlier retained-value migration can run. A later count adjustment cannot repair the historical predicate. No live email provider was exercised; RFQ tests use claim/finish state and synthetic failures. This task creates the cron route, not a deployment scheduler. Four Pro-only browser skips are expected in Community. Integration into the coordinator's branch is the next delivery step after final gates pass.
+Existing incompatible historical returns require an approved reconciliation before the earlier retained-value migration can run. A later count adjustment cannot repair the historical predicate. No live email provider was exercised; RFQ tests use claim/finish state and synthetic failures. This task creates the cron route, not a deployment scheduler. Four Pro-only browser skips are expected in Community. All requested local gates are complete. Coordinator review and integration remain outside this worker's scope. Nothing was pushed or merged.
