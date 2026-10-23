@@ -13,6 +13,7 @@ import {
   ProjectForm,
   type ProjectFormValues,
   type ClientOption,
+  type MemberOption,
 } from "../../_components/project-form"
 
 export const dynamic = "force-dynamic"
@@ -41,6 +42,12 @@ export default async function EditProjectPage({
     .eq("org_id", ctx.orgId)
     .order("name", { ascending: true })
   const clients = (clientsData ?? []) as ClientOption[]
+  const { data: people } = await supabase.rpc("record_activity_assignees", { p_org_id: ctx.orgId })
+  const members: MemberOption[] = (people ?? []).map((p) => ({ id: p.user_id, name: p.full_name || "Team member" }))
+  // Keep an owner who has left selectable, so saving other fields does not clear them.
+  if (project.owner && !members.some((m) => m.id === project.owner)) {
+    members.push({ id: project.owner, name: "Former member" })
+  }
 
   const defaultValues: Partial<ProjectFormValues> = {
     name: project.name,
@@ -49,7 +56,7 @@ export default async function EditProjectPage({
     deadline: project.deadline ?? "",
     budgetBaht:
       project.budget_satang != null ? serviceAmountBaht(project.budget_satang) : 0,
-    owner: project.owner ?? "",
+    owner: project.owner ?? "none",
   }
 
   async function action(values: ProjectFormValues) {
@@ -70,6 +77,7 @@ export default async function EditProjectPage({
           <ProjectForm
             action={action}
             clients={clients}
+            members={members}
             defaultValues={defaultValues}
             submitLabel="Save changes"
           />

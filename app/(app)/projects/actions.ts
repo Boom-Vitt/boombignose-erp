@@ -25,6 +25,23 @@ const optionalId = z
   .optional()
   .transform((v) => (v && v !== "none" ? v : null))
 
+/** "none" or "" → null, otherwise a user id (the demo seed's ids are not RFC UUIDs). */
+const optionalOwner = z
+  .union([z.literal("none"), z.literal(""), z.guid()])
+  .optional()
+  .transform((v) => (v && v !== "none" ? v : null))
+
+const OWNER_ERROR = "Choose a team member as the owner."
+
+async function isMember(
+  supabase: Awaited<ReturnType<typeof createSupabaseClient>>,
+  orgId: string,
+  userId: string
+) {
+  const { data, error } = await supabase.rpc("record_activity_assignees", { p_org_id: orgId })
+  return !error && !!data?.some((m) => m.user_id === userId)
+}
+
 /** A date input value: "" → null, otherwise YYYY-MM-DD. */
 const optionalDate = z
   .string()
@@ -37,7 +54,7 @@ const ProjectInput = z.object({
   status: z.enum(PROJECT_STATUS),
   deadline: optionalDate,
   budgetBaht: serviceMoneyInput.optional(),
-  owner: optionalText,
+  owner: optionalOwner,
   dealId: optionalId,
 })
 
@@ -48,6 +65,9 @@ async function insertProject(
   const { name, clientId, status, deadline, budgetBaht, owner, dealId } = p
 
   const supabase = await createSupabaseClient()
+  if (owner && !(await isMember(supabase, ctx.orgId, owner))) {
+    return { error: OWNER_ERROR }
+  }
   const { data, error } = await supabase
     .from("projects")
     .insert({
@@ -58,7 +78,7 @@ async function insertProject(
       deadline,
       budget_satang:
         budgetBaht !== undefined ? serviceAmountSatang(budgetBaht) : null,
-      owner: owner ?? null,
+      owner,
       deal_id: dealId,
     })
     .select("id")
@@ -104,7 +124,7 @@ export async function quickCreateProject(
     ...parsed.data,
     clientId: null,
     deadline: null,
-    owner: undefined,
+    owner: null,
     dealId: null,
   })
   return error ? { error } : {}
@@ -126,6 +146,18 @@ export async function updateProject(
     parsed.data
 
   const supabase = await createSupabaseClient()
+  if (owner) {
+    // A former member may stay as owner; only a change must name a current member.
+    const { data: current } = await supabase
+      .from("projects")
+      .select("owner")
+      .eq("id", id)
+      .eq("org_id", ctx.orgId)
+      .maybeSingle()
+    if (current?.owner !== owner && !(await isMember(supabase, ctx.orgId, owner))) {
+      return { error: OWNER_ERROR }
+    }
+  }
   const { error } = await supabase
     .from("projects")
     .update({
@@ -135,7 +167,7 @@ export async function updateProject(
       deadline,
       budget_satang:
         budgetBaht !== undefined ? serviceAmountSatang(budgetBaht) : null,
-      owner: owner ?? null,
+      owner,
     })
     .eq("id", id)
     .eq("org_id", ctx.orgId)

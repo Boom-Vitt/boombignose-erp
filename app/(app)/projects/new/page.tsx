@@ -13,6 +13,7 @@ import {
   ProjectForm,
   type ProjectFormValues,
   type ClientOption,
+  type MemberOption,
 } from "../_components/project-form"
 
 export const dynamic = "force-dynamic"
@@ -38,6 +39,8 @@ export default async function NewProjectPage({
     .eq("org_id", ctx.orgId)
     .order("name", { ascending: true })
   const clients = (clientsData ?? []) as ClientOption[]
+  const { data: people } = await supabase.rpc("record_activity_assignees", { p_org_id: ctx.orgId })
+  const members: MemberOption[] = (people ?? []).map((p) => ({ id: p.user_id, name: p.full_name || "Team member" }))
 
   // Prefill from the board's quick create ("Edit"), or from a deal when arriving from CRM.
   const boardStatus = Constants.public.Enums.project_status.find((s) => s === status)
@@ -96,6 +99,7 @@ export default async function NewProjectPage({
           <ProjectForm
             action={action}
             clients={clients}
+            members={members}
             defaultValues={prefill}
           />
         </CardContent>

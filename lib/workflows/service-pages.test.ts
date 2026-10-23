@@ -7,7 +7,10 @@ vi.mock("@/lib/auth", () => ({
 }))
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("not-found") } }))
 vi.mock("@/lib/supabase/server", () => ({
-  createClient: async () => ({ from: (table: string) => {
+  createClient: async () => ({ rpc: async (fn: string, args: { p_org_id?: string }) => {
+    state.queries.push({ table: fn, filters: [["org_id", args.p_org_id]] })
+    return { data: [], error: null }
+  }, from: (table: string) => {
     const query = { table, filters: [] as Array<[string, unknown]> }
     state.queries.push(query)
     const rows: Record<string, unknown[]> = {

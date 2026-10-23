@@ -66,15 +66,18 @@ type FormInput = z.input<typeof FormSchema>
 export type ProjectFormValues = z.output<typeof FormSchema>
 
 export type ClientOption = { id: string; name: string }
+export type MemberOption = { id: string; name: string }
 
 export function ProjectForm({
   action,
   clients,
+  members,
   defaultValues,
   submitLabel = "Create project",
 }: {
   action: (values: ProjectFormValues) => Promise<{ error?: string }>
   clients: ClientOption[]
+  members: MemberOption[]
   defaultValues?: Partial<FormInput>
   submitLabel?: string
 }) {
@@ -86,7 +89,7 @@ export function ProjectForm({
       status: "not_started",
       deadline: "",
       budgetBaht: 0,
-      owner: "",
+      owner: NONE,
       ...defaultValues,
     },
   })
@@ -229,9 +232,30 @@ export function ProjectForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Owner</FormLabel>
-              <FormControl>
-                <Input placeholder="Who owns delivery?" {...field} />
-              </FormControl>
+              <Select
+                value={field.value}
+                onValueChange={(v) => field.onChange(v ?? NONE)}
+              >
+                <FormControl>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="No owner">
+                      {(v: string | null) =>
+                        !v || v === NONE
+                          ? "No owner"
+                          : (members.find((m) => m.id === v)?.name ?? "No owner")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value={NONE}>No owner</SelectItem>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
