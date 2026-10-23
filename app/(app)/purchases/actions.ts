@@ -136,3 +136,14 @@ export async function markBillPaid(id: string): Promise<{ error?: string }> {
   }
   return {}
 }
+
+export async function approvePurchase(id: string): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "purchase:approve")
+  if (!z.guid().safeParse(id).success) return { error: "Invalid purchase" }
+  const db = await createClient()
+  const { error } = await db.rpc("approve_purchase_order", { p_org_id: ctx.orgId, p_order_id: id })
+  if (error) return { error: error.message }
+  refresh(id)
+  return {}
+}

@@ -82,9 +82,9 @@ export type Database = {
         Relationships: [{ foreignKeyName: "vendors_org_id_fkey"; columns: ["org_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] }]
       }
       purchase_orders: {
-        Row: { rfq_snapshot: Json | null; rfq_delivery_key: string | null; rfq_delivered_at: string | null; rfq_delivery_error: string | null; id: string; org_id: string; number: string; vendor_id: string; status: Database["public"]["Enums"]["purchase_status"]; order_date: string; expected_date: string | null; notes: string | null; created_by: string | null; created_at: string; updated_at: string }
-        Insert: { rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id: string; number: string; vendor_id: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
-        Update: { rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id?: string; number?: string; vendor_id?: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Row: { approved_by: string | null; approved_at: string | null; approval_snapshot: Json | null; rfq_snapshot: Json | null; rfq_delivery_key: string | null; rfq_delivered_at: string | null; rfq_delivery_error: string | null; id: string; org_id: string; number: string; vendor_id: string; status: Database["public"]["Enums"]["purchase_status"]; order_date: string; expected_date: string | null; notes: string | null; created_by: string | null; created_at: string; updated_at: string }
+        Insert: { approved_by?: string | null; approved_at?: string | null; approval_snapshot?: Json | null; rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id: string; number: string; vendor_id: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Update: { approved_by?: string | null; approved_at?: string | null; approval_snapshot?: Json | null; rfq_snapshot?: Json | null; rfq_delivery_key?: string | null; rfq_delivered_at?: string | null; rfq_delivery_error?: string | null; id?: string; org_id?: string; number?: string; vendor_id?: string; status?: Database["public"]["Enums"]["purchase_status"]; order_date?: string; expected_date?: string | null; notes?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
         Relationships: [{ foreignKeyName: "purchase_orders_org_id_vendor_id_fkey"; columns: ["org_id", "vendor_id"]; isOneToOne: false; referencedRelation: "vendors"; referencedColumns: ["org_id", "id"] }]
       }
       expense_claims: {
@@ -631,7 +631,7 @@ isOneToOne: false
                   ]
                 },"org_settings": {
                   Row: {
-"over_receipt_tolerance_percent": number,
+"purchase_approval_threshold_satang": number | null,"over_receipt_tolerance_percent": number,
 "wht_rate_bps": number,
 
 "lock_date": string | null,"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
@@ -639,14 +639,14 @@ isOneToOne: false
                   }
                   ComputedFields: never
                   Insert: {
-"over_receipt_tolerance_percent"?: number,
+"purchase_approval_threshold_satang"?: number | null,"over_receipt_tolerance_percent"?: number,
 "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
-"over_receipt_tolerance_percent"?: number,
+"purchase_approval_threshold_satang"?: number | null,"over_receipt_tolerance_percent"?: number,
 "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
@@ -1346,7 +1346,8 @@ isOneToOne: false
 "reserve_document_number": { Args: { p_org_id: string; p_kind: string; p_year: number }; Returns: string },
 "accept_portal_quote": { Args: { p_token: string; p_quote_id: string; p_name: string; p_email: string }; Returns: string },
 "update_subscription_schedule": { Args: { p_org_id: string; p_subscription_id: string; p_start_date?: string | null; p_status?: Database["public"]["Enums"]["subscription_status"] | null; p_bill_missed_periods?: boolean; p_changes?: Json }; Returns: undefined },
-            transfer_stock: { Args: { p_org_id: string; p_product_id: string; p_from_warehouse_id: string; p_to_warehouse_id: string; p_quantity: number; p_reason: string; p_key: string }; Returns: string }
+            approve_purchase_order: { Args: { p_org_id: string; p_order_id: string }; Returns: undefined }
+      transfer_stock: { Args: { p_org_id: string; p_product_id: string; p_from_warehouse_id: string; p_to_warehouse_id: string; p_quantity: number; p_reason: string; p_key: string }; Returns: string }
       stock_moves_page: {
         Args: { p_org_id: string; p_before?: number; p_kinds?: string[]; p_warehouse_id?: string; p_product_id?: string; p_source_id?: string; p_actor_id?: string; p_start?: string; p_end?: string; p_query?: string }
         Returns: Database["public"]["Tables"]["stock_moves"]["Row"][]

@@ -25,6 +25,7 @@ export type Capability =
   | "audit:view" // view the audit log
   | "inventory:manage"
   | "purchase:manage"
+  | "purchase:approve"
   | "product:manage"
   | "expense:approve" // approve, reject and pay other people's expense claims
   | "profit:view" // project labour cost and profit
@@ -53,6 +54,7 @@ export const CAPABILITY_ROLES: Record<Capability, Role[]> = {
   "payment:verify": ALL_STAFF,
   "inventory:manage": ALL_STAFF,
   "purchase:manage": ALL_STAFF,
+  "purchase:approve": ALL_STAFF,
   "product:manage": ALL_STAFF,
   "expense:approve": ALL_STAFF,
   "profit:view": ALL_STAFF,

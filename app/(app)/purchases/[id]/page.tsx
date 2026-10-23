@@ -15,7 +15,7 @@ import { SmartButtons } from "@/components/record/smart-buttons"
 import { RecordHistory } from "@/components/record/record-history"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { transitionPurchase, createPurchaseBill, removePurchaseLine } from "../actions"
+import { transitionPurchase, createPurchaseBill, removePurchaseLine, approvePurchase } from "../actions"
 import { sendPurchaseRFQ } from "../email-actions"
 import { PurchaseAction } from "../_components/action-button"
 import { PurchaseLineForm } from "../_components/line-form"
@@ -28,7 +28,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
   const ctx = await requireOrgContext()
   const [{ order, lines, bills }, { warehouses }, receiptCount] = await Promise.all([purchaseDetail(id), inventoryData(), stockMoveCount({ sourceId: id })])
   const db = await createClient()
-  const { data: policy, error: policyError } = await db.from("org_settings").select("over_receipt_tolerance_percent").eq("org_id", ctx.orgId).maybeSingle()
+  const { data: policy, error: policyError } = await db.from("org_settings").select("over_receipt_tolerance_percent,purchase_approval_threshold_satang").eq("org_id", ctx.orgId).maybeSingle()
   if (policyError) throw new Error("Purchase policy unavailable")
   const manage = can(ctx.role, "purchase:manage")
   const editable = manage && order.status === "draft"
@@ -49,6 +49,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
       ...(billable ? { bill: ({ label, variant }: { label: string; variant: "default" | "outline" }) => <PurchaseAction action={createPurchaseBill.bind(null, id)} label={label} variant={variant} /> } : {}),
     } : {}} />
     {order.rfq_delivery_key && <p role="status" className="rounded-lg border p-3 text-sm">{order.rfq_delivered_at ? "RFQ delivery accepted." : order.rfq_delivery_error ? `RFQ delivery failed: ${order.rfq_delivery_error}. This order is frozen; print the RFQ or verify delivery with an administrator.` : "RFQ delivery claimed. Verify its outcome before recovery; it will not be sent again automatically."}</p>}
+    {manage && ["draft", "sent"].includes(order.status) && policy?.purchase_approval_threshold_satang != null && purchaseTotal(lines) > policy.purchase_approval_threshold_satang && <div className="space-y-2 rounded-lg border p-3"><p>Owner/admin approval is required before confirmation. Editing the approved content requires approval again.</p>{order.approved_at && <p>Last approved {new Date(order.approved_at).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })}.</p>}<PurchaseAction action={approvePurchase.bind(null, id)} label="Approve purchase order" /></div>}
     <SmartButtons buttons={[
       { label: "Receipts", icon: Package, href: `/inventory/moves?sourceId=${id}`, count: receiptCount, nextStep: true },
       { label: "Bills", icon: Receipt, href: "#bills", count: bills.length, nextStep: true },
