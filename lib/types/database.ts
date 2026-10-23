@@ -31,7 +31,7 @@ export type Database = {
         Relationships: []
       }
       credit_note_lines: {
-        Row: { id: string; org_id: string; credit_note_id: string; invoice_item_id: string | null; raw_satang: number }
+        Row: { id: string; org_id: string; credit_note_id: string; invoice_item_id: string | null; raw_satang: number; quantity: number | null }
         Insert: never
         Update: never
         Relationships: []
