@@ -59,6 +59,19 @@ describe("renderReportHtml", () => {
     expect(html).toContain("2.00 h") // 120 billable minutes
   })
 
+  it("keeps the purchase VAT table inside the report before its footer", () => {
+    const html = renderReportHtml(buildData())
+    const container = html.indexOf('<div class="doc">')
+    const vat = html.indexOf("<h2>Purchase VAT by month</h2>")
+    const tableEnd = html.indexOf("</table>", vat)
+    const footer = html.indexOf("<footer>")
+    const containerEnd = html.indexOf("</div>", footer)
+    expect(vat).toBeGreaterThan(container)
+    expect(tableEnd).toBeGreaterThan(vat)
+    expect(tableEnd).toBeLessThan(footer)
+    expect(footer).toBeLessThan(containerEnd)
+  })
+
   it("renders monthly COGS including returns separately from cash received", () => {
     const html = renderReportHtml(buildData())
     expect(html).toContain("Cost of goods sold by month")
