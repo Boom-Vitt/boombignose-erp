@@ -94,6 +94,22 @@ select throws_ok($$select public.save_document_lines('quote',pg_temp.gid(32),jso
   'P0001','Document unavailable','another workspace''s quote is invisible');
 select throws_ok($$select public.save_document_lines('ledger',pg_temp.gid(31),'[]','{}')$$,'P0001','Unknown document','only quote, invoice and purchase order lines save');
 
+reset role;
+insert into public.products(id,org_id,name,unit,list_price_satang,active) values
+  (pg_temp.gid(70),pg_temp.gid(10),'Kept product','piece',100,true),
+  (pg_temp.gid(71),pg_temp.gid(10),'Archived product','piece',100,false),
+  (pg_temp.gid(72),pg_temp.gid(11),'Foreign product','piece',100,true);
+set local role authenticated;
+select lives_ok($$select public.save_document_lines('quote',pg_temp.gid(31),jsonb_build_array(pg_temp.line(160,'Catalog line','1',100,0)||jsonb_build_object('product_id',pg_temp.gid(70))),'{}')$$,'a line takes an active product');
+reset role;
+update public.products set active=false where id=pg_temp.gid(70);
+set local role authenticated;
+select lives_ok($$select public.save_document_lines('quote',pg_temp.gid(31),jsonb_build_array(pg_temp.line(160,'Catalog line renamed','1',100,0)||jsonb_build_object('product_id',pg_temp.gid(70))),'{}')$$,'a saved line keeps a product archived later');
+select throws_ok($$select public.save_document_lines('quote',pg_temp.gid(31),jsonb_build_array(pg_temp.line(161,'New archived','1',100,0)||jsonb_build_object('product_id',pg_temp.gid(71))),'{}')$$,
+  'P0001','Product unavailable. Choose an active product or a free-text line.','a new line cannot take an archived product');
+select throws_ok($$select public.save_document_lines('quote',pg_temp.gid(31),jsonb_build_array(pg_temp.line(160,'Repointed','1',100,0)||jsonb_build_object('product_id',pg_temp.gid(72))),'{}')$$,
+  'P0001','Product unavailable. Choose an active product or a free-text line.','a line cannot point at another workspace''s product');
+
 update public.quotes set status='sent' where id=pg_temp.gid(30);
 select lives_ok($$select public.save_document_lines('quote',pg_temp.gid(30),jsonb_build_array(
   pg_temp.line(100,'Design work','1.5',33333),pg_temp.line(103,'Glue','0.333',99),pg_temp.text_row(101,'section','Materials (sent)')),'{}')$$,'sent quotes stay editable');

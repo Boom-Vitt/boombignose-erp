@@ -5,7 +5,6 @@ import { inventoryData, stockMoveCount } from "@/lib/inventory/queries"
 import { can } from "@/lib/permissions"
 import { purchaseDetail, purchaseOptions } from "@/lib/purchasing/queries"
 import { billAmount, hasUnbilledQuantities, purchaseTotal } from "@/lib/purchasing/quantities"
-import { serviceLineAmount } from "@/lib/workflows/service"
 import { formatTHB } from "@/lib/money"
 import { PURCHASE_FLOW } from "@/lib/record/status"
 import { PageHeader } from "@/components/page-header"
@@ -13,11 +12,12 @@ import { StatusBar } from "@/components/record/status-bar"
 import { SmartButtons } from "@/components/record/smart-buttons"
 import { RecordHistory } from "@/components/record/record-history"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { transitionPurchase, createPurchaseBill, removePurchaseLine } from "../actions"
+import { LineGrid } from "@/components/line-grid/line-grid"
+import { createClient } from "@/lib/supabase/server"
+import { gridRows } from "@/lib/line-grid/queries"
+import { transitionPurchase, createPurchaseBill } from "../actions"
 import { sendPurchaseRFQ } from "../email-actions"
 import { PurchaseAction } from "../_components/action-button"
-import { PurchaseLineForm } from "../_components/line-form"
 import { ReceiptForm, PurchaseReturnForm } from "../_components/receipt-form"
 import { VendorBills } from "../_components/bills"
 
@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic"
 export default async function PurchasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const ctx = await requireOrgContext()
-  const [{ order, lines, bills }, { warehouses }, receiptCount] = await Promise.all([purchaseDetail(id), inventoryData(), stockMoveCount({ sourceId: id })])
+  const [{ order, lines, bills }, { warehouses }, receiptCount, lineRows] = await Promise.all([purchaseDetail(id), inventoryData(), stockMoveCount({ sourceId: id }), createClient().then(db => gridRows(db, ctx.orgId, "purchase_order", id))])
   const manage = can(ctx.role, "purchase:manage")
   const editable = manage && order.status === "draft"
   const products = editable ? (await purchaseOptions()).products : []
@@ -50,11 +50,10 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
       { label: "Vendor", icon: Users, href: `/vendors/${order.vendor_id}`, count: 1, value: order.vendors?.name },
     ]} />
     <dl className="grid gap-4 rounded-xl border p-5 sm:grid-cols-3"><div><dt className="text-sm text-muted-foreground">Order date</dt><dd>{order.order_date}</dd></div><div><dt className="text-sm text-muted-foreground">Expected date</dt><dd>{order.expected_date ?? "—"}</dd></div><div><dt className="text-sm text-muted-foreground">Total</dt><dd className="font-semibold">{formatTHB(purchaseTotal(lines))}</dd></div>{order.notes && <div className="sm:col-span-3"><dt className="text-sm text-muted-foreground">Notes</dt><dd className="whitespace-pre-wrap">{order.notes}</dd></div>}</dl>
-    <Table><TableHeader><TableRow><TableHead>Description</TableHead><TableHead>Quantity</TableHead><TableHead>Unit cost</TableHead><TableHead>Received</TableHead><TableHead>Returned</TableHead><TableHead>Billed</TableHead><TableHead>Total</TableHead>{editable && <TableHead>Actions</TableHead>}</TableRow></TableHeader>
-      <TableBody>{lines.map(line => <TableRow key={line.id}><TableCell>{line.description}</TableCell><TableCell>{line.quantity} {line.unit}</TableCell><TableCell>{formatTHB(line.unit_cost_satang)}</TableCell><TableCell>{line.received_quantity}</TableCell><TableCell>{line.returned_quantity}</TableCell><TableCell>{line.billed_quantity}</TableCell><TableCell>{formatTHB(serviceLineAmount(line.quantity, line.unit_cost_satang))}</TableCell>{editable && <TableCell><PurchaseAction action={removePurchaseLine.bind(null, id, line.id)} label={`Remove ${line.description}`} /></TableCell>}</TableRow>)}</TableBody>
-    </Table>
-    {!lines.length && <p className="text-sm text-muted-foreground">Add a line before sending or confirming this order.</p>}
-    {editable && <PurchaseLineForm orderId={id} products={products} />}
+    <section aria-label="Purchase lines" className="space-y-2">
+      <LineGrid document="purchase_order" documentId={id} rows={lineRows} editable={editable} products={products} canManageProducts={can(ctx.role, "product:manage")} />
+      {!lines.length && <p className="text-sm text-muted-foreground">Add a line before sending or confirming this order.</p>}
+    </section>
     {manage && receivable && <ReceiptForm orderId={id} lines={lines} warehouses={warehouses.filter(w => w.active)} />}
     {manage && can(ctx.role, "inventory:manage") && hasReceipts && <PurchaseReturnForm orderId={id} lines={lines.filter(line => line.received_quantity > 0)} warehouses={warehouses.filter(w => w.active)} />}
     {order.status === "closed" && <p className="text-sm">The remaining quantities are closed. Received quantities can still be billed or returned.</p>}

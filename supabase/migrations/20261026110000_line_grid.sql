@@ -112,6 +112,14 @@ begin
   elsif p_document='purchase_order' then select org_id into v_org from public.purchase_orders where id=p_document_id;
   else raise exception 'Unknown document'; end if;
   if v_org is null then raise exception 'Document unavailable'; end if;
+  -- New or re-pointed lines need an active catalog product; a line keeps one archived later.
+  if exists(select 1 from private.line_grid_rows(p_rows) r where r.kind='line' and r.product_id is not null
+      and not exists(select 1 from public.products p where p.org_id=v_org and p.id=r.product_id and p.active)
+      and not exists(select 1 from public.quote_items t where t.org_id=v_org and t.id=r.id and t.product_id=r.product_id)
+      and not exists(select 1 from public.invoice_items t where t.org_id=v_org and t.id=r.id and t.product_id=r.product_id)
+      and not exists(select 1 from public.purchase_order_items t where t.org_id=v_org and t.id=r.id and t.product_id=r.product_id)) then
+    raise exception 'Product unavailable. Choose an active product or a free-text line.';
+  end if;
 
   if p_document='quote' then
     delete from public.quote_items where org_id=v_org and quote_id=p_document_id and id=any(p_deleted);

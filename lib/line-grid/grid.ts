@@ -177,3 +177,6 @@ export function enterTarget(rows: GridRow[], index: number, column: string, shif
   const available = columns(rows[target])
   return { index: target, column: available.includes(column) ? column : "description" }
 }
+
+/** Read-only per-line columns each document shows beside the editable cells. */
+export const EXTRA_HEADERS: Record<DocumentKind, string[]> = { quote: ["Invoiced"], invoice: [], purchase_order: ["Received", "Returned", "Billed"] }

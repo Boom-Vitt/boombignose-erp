@@ -7,7 +7,7 @@ vi.mock("react-hook-form", async (importOriginal) => ({
   useForm: () => ({ control: {}, setValue: vi.fn(), formState: { isSubmitting: false } }),
   useWatch: () => watched.values,
 }))
-vi.mock("@/components/record/record-guard", () => ({ useGuardedForm: () => vi.fn() }))
+vi.mock("@/components/record/record-guard", () => ({ useGuardedForm: () => vi.fn(), RecordFields: ({ children }: { children: unknown }) => children }))
 
 import { DealForm } from "@/app/(app)/deals/_components/deal-form"
 
