@@ -16,7 +16,6 @@ create index payment_allocations_payment on public.payment_allocations(org_id,pa
 create index payments_customer on public.payments(org_id,client_id);
 create index payment_claims_customer on public.payment_claims(org_id,client_id) where status='pending';
 
--- Preserve verified historical cash that predates the allocation ledger.
 insert into public.payment_allocations(org_id,payment_id,invoice_id,amount_satang)
   select p.org_id,p.id,p.invoice_id,p.amount_satang from public.payments p where p.verification_state='verified' and p.invoice_id is not null
   and not exists(select 1 from public.payment_allocations a where a.org_id=p.org_id and a.payment_id=p.id);
@@ -494,7 +493,6 @@ from public.payment_allocations a join public.payments p on p.org_id=a.org_id an
 group by a.org_id,a.invoice_id,p.id;
 grant select on public.invoice_receipts to authenticated;
 
--- Historical adoption preserves unverified tax metadata; correct its retained collectible amount without certifying that tax.
 create or replace function private.credit_note_totals(p_org uuid,p_invoice uuid,p_lines jsonb)
 returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare i public.invoices;g record;old_raw numeric;new_raw numeric;net numeric;old_net numeric;new_net numeric;

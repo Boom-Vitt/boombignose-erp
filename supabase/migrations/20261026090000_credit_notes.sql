@@ -58,7 +58,6 @@ end;
 $$;
 revoke all on function private.refresh_invoice_status(uuid,uuid) from public,anon,authenticated,service_role;
 
--- Residual tax makes successive partial corrections add up to the original VAT and WHT.
 create function private.credit_note_totals(p_org uuid,p_invoice uuid,p_lines jsonb)
 returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare i public.invoices;g record;old_raw numeric;new_raw numeric;net numeric;old_net numeric;new_net numeric;
@@ -157,7 +156,6 @@ returns trigger language plpgsql security definer set search_path = '' as $$
 declare paid bigint;
 begin
   if tg_op='UPDATE' and new.org_id<>old.org_id then raise exception 'Tenant reassignment forbidden'; end if;
-  -- Linking an audited historical snapshot preserves its original state, even if cash disagrees.
   if tg_op='UPDATE' and old.issued_snapshot_id is null and new.issued_snapshot_id is not null
     and to_jsonb(new)-array['version','updated_at','issued_snapshot_id']=to_jsonb(old)-array['version','updated_at','issued_snapshot_id']
     and exists(select 1 from public.invoice_snapshots s where s.org_id=old.org_id and s.invoice_id=old.id and s.id=new.issued_snapshot_id

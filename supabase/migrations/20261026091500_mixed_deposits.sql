@@ -43,10 +43,8 @@ begin
   select count(distinct tax_rate_bps)>1 into mixed from public.quote_items where org_id=p_org_id and quote_id=q.id;
   select coalesce(sum(quote_deposit_satang-quote_deposit_deduction_satang),0),coalesce(sum(quote_discount_satang),0)
     into deposits,previous_discount from public.invoices where org_id=p_org_id and source_quote_id=q.id and status<>'cancelled' and quote_invoice_sealed;
-  if mixed then
-    select coalesce(sum((d->>'amount')::bigint),0) into deposits from jsonb_array_elements(private.quote_deposit_buckets(p_org_id,q.id)) d;
+  select coalesce(sum((d->>'amount')::bigint),0) into deposits from jsonb_array_elements(private.quote_deposit_buckets(p_org_id,q.id)) d;
     deposits:=deposits-coalesce((select sum(quote_deposit_deduction_satang) from public.invoices where org_id=p_org_id and source_quote_id=q.id and quote_invoice_kind='lines' and status<>'cancelled' and issued_snapshot_id is null),0);
-  end if;
   select coalesce(sum(l.amount_satang),0) into previous_raw from public.invoice_items l join public.invoices i on i.org_id=l.org_id and i.id=l.invoice_id
     where i.org_id=p_org_id and i.source_quote_id=q.id and i.status<>'cancelled' and i.quote_invoice_kind='lines' and l.quote_item_id is not null;
   if p_lines is null and p_deposit_satang is null and p_deposit_bps is null and q.converted_invoice_id is not null
@@ -154,6 +152,7 @@ begin
   target:=private.issue_invoice_document(p_org_id,p_invoice_id,p_expected_version,p_key);
   if i.issued_snapshot_id is not null or i.quote_deposit_deduction_satang=0 or
     (select count(distinct tax_rate_bps) from public.quote_items where org_id=p_org_id and quote_id=source)<=1 then return target;end if;
+  update public.invoices set quote_deposit_deduction_satang=0 where org_id=p_org_id and id=i.id;
   select coalesce(jsonb_object_agg(id::text,coalesce(private.receipt_available_satang(p_org_id,id),0)),'{}') into previous from public.payments where org_id=p_org_id and client_id=i.client_id and amount_satang>0 and reversal_of is null;
   for deposit in select * from public.invoices where org_id=p_org_id and source_quote_id=source and quote_invoice_kind='deposit' and status<>'cancelled' order by id for update loop
     if deposit.issued_snapshot_id is null then
