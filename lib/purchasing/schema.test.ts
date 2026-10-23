@@ -1,7 +1,17 @@
 import { parseFacets } from "@/lib/search-facets"
 import { expect, it } from "vitest"
-import { PurchaseInput, ReceiptInput, VendorInput } from "./schema"
+import { PurchaseInput, ReceiptInput, RFQClaim, VendorInput } from "./schema"
 const vendor = { name: "Test vendor", tax_id: "", email: "", phone: "", address: "", notes: "", active: true, payment_terms_days: 30 }
+it("accepts historical RFQ snapshots and validates frozen grid sections", () => {
+  const snapshot = { to: "supplier@example.invalid", number: "PO-1", vendorName: "Supplier", orderDate: "2026-10-23", expectedDate: null, notes: null, lines: [{ description: "Product", quantity: 1, unit: "piece", unit_cost_satang: 100 }] }
+  const delivery_key = "b6000000-0000-4000-8000-000000000030"
+  const section = { id: "b6000000-0000-4000-8000-000000000031", kind: "section", description: "Agreed terms", lines_before: 0, position: 0 }
+  expect(RFQClaim.parse({ delivery_key, snapshot }).snapshot.sections).toEqual([])
+  expect(RFQClaim.parse({ delivery_key, snapshot: { ...snapshot, sections: [section] } }).snapshot.sections).toEqual([section])
+  for (const patch of [{ id: "bad" }, { kind: "line" }, { description: "" }, { description: "a".repeat(4001) }, { lines_before: -1 }, { lines_before: 0.5 }, { position: -1 }]) {
+    expect(RFQClaim.safeParse({ delivery_key, snapshot: { ...snapshot, sections: [{ ...section, ...patch }] } }).success).toBe(false)
+  }
+})
 it("validates supplier identity, email and bounded payment terms", () => {
   expect(VendorInput.parse(vendor).email).toBeNull()
   for (const patch of [{ name: " " }, { email: "bad" }, { payment_terms_days: -1 }, { payment_terms_days: 3651 }]) expect(VendorInput.safeParse({ ...vendor, ...patch }).success).toBe(false)

@@ -37,6 +37,13 @@ export const RFQClaim = z.object({
       unit: z.string().min(1),
       unit_cost_satang: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     })).min(1),
+    sections: z.array(z.object({
+      id: z.guid(),
+      kind: z.enum(["section", "note"]),
+      description: z.string().min(1).max(4000),
+      lines_before: z.number().int().nonnegative(),
+      position: z.number().int().nonnegative(),
+    })).default([]),
   }),
 })
 

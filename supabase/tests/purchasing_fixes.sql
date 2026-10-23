@@ -75,7 +75,7 @@ select ok((select rfq_delivery_key is not null and rfq_delivered_at is null from
 select is((select rfq_delivery_key::text from public.purchase_orders where id=pg_temp.purchase_fix_id(1000)),current_setting('test.rfq_claim')::jsonb->>'delivery_key','returned delivery key matches persistent authorization');
 select is((select rfq_snapshot from public.purchase_orders where id=pg_temp.purchase_fix_id(1000)),current_setting('test.rfq_claim')::jsonb->'snapshot','returned snapshot matches persistent snapshot');
 select is((select rfq_snapshot from public.purchase_orders where id=pg_temp.purchase_fix_id(1000)),jsonb_build_object(
-  'to','original@example.invalid','number','RFQ-MAIN','vendorName','Original supplier','orderDate','2026-10-24','expectedDate','2026-11-01','notes','Agreed terms',
+  'to','original@example.invalid','number','RFQ-MAIN','vendorName','Original supplier','orderDate','2026-10-24','expectedDate','2026-11-01','notes','Agreed terms','sections','[]'::jsonb,
   'lines',jsonb_build_array(
     jsonb_build_object('description','First line','quantity',3,'unit','piece','unit_cost_satang',200),
     jsonb_build_object('description','Second line','quantity',2.5,'unit','day','unit_cost_satang',101),
