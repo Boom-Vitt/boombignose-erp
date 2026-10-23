@@ -24,6 +24,18 @@ export type Database = {
           }
         },"public": {
           Tables: {
+      credit_notes: {
+        Row: { id: string; org_id: string; invoice_id: string; number: string; issue_date: string; reason: string; amount_satang: number; snapshot: Json; issued_by: string; created_at: string }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      credit_note_lines: {
+        Row: { id: string; org_id: string; credit_note_id: string; invoice_item_id: string; raw_satang: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       deal_lost_reasons: {
         Row: { id: string; org_id: string; name: string; active: boolean; created_at: string }
         Insert: { id?: string; org_id: string; name: string; active?: boolean; created_at?: string }
@@ -1310,13 +1322,13 @@ isOneToOne: false
               Relationships: []
             }
             "invoice_balances": {
-              Row: {
+              Row: { credited_satang: number | null; collectible_satang: number | null;
                 "amount_satang": number | null,"client_id": string | null,"invoice_id": string | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null,"status": Database["public"]["Enums"]["invoice_status"] | null
               }
               Relationships: []
             }
             "project_labour_totals": {
-              Row: { org_id: string | null; project_id: string | null; labour_cost_satang: number | null }
+              Row: { credited_satang: number | null; collectible_satang: number | null; org_id: string | null; project_id: string | null; labour_cost_satang: number | null }
               Relationships: []
             }
             "project_time_totals": {
@@ -1399,6 +1411,8 @@ isOneToOne: false
                            }
             cancel_draft_invoice: { Args: { p_org_id: string; p_invoice_id: string }; Returns: undefined }
             update_finance_lock_date: { Args: { p_org_id: string; p_lock_date: string | null }; Returns: undefined }
+            reverse_payment: { Args: { p_org_id: string; p_payment_id: string; p_reason: string; p_reversed_on: string; p_key: string }; Returns: string }
+            issue_credit_note: { Args: { p_org_id: string; p_invoice_id: string; p_lines: Json; p_reason: string; p_key: string }; Returns: string }
             update_tax_business_profile: { Args: { p_org_id: string; p_legal_name: string; p_business_address: string; p_tax_id: string; p_vat_registered: boolean; p_vat_rate_bps: number; p_prices_include_vat: boolean; p_branch_label: string }; Returns: undefined }
             claim_purchase_rfq: { Args: { p_org_id: string; p_order_id: string }; Returns: Json }
             finish_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_error?: string | null }; Returns: undefined }

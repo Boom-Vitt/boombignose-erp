@@ -1,3 +1,5 @@
+import { ReversePaymentForm } from "../../_components/reverse-payment-form"
+import { CreditNoteForm } from "../../_components/credit-note-form"
 import { invoiceDisplayNumber } from "@/lib/documents/numbering"
 import { CancelDraftButton } from "../../_components/cancel-draft-button"
 import { readAll } from "@/lib/supabase/read-all"
@@ -133,7 +135,7 @@ export default async function InvoiceDetailPage({
       .eq("invoice_id", id)
       .order("paid_at", { ascending: false }).order("id").range(from, to)),
     supabase.from("payments").select("id", { count: "exact", head: true }).eq("verification_state", "verified").eq("org_id", ctx.orgId).eq("invoice_id", id),
-    supabase.from("invoice_balances").select("paid_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).maybeSingle(),
+    supabase.from("invoice_balances").select("paid_satang, credited_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).maybeSingle(),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
     getInvoiceAccounting(ctx.orgId, id),
@@ -146,8 +148,9 @@ export default async function InvoiceDetailPage({
   const payments = paymentsRes.data ?? []
   if (paymentsRes.error || balanceRes.error || itemsRes.error || legacyRes.error || settingsRes.error || paymentCountRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
   const paid = balanceRes.data?.paid_satang ?? 0
-  const outstanding = outstandingSatang(invoice.amount_satang, paid)
-  const effectiveStatus = deriveInvoiceStatus(invoice, paid, today)
+  const credited = balanceRes.data?.credited_satang ?? 0
+  const outstanding = outstandingSatang(invoice.amount_satang, paid, credited)
+  const effectiveStatus = deriveInvoiceStatus({ ...invoice, credited_satang: credited }, paid, today)
 
   const clients: Option[] = (clientsRes.data ?? []).map((c) => ({
     value: c.id,
@@ -365,6 +368,7 @@ export default async function InvoiceDetailPage({
                         <TableCell>{PAYMENT_METHOD_LABEL[p.method]}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {p.notes ?? "—"}
+                          {ctx.role !== "member" && p.amount_satang > 0 ? <ReversePaymentForm orgId={ctx.orgId} invoiceId={id} paymentId={p.id} today={today} /> : null}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {formatTHB(p.amount_satang)}
@@ -410,7 +414,20 @@ export default async function InvoiceDetailPage({
           />
         </CardContent>
       </Card> : null}
+
+      {invoice.issued_snapshot_id ? <Card className="max-w-3xl"><CardHeader><CardTitle>Credit notes</CardTitle></CardHeader><CardContent className="space-y-4">
+        <p>Credited {formatTHB(credited)}</p>
+        <CreditNotes orgId={ctx.orgId} invoiceId={id} />
+        {ctx.role !== "member" && outstanding + paid > 0 ? <CreditNoteForm orgId={ctx.orgId} invoiceId={id} lines={itemsRes.data ?? []} /> : null}
+      </CardContent></Card> : null}
       <RecordHistory recordType="invoice" recordId={id} />
     </div>
   )
+}
+
+async function CreditNotes({ orgId, invoiceId }: { orgId: string; invoiceId: string }) {
+  const supabase = await createClient()
+  const result = await readAll((from, to) => supabase.from("credit_notes").select("id, number, amount_satang, reason").eq("org_id", orgId).eq("invoice_id", invoiceId).order("created_at").order("id").range(from, to))
+  if (result.error) throw new Error("Credit notes unavailable")
+  return <ul>{(result.data ?? []).map(note => <li key={note.id}><a className="underline" href={`/finance/credit-notes/${note.id}/pdf`} target="_blank" rel="noreferrer">{note.number}</a> · {formatTHB(note.amount_satang)} · {note.reason}</li>)}</ul>
 }
