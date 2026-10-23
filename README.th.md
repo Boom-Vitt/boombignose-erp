@@ -1,0 +1,198 @@
+<!-- BBN:HEADER:START -->
+<img src=".github/brand/banner.svg" width="100%" alt="BoomBigNose ERP · ระบบ ERP โอเพนซอร์สสำหรับธุรกิจทุกขนาด (AGPL-3.0)" />
+<!-- BBN:HEADER:END -->
+
+<div align="center">
+
+<h2>BoomBigNose ERP</h2>
+<p>ระบบ ERP โอเพนซอร์สสำหรับธุรกิจทุกขนาด</p>
+
+[![License](https://img.shields.io/badge/license-AGPL--3.0%20%7C%20Commercial-blue?style=flat-square)](./LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3FCF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+
+[English](./README.md) · **ภาษาไทย**
+
+</div>
+
+<div align="center">
+	<a href="https://boom-vitt.github.io/boombignose-erp/">เว็บไซต์</a>
+	-
+	<a href="./docs">เอกสาร</a>
+	-
+	<a href="https://github.com/Boom-Vitt/boombignose-erp/issues">Issues</a>
+</div>
+
+## BoomBigNose ERP
+
+BoomBigNose ERP รวมงานขาย จัดซื้อ คลังสินค้า โปรเจกต์ และการวางบิลของธุรกิจไว้บนฐานข้อมูลเดียว ออกแบบสำหรับธุรกิจไทยเป็นหลัก รองรับภาษีมูลค่าเพิ่มและภาษีหัก ณ ที่จ่ายบนเอกสาร สกุลเงินบาท และเขตเวลา Asia/Bangkok ตั้งแต่แรก ใช้ได้ตั้งแต่ร้านที่มีสองคนไปจนถึงบริษัทที่กำลังเติบโตและมีหลายทีม
+
+### ที่มา
+
+ธุรกิจส่วนใหญ่เริ่มจาก CRM หนึ่งตัว เครื่องมือจัดการโปรเจกต์อีกตัว สเปรดชีตใบแจ้งหนี้ และรายการสต็อกที่ตัวเลขไม่เคยตรงกัน BoomBigNose ERP เก็บข้อมูลทั้งหมดไว้ในที่เดียว ใบเสนอราคากลายเป็นใบแจ้งหนี้ ใบแจ้งหนี้กลายเป็นการส่งของ และแดชบอร์ดแสดงสถานะเงินสดได้ทันทีโดยไม่ต้องคัดลอกตัวเลขข้ามระบบ ระบบนี้ดูแลงานปฏิบัติการของธุรกิจ ส่วนบัญชีตามกฎหมายยังอยู่กับโปรแกรมบัญชีที่คุณใช้อยู่ เช่น FlowAccount, PEAK หรือ Xero
+
+### ฟีเจอร์หลัก
+
+- **แดชบอร์ด**: เงินสด, burn รายเดือน, runway, รายได้, ใบแจ้งหนี้ค้างชำระและเกินกำหนด, MRR และมูลค่า pipeline ถ่วงน้ำหนักในหน้าเดียว พร้อมรายการที่ต้องจัดการ เช่น บิลผู้ขายที่เกินกำหนดและใบเบิกค่าใช้จ่ายที่รออนุมัติ
+- **CRM**: ลูกค้าและผู้ติดต่อ พร้อมดีล ใบเสนอราคา ใบแจ้งหนี้ โปรเจกต์ และยอดค้างในมุมมองเดียว บอร์ดคัมบังของดีลพร้อมโอกาสปิดการขาย รายได้ที่คาดการณ์ และเหตุผลที่เสียดีล (บังคับกรอก) กิจกรรมที่นัดไว้แบ่งเป็น เลยกำหนด วันนี้ และที่จะมาถึง ฟอร์มรับลีดบนเว็บไซต์ที่เปลี่ยนคำถามจากลูกค้าเป็นดีล
+- **การขาย**: ใบเสนอราคาพร้อมรายการสินค้าและ VAT ส่งอีเมลหรือพิมพ์ได้ ใบเสนอราคาที่ลูกค้าตอบรับแปลงเป็นใบแจ้งหนี้ได้หนึ่งใบหรือหลายใบ ตามจำนวนที่เหลือ จำนวนที่เลือก หรือเงินมัดจำแบบเปอร์เซ็นต์หรือจำนวนคงที่ การเรียกเก็บเงินแบบรายรอบ (subscription) ออกใบแจ้งหนี้ซ้ำตามรอบอัตโนมัติ
+- **ใบแจ้งหนี้และการรับชำระ**: ใบแจ้งหนี้มีสถานะ ร่าง → ออกแล้ว → ชำระแล้ว และใบที่ออกแล้วจะถูกล็อกเลขที่และยอดเงินไว้ไม่ให้แก้ ภาษีหัก ณ ที่จ่าย 1, 2, 3 หรือ 5 เปอร์เซ็นต์ ข้อมูลภาษีของกิจการ การบันทึกรับชำระพร้อมวันที่เงินเข้าธนาคารและช่องทาง วันปิดงวดบัญชี และการรับใบแจ้งหนี้เก่าที่สร้างก่อนกฎปัจจุบันเข้าระบบ
+- **จัดซื้อ**: ผู้ขาย ใบขอเสนอราคา (RFQ) ที่ส่งทางอีเมล ใบสั่งซื้อ การรับของบางส่วน บิลผู้ขาย และการคืนสินค้าพร้อมเครดิตจากผู้ขาย
+- **คลังสินค้า**: คลังหลายแห่ง สต็อกคงเหลือและมูลค่า ประวัติการเคลื่อนไหวของสต็อกทั้งหมด การส่งของและรับคืนจากลูกค้าจากหน้าใบแจ้งหนี้ การตรวจนับ และการเติมสต็อกที่ร่างใบขอเสนอราคาแยกตามผู้ขายให้
+- **สินค้า**: แคตตาล็อกพร้อม SKU หน่วย ราคา ต้นทุน อัตราภาษี และสถานะสินค้าที่นับสต็อก เลือกสินค้าในบรรทัดใบเสนอราคาหรือใบแจ้งหนี้แล้วข้อมูลจะเติมให้อัตโนมัติ
+- **เบิกค่าใช้จ่าย**: พนักงานส่งใบเบิก ผู้จัดการอนุมัติหรือปฏิเสธ ไม่มีใครอนุมัติใบเบิกของตัวเองได้ และใบเบิกที่อนุมัติแล้วจะกลายเป็นต้นทุนในหน้าการเงิน
+- **โปรเจกต์และไทม์ชีต**: โปรเจกต์แบบรายการหรือบอร์ดคัมบัง พร้อมงานย่อย milestones และเวลาที่บันทึก เปลี่ยนเวลาที่เรียกเก็บได้เป็นใบแจ้งหนี้ฉบับร่างในขั้นตอนเดียว อัตราต้นทุนของสมาชิกและกำไรของโปรเจกต์เห็นได้เฉพาะ owner และ admin
+- **รายงานและปฏิทิน**: รายได้รายเดือนและรายลูกค้า ชั่วโมงงานต่อโปรเจกต์ และต้นทุนขาย ในรูปกราฟแท่ง กราฟเส้น หรือตาราง pivot มุมมองที่บันทึกไว้ (saved views) การส่งออก CSV และปฏิทินของงานติดตาม การประชุม วันครบกำหนด และเดดไลน์
+- **ระบบอัตโนมัติและ AI**: เทมเพลตงานอัตโนมัติที่นำกลับมาใช้ซ้ำได้ การเตือนงานติดตามตามรอบเวลา outbox ที่ส่งเหตุการณ์ไปยัง n8n และ webhook ขาเข้าจาก n8n ผู้ช่วย AI สรุปดีล ร่างข้อความติดตาม และสรุปโน้ตประชุมผ่าน OpenRouter เมื่อใส่ API key
+- **ทั้งระบบ**: command palette ด้วย Ctrl/Cmd+K แถบค้นหาและตัวกรองในหน้ารายการ แถบสถานะด้านบนและประวัติโน้ต ไฟล์แนบ และกิจกรรมบนเอกสารธุรกิจ และ audit log สำหรับ owner และ admin
+- **ทีม**: บทบาท owner, admin และ member และการเชิญสมาชิกด้วยลิงก์
+
+### เบื้องหลังระบบ
+
+- [**Next.js 16**](https://nextjs.org) แบบ App Router, React 19 Server Components และ Server Actions เขียนด้วย TypeScript Server Actions ตรวจข้อมูลจากฟอร์มด้วย [Zod](https://zod.dev)
+- [**Supabase**](https://supabase.com) สำหรับ Postgres และการยืนยันตัวตน ทุกตารางมี `org_id` และเปิด Row Level Security แบบ force องค์กรหนึ่งจึงอ่านข้อมูลขององค์กรอื่นไม่ได้ และ service-role key ไม่เคยถูกส่งไปยังเบราว์เซอร์
+- เงินเก็บเป็นสตางค์จำนวนเต็ม (`bigint`) ไม่ใช้ทศนิยมลอยตัว กฎทางธุรกิจเป็นฟังก์ชัน pure ใน `lib/` พร้อม unit test (Vitest) ที่ไม่ต้องใช้ฐานข้อมูล กฎในฐานข้อมูลมี SQL test ของตัวเอง และ Playwright ทดสอบเส้นทางหลักแบบ end to end
+
+### ขอบเขต
+
+BoomBigNose ERP ไม่ใช่สมุดบัญชีแยกประเภท บัญชีตามกฎหมาย การยื่นภาษี เงินเดือน และการผลิต อยู่นอกขอบเขต ภาษีมูลค่าเพิ่มและภาษีหัก ณ ที่จ่ายเป็นการคำนวณบนเอกสารเท่านั้น ไม่ใช่ระบบภาษีตามกฎหมายหรือบริการ e-Tax Invoice ใบลดหนี้สำหรับลูกค้ากำลังพัฒนา
+
+## รุ่นของระบบ (Editions)
+
+| | Community | Pro |
+|---|:---:|:---:|
+| สัญญาอนุญาต | [AGPL-3.0](./LICENSE) หรือ [Commercial](./COMMERCIAL-LICENSE.md) | [Commercial](./ee/LICENSE) |
+| ทุกโมดูลด้านบน | มี | มี |
+| สมัครใช้งาน, พื้นที่ทำงานแรก, เชิญทีม, บทบาท owner/admin/member | มี | มี |
+| ผู้ช่วย AI, ระบบอัตโนมัติ และงานตามรอบเวลา | มี | มี |
+| พอร์ทัลลูกค้า: ลูกค้าดูเอกสาร ตอบรับใบเสนอราคา และแจ้งชำระเงิน | | มี |
+| ตั้งค่าการเชื่อมต่อบัญชีกับ FlowAccount, PEAK และ Xero (preview ยังไม่ส่งข้อมูลจริง) | | มี |
+| หลายพื้นที่ทำงาน พร้อมตัวสลับพื้นที่ทำงาน | | มี |
+| การสร้างพื้นที่ทำงานสำหรับบริการแบบโฮสต์ | | มี |
+
+ค่าเริ่มต้นของการ build คือ Community โค้ด Pro อยู่ใน [`ee/`](./ee/) และ build ด้วย `BBN_EDITION=pro` ดูรายละเอียดว่าอะไรอยู่ฝั่งไหนได้ที่ [เส้นแบ่ง open-core](./docs/OPEN_CORE_BOUNDARY.md)
+
+## ติดตั้งสำหรับพัฒนา
+
+### สิ่งที่ต้องมี
+
+- [Node.js 22+](https://nodejs.org) และ [pnpm](https://pnpm.io)
+- [Docker](https://docs.docker.com/get-docker/) สำหรับรัน Supabase บนเครื่อง
+- [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started) ติดตั้งมากับ dev dependencies แล้ว ใช้ `pnpm exec supabase` ได้เลยโดยไม่ต้องติดตั้งแบบ global
+
+### รันบนเครื่อง
+
+1. โคลนโปรเจกต์และติดตั้ง dependencies
+   ```sh
+   git clone https://github.com/Boom-Vitt/boombignose-erp.git
+   cd boombignose-erp
+   pnpm install
+   ```
+
+2. สตาร์ท Supabase แล้วรันไมเกรชันและโหลดข้อมูลเดโม
+   ```sh
+   pnpm exec supabase start
+   pnpm exec supabase db reset
+   ```
+
+3. สร้าง `.env.local` แล้วใส่ URL และคีย์ที่ `supabase status` แสดง
+   ```sh
+   cp .env.example .env.local
+   pnpm exec supabase status
+   ```
+
+4. รันแอปแล้วเปิด `http://localhost:3000`
+   ```sh
+   pnpm dev
+   ```
+
+ถ้าต้องการเริ่มจากฐานข้อมูลว่าง ให้รัน `pnpm exec supabase db reset --no-seed` สมัครที่ `/signup` ยืนยันอีเมล (อีเมลบนเครื่องจะไปที่กล่อง Inbucket ที่ `supabase status` แสดง) แล้วสร้างพื้นที่ทำงานที่ `/onboarding` ลิงก์ยืนยันใช้ `site_url` ใน `supabase/config.toml` (`http://127.0.0.1:3100`) จึงควรรันแอปที่ที่อยู่นั้นและตั้ง `NEXT_PUBLIC_APP_URL` ให้ตรงกัน หรือแก้ทั้งสองค่าแล้วรีสตาร์ท Supabase ถ้าต้องการตรวจข้อมูลเดโมและ Row Level Security หลัง reset ให้โหลด `.env.local` เข้า shell แล้วรัน `node scripts/verify-seed.mjs`
+
+### บัญชีเดโม
+
+| อีเมล | รหัสผ่าน | บทบาท |
+|---|---|---|
+| `demo@boombignose.org` | `BoomDemo123!` | owner |
+| `nattapong@boombignose.org` | `BoomDemo123!` | member |
+| `praewa@boombignose.org` | `BoomDemo123!` | member |
+
+ปุ่ม **Use demo account** ในหน้าเข้าสู่ระบบจะแสดงเมื่อตั้ง `NEXT_PUBLIC_DEMO_LOGIN_EMAIL` และ `NEXT_PUBLIC_DEMO_LOGIN_PASSWORD` เท่านั้น ไม่ควรตั้งค่านี้บน production
+
+### ตัวแปรสภาพแวดล้อม
+
+| ตัวแปร | จำเป็น | หน้าที่ |
+|---|:---:|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | ใช่ | URL ของ Supabase API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ใช่ | anon key ของ Supabase ใช้ฝั่งเบราว์เซอร์ได้อย่างปลอดภัย |
+| `SUPABASE_SERVICE_ROLE_KEY` | ใช่ | คีย์ฝั่งเซิร์ฟเวอร์เท่านั้น สำหรับงานตามรอบเวลา webhook คำเชิญ ฟอร์มรับลีดสาธารณะ และพอร์ทัลลูกค้าของ Pro |
+| `NEXT_PUBLIC_APP_URL` | ใช่ | URL สาธารณะของแอป ใช้ในลิงก์คำเชิญ ฟอร์มรับลีด และอีเมล |
+| `CRON_SECRET` | ใช่ | ตรวจ header `X-Cron-Secret` ของงานตามรอบเวลา |
+| `N8N_WEBHOOK_SECRET` | ใช่ | ตรวจ header `X-Webhook-Secret` ของ webhook ขาเข้าจาก n8n |
+| `N8N_OUTBOUND_URL`, `N8N_OUTBOUND_SECRET` | ไม่ | เปิดการส่งเหตุการณ์จาก outbox ไปยัง n8n |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | ไม่ | เปิดผู้ช่วย AI และเปลี่ยนโมเดล |
+| `RESEND_API_KEY` | ไม่ | เปิดการส่งอีเมลผ่าน Resend |
+| `EMAIL_FROM` | ไม่ | อีเมลผู้ส่ง |
+| `LEAD_FORM_TRUST_PROXY` | ไม่ | ตั้งเป็น `true` เมื่ออยู่หลัง proxy ที่เขียนทับ `X-Forwarded-For` เพื่อให้จำกัดอัตราการส่งฟอร์มรับลีดแยกตามผู้เข้าชม |
+| `LEAD_FORM_IP_SECRET` | ไม่ | คีย์สำหรับ hash IP ของผู้ส่งฟอร์มรับลีด ถ้าไม่ตั้งจะใช้ service-role key แทน |
+| `BBN_EDITION` | ไม่ | `community` (ค่าเริ่มต้น) หรือ `pro` เลือกตอน build |
+
+ค่า `NEXT_PUBLIC_*` ถูกฝังไว้ตอน build ต้อง build ใหม่ทุกครั้งที่เปลี่ยน [`.env.example`](./.env.example) เป็นแม่แบบพร้อมคำอธิบาย
+
+### คำสั่งที่ใช้บ่อย
+
+```sh
+pnpm dev          # dev server
+pnpm build        # build สำหรับ production
+pnpm test         # unit test ไม่ต้องใช้ฐานข้อมูล
+pnpm typecheck    # ตรวจ TypeScript
+pnpm lint         # ESLint
+pnpm e2e          # Playwright test ต้องใช้ stack แยกตาม docs/testing/erp-gates.md
+pnpm local:up     # สตาร์ท Supabase บนเครื่องและรันไมเกรชันที่ค้างอยู่
+```
+
+## ติดตั้งสำหรับใช้งานจริง
+
+การติดตั้งแบบคำสั่งเดียวอยู่ในแผน ตอนนี้ติดตั้งใช้งานจริงได้ในสี่ขั้นตอน
+
+1. สร้างโปรเจกต์ Supabase แล้วรันไมเกรชันด้วย `pnpm exec supabase link` และ `pnpm exec supabase db push` ไม่ควรโหลดข้อมูลเดโม
+2. ใน Supabase Auth ตั้ง Site URL เป็น URL ของแอป เพิ่ม `<app URL>/auth/confirm` ใน redirect URLs และตั้งค่า SMTP ของคุณเอง เพื่อให้อีเมลยืนยันส่งถึงผู้ใช้
+3. ตั้งค่าตัวแปรสภาพแวดล้อมด้านบน แล้วรัน `pnpm build` และ `pnpm start` บนเซิร์ฟเวอร์ Node.js 22 ใดก็ได้
+4. เรียก `POST /api/cron/followups`, `/api/cron/outbox` และ `/api/cron/subscriptions` ตามรอบเวลา พร้อม header `X-Cron-Secret`
+
+Pro ที่มีสัญญาอนุญาตต้องติดตั้ง `ee/supabase/provision-hosted-workspace.sql` เพิ่ม และ build ด้วย `BBN_EDITION=pro` ดูรายละเอียดที่ [เส้นแบ่ง open-core](./docs/OPEN_CORE_BOUNDARY.md#build-and-license-scope)
+
+ถ้าต้องการ Pro แบบโฮสต์ ติดต่อ [boombignose.org](https://boombignose.org)
+
+## เรียนรู้และชุมชน
+
+1. [เอกสาร](./docs): เส้นแบ่ง open-core การเชื่อม n8n เกณฑ์การทดสอบ และบันทึกด้านความปลอดภัยและ PDPA
+2. [เว็บไซต์](https://boom-vitt.github.io/boombignose-erp/): ภาพรวมของผลิตภัณฑ์
+3. [Issues](https://github.com/Boom-Vitt/boombignose-erp/issues): แจ้งบั๊กและขอฟีเจอร์
+
+## การมีส่วนร่วม
+
+1. [คู่มือการมีส่วนร่วม](./CONTRIBUTING.md): รัน `pnpm lint`, `pnpm typecheck`, `pnpm test` และ `pnpm build` ก่อนเปิด pull request
+2. [Contributor License Agreement](./CLA.md): ต้องยอมรับในทุก pull request
+3. [แม่แบบ issue](https://github.com/Boom-Vitt/boombignose-erp/issues/new/choose): สำหรับแจ้งบั๊กและขอฟีเจอร์
+
+## ความปลอดภัย
+
+แจ้งช่องโหว่แบบส่วนตัวผ่าน [GitHub Security Advisories](https://github.com/Boom-Vitt/boombignose-erp/security/advisories/new) โปรดอย่าเปิดเป็น issue สาธารณะ ดูสิ่งที่ควรแนบและช่องทางสำรองได้ที่ [SECURITY.md](./SECURITY.md) ไม่ควรใส่ข้อมูลลูกค้าจริงในระบบเดโม และอ่าน[บันทึก PDPA](./docs/PDPA_SECURITY_NOTES.md) ก่อนเริ่มใช้งานจริง
+
+## สัญญาอนุญาต
+
+Community Edition ใช้สัญญาอนุญาตคู่ คือ [AGPL-3.0-only](./LICENSE) หรือ [Commercial license](./COMMERCIAL-LICENSE.md) ที่ตกลงแยกต่างหาก โค้ด Pro ใน [`ee/`](./ee/) เป็นซอฟต์แวร์เชิงพาณิชย์ที่เปิดให้อ่านซอร์สโค้ดได้ (source-available) ไม่ใช่โอเพนซอร์ส ภายใต้ [`ee/LICENSE`](./ee/LICENSE) และต้องมีข้อตกลงเชิงพาณิชย์ก่อนใช้ใน production ส่วน [`bignose/`](./bignose/LICENSE) เป็นผลิตภัณฑ์ proprietary แยกต่างหากและไม่อยู่ภายใต้ AGPL สัญญาอนุญาตของบุคคลที่สามอยู่ใน [NOTICE](./NOTICE)
+
+## โลโก้และเครื่องหมายการค้า
+
+ชื่อและโลโก้ BoomBigNose สงวนสิทธิ์ไว้ fork ต้องเปลี่ยนชื่อและแบรนด์ตาม [TRADEMARK.md](./TRADEMARK.md)
+
+<div align="center">
+<br />
+Copyright © 2026 BoomBigNose AI Co., Ltd.
+</div>
+
+<!-- BBN:FOOTER:START -->
+[Made by BoomBigNose](https://github.com/Boom-Vitt)
+<!-- BBN:FOOTER:END -->
