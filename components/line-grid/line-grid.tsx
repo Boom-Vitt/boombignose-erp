@@ -115,9 +115,10 @@ export function LineGrid({ document, documentId, rows: serverRows, editable, loc
   }
 
   function move(from: number, to: number) {
-    if (to < 0 || to >= state.rows.length) return
+    if (to < 0 || to >= state.rows.length) return false
     dispatch({ type: "move", from, to })
     setAnnouncement(`Moved ${LABEL[state.rows[from].kind].toLowerCase()} to row ${to + 1} of ${state.rows.length}`)
+    return true
   }
 
   function onCellKey(event: KeyboardEvent<HTMLElement>, index: number, column: string) {
@@ -209,8 +210,7 @@ export function LineGrid({ document, documentId, rows: serverRows, editable, loc
                   if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return
                   event.preventDefault()
                   // Moving the row's DOM node drops focus, so the handle takes it back after the move renders.
-                  pendingFocus.current = `${row.id}:handle`
-                  move(index, index + (event.key === "ArrowUp" ? -1 : 1))
+                  if (move(index, index + (event.key === "ArrowUp" ? -1 : 1))) pendingFocus.current = `${row.id}:handle`
                 }}
                 ref={cellRef(row.id, "handle")}
               >

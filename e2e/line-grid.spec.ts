@@ -92,6 +92,10 @@ test("edit several lines, reorder, add a section and a note, save once, and the 
   await expect(lines.getByRole("button", { name: "Move line 3", exact: true })).toBeFocused()
   await lines.getByRole("button", { name: "Add a note", exact: true }).click()
   await page.keyboard.type("Delivered on site")
+  await lines.getByRole("button", { name: "Move line 1", exact: true }).press("ArrowUp")
+  await lines.getByLabel("Description, row 1").fill("Design ")
+  await expect(lines.getByLabel("Description, row 1")).toBeFocused()
+  await lines.getByLabel("Description, row 1").fill("Design")
 
   const totals = lines.getByTestId("line-grid-totals")
   await expect(totals).toContainText("฿700.33")
