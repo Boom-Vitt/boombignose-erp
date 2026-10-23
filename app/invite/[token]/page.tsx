@@ -77,7 +77,7 @@ export default async function InvitePage({
           </CardTitle>
           <CardDescription>
             {isValid
-              ? `You've been invited to join ${orgName} as ${invite!.role} on BoomBigNose Company OS.`
+              ? `You've been invited to join ${orgName} as ${invite!.role} on BoomBigNose ERP.`
               : "This invitation is unavailable for this account, revoked, or expired. Use the email account that received the link."}
           </CardDescription>
         </CardHeader>

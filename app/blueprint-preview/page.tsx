@@ -8,7 +8,7 @@ import {
 import { BlueprintViewer } from "@/components/blueprint/blueprint-viewer"
 
 export const metadata: Metadata = {
-  title: "Blueprint Preview · BoomBigNose Company OS",
+  title: "Blueprint Preview · BoomBigNose ERP",
 }
 
 export default async function BlueprintPreviewPage() {

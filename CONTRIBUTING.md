@@ -52,5 +52,6 @@ own workspace and checks; root ERP checks do not validate it.
 
 Describe the problem, implementation, tests actually run, and any remaining
 limits in your pull request. Follow [TRADEMARK.md](TRADEMARK.md) for forks and
-[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for license scope. Licensing
-questions and private reports can be directed through https://boombignose.org.
+[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for license scope. Report
+security problems privately as described in [SECURITY.md](SECURITY.md).
+Licensing questions can be directed through https://boombignose.org.

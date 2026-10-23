@@ -1,279 +1,196 @@
 <!-- BBN:HEADER:START -->
-<img src=".github/brand/banner.svg" width="100%" alt="BoomBigNose ERP · Open-source Company OS (AGPL-3.0) for AI-era teams" />
+<img src=".github/brand/banner.svg" width="100%" alt="BoomBigNose ERP · Open-source ERP for businesses of every size (AGPL-3.0)" />
 <!-- BBN:HEADER:END -->
 
 <div align="center">
 
-# 🐘 BoomBigNose Company OS
+<h2>BoomBigNose ERP</h2>
+<p>Open-source ERP for businesses of every size</p>
 
-### ระบบปฏิบัติการธุรกิจ (Company OS) สำหรับสตูดิโอสาย AI — CRM · ดีล · โปรเจกต์ · การเงิน · ระบบอัตโนมัติ · แดชบอร์ดผู้ก่อตั้ง
+[![License](https://img.shields.io/badge/license-AGPL--3.0%20%7C%20Commercial-blue?style=flat-square)](./LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3FCF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 
-*"ชั้นปฏิบัติการ" ของการทำธุรกิจ — ไม่ใช่ระบบบัญชี/ภาษี แต่เป็นที่เดียวที่มองเห็นและสั่งงานทั้งบริษัทได้จริง*
-
-<br/>
-
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-<br/>
-[![Tests](https://img.shields.io/badge/tests-510%20passing-brightgreen)](#-คำสั่งที่ใช้บ่อย-scripts)
-[![Status](https://img.shields.io/badge/status-open--core-blue)](#license)
-[![License](https://img.shields.io/badge/license-AGPL--3.0%20%7C%20Commercial-blue)](./COMMERCIAL-LICENSE.md)
-![Made in Thailand](https://img.shields.io/badge/made%20in-Bangkok%20🇹🇭-ED1C24)
-
-<br/>
-
-[**โรดแมป**](#-โรดแมป-roadmap) · [**เอกสาร**](./docs) · [**รายงานบั๊ก**](https://github.com/Boom-Vitt/boombignose-erp/issues) · [**ขอฟีเจอร์**](https://github.com/Boom-Vitt/boombignose-erp/issues/new)
+**English** · [ภาษาไทย](./README.th.md)
 
 </div>
 
-<!-- แนะนำ: ใส่ภาพหน้าจอแดชบอร์ดตรงนี้ (เช่น docs/cover.png) เพื่อให้หน้า repo ดูสมบูรณ์ -->
+<div align="center">
+	<a href="https://boom-vitt.github.io/boombignose-erp/">Website</a>
+	-
+	<a href="./docs">Documentation</a>
+	-
+	<a href="https://github.com/Boom-Vitt/boombignose-erp/issues">Issues</a>
+</div>
 
-> [!NOTE]
-> BoomBigNose Company OS คือ **"ระบบปฏิบัติการของบริษัท"** ไม่ใช่ระบบบัญชี/ใบกำกับภาษีตามกฎหมาย
-> เรื่องบัญชียังคงอยู่กับ **FlowAccount / PEAK / Xero** (จะเชื่อมต่อในภายหลัง) — โปรดักต์นี้คือ *ชั้นปฏิบัติการ* ไม่ใช่ *สมุดบัญชีหลัก*
+## BoomBigNose ERP
 
----
+BoomBigNose ERP runs sales, purchasing, inventory, projects and billing for a business on one database. It is built for Thai businesses first, with VAT and withholding tax on documents, THB amounts and the Asia/Bangkok time zone built in, and it works for a two-person shop as well as a growing company with several teams.
 
-## 📑 สารบัญ
+### Motivation
 
-- [เกี่ยวกับโปรเจกต์](#-เกี่ยวกับโปรเจกต์-about)
-- [ฟีเจอร์](#-ฟีเจอร์-features)
-- [เทคโนโลยีที่ใช้](#-เทคโนโลยีที่ใช้-built-with)
-- [เริ่มต้นใช้งาน](#-เริ่มต้นใช้งาน-getting-started)
-- [ตัวแปรสภาพแวดล้อม](#-ตัวแปรสภาพแวดล้อม-environment)
-- [คำสั่งที่ใช้บ่อย](#-คำสั่งที่ใช้บ่อย-scripts)
-- [โครงสร้างโปรเจกต์](#-โครงสร้างโปรเจกต์-project-structure)
-- [สถาปัตยกรรม](#-สถาปัตยกรรม-architecture)
-- [โรดแมป](#-โรดแมป-roadmap)
-- [โมเดล Open-core](#-โมเดล-open-core)
-- [การมีส่วนร่วม](#-การมีส่วนร่วม-contributing)
-- [ความปลอดภัยและ PDPA](#-ความปลอดภัยและ-pdpa)
-- [License / สัญญาอนุญาต](#license)
+Most businesses start with a CRM, a project tool, a spreadsheet of invoices and a stock list that never quite agree with each other. BoomBigNose ERP keeps those records in one place, so a quote becomes an invoice, an invoice becomes a delivery, and the dashboard shows the cash position without copying numbers between tools. It handles the operational side of the business and leaves the statutory books to the accounting software you already use, such as FlowAccount, PEAK or Xero.
 
----
+### Key Features
 
-## 🎯 เกี่ยวกับโปรเจกต์ (About)
+- **Dashboard**: Cash, monthly burn, runway, revenue, unpaid and overdue invoices, MRR and weighted pipeline on one screen, with a list of items that need attention such as overdue vendor bills and expense claims waiting for approval.
+- **CRM**: Clients and contacts with their deals, quotes, invoices, projects and open balance in one view. A kanban deal pipeline with win probability, expected revenue and required lost reasons. Scheduled activities grouped as late, today and upcoming. Web-to-lead forms that turn website enquiries into deals.
+- **Sales**: Quotations with product lines and VAT that you can email or print. An accepted quote converts into one or more invoices by remaining quantity, chosen quantity, or a percentage or fixed deposit. Subscriptions raise recurring invoices on a schedule.
+- **Invoicing and Payments**: Invoices move from draft to issued to paid, and an issued invoice is frozen so its number and amounts cannot change. Withholding tax at 1, 2, 3 or 5 percent, a business tax profile, recorded payments with bank date and method, a finance lock date for closed periods, and adoption of invoices created before the current rules.
+- **Purchasing**: Vendors, requests for quotation sent by email, purchase orders, partial receipts, vendor bills and purchase returns with vendor credits.
+- **Inventory**: Warehouses, stock on hand and its value, a full stock movement history, deliveries and customer returns from the invoice, physical counts, and replenishment that drafts requests for quotation grouped by vendor.
+- **Products**: A catalog with SKU, unit, price, cost, tax rate and a stockable flag. Picking a product on a quote or invoice line fills in its details.
+- **Expenses**: Expense claims that staff submit and a manager approves or rejects. Nobody can approve their own claim, and approved claims become costs in Finance.
+- **Projects and Timesheets**: Projects as a list or kanban board, with tasks, milestones and logged time. Billable time turns into a draft invoice in one step. Member cost rates and project profit are visible to owners and admins only.
+- **Reports and Calendar**: Revenue by month and by client, hours by project and cost of goods sold, shown as bar, line or pivot views. Saved views, CSV export, and a calendar of follow-ups, meetings, due dates and deadlines.
+- **Automation and AI**: Reusable automation templates, scheduled follow-up reminders, an outbox that delivers events to n8n, and inbound n8n webhooks. AI deal summaries, follow-up drafts and meeting-note intake through OpenRouter when an API key is set.
+- **Across the app**: A command palette on Ctrl/Cmd+K, a search and filter bar on list pages, a status header and a history of notes, attachments and activities on business records, and an audit log for owners and admins.
+- **Team**: Owner, admin and member roles, and invitations shared by link.
 
-BoomBigNose Company OS เป็น **Company OS / ERP แบบเบา ที่ออกแบบมาแนว AI-native** สำหรับสตูดิโอสาย AI education + workflow automation ในไทย (ผู้ก่อตั้ง + ทีมเล็ก) ให้ทุกอย่างของธุรกิจอยู่ในที่เดียว: ลูกค้าและดีล, การส่งมอบโปรเจกต์, เงินเข้า–ออก, คลังเทมเพลตระบบอัตโนมัติที่นำกลับมาใช้ซ้ำได้ และแดชบอร์ดที่แสดง เงินสด / burn / รายได้ / pipeline / runway
+### Under the Hood
 
-ออกแบบให้ **ใช้ภายในบริษัทก่อน (dogfooding)** แต่วางรากฐานให้สะอาด (`org_id` ทุกตาราง, ขอบเขตโมดูลชัดเจน) เพื่อให้ต่อยอดเป็นสินค้า **open-core (Community + Pro)** ได้โดยไม่ต้องเขียนใหม่
+- [**Next.js 16**](https://nextjs.org) with the App Router, React 19 Server Components and Server Actions, written in TypeScript. Server Actions validate their form input with [Zod](https://zod.dev).
+- [**Supabase**](https://supabase.com) for Postgres and authentication. Every table carries an `org_id` with forced Row Level Security, so one organization can never read another's data. The service-role key never reaches the browser.
+- Money is stored as integer satang (`bigint`), never as floating point. Business rules live as pure functions in `lib/` with Vitest unit tests that need no database. Database rules have their own SQL tests, and Playwright covers the main flows end to end.
 
-**สร้างมาเพื่อใคร**
-- 👑 **ผู้ก่อตั้ง–ผู้บริหาร** (หลัก): แดชบอร์ดเดียวเห็นทั้ง pipeline, การส่งมอบงาน และกระแสเงินสด
-- 🛠️ **จูเนียร์เดฟ**: หน้า "งานของฉัน" + ยิงเทมเพลตอัตโนมัติที่นำกลับมาใช้ซ้ำได้
+### Scope
 
----
+BoomBigNose ERP is not a general ledger. Statutory accounting, tax filing, payroll and manufacturing are out of scope. VAT and withholding tax are calculated on documents only, so this is not a statutory tax system or an e-Tax Invoice service. Customer credit notes are in development.
 
-## ✨ ฟีเจอร์ (Features)
+## Editions
 
-### หลัก (V1 — ใช้งานได้แล้ว)
+| | Community | Pro |
+|---|:---:|:---:|
+| License | [AGPL-3.0](./LICENSE) or [Commercial](./COMMERCIAL-LICENSE.md) | [Commercial](./ee/LICENSE) |
+| Every module listed above | Yes | Yes |
+| Sign-up, first workspace, team invitations, owner/admin/member roles | Yes | Yes |
+| AI assistant, automation and scheduled jobs | Yes | Yes |
+| Client portal: customers view documents, accept quotes and report payments | | Yes |
+| Accounting connection settings for FlowAccount, PEAK and Xero (preview, no data is sent yet) | | Yes |
+| Multiple workspaces with a workspace switcher | | Yes |
+| Hosted workspace provisioning | | Yes |
 
-- 📊 **แดชบอร์ด** — เงินสด, burn รายเดือน, รายได้เดือนนี้, ใบแจ้งหนี้ค้างชำระ, MRR, มูลค่า pipeline, โปรเจกต์ที่กำลังทำ, **runway**, งานติดตามวันนี้ และรายการที่เกินกำหนด
-- 👥 **CRM** — ลูกค้า, ผู้ติดต่อ, ดีล (บอร์ด pipeline), กิจกรรม/การติดตาม
-- 📁 **โปรเจกต์** — บอร์ดส่งมอบงาน, งานย่อย (tasks), milestones และสร้างโปรเจกต์จากดีลที่ปิดได้ (won)
-- 💰 **การเงิน** — ใบแจ้งหนี้, การชำระเงิน, ต้นทุน, กำไรขั้นต้น, MRR *(เชิงปฏิบัติการ ไม่ใช่บัญชีตามกฎหมาย)*
-- 🧩 **เทมเพลต** — คลังเทมเพลต/เวิร์กโฟลว์อัตโนมัติ พร้อมเช็กลิสต์และราคา
-- 🔗 **Webhook อัตโนมัติ** — endpoint ขาเข้าจาก n8n ที่ตรวจ `X-Webhook-Secret`
-- 🔐 **Auth & สิทธิ์** — Supabase Auth; บทบาท owner / admin / member; single-org (พร้อมโครงสร้าง multi-tenant)
+The default build is Community. Pro code lives in [`ee/`](./ee/) and is built with `BBN_EDITION=pro`. See [the open-core boundary](./docs/OPEN_CORE_BOUNDARY.md) for exactly what sits on each side.
 
-### ใหม่ใน V2 🆕 *(รวมเข้า `main` แล้ว)*
+## Development Setup
 
-- 📝 **Audit log + ประวัติกิจกรรม** — บันทึกการเปลี่ยนแปลงสำคัญทุกอย่าง เห็นได้ที่หน้า `/audit` (จำกัดเฉพาะ owner/admin)
-- 📤 **รายงาน & Export CSV** — ใบแจ้งหนี้ / ต้นทุน / ดีล (เป็นบาท, ป้องกัน CSV formula injection) + **saved views** + ตัวกรองผ่าน URL
-- 🤖 **ผู้ช่วย AI** — สรุปดีล, ร่างข้อความติดตาม, และ **สรุปโน้ตประชุม** ที่ `/intake` *(degrade อย่างสวยงาม: ใช้ Gemini 4 ผ่าน OpenRouter — ถ้าไม่ตั้ง `OPENROUTER_API_KEY` จะขึ้นข้อความ "ยังไม่ได้ตั้งค่า" โดยไม่ล่ม — ใส่คีย์เมื่อไรก็ทำงานจริงทันที)*
-- ⏰ **ระบบติดตามอัตโนมัติ** — `/api/cron/followups` สแกนงานที่ถึงกำหนด → สร้าง `reminders` + คิว `outbound_events` (ให้ n8n/Hermes ไปส่ง LINE ต่อ)
-- 🧾 **โครงเชื่อมต่อระบบบัญชี** — เชื่อม FlowAccount/PEAK/Xero + ปุ่ม "Sync to accounting" บนใบแจ้งหนี้ *(การ push จริงเป็น stub ที่มี seam ชัดเจน — mapping และ record จริง; ไม่มี engine ออกใบกำกับภาษี ตามขอบเขตที่วางไว้)*
-- ✉️ **ทำ auth ให้พร้อมใช้จริง** — สมัครสมาชิก `/signup` + ยืนยันอีเมล + นโยบายรหัสผ่าน
+### Prerequisites
 
-> [!TIP]
-> ขอบเขตที่ **ตั้งใจไม่ทำ** (กัน scope creep เป็น ERP): ไม่มีสต็อก, จัดซื้อ, เครื่องคิดเงินเดือน หรือการออกใบกำกับภาษี — เรื่องบัญชียกให้ FlowAccount/PEAK/Xero
+- [Node.js 22+](https://nodejs.org) and [pnpm](https://pnpm.io)
+- [Docker](https://docs.docker.com/get-docker/) for the local Supabase stack
+- The [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started) is installed with the dev dependencies, so `pnpm exec supabase` works without a global install
 
----
+### Local
 
-## 🧱 เทคโนโลยีที่ใช้ (Built With)
+1. Clone the repository and install dependencies
+   ```sh
+   git clone https://github.com/Boom-Vitt/boombignose-erp.git
+   cd boombignose-erp
+   pnpm install
+   ```
 
-| ด้าน | เทคโนโลยี |
-|---|---|
-| Framework | **Next.js 16** (App Router, Server Actions) · **TypeScript** |
-| UI | **Tailwind CSS v4** · **shadcn/ui** (Base UI) · lucide-react · sonner |
-| Backend / DB | **Supabase** — Postgres + Auth + **Row Level Security** |
-| Validation / Forms | **Zod v4** · React Hook Form |
-| AI | **Gemini 4 ผ่าน OpenRouter** (`fetch` ตรง ๆ — เปิดใช้เมื่อมีคีย์) |
-| ทดสอบ | **Vitest** (unit) · **Playwright** (e2e) |
-| Tooling | pnpm · ESLint · date-fns · TanStack Table |
+2. Start Supabase, then apply the migrations and load the demo data
+   ```sh
+   pnpm exec supabase start
+   pnpm exec supabase db reset
+   ```
 
----
+3. Create `.env.local` and fill in the URL and keys printed by `supabase status`
+   ```sh
+   cp .env.example .env.local
+   pnpm exec supabase status
+   ```
 
-## 🚀 เริ่มต้นใช้งาน (Getting Started)
+4. Start the app and open `http://localhost:3000`
+   ```sh
+   pnpm dev
+   ```
 
-### สิ่งที่ต้องมี
+To start with an empty database instead, run `pnpm exec supabase db reset --no-seed`, sign up at `/signup`, confirm the email (local mail goes to the Inbucket inbox that `supabase status` lists), and create your workspace at `/onboarding`. Confirmation links use `site_url` in `supabase/config.toml` (`http://127.0.0.1:3100`), so run the app at that address and set `NEXT_PUBLIC_APP_URL` to match, or change both and restart Supabase. To check the seed and Row Level Security after a reset, load `.env.local` into your shell and run `node scripts/verify-seed.mjs`.
 
-- **Node.js 22+**
-- **pnpm**
-- **Docker** (สำหรับรัน Supabase บนเครื่อง)
-- **Supabase CLI**
+### Demo accounts
 
-### ติดตั้งและรัน (โลคัล)
-
-```bash
-# 1) โคลนโปรเจกต์
-git clone https://github.com/Boom-Vitt/boombignose-erp.git
-cd boombignose-erp
-
-# 2) ติดตั้ง dependencies
-pnpm install
-
-# 3) สตาร์ท Supabase บนเครื่อง (Postgres + Auth + API) — ต้องเปิด Docker ไว้
-supabase start
-
-# 4) รันไมเกรชัน + โหลดข้อมูลเดโม (SME ไทยจำลอง)
-supabase db reset
-
-# 5) สร้างไฟล์ env จากตัวอย่าง แล้วเติมค่าคีย์
-cp .env.example .env.local
-supabase status          # คัดลอก URL + anon/service_role key มาใส่ .env.local
-
-# 6) (ทางเลือก) พิสูจน์ว่า seed + RLS ทำงานถูกต้อง
-set -a; source .env.local; set +a
-node scripts/verify-seed.mjs
-
-# 7) รันแอป
-pnpm dev                 # http://localhost:3000
-```
-
-สำหรับ Community ที่ต้องการสร้างองค์กรใหม่ ให้เริ่มจากฐานข้อมูลว่างโดยไม่โหลด demo seed (`supabase db reset --no-seed` สำหรับฐานข้อมูล local ใหม่) จากนั้นสมัครที่ `/signup` ยืนยันบัญชี สร้างองค์กรที่ `/onboarding` และเชิญทีมจาก Settings โดยไม่ต้องมี `ee/` การโหลด demo seed จะสร้างองค์กรเดโมไว้แล้ว
-
-### เข้าสู่ระบบด้วยบัญชีเดโม
-
-| อีเมล | รหัสผ่าน | บทบาท |
+| Email | Password | Role |
 |---|---|---|
 | `demo@boombignose.org` | `BoomDemo123!` | owner |
 | `nattapong@boombignose.org` | `BoomDemo123!` | member |
 | `praewa@boombignose.org` | `BoomDemo123!` | member |
 
-> ปุ่ม **"Use demo account"** ในหน้า login ปิดไว้เป็นค่าเริ่มต้น ถ้าต้องการตอน dev ให้ตั้ง `NEXT_PUBLIC_DEMO_LOGIN_EMAIL` และ `NEXT_PUBLIC_DEMO_LOGIN_PASSWORD` ใน `.env.local` (ห้ามตั้งบน production)
->
-> สมัครบัญชีใหม่ต้องยืนยันอีเมลก่อนเข้าระบบ: local stack ส่งอีเมลยืนยันไปที่ Inbucket (`http://127.0.0.1:54424` หรือพอร์ต `[inbucket]` ของ lane นั้น)
+The **Use demo account** button on the login page appears only when `NEXT_PUBLIC_DEMO_LOGIN_EMAIL` and `NEXT_PUBLIC_DEMO_LOGIN_PASSWORD` are set. Never set them in production.
 
----
+### Environment
 
-## 🔑 ตัวแปรสภาพแวดล้อม (Environment)
-
-คัดลอกจาก [`.env.example`](./.env.example) ไปเป็น `.env.local` (ห้าม commit `.env.local`)
-
-| ตัวแปร | จำเป็น | คำอธิบาย |
+| Variable | Required | Purpose |
 |---|:---:|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | URL ของ Supabase (โลคัลได้จาก `supabase status`) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | anon key (ฝั่ง client ปลอดภัย) |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | service-role key — **ใช้ฝั่งเซิร์ฟเวอร์เท่านั้น** (seed + cron) ห้ามใส่ใน client |
-| `N8N_WEBHOOK_SECRET` | ✅ | secret สำหรับ webhook ขาเข้าจาก n8n (`X-Webhook-Secret`) |
-| `CRON_SECRET` | ✅ | secret สำหรับ endpoint สแกนงานติดตาม (`X-Cron-Secret`) |
-| `NEXT_PUBLIC_APP_URL` | ✅ | URL ของแอป (ใช้ทำลิงก์/redirect ตอนยืนยันอีเมล) |
-| `OPENROUTER_API_KEY` | ⬜ | เปิดใช้ผู้ช่วย AI (Gemini 4 ผ่าน OpenRouter) — ถ้าไม่ใส่ ฟีเจอร์ AI จะ degrade อย่างสวยงาม |
-| `OPENROUTER_MODEL` | ⬜ | override โมเดล (ดีฟอลต์ `google/gemini-4-argon`) |
-| `BBN_EDITION` | ⬜ | เลือกตอน build: `community` เป็นค่าเริ่มต้น, `pro` สำหรับ Pro ที่มีข้อตกลงเชิงพาณิชย์ |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase API URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key, safe for the browser |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-only key for scheduled jobs, webhooks, invitations, public lead forms and the Pro client portal |
+| `NEXT_PUBLIC_APP_URL` | Yes | Public URL of the app, used in invitation, lead-form and email links |
+| `CRON_SECRET` | Yes | Checks the `X-Cron-Secret` header on scheduled jobs |
+| `N8N_WEBHOOK_SECRET` | Yes | Checks the `X-Webhook-Secret` header on inbound n8n webhooks |
+| `N8N_OUTBOUND_URL`, `N8N_OUTBOUND_SECRET` | No | Turns on delivery of outbox events to n8n |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | No | Turns on the AI assistant and overrides its model |
+| `RESEND_API_KEY` | No | Turns on outbound email through Resend |
+| `EMAIL_FROM` | No | Sender address for outbound email |
+| `LEAD_FORM_TRUST_PROXY` | No | Set to `true` behind a proxy that overwrites `X-Forwarded-For`, so lead-form rate limits apply per visitor |
+| `LEAD_FORM_IP_SECRET` | No | Key for hashing lead-form visitor IPs. Falls back to the service-role key |
+| `BBN_EDITION` | No | `community` (default) or `pro`, chosen at build time |
 
----
+`NEXT_PUBLIC_*` values are baked into the build, so rebuild after you change them. [`.env.example`](./.env.example) is a commented template.
 
-## 🧰 คำสั่งที่ใช้บ่อย (Scripts)
+### Scripts
 
-```bash
-pnpm dev            # dev server
-pnpm build          # production build
-pnpm test           # unit tests (Vitest) — ไม่ต้องมีฐานข้อมูล
-pnpm typecheck      # tsc --noEmit
-pnpm lint           # eslint
-pnpm e2e            # Playwright smoke tests (ต้องรันแอปอยู่)
+```sh
+pnpm dev          # development server
+pnpm build        # production build
+pnpm test         # unit tests, no database needed
+pnpm typecheck    # TypeScript check
+pnpm lint         # ESLint
+pnpm e2e          # Playwright tests, needs the isolated stack in docs/testing/erp-gates.md
+pnpm local:up     # start the local Supabase stack and apply pending migrations
 ```
 
----
+## Production Setup
 
-## 🗂️ โครงสร้างโปรเจกต์ (Project structure)
+A packaged one-command install is planned. Today a production install takes four steps.
 
-```
-app/
-  (app)/              พื้นที่ล็อกอิน (แดชบอร์ด + โมดูล) ใช้ layout/sidebar ร่วมกัน
-    dashboard/  clients/  deals/  projects/  finance/  templates/
-    settings/  audit/  automation/  intake/          # audit/automation/intake = V2
-  api/webhooks/n8n/   endpoint อัตโนมัติขาเข้า (X-Webhook-Secret)
-  api/cron/followups/ สแกนงานติดตาม → reminders + outbound_events (V2)
-  login/  signup/  auth/confirm/  auth/signout/
-components/           app-sidebar, nav registry, UI ที่ใช้ร่วม (page-header, stat-card, ...)
-  ui/                 shadcn (Base UI) primitives
-lib/
-  supabase/           client ฝั่ง server / browser / middleware / admin
-  metrics/            business logic แบบ PURE ที่ unit-test ครบ (finance, pipeline, projects, ...)
-  ai/                 ผู้ช่วย AI พื้นฐาน (Community)
-  money.ts  dates.ts  auth.ts  audit.ts  export/  automation/
-ee/                   Pro: client portal, accounting sync, multi-org UX (commercial)
-bignose/              BigNose OS แยกผลิตภัณฑ์ (proprietary/commercial)
-supabase/
-  migrations/         schema + RLS
-  seed.sql            ข้อมูลเดโม SME ไทยจำลอง
-docs/                 MVP_SPEC, ROADMAP, OPEN_CORE_STRATEGY, PDPA_SECURITY_NOTES, N8N_INTEGRATION, ...
-```
+1. Create a Supabase project and apply the migrations with `pnpm exec supabase link` and `pnpm exec supabase db push`. Do not load the demo seed.
+2. In Supabase Auth, set the Site URL to your app URL, add `<app URL>/auth/confirm` to the redirect URLs, and configure custom SMTP so confirmation emails reach your users.
+3. Set the environment variables above, then run `pnpm build` and `pnpm start` on any Node.js 22 host.
+4. Call `POST /api/cron/followups`, `/api/cron/outbox` and `/api/cron/subscriptions` on a schedule with the `X-Cron-Secret` header.
 
----
+A licensed Pro install also needs `ee/supabase/provision-hosted-workspace.sql` and a build with `BBN_EDITION=pro`. See [the open-core boundary](./docs/OPEN_CORE_BOUNDARY.md#build-and-license-scope).
 
-## 🏛️ สถาปัตยกรรม (Architecture)
+For the hosted Pro edition, contact [boombignose.org](https://boombignose.org).
 
-- 💵 **เงินเก็บเป็นสตางค์จำนวนเต็ม (`bigint` satang)** ทุกที่ ไม่ใช้ float — ฟอร์แมตด้วย `formatTHB()` ที่ขอบเท่านั้น เลขการเงินจึงเป๊ะและเทสต์ได้
-- 🛡️ **แยกข้อมูลด้วย RLS เป็นหลัก** — ทุกตารางมี `org_id` และ policy ที่ `force` ผ่าน `private.is_org_member()`; service-role key ใช้เฉพาะ seed/cron ไม่เคยอยู่ใน request path หรือ bundle ฝั่ง client
-- 🧪 **Business logic แบบ pure** อยู่ใน `lib/` และ unit-test ครบ ทำให้ `pnpm test` ไม่ต้องพึ่งฐานข้อมูล
-- ⚙️ **Server Actions** จัดการ mutation ทั้งหมด (ตรวจด้วย Zod, scope ตาม org); **Server Components** จัดการการอ่าน
-- 🌏 สกุลเงิน **THB** และเขตเวลา **Asia/Bangkok** สำหรับคำว่า "วันนี้/เดือนนี้"
+## Learning and Community
 
----
+1. [Documentation](./docs): open-core boundary, n8n integration, testing gates, and security and PDPA notes.
+2. [Website](https://boom-vitt.github.io/boombignose-erp/): product overview.
+3. [Issues](https://github.com/Boom-Vitt/boombignose-erp/issues): bug reports and feature requests.
 
-## 🗺️ โรดแมป (Roadmap)
+## Contributing
 
-- [x] **V1 — MVP ภายใน**: auth + org เดียว, แดชบอร์ด, CRM, โปรเจกต์, การเงิน, คลังเทมเพลต, webhook n8n
-- [x] **V2 — คมขึ้น**: audit log, export/รายงาน + saved views, ผู้ช่วย AI, ระบบติดตามอัตโนมัติ, โครง sync บัญชี, ทำ auth ให้พร้อมใช้จริง
-- [ ] **V3 — ทำเป็นสินค้า (open-core)**: multi-org UX จริง (org switcher, คำเชิญ), self-host + deploy คำสั่งเดียว, Community Edition (AGPL), **Pro tier** (SaaS โฮสต์, SSO, RBAC ขั้นสูง, client portal, automation packs, white-label)
+1. [Contributing guide](./CONTRIBUTING.md): run `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build` before you open a pull request.
+2. [Contributor License Agreement](./CLA.md): required for every pull request.
+3. [Issue templates](https://github.com/Boom-Vitt/boombignose-erp/issues/new/choose): for bug reports and feature requests.
 
-ดูรายละเอียดเต็มที่ [`docs/ROADMAP.md`](./docs/ROADMAP.md)
+## Security
 
----
+Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/Boom-Vitt/boombignose-erp/security/advisories/new), never in a public issue. See [SECURITY.md](./SECURITY.md) for what to include and for the fallback contact. Do not put real customer data into a demo install, and read the [PDPA notes](./docs/PDPA_SECURITY_NOTES.md) before you go live.
 
-## 🧩 โมเดล Open-core
+## License
 
-โปรเจกต์เป็น **open-core**: Community Edition ใช้ **AGPL-3.0-only หรือ Commercial** ส่วน Pro แยกไว้ใน `ee/` ภายใต้สัญญาอนุญาตเชิงพาณิชย์ ดูเส้นแบ่งที่ [`docs/OPEN_CORE_BOUNDARY.md`](./docs/OPEN_CORE_BOUNDARY.md) และแนวทางที่ [`docs/OPEN_CORE_STRATEGY.md`](./docs/OPEN_CORE_STRATEGY.md)
+Community Edition is dual-licensed under [AGPL-3.0-only](./LICENSE) or a separately agreed [Commercial license](./COMMERCIAL-LICENSE.md). Pro code in [`ee/`](./ee/) is commercial source-available software under [`ee/LICENSE`](./ee/LICENSE), and production use requires a commercial agreement. [`bignose/`](./bignose/LICENSE) is a separate proprietary product and is not covered by the AGPL. Third-party licenses are listed in [NOTICE](./NOTICE).
 
----
+## Logo and Trademark Policy
 
-## 🤝 การมีส่วนร่วม (Contributing)
-
-ยินดีรับ issue และ pull request! อ่าน [`CONTRIBUTING.md`](./CONTRIBUTING.md) และยอมรับ [`CLA.md`](./CLA.md) พร้อมติ๊กช่องยืนยันใน PR ก่อนส่งผลงาน โดยผู้ร่วมพัฒนายังคงเป็นเจ้าของผลงาน และอนุญาตให้ BoomBigNose AI Co., Ltd. ออกสัญญาอนุญาตทั้งแบบโอเพนซอร์สและเชิงพาณิชย์ได้
-
-ให้ `pnpm lint`, `pnpm typecheck`, `pnpm test` และ `pnpm build` ผ่านก่อนส่ง PR และคงขอบเขต Community / Pro ตามเอกสาร
-
----
-
-## 🔐 ความปลอดภัยและ PDPA
-
-- ยัง **เป็นข้อมูลเดโมเท่านั้น** — **อย่าใส่ข้อมูลลูกค้าจริง** จนกว่าจะจัดการเรื่องใน [`docs/PDPA_SECURITY_NOTES.md`](./docs/PDPA_SECURITY_NOTES.md) ครบ (รวมถึงเรื่อง data region / การส่งข้อมูลข้ามพรมแดน)
-- ห้าม commit `.env.local` หรือ secret ใด ๆ — ไฟล์ที่ track มีแค่ `.env.example` (เป็น placeholder)
-- พบช่องโหว่ด้านความปลอดภัย? กรุณาแจ้งแบบส่วนตัวถึงผู้ดูแล อย่าเปิดเป็น issue สาธารณะ
-
----
-
-<a id="license"></a>
-
-## 📄 License / สัญญาอนุญาต
-
-**ไทย:** Community รองรับการสมัคร สร้างองค์กรแรก และเชิญ/รับสมาชิกในองค์กรเดียวด้วยบทบาท owner/admin/member โดยไม่ต้องใช้ `ee/` ส่วนการสลับหลายองค์กรและการ provision องค์กรเพิ่มเติมสำหรับ hosted อยู่ใน Pro เท่านั้น Community Edition ใช้ [AGPL-3.0-only](./LICENSE) หรือ [Commercial license](./COMMERCIAL-LICENSE.md) ตามข้อตกลงกับบริษัท ใช้งานเชิงพาณิชย์ภายใต้ AGPL ได้เมื่อปฏิบัติตามเงื่อนไข รวมถึงการให้ซอร์สตามข้อกำหนด Pro ใน [`ee/`](./ee/) ใช้ [สัญญาอนุญาตเชิงพาณิชย์](./ee/LICENSE) แยกต่างหาก และต้องมีข้อตกลงก่อนใช้ใน production ส่วน [`bignose/`](./bignose/LICENSE) เป็น BigNose OS แยกผลิตภัณฑ์และไม่อยู่ใต้ AGPL
-
-**English:** Community includes signup, first-org setup, and team invitations/acceptance with owner/admin/member roles, without `ee/`. Multi-org switching and additional or hosted workspace provisioning are Pro. Community Edition is dual-licensed under [AGPL-3.0-only](./LICENSE) or a separately agreed [Commercial license](./COMMERCIAL-LICENSE.md). Pro implementations in [`ee/`](./ee/) are commercial source-available software under [`ee/LICENSE`](./ee/LICENSE); production use requires a commercial agreement. [`bignose/`](./bignose/LICENSE) is the separate proprietary BigNose OS product and is excluded from the AGPL.
-
-The default build is Community. Licensed Pro builds use `BBN_EDITION=pro`; see [the boundary and setup instructions](./docs/OPEN_CORE_BOUNDARY.md). Third-party licenses are preserved in [NOTICE](./NOTICE). The BoomBigNose name and logo are reserved; forks must rebrand under [TRADEMARK.md](./TRADEMARK.md). For commercial terms, contact [boombignose.org](https://boombignose.org).
-
-Copyright © 2026 BoomBigNose AI Co., Ltd.
+The BoomBigNose name and logo are reserved. Forks must rebrand under [TRADEMARK.md](./TRADEMARK.md).
 
 <div align="center">
-<br/>
-สร้างด้วย ❤️ ที่กรุงเทพฯ — โดยทีม <b>BoomBigNose</b>
+<br />
+Copyright © 2026 BoomBigNose AI Co., Ltd.
 </div>
 
 <!-- BBN:FOOTER:START -->

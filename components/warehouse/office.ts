@@ -533,7 +533,7 @@ export function buildOffice(ctx: OfficeCtx) {
     c.fillRect(0, 0, 1024, 512)
     c.fillStyle = "#e2e8f0"
     c.font = "bold 40px system-ui, sans-serif"
-    c.fillText("Company OS · Live", 40, 66)
+    c.fillText("ERP · Live", 40, 66)
     const kpis: [string, string, string][] = [
       ["Revenue MTD", thb(stats.revenue), "#34d399"],
       ["Pipeline", thb(stats.pipeline), "#60a5fa"],

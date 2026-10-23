@@ -50,7 +50,7 @@ function LoginForm() {
     <div className="flex min-h-svh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">BoomBigNose Company OS</CardTitle>
+          <CardTitle className="text-xl">BoomBigNose ERP</CardTitle>
           <CardDescription>Sign in to your workspace.</CardDescription>
           {params.get("error") ? <p role="alert" className="text-destructive text-sm">{params.get("error")}</p> : null}
         </CardHeader>

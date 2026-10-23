@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in BoomBigNose ERP does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go to a private advisory, not here. Do not paste real customer data, secrets or keys.
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      options:
+        - Dashboard
+        - CRM (clients, deals, activities)
+        - Sales (quotations, subscriptions)
+        - Invoicing and payments
+        - Purchasing and vendors
+        - Inventory
+        - Products
+        - Expenses
+        - Projects and timesheets
+        - Reports, views and calendar
+        - Automation, templates and AI
+        - Settings, team and sign-in
+        - Pro (client portal, accounting, workspaces)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See error ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      placeholder: e.g. main @ 1a2b3c4
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Edition
+      options: [Community, Pro]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      render: shell

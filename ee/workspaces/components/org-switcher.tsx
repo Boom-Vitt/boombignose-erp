@@ -59,7 +59,7 @@ export function OrgSwitcher({
         {Brand}
         <div className="grid leading-tight group-data-[collapsible=icon]:hidden">
           <span className="truncate text-sm font-semibold">{currentName}</span>
-          <span className="text-muted-foreground text-xs">Company OS</span>
+          <span className="text-muted-foreground text-xs">ERP</span>
         </div>
       </div>
     )

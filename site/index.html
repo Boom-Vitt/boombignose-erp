@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BoomBigNose Company OS</title>
-  <meta name="description" content="ระบบปฏิบัติการธุรกิจสำหรับสตูดิโอสาย AI — CRM · ดีล · โปรเจกต์ · การเงิน · ระบบอัตโนมัติ · แดชบอร์ดผู้ก่อตั้ง" />
-  <meta property="og:title" content="BoomBigNose Company OS" />
-  <meta property="og:description" content="The operating layer for a small AI studio — CRM, deals, projects, finance, automation and a founder dashboard in one place." />
+  <title>BoomBigNose ERP</title>
+  <meta name="description" content="ระบบ ERP โอเพนซอร์สสำหรับธุรกิจทุกขนาด: CRM · การขาย · จัดซื้อ · คลังสินค้า · โปรเจกต์ · การเงิน" />
+  <meta property="og:title" content="BoomBigNose ERP" />
+  <meta property="og:description" content="Open-source ERP for businesses of every size: sales, purchasing, inventory, projects and billing on one database." />
   <link rel="icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -146,10 +146,8 @@
     .card {
       background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
     }
-    .card .ic { font-size: 24px; }
-    .card h3 { margin: 10px 0 6px; font-size: 18px; }
+    .card h3 { margin: 0 0 6px; font-size: 18px; }
     .card p { margin: 0; color: var(--muted); font-size: 15px; }
-    .card .ver { float: right; font-size: 12px; }
 
     .alt { background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 
@@ -183,10 +181,10 @@
 <body>
   <header class="nav">
     <div class="wrap">
-      <a class="brand" href="#top"><span class="logo">🐘</span> BoomBigNose Company OS</a>
-      <nav>
+      <a class="brand" href="#top"><span class="logo" aria-hidden="true">B</span> BoomBigNose ERP</a>
+      <nav aria-label="หัวข้อในหน้านี้">
         <a href="#features">ฟีเจอร์</a>
-        <a href="#roadmap">โรดแมป</a>
+        <a href="#editions">รุ่นของระบบ</a>
         <a href="#tech">เทคโนโลยี</a>
       </nav>
       <a class="btn btn-ghost" href="https://github.com/Boom-Vitt/boombignose-erp">GitHub</a>
@@ -195,32 +193,33 @@
 
   <main id="top">
     <div class="wrap hero">
-      <span class="pill">Internal MVP · Made in Bangkok 🇹🇭</span>
-      <h1>ระบบปฏิบัติการของบริษัท<br />สำหรับ<em>สตูดิโอสาย AI</em></h1>
+      <span class="pill">Open source · AGPL-3.0 · Made in Bangkok</span>
+      <h1>ระบบ ERP โอเพนซอร์ส<br />สำหรับ<em>ธุรกิจทุกขนาด</em></h1>
       <p class="lead">
-        CRM · ดีล · โปรเจกต์ · การเงิน · ระบบอัตโนมัติ · แดชบอร์ดผู้ก่อตั้ง — ทุกอย่างของธุรกิจอยู่ในที่เดียว
-        <span class="en">The operating layer for a small AI studio: see and run the whole company from one place.</span>
+        CRM · การขาย · จัดซื้อ · คลังสินค้า · โปรเจกต์ · การเงิน<br />งานหลักของธุรกิจอยู่บนฐานข้อมูลเดียว
+        <span class="en">Open-source ERP for businesses of every size: sales, purchasing, inventory, projects and billing on one database.</span>
       </p>
       <div class="cta">
         <a class="btn btn-primary" href="#features">ดูฟีเจอร์ทั้งหมด →</a>
-        <a class="btn btn-ghost" href="#roadmap">โรดแมป</a>
+        <a class="btn btn-ghost" href="#editions">Community และ Pro</a>
       </div>
 
-      <div class="mock" role="img" aria-label="ตัวอย่างหน้าแดชบอร์ดผู้ก่อตั้ง (ข้อมูลจำลอง)">
+      <div class="mock" role="img" aria-label="ตัวอย่างหน้าแดชบอร์ดผู้บริหาร (ข้อมูลจำลอง)">
         <div class="mock-bar"><span></span><span></span><span></span></div>
         <div class="mock-body">
           <div class="mock-side">
-            <div class="on">📊 แดชบอร์ด</div>
-            <div>👥 ลูกค้า</div>
-            <div>🤝 ดีล</div>
-            <div>📁 โปรเจกต์</div>
-            <div>💰 การเงิน</div>
-            <div>🧩 เทมเพลต</div>
-            <div>📅 ปฏิทิน</div>
-            <div>📈 รายงาน</div>
+            <div class="on">แดชบอร์ด</div>
+            <div>ลูกค้า</div>
+            <div>ดีล</div>
+            <div>ใบเสนอราคา</div>
+            <div>การเงิน</div>
+            <div>จัดซื้อ</div>
+            <div>คลังสินค้า</div>
+            <div>โปรเจกต์</div>
+            <div>รายงาน</div>
           </div>
           <div class="mock-main">
-            <h3>สวัสดีตอนเช้า 👋</h3>
+            <h3>ภาพรวมวันนี้</h3>
             <div class="stats">
               <div class="stat"><div class="k">เงินสด</div><div class="v">฿1.24M</div><div class="d up">▲ 8% เดือนนี้</div></div>
               <div class="stat"><div class="k">Burn / เดือน</div><div class="v">฿185K</div><div class="d down">▲ 3%</div></div>
@@ -237,8 +236,8 @@
               </div>
               <div class="panel">
                 <div class="t">งานติดตามวันนี้</div>
-                <div class="li"><span>โทรติดตามใบเสนอราคา</span><span class="tag warn">วันนี้</span></div>
-                <div class="li"><span>ส่ง workshop outline</span><span class="tag">พรุ่งนี้</span></div>
+                <div class="li"><span>โทรติดตามใบเสนอราคา QUO-0087</span><span class="tag warn">วันนี้</span></div>
+                <div class="li"><span>รับสินค้าตาม PO-0031</span><span class="tag">พรุ่งนี้</span></div>
                 <div class="li"><span>ใบแจ้งหนี้ INV-0142</span><span class="tag bad">เกินกำหนด</span></div>
               </div>
             </div>
@@ -252,46 +251,49 @@
       <div class="wrap">
         <div class="sec-head">
           <div class="eyebrow">Features</div>
-          <h2>ครบทุกอย่างที่สตูดิโอเล็ก ๆ ต้องใช้ทุกวัน</h2>
-          <p>ออกแบบให้ผู้ก่อตั้งเห็นทั้ง pipeline การส่งมอบงาน และกระแสเงินสดในหน้าเดียว — ส่วนทีมเห็น “งานของฉัน” ชัดเจน</p>
+          <h2>ครบทุกงานหลักของธุรกิจ</h2>
+          <p>ทุกโมดูลใช้ข้อมูลชุดเดียวกัน ใบเสนอราคากลายเป็นใบแจ้งหนี้ ใบแจ้งหนี้กลายเป็นการส่งของ และแดชบอร์ดเห็นกระแสเงินสดทันที</p>
         </div>
         <div class="grid">
-          <div class="card"><span class="tag ver">V1</span><div class="ic">📊</div><h3>แดชบอร์ดผู้ก่อตั้ง</h3><p>เงินสด, burn, รายได้, ใบแจ้งหนี้ค้าง, MRR, pipeline, runway และงานที่เกินกำหนด</p></div>
-          <div class="card"><span class="tag ver">V1</span><div class="ic">👥</div><h3>CRM &amp; ดีล</h3><p>ลูกค้า ผู้ติดต่อ บอร์ด pipeline ของดีล และกิจกรรม/การติดตาม</p></div>
-          <div class="card"><span class="tag ver">V1</span><div class="ic">📁</div><h3>โปรเจกต์</h3><p>บอร์ดส่งมอบงาน งานย่อย milestones และสร้างโปรเจกต์จากดีลที่ปิดได้</p></div>
-          <div class="card"><span class="tag ver">V1</span><div class="ic">💰</div><h3>การเงินเชิงปฏิบัติการ</h3><p>ใบแจ้งหนี้ การชำระเงิน ต้นทุน กำไรขั้นต้น และ MRR — เงินเก็บเป็นสตางค์ ไม่ใช้ float</p></div>
-          <div class="card"><span class="tag ver">V1</span><div class="ic">🧩</div><h3>คลังเทมเพลตอัตโนมัติ</h3><p>เวิร์กโฟลว์ที่นำกลับมาใช้ซ้ำได้ พร้อมเช็กลิสต์และราคา + webhook ขาเข้าจาก n8n</p></div>
-          <div class="card"><span class="tag ver">V2</span><div class="ic">🤖</div><h3>ผู้ช่วย AI</h3><p>สรุปดีล ร่างข้อความติดตาม และสรุปโน้ตประชุม ขับเคลื่อนด้วย Claude</p></div>
-          <div class="card"><span class="tag ver">V2</span><div class="ic">⏰</div><h3>ติดตามอัตโนมัติ</h3><p>สแกนงานถึงกำหนดทุกวัน สร้าง reminder และส่งต่อให้ n8n แจ้งเตือนทาง LINE</p></div>
-          <div class="card"><span class="tag ver">V2</span><div class="ic">📝</div><h3>Audit log &amp; รายงาน</h3><p>บันทึกทุกการเปลี่ยนแปลงสำคัญ, export CSV, saved views และรายงานแบบ pivot</p></div>
-          <div class="card"><span class="tag ver">V2</span><div class="ic">🔗</div><h3>พอร์ทัลลูกค้า &amp; ปฏิทิน</h3><p>ลิงก์อ่านอย่างเดียวสำหรับลูกค้า, ใบเสนอราคา, timesheet และมุมมองปฏิทิน</p></div>
+          <div class="card"><h3>แดชบอร์ดผู้บริหาร</h3><p>เงินสด, burn, runway, รายได้, ใบแจ้งหนี้ค้าง, MRR, pipeline และรายการที่ต้องจัดการ</p></div>
+          <div class="card"><h3>CRM &amp; ดีล</h3><p>ลูกค้า ผู้ติดต่อ บอร์ดคัมบังของดีล กิจกรรมติดตาม และฟอร์มรับลีดจากเว็บไซต์</p></div>
+          <div class="card"><h3>ใบเสนอราคา &amp; การขาย</h3><p>ใบเสนอราคาพร้อม VAT แปลงเป็นใบแจ้งหนี้ทั้งใบ บางส่วน หรือมัดจำ และ subscription ที่ออกบิลซ้ำอัตโนมัติ</p></div>
+          <div class="card"><h3>ใบแจ้งหนี้ &amp; รับชำระ</h3><p>ใบแจ้งหนี้ที่ออกแล้วถูกล็อกเลขที่และยอด ภาษีหัก ณ ที่จ่าย บันทึกรับชำระ และวันปิดงวด</p></div>
+          <div class="card"><h3>จัดซื้อ</h3><p>ใบขอเสนอราคา ใบสั่งซื้อ รับของบางส่วน บิลผู้ขาย และคืนสินค้าพร้อมเครดิตจากผู้ขาย</p></div>
+          <div class="card"><h3>คลังสินค้า</h3><p>หลายคลัง สต็อกคงเหลือและมูลค่า ประวัติการเคลื่อนไหว ตรวจนับ และเติมสต็อกตามผู้ขาย</p></div>
+          <div class="card"><h3>สินค้า</h3><p>แคตตาล็อกพร้อม SKU หน่วย ราคา ต้นทุน และอัตราภาษี เลือกใส่ในเอกสารได้ทันที</p></div>
+          <div class="card"><h3>เบิกค่าใช้จ่าย</h3><p>ส่ง อนุมัติ หรือปฏิเสธใบเบิก อนุมัติของตัวเองไม่ได้ และบันทึกเป็นต้นทุนให้อัตโนมัติ</p></div>
+          <div class="card"><h3>โปรเจกต์ &amp; ไทม์ชีต</h3><p>บอร์ดงาน milestones บันทึกเวลา และเปลี่ยนเวลาที่เรียกเก็บได้เป็นใบแจ้งหนี้ฉบับร่าง</p></div>
+          <div class="card"><h3>รายงาน</h3><p>รายได้ ชั่วโมงงาน และต้นทุนขาย แบบกราฟหรือ pivot พร้อม saved views และส่งออก CSV</p></div>
+          <div class="card"><h3>ระบบอัตโนมัติ &amp; AI</h3><p>เทมเพลตงาน การเตือนตามรอบเวลา เชื่อม n8n และผู้ช่วย AI สรุปดีลและโน้ตประชุม</p></div>
+          <div class="card"><h3>Audit log &amp; ประวัติเอกสาร</h3><p>บันทึกการเปลี่ยนแปลงสำคัญ และประวัติโน้ต ไฟล์แนบ และกิจกรรมบนเอกสารธุรกิจ</p></div>
         </div>
       </div>
     </section>
 
-    <section id="roadmap" class="alt">
+    <section id="editions" class="alt">
       <div class="wrap">
         <div class="sec-head">
-          <div class="eyebrow">Roadmap</div>
-          <h2>ใช้ภายในก่อน แล้วต่อยอดเป็นสินค้า open-core</h2>
-          <p>ทุกตารางมี <code>org_id</code> และขอบเขตโมดูลชัดเจนตั้งแต่วันแรก จึงขยายเป็น Community + Pro ได้โดยไม่ต้องเขียนใหม่</p>
+          <div class="eyebrow">Editions</div>
+          <h2>เริ่มด้วย Community แล้วขยายด้วย Pro</h2>
+          <p>ทุกตารางมี <code>org_id</code> และ Row Level Security ตั้งแต่วันแรก จึงขยายจาก workspace เดียวเป็นหลาย workspace ได้โดยไม่ต้องเขียนใหม่</p>
         </div>
         <div class="road">
           <div class="card">
-            <h3>V1 — MVP ภายใน <span class="done">✓ เสร็จแล้ว</span></h3>
-            <ul><li>Auth + บทบาท owner/admin/member</li><li>แดชบอร์ด, CRM, โปรเจกต์, การเงิน</li><li>คลังเทมเพลต + webhook n8n</li><li>ข้อมูลเดโม SME ไทยจำลอง</li></ul>
+            <h3>Community <span class="done">AGPL-3.0</span></h3>
+            <ul><li>ทุกโมดูลด้านบน</li><li>สมัครใช้งาน สร้าง workspace และเชิญทีม</li><li>บทบาท owner / admin / member</li><li>ผู้ช่วย AI และระบบอัตโนมัติ</li></ul>
           </div>
           <div class="card">
-            <h3>V2 — คมขึ้น <span class="done">✓ เสร็จแล้ว</span></h3>
-            <ul><li>โครงเชื่อม FlowAccount / PEAK / Xero</li><li>รายงาน, export, saved views</li><li>ผู้ช่วย AI + ติดตามอัตโนมัติ</li><li>Audit log + auth พร้อมใช้จริง</li></ul>
+            <h3>Pro <span class="next">Commercial</span></h3>
+            <ul><li>พอร์ทัลลูกค้า: ดูเอกสาร ตอบรับใบเสนอราคา แจ้งชำระเงิน</li><li>ตั้งค่าเชื่อมต่อ FlowAccount / PEAK / Xero (preview ยังไม่ส่งข้อมูลจริง)</li><li>หลาย workspace พร้อมตัวสลับ</li><li>workspace แบบโฮสต์</li></ul>
           </div>
           <div class="card">
-            <h3>V3 — ทำเป็นสินค้า <span class="next">กำลังจะมา</span></h3>
-            <ul><li>Multi-org จริง (org switcher, คำเชิญ)</li><li>Self-host + deploy คำสั่งเดียว</li><li>Community Edition (AGPL)</li><li>Pro: SaaS, SSO, RBAC, white-label</li></ul>
+            <h3>บนโรดแมป <span class="next">Next</span></h3>
+            <ul><li>ใบลดหนี้สำหรับลูกค้า</li><li>ติดตั้งแบบ self-host ด้วยคำสั่งเดียว</li></ul>
           </div>
         </div>
         <div class="note" style="margin-top:24px">
-          <strong>ตั้งใจไม่ทำ:</strong> สต็อก, จัดซื้อ, เงินเดือน และการออกใบกำกับภาษี — บัญชีตามกฎหมายยังอยู่กับ FlowAccount / PEAK / Xero ระบบนี้คือ <em>ชั้นปฏิบัติการ</em> ไม่ใช่สมุดบัญชีหลัก
+          <strong>ขอบเขต:</strong> BoomBigNose ERP ไม่ใช่สมุดบัญชีแยกประเภท บัญชีตามกฎหมาย การยื่นภาษี เงินเดือน และการผลิต อยู่นอกขอบเขต ใช้คู่กับ FlowAccount / PEAK / Xero ได้
         </div>
       </div>
     </section>
@@ -305,13 +307,13 @@
         <div class="stack">
           <span>Next.js 16</span><span>React 19</span><span>TypeScript</span><span>Supabase Postgres</span>
           <span>Row Level Security</span><span>Tailwind CSS v4</span><span>shadcn/ui</span><span>Zod v4</span>
-          <span>Claude (Anthropic SDK)</span><span>Vitest</span><span>Playwright</span><span>n8n</span>
+          <span>OpenRouter</span><span>Vitest</span><span>Playwright</span><span>n8n</span>
         </div>
         <div class="principles">
-          <div class="card"><div class="ic">🛡️</div><h3>แยกข้อมูลด้วย RLS</h3><p>ทุกตารางมี <code>org_id</code> และ policy แบบ force — service-role key ไม่เคยอยู่ใน request path หรือฝั่ง client</p></div>
-          <div class="card"><div class="ic">💵</div><h3>ตัวเลขการเงินเป๊ะ</h3><p>เก็บเงินเป็นสตางค์จำนวนเต็ม (bigint) ฟอร์แมตเป็นบาทที่ขอบเท่านั้น</p></div>
-          <div class="card"><div class="ic">🧪</div><h3>Business logic แบบ pure</h3><p>ตรรกะหลักอยู่ใน <code>lib/</code> และมี unit test ครบ รันได้โดยไม่ต้องมีฐานข้อมูล</p></div>
-          <div class="card"><div class="ic">🌏</div><h3>ออกแบบสำหรับไทย</h3><p>สกุลเงิน THB, เขตเวลา Asia/Bangkok และคำนึงถึง PDPA ตั้งแต่ต้น</p></div>
+          <div class="card"><h3>แยกข้อมูลด้วย RLS</h3><p>ทุกตารางมี <code>org_id</code> และ policy แบบ force และ service-role key ไม่เคยถูกส่งไปยังเบราว์เซอร์</p></div>
+          <div class="card"><h3>ตัวเลขการเงินแม่นยำ</h3><p>เก็บเงินเป็นสตางค์จำนวนเต็ม (bigint) และแปลงเป็นบาทเฉพาะตอนแสดงผล</p></div>
+          <div class="card"><h3>Business logic แบบ pure</h3><p>ตรรกะหลักอยู่ใน <code>lib/</code> พร้อม unit test ที่รันได้โดยไม่ต้องมีฐานข้อมูล</p></div>
+          <div class="card"><h3>ออกแบบสำหรับไทย</h3><p>สกุลเงิน THB, เขตเวลา Asia/Bangkok, VAT และภาษีหัก ณ ที่จ่ายบนเอกสาร และคำนึงถึง PDPA ตั้งแต่ต้น</p></div>
         </div>
       </div>
     </section>
@@ -319,8 +321,8 @@
 
   <footer>
     <div class="wrap">
-      <span>© BoomBigNose · Bangkok</span>
-      <span>ยังเป็นซอฟต์แวร์ภายใน (proprietary) · มีแผนเปิดเป็น open-core</span>
+      <span>© 2026 BoomBigNose AI Co., Ltd. · Bangkok</span>
+      <span>โอเพนซอร์ส AGPL-3.0 · <a href="https://github.com/Boom-Vitt/boombignose-erp">GitHub</a></span>
     </div>
   </footer>
 </body>

@@ -17,5 +17,5 @@ export function renderRFQEmail(input: {
 <p>Order date: ${escapeHtml(input.orderDate)}${input.expectedDate ? `<br>Expected arrival: ${escapeHtml(input.expectedDate)}` : ""}</p>
 <table cellpadding="8" cellspacing="0" border="1" style="border-collapse:collapse"><thead><tr><th>Description</th><th>Quantity</th><th>Unit cost</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>
 <p>Total: <strong>${escapeHtml(formatTHB(purchaseTotal(input.lines)))}</strong></p>
-${input.notes ? `<p style="white-space:pre-wrap">${escapeHtml(input.notes)}</p>` : ""}<p>Sent from BoomBigNose Company OS.</p></div>`
+${input.notes ? `<p style="white-space:pre-wrap">${escapeHtml(input.notes)}</p>` : ""}<p>Sent from BoomBigNose ERP.</p></div>`
 }
