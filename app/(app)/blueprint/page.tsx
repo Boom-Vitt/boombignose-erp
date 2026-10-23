@@ -6,7 +6,7 @@ import { BlueprintViewer } from "@/components/blueprint/blueprint-viewer"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Blueprint · BoomBigNose Company OS",
+  title: "Blueprint · BoomBigNose ERP",
 }
 
 export default async function BlueprintPage() {

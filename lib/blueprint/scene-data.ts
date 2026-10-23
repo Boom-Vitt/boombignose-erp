@@ -409,7 +409,7 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
       totalSheets: 4,
       code: "DWG-ERP-01",
       titleEn: "Exploded Axonometric Assembly",
-      subtitleTh: "ผังแยกชิ้นส่วนระบบปฏิบัติการธุรกิจแบบแอกโซโนเมตริก",
+      subtitleTh: "ผังแยกชิ้นส่วนระบบ ERP แบบแอกโซโนเมตริก",
       explodeFactor: 1,
       cameraTarget: [0.2, 0.5, -0.3],
       cameraPosition: [9.5, 8.2, 9.5],
@@ -452,7 +452,7 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
 
   return {
     titleBlock: {
-      drawingTitle: "BOOMBIGNOSE COMPANY OS // OPERATIONAL ERP MACHINE",
+      drawingTitle: "BOOMBIGNOSE ERP // OPERATIONS MACHINE",
       drawingCode: "BBN-ERP-AXO-REV-A",
       scale: "1:1 ORTHOGRAPHIC AXONOMETRIC",
       projection: "ISO-E / THIRD ANGLE",

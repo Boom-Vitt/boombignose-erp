@@ -44,7 +44,7 @@ function emailShell(bodyHtml: string): string {
   return [
     `<div style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; line-height: 1.5;">`,
     bodyHtml,
-    `<p style="color: #888; font-size: 12px; margin-top: 24px;">Sent from BoomBigNose Company OS.</p>`,
+    `<p style="color: #888; font-size: 12px; margin-top: 24px;">Sent from BoomBigNose ERP.</p>`,
     `</div>`,
   ].join("")
 }

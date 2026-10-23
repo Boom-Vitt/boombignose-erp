@@ -18,9 +18,9 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "BoomBigNose Company OS",
+  title: "BoomBigNose ERP",
   description:
-    "AI-native Company OS — CRM, project delivery, finance visibility, automation, and management dashboards.",
+    "Open-source ERP — CRM, sales, purchasing, inventory, projects, finance, automation, and management dashboards.",
 }
 
 export default function RootLayout({

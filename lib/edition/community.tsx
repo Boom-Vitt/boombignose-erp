@@ -11,7 +11,7 @@ export function WorkspaceHeader({ context }: WorkspaceHeaderProps) {
       <div className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md"><Sparkles className="size-4" /></div>
       <div className="grid leading-tight group-data-[collapsible=icon]:hidden">
         <span className="truncate text-sm font-semibold">{context.orgName}</span>
-        <span className="text-muted-foreground text-xs">Company OS</span>
+        <span className="text-muted-foreground text-xs">ERP</span>
       </div>
     </div>
   )
