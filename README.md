@@ -4,7 +4,7 @@
 
 <div align="center">
 
-# 🐘 BoomBigNose Company OS
+# BoomBigNose Company OS
 
 ### ระบบปฏิบัติการธุรกิจ (Company OS) สำหรับสตูดิโอสาย AI — CRM · ดีล · โปรเจกต์ · การเงิน · ระบบอัตโนมัติ · แดชบอร์ดผู้ก่อตั้ง
 
