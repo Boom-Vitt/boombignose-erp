@@ -6,11 +6,10 @@ import { redirect } from "next/navigation"
 import { requireCapability, requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { writeAudit } from "@/lib/audit"
-import { BillInput, CreditInput, LineInput, PurchaseInput, ReceiptInput, ReturnInput } from "@/lib/purchasing/schema"
+import { BillInput, CreditInput, PurchaseInput, ReceiptInput, ReturnInput } from "@/lib/purchasing/schema"
 import { receivePurchaseStock } from "@/lib/purchasing/receive"
 import { readAllOrThrow } from "@/lib/supabase/read-all"
-import { applyReceipt, purchaseTotal } from "@/lib/purchasing/quantities"
-import { serviceAmountSatang } from "@/lib/workflows/service"
+import { applyReceipt } from "@/lib/purchasing/quantities"
 import type { Enums } from "@/lib/types/database"
 
 function refresh(id: string) {
@@ -35,34 +34,6 @@ export async function createPurchase(input: unknown): Promise<{ error?: string }
   if (error) return { error: error.message }
   revalidatePath("/purchases")
   redirect(`/purchases/${data}`)
-}
-
-export async function addPurchaseLine(input: unknown): Promise<{ error?: string }> {
-  const ctx = await requireOrgContext()
-  requireCapability(ctx, "purchase:manage")
-  const parsed = LineInput.safeParse(input)
-  if (!parsed.success) return { error: "Invalid line. Use a positive quantity and a nonnegative cost with two decimals." }
-  const { unitCostBaht, ...line } = parsed.data
-  const unit_cost_satang = serviceAmountSatang(unitCostBaht)
-  try { purchaseTotal([{ quantity: line.quantity, unit_cost_satang }]) } catch { return { error: "Line exceeds safe satang bounds" } }
-  const db = await createClient()
-  const { data: last, error: readError } = await db.from("purchase_order_items").select("position").eq("org_id", ctx.orgId).eq("purchase_order_id", line.purchase_order_id).order("position", { ascending: false }).limit(1)
-  if (readError) return { error: readError.message }
-  const { error } = await db.from("purchase_order_items").insert({ ...line, org_id: ctx.orgId, unit_cost_satang, position: (last?.[0]?.position ?? -1) + 1 })
-  if (error) return { error: error.message }
-  refresh(line.purchase_order_id)
-  return {}
-}
-
-export async function removePurchaseLine(orderId: string, lineId: string): Promise<{ error?: string }> {
-  const ctx = await requireOrgContext()
-  requireCapability(ctx, "purchase:manage")
-  if (!z.guid().safeParse(orderId).success || !z.guid().safeParse(lineId).success) return { error: "Invalid line" }
-  const db = await createClient()
-  const { error } = await db.from("purchase_order_items").delete().eq("org_id", ctx.orgId).eq("purchase_order_id", orderId).eq("id", lineId)
-  if (error) return { error: error.message }
-  refresh(orderId)
-  return {}
 }
 
 export async function transitionPurchase(id: string, status: Enums<"purchase_status">): Promise<{ error?: string }> {

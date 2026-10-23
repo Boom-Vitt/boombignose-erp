@@ -57,6 +57,23 @@ describe("renderDocumentHtml", () => {
     expect(html).toContain("Discount")
   })
 
+  it("prints section and note rows between the priced lines, escaped and without amounts", () => {
+    const html = renderDocumentHtml({
+      ...doc,
+      items: [doc.items[0], { description: "Hosting", quantity: 1, unit_price_satang: 2000, amount_satang: 2000 }],
+      sections: [
+        { kind: "note", description: "Paid <b>monthly</b>", lines_before: 2, position: 1 },
+        { kind: "section", description: "Phase 1", lines_before: 0, position: 0 },
+      ],
+    })
+    const order = ["Phase 1", "Design", "Hosting", "Paid &lt;b&gt;monthly&lt;/b&gt;"].map(text => html.indexOf(text))
+    expect(order.every(index => index > 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    expect(html).toContain('<tr class="section"><td colspan="4">Phase 1</td></tr>')
+    expect(html).toContain('<tr class="note"><td colspan="4">Paid &lt;b&gt;monthly&lt;/b&gt;</td></tr>')
+    expect(html).not.toContain("No line items.")
+  })
+
   it("shows an empty-state row when there are no items", () => {
     const html = renderDocumentHtml({ ...doc, items: [] })
     expect(html).toContain("No line items.")

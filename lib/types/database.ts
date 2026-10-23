@@ -36,6 +36,12 @@ export type Database = {
         Update: never
         Relationships: []
       }
+      document_sections: {
+        Row: { id: string; org_id: string; quote_id: string | null; invoice_id: string | null; purchase_order_id: string | null; kind: "section" | "note"; description: string; lines_before: number; position: number; created_at: string; updated_at: string }
+        Insert: { id?: string; org_id: string; quote_id?: string | null; invoice_id?: string | null; purchase_order_id?: string | null; kind: "section" | "note"; description: string; lines_before: number; position: number; created_at?: string; updated_at?: string }
+        Update: { kind?: "section" | "note"; description?: string; lines_before?: number; position?: number }
+        Relationships: []
+      }
       deal_lost_reasons: {
         Row: { id: string; org_id: string; name: string; active: boolean; created_at: string }
         Insert: { id?: string; org_id: string; name: string; active?: boolean; created_at?: string }
@@ -1369,6 +1375,7 @@ isOneToOne: false
           }
           Functions: {
 "cancel_quote_invoice": { Args: { p_org_id: string; p_invoice_id: string }; Returns: undefined },
+"save_document_lines": { Args: { p_document: "quote" | "invoice" | "purchase_order"; p_document_id: string; p_rows: Json; p_deleted: string[] }; Returns: undefined },
 "reserve_document_number": { Args: { p_org_id: string; p_kind: string; p_year: number }; Returns: string },
 "accept_portal_quote": { Args: { p_token: string; p_quote_id: string; p_name: string; p_email: string }; Returns: string },
 "update_subscription_schedule": { Args: { p_org_id: string; p_subscription_id: string; p_start_date?: string | null; p_status?: Database["public"]["Enums"]["subscription_status"] | null; p_bill_missed_periods?: boolean; p_changes?: Json }; Returns: undefined },

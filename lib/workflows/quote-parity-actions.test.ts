@@ -15,8 +15,7 @@ vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`redirect:${path}`) } }))
 
-import { addQuoteItem, cancelQuoteInvoice, convertQuoteToInvoice, createQuote, deleteQuoteItem, setQuoteStatus, updateQuote } from "@/app/(app)/quotes/actions"
-import { addInvoiceItem } from "@/app/(app)/finance/invoice-items-actions"
+import { cancelQuoteInvoice, convertQuoteToInvoice, createQuote, setQuoteStatus, updateQuote } from "@/app/(app)/quotes/actions"
 import { portalAcceptQuote } from "@/ee/portal/actions"
 
 const id = "00000000-0000-4000-8000-000000000002"
@@ -64,7 +63,6 @@ describe("quote app permissions", () => {
   })
   it.each([
     ["update", () => updateQuote({ id, client_id: id, discountBaht: 0 })],
-    ["delete line", () => deleteQuoteItem({ id })],
     ["status", () => setQuoteStatus({ id, status: "declined" })],
   ])("requires record:write to %s", async (_name, action) => {
     await action()
@@ -88,23 +86,6 @@ describe("atomic quote numbering and append positions", () => {
     state.rpc.mockResolvedValue({ data: null, error: { message: "Counter unavailable" } })
     expect(await createQuote({ client_id: id })).toEqual({ error: "Counter unavailable" })
     expect(state.from).not.toHaveBeenCalled()
-  })
-  it.each([
-    ["quote", () => addQuoteItem({ quote_id: id, description: "Service", quantity: 1, unitPriceBaht: 1 })],
-    ["invoice", () => addInvoiceItem({ invoice_id: id, description: "Service", quantity: "1", unitPriceBaht: "1" })],
-  ])("appends %s lines after the highest surviving position", async (_name, action) => {
-    expect(await action()).toEqual({})
-    expect(state.rows[0]?.position).toBe(9)
-  })
-  it("starts empty quote lines at position zero", async () => {
-    state.lastPosition = null
-    expect(await addQuoteItem({ quote_id: id, description: "Service", quantity: 1, unitPriceBaht: 1 })).toEqual({})
-    expect(state.rows[0]?.position).toBe(0)
-  })
-  it("does not insert an invoice line after a failed position read", async () => {
-    state.positionError = { message: "Position unavailable" }
-    expect(await addInvoiceItem({ invoice_id: id, description: "Service", quantity: "1", unitPriceBaht: "1" })).toEqual({ error: "Position unavailable" })
-    expect(state.rows).toEqual([])
   })
 })
 

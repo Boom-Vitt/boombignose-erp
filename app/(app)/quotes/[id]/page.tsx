@@ -4,7 +4,7 @@ import { DocumentTotals } from "@/components/document-totals"
 import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { Download, FolderKanban, ListPlus, ReceiptText } from "lucide-react"
+import { Download, FolderKanban, ReceiptText } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -16,21 +16,14 @@ import { QUOTE_FLOW } from "@/lib/record/status"
 import type { Enums } from "@/lib/types/database"
 
 import { PageHeader } from "@/components/page-header"
-import { EmptyState } from "@/components/empty-state"
 import { QuoteStatusBadge } from "@/components/status-badge"
 import { StatusBar } from "@/components/record/status-bar"
 import { SmartButtons, recordHref } from "@/components/record/smart-buttons"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table"
+import { LineGrid } from "@/components/line-grid/line-grid"
+import { gridRows } from "@/lib/line-grid/queries"
 
 import { setQuoteStatus, updateQuote } from "../actions"
 import {
@@ -38,8 +31,6 @@ import {
   type QuoteFormValues,
   type QuoteFormSubmitValues,
 } from "../_components/quote-form"
-import { QuoteItemForm } from "../_components/quote-item-form"
-import { DeleteQuoteItemButton } from "../_components/delete-quote-item-button"
 import { QuoteInvoiceForm } from "../_components/quote-invoice-form"
 import { CancelQuoteInvoiceButton } from "../_components/cancel-quote-invoice-button"
 import { EmailQuoteButton } from "../_components/email-quote-button"
@@ -67,7 +58,7 @@ export default async function QuoteDetailPage({
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [quoteRes, itemsRes, clientsRes, projectsRes, invoicesRes, settingsRes] = await Promise.all([
+  const [quoteRes, itemsRes, clientsRes, projectsRes, invoicesRes, settingsRes, lineRows] = await Promise.all([
     supabase
       .from("quotes")
       .select(
@@ -77,7 +68,7 @@ export default async function QuoteDetailPage({
       .maybeSingle(),
     readAll((from, to) => supabase
       .from("quote_items")
-      .select("id, description, quantity, invoiced_quantity, unit_price_satang, amount_satang, position, unit, tax_rate_bps")
+      .select("id, description, quantity, invoiced_quantity")
       .eq("org_id", ctx.orgId)
       .eq("quote_id", id)
       .order("position", { ascending: true }).order("id").range(from, to)),
@@ -88,6 +79,7 @@ export default async function QuoteDetailPage({
       .eq("org_id", ctx.orgId).eq("source_quote_id", id)
       .order("created_at").order("id").range(from, to)),
     supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle(),
+    gridRows(supabase, ctx.orgId, "quote", id),
   ])
 
   const quote = quoteRes.data
@@ -119,7 +111,7 @@ export default async function QuoteDetailPage({
     },
   }
   const editable = quoteIsEditable(quote.status)
-  const locked = !editable
+  const vatRate = settingsRes.data?.vat_registered ? settingsRes.data.vat_rate_bps : 0
   const linkedProject = (projectsRes.data ?? []).find((p) => p.id === quote.project_id)
 
   const clients: Option[] = (clientsRes.data ?? []).map((c) => ({
@@ -264,61 +256,19 @@ export default async function QuoteDetailPage({
         <CardHeader>
           <CardTitle className="text-base">Line items</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {items.length === 0 ? (
-            <EmptyState
-              icon={ListPlus}
-              title="No line items yet"
-              description="Add items below to build up this quote's total."
-              className="border-0"
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Invoiced</TableHead>
-                  <TableHead className="text-right">Unit price</TableHead>
-                  <TableHead className="text-right">VAT</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  {locked ? null : (
-                    <TableHead className="w-10" aria-label="Actions" />
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((it) => (
-                  <TableRow key={it.id}>
-                    <TableCell className="font-medium">{it.description}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {Number(it.quantity)} {it.unit}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{Number(it.invoiced_quantity)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatTHB(it.unit_price_satang)}
-                    </TableCell>
-                    <TableCell className="text-right">{it.tax_rate_bps / 100}%</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatTHB(it.amount_satang)}
-                    </TableCell>
-                    {locked ? null : (
-                      <TableCell className="text-right">
-                        <DeleteQuoteItemButton id={it.id} label={it.description} />
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-
-          <Separator />
-          {locked ? (
-            <p className="text-muted-foreground text-sm">{quote.status === "accepted" ? "Accepted scope is locked." : "This quote is locked."}</p>
-          ) : (
-            <QuoteItemForm defaultTaxRate={settingsRes.data?.vat_registered ? settingsRes.data.vat_rate_bps : 0} quoteId={quote.id} products={await activeProductOptions()} canManageProducts={can(ctx.role, "product:manage")} />
-          )}
+        <CardContent>
+          <LineGrid
+            document="quote"
+            documentId={quote.id}
+            rows={lineRows}
+            editable={editable && can(ctx.role, "record:write")}
+            lockedMessage={quote.status === "accepted" ? "Accepted scope is locked." : editable ? undefined : "This quote is locked."}
+            products={editable ? await activeProductOptions() : []}
+            canManageProducts={can(ctx.role, "product:manage")}
+            taxRates={vatRate ? [0, vatRate] : [0]}
+            defaultTaxRateBps={vatRate}
+            basis={{ discountSatang: quote.discount_satang, pricesIncludeVat: quote.prices_include_vat, whtRateBps: 0 }}
+          />
         </CardContent>
       </Card>
 

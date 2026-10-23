@@ -5,6 +5,7 @@ import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
 import { renderDocumentHtml, type PrintableDocument } from "@/lib/documents/printable"
+import { documentSections } from "@/lib/line-grid/queries"
 
 /**
  * GET /quotes/{id}/pdf
@@ -19,7 +20,7 @@ export async function GET(
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [quoteRes, itemsRes] = await Promise.all([
+  const [quoteRes, itemsRes, sections] = await Promise.all([
     supabase
       .from("quotes")
       .select(
@@ -34,6 +35,7 @@ export async function GET(
       .eq("quote_id", id)
       .eq("org_id", ctx.orgId)
       .order("position", { ascending: true }).order("id").range(from, to)),
+    documentSections(supabase, ctx.orgId, "quote", id),
   ])
 
   if (quoteRes.error || itemsRes.error) return new Response("Quote details unavailable", { status: 503 })
@@ -56,6 +58,7 @@ export async function GET(
       unit_price_satang: it.unit_price_satang,
       amount_satang: it.amount_satang,
     })),
+    sections,
     subtotalSatang: quote.subtotal_satang,
     discountSatang: quote.discount_satang,
     totalSatang: quote.total_satang,

@@ -76,7 +76,7 @@ test("rates, labour cost and profit stay staff-only while members keep hours, an
       await page.waitForURL(/\/finance\/invoices\/[^/]+$/)
       const original = page.url().split("/").pop()!
       invoices.push(original)
-      await expect(page.getByText(/11 minutes × 150 satang\/hour/)).toBeVisible()
+      await expect(page.getByLabel("Description, row 1", { exact: true })).toHaveValue(/11 minutes × 150 satang\/hour/)
       await memberPage.goto("/timesheets")
       await expect(memberPage.getByRole("button", { name: "Edit time entry", exact: true })).toHaveCount(0)
       await expect(memberPage.getByText("Locked", { exact: true })).toBeVisible()

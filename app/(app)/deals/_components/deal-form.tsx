@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { useGuardedForm } from "@/components/record/record-guard"
+import { RecordFields, useGuardedForm } from "@/components/record/record-guard"
 
 import { bahtToSatang, formatTHB } from "@/lib/money"
 import { expectedRevenue, STAGE_PROBABILITY } from "@/lib/metrics/pipeline"
@@ -115,6 +115,7 @@ export function DealForm({
 
   return (
     <Form {...form}>
+      <RecordFields>
       <form
         onSubmit={onSubmit}
         className="space-y-5"
@@ -350,6 +351,7 @@ export function DealForm({
           </Button>
         </div>
       </form>
+      </RecordFields>
     </Form>
   )
 }

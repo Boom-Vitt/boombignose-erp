@@ -20,7 +20,7 @@ vi.mock("next/navigation", () => ({
   redirect: (path: string) => { throw new Error(`redirect:${path}`) },
 }))
 
-import { convertQuoteToInvoice, setQuoteStatus, createQuote, addQuoteItem, updateQuote } from "@/app/(app)/quotes/actions"
+import { convertQuoteToInvoice, setQuoteStatus, createQuote, updateQuote } from "@/app/(app)/quotes/actions"
 import { createProject } from "@/app/(app)/projects/actions"
 
 const quoteId = "00000000-0000-4000-8000-000000000002"
@@ -105,12 +105,6 @@ describe("quote lifecycle action", () => {
     expect(await setQuoteStatus({ id: quoteId, status: "converted" })).toEqual({ error: "Invalid input" })
     expect(fixture.from).not.toHaveBeenCalled()
   })
-  it("rejects editing accepted quote lines before any insert", async () => {
-    const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: { status: "accepted" }, error: null }) }
-    fixture.from.mockReturnValue(chain)
-    expect(await addQuoteItem({ quote_id: quoteId, description: "Extra scope", quantity: 1, unitPriceBaht: 1 })).toEqual({ error: "This quote is locked" })
-    expect(fixture.from).toHaveBeenCalledTimes(1)
-  })
   it("rejects editing an accepted quote header", async () => {
     const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: { status: "accepted" }, error: null }) }
     fixture.from.mockReturnValue(chain)
@@ -133,25 +127,5 @@ describe("service action amount boundaries", () => {
   it("rejects an unsafe project budget before database calls", async () => {
     expect(await createProject({ name: "Service", status: "not_started", budgetBaht: "90071992547409.92" })).toEqual({ error: "Invalid input" })
     expect(fixture.from).not.toHaveBeenCalled()
-  })
-  it("rejects quantities that PostgreSQL would silently round", async () => {
-    expect(await addQuoteItem({ quote_id: quoteId, description: "Service", quantity: "1.0001", unitPriceBaht: 1 })).toEqual({ error: "Invalid input" })
-    expect(fixture.from).not.toHaveBeenCalled()
-  })
-  it("submits exact line amounts and leaves quote totals to the database", async () => {
-    let inserted: Record<string, unknown> | undefined
-    const chain = {
-      select: () => chain,
-      eq: () => chain,
-      order: () => chain,
-      limit: () => chain,
-      maybeSingle: async () => ({ data: { status: "draft" }, error: null }),
-      insert: async (row: Record<string, unknown>) => { inserted = row; return { error: null } },
-      then: (resolve: (value: unknown) => unknown) => resolve({ count: 0, error: null }),
-    }
-    fixture.from.mockReturnValue(chain)
-    expect(await addQuoteItem({ quote_id: quoteId, description: "Service", quantity: "1.005", unitPriceBaht: "1.00" })).toEqual({})
-    expect(inserted).toMatchObject({ org_id: fixture.ctx.orgId, quote_id: quoteId, unit_price_satang: 100, amount_satang: 101 })
-    expect(fixture.from.mock.calls.map((call) => call[0])).toEqual(["quotes", "quote_items", "org_settings", "quote_items"])
   })
 })

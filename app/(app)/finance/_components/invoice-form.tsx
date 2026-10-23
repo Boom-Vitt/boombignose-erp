@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { useGuardedForm } from "@/components/record/record-guard"
+import { RecordFields, useGuardedForm } from "@/components/record/record-guard"
 import { Switch } from "@/components/ui/switch"
 
 import { SelectField, type Option } from "./form-fields"
@@ -105,6 +105,7 @@ export function InvoiceForm({
 
   return (
     <Form {...form}>
+      <RecordFields>
       <form
         onSubmit={onSubmit}
         className="space-y-5"
@@ -253,6 +254,7 @@ export function InvoiceForm({
           </Button>
         </div>
       </form>
+      </RecordFields>
     </Form>
   )
 }

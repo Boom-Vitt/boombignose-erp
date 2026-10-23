@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
-import { ProductLineInput } from "@/lib/products/schema"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
@@ -15,7 +14,6 @@ import {
   serviceMoneyInput,
   serviceQuantityInput,
   serviceAmountSatang,
-  serviceLineAmount,
 } from "@/lib/workflows/service"
 
 const QUOTE_STATUSES = [
@@ -201,138 +199,6 @@ export async function deleteQuote(
 
   revalidatePath("/quotes")
   redirect("/quotes")
-}
-
-// ---------------------------------------------------------------------------
-// Quote items (database recomputes exact totals atomically)
-// ---------------------------------------------------------------------------
-
-const AddQuoteItem = z.object({
-  ...ProductLineInput.shape,
-  tax_rate_bps: z.number().int().min(0).max(10000).optional(),
-  quote_id: z.string().min(1),
-  description: z.string().trim().min(1, "Description is required"),
-  quantity: serviceQuantityInput,
-  unitPriceBaht: serviceMoneyInput,
-}).refine((item) => {
-  try { serviceLineAmount(item.quantity, serviceAmountSatang(item.unitPriceBaht)); return true } catch { return false }
-}, "Line amount outside safe satang bounds")
-
-export async function addQuoteItem(
-  input: z.input<typeof AddQuoteItem>
-): Promise<{ error?: string }> {
-  const ctx = await requireOrgContext()
-  requireCapability(ctx, "record:write")
-  const parsed = AddQuoteItem.safeParse(input)
-  if (!parsed.success) return { error: "Invalid input" }
-  const d = parsed.data
-
-  const supabase = await createSupabaseClient()
-
-  // Accepted scope and terminal quotes are frozen by the database as well.
-  const { data: parent, error: parentErr } = await supabase
-    .from("quotes")
-    .select("status")
-    .eq("id", d.quote_id)
-    .eq("org_id", ctx.orgId)
-    .maybeSingle()
-
-  if (parentErr) return { error: parentErr.message }
-  if (!parent) return { error: "Quote not found" }
-  if (!quoteIsEditable(parent.status)) {
-    return { error: "This quote is locked" }
-  }
-
-  const { data: lastItem, error: positionError } = await supabase
-    .from("quote_items")
-    .select("position")
-    .eq("quote_id", d.quote_id)
-    .eq("org_id", ctx.orgId)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (positionError) return { error: positionError.message }
-
-  let taxRate = d.tax_rate_bps
-  const unitPriceSatang = serviceAmountSatang(d.unitPriceBaht)
-  if (d.product_id) {
-    const { data: product, error: productError } = await supabase.from("products").select("id, tax_rate_bps")
-      .eq("org_id", ctx.orgId).eq("id", d.product_id).eq("active", true).maybeSingle()
-    if (productError) return { error: productError.message }
-    if (!product) return { error: "Product unavailable. Choose an active product or a free-text line." }
-    taxRate ??= product.tax_rate_bps
-  }
-  if (taxRate === undefined) {
-    const { data: settings, error: settingsError } = await supabase.from("org_settings").select("vat_registered, vat_rate_bps").eq("org_id", ctx.orgId).maybeSingle()
-    if (settingsError) return { error: settingsError.message }
-    taxRate = settings?.vat_registered ? settings.vat_rate_bps : 0
-  }
-  const { error } = await supabase.from("quote_items").insert({
-    org_id: ctx.orgId,
-    quote_id: d.quote_id,
-    description: d.description,
-    product_id: d.product_id ?? null,
-    unit: d.unit ?? null,
-    tax_rate_bps: taxRate ?? 0,
-    quantity: d.quantity,
-    unit_price_satang: unitPriceSatang,
-    amount_satang: serviceLineAmount(d.quantity, unitPriceSatang),
-    position: (lastItem?.position ?? -1) + 1,
-  })
-
-  if (error) return { error: error.message }
-
-  await writeAudit(ctx, { entity: "quote", entityId: d.quote_id, action: "item_added", summary: "Added quote line", meta: { taxRateBps: taxRate ?? 0 } })
-  revalidatePath(`/quotes/${d.quote_id}`)
-  return {}
-}
-
-const DeleteQuoteItem = z.object({ id: z.string().min(1) })
-
-export async function deleteQuoteItem(
-  input: z.input<typeof DeleteQuoteItem>
-): Promise<{ error?: string }> {
-  const ctx = await requireOrgContext()
-  requireCapability(ctx, "record:write")
-  const parsed = DeleteQuoteItem.safeParse(input)
-  if (!parsed.success) return { error: "Invalid input" }
-
-  const supabase = await createSupabaseClient()
-
-  // Resolve the parent so agreed scope cannot be edited after acceptance.
-  const { data: item, error: findErr } = await supabase
-    .from("quote_items")
-    .select("id, quote_id")
-    .eq("id", parsed.data.id)
-    .eq("org_id", ctx.orgId)
-    .maybeSingle()
-
-  if (findErr) return { error: findErr.message }
-  if (!item) return { error: "Line item not found" }
-
-  const { data: parent, error: parentErr } = await supabase
-    .from("quotes")
-    .select("status")
-    .eq("id", item.quote_id)
-    .eq("org_id", ctx.orgId)
-    .maybeSingle()
-
-  if (parentErr) return { error: parentErr.message }
-  if (!parent) return { error: "Quote not found" }
-  if (!quoteIsEditable(parent.status)) {
-    return { error: "This quote is locked" }
-  }
-
-  const { error } = await supabase
-    .from("quote_items")
-    .delete()
-    .eq("id", item.id)
-    .eq("org_id", ctx.orgId)
-
-  if (error) return { error: error.message }
-
-  revalidatePath(`/quotes/${item.quote_id}`)
-  return {}
 }
 
 // ---------------------------------------------------------------------------

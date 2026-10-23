@@ -47,7 +47,6 @@ import {
 } from "@/components/ui/table"
 
 import { updateInvoice } from "../../actions"
-import { addInvoiceItem, deleteInvoiceItem } from "../../invoice-items-actions"
 import { activeProductOptions } from "@/lib/products/queries"
 import { can } from "@/lib/permissions"
 import {
@@ -55,10 +54,8 @@ import {
   type InvoiceFormValues,
   type InvoiceFormSubmitValues,
 } from "../../_components/invoice-form"
-import {
-  InvoiceItemsEditor,
-  type InvoiceItemRow,
-} from "../../_components/invoice-items-editor"
+import { LineGrid } from "@/components/line-grid/line-grid"
+import { gridRows } from "@/lib/line-grid/queries"
 import { IssueInvoiceForm } from "../../_components/issue-invoice-form"
 import { AdoptLegacyInvoiceForm } from "../../_components/adopt-legacy-invoice-form"
 import { PaymentForm } from "../../_components/payment-form"
@@ -106,7 +103,7 @@ export default async function InvoiceDetailPage({
     claimsRes,
     legacyRes,
     invoiceRes,
-    itemsRes,
+    lineRows,
     paymentsRes,
     paymentCountRes,
     balanceRes,
@@ -124,11 +121,7 @@ export default async function InvoiceDetailPage({
       ).eq("org_id", ctx.orgId)
       .eq("id", id)
       .maybeSingle(),
-    readAll((from, to) => supabase
-      .from("invoice_items")
-      .select("id, description, quantity, unit_price_satang, amount_satang, unit, tax_rate_bps").eq("org_id", ctx.orgId)
-      .eq("invoice_id", id)
-      .order("position", { ascending: true }).order("id").range(from, to)),
+    gridRows(supabase, ctx.orgId, "invoice", id),
     readAll((from, to) => supabase
       .from("invoice_receipts")
       .select("id, amount_satang, paid_at, method, notes").eq("verification_state", "verified").eq("org_id", ctx.orgId)
@@ -146,7 +139,7 @@ export default async function InvoiceDetailPage({
   if (!invoice) notFound()
 
   const payments = paymentsRes.data ?? []
-  if (paymentsRes.error || balanceRes.error || itemsRes.error || legacyRes.error || settingsRes.error || paymentCountRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
+  if (paymentsRes.error || balanceRes.error || legacyRes.error || settingsRes.error || paymentCountRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
   const paid = balanceRes.data?.paid_satang ?? 0
   const credited = balanceRes.data?.credited_satang ?? 0
   const outstanding = outstandingSatang(invoice.amount_satang, paid, credited)
@@ -184,19 +177,11 @@ export default async function InvoiceDetailPage({
     return updateInvoice({ id: invoiceId, ...values })
   }
 
-  const itemRows: InvoiceItemRow[] = (itemsRes.data ?? []).map((it) => ({
-    id: it.id,
-    description: it.description,
-    quantity: `${Number(it.quantity)}${it.unit ? ` ${it.unit}` : ""}`,
-    unitPrice: formatTHB(it.unit_price_satang),
-    amount: formatTHB(it.amount_satang),
-    taxRate: `${it.tax_rate_bps / 100}%`,
-  }))
-
-  async function removeInvoiceItem(input: { id: string }) {
-    "use server"
-    return deleteInvoiceItem(input)
-  }
+  const vatRate = settingsRes.data?.vat_registered ? settingsRes.data.vat_rate_bps : 0
+  const pendingClaim = (claimsRes.data ?? []).some(claim => claim.status === "pending")
+  const lineLock = invoice.issued_snapshot_id ? "Issued lines are frozen; corrections must preserve the original document."
+    : invoice.source_quote_id ? "Lines come from the accepted quote."
+    : paid > 0 || pendingClaim ? "Payment evidence locks these lines." : null
 
   return (
     <div className="space-y-6">
@@ -326,15 +311,17 @@ export default async function InvoiceDetailPage({
               <CardTitle className="text-base">Line items</CardTitle>
             </CardHeader>
             <CardContent>
-              <InvoiceItemsEditor
-                defaultTaxRate={settingsRes.data?.vat_registered ? settingsRes.data.vat_rate_bps : 0}
-                invoiceId={invoice.id}
-                products={await activeProductOptions()}
+              <LineGrid
+                document="invoice"
+                documentId={invoice.id}
+                rows={lineRows}
+                editable={!lineLock && can(ctx.role, "payment:verify")}
+                lockedMessage={lineLock ?? undefined}
+                products={lineLock ? [] : await activeProductOptions()}
                 canManageProducts={can(ctx.role, "product:manage")}
-                items={itemRows}
-                addAction={addInvoiceItem}
-                deleteAction={removeInvoiceItem}
-                locked={ctx.role === "member" || !!invoice.source_quote_id || !!invoice.issued_snapshot_id || paid > 0 || (claimsRes.data ?? []).some(claim => claim.status === "pending")}
+                taxRates={vatRate ? [0, vatRate] : [0]}
+                defaultTaxRateBps={vatRate}
+                basis={{ discountSatang: invoice.discount_satang, pricesIncludeVat: invoice.prices_include_vat, whtRateBps: invoice.wht_rate_bps }}
               />
             </CardContent>
           </Card>

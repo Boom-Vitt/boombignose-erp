@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { useGuardedForm } from "@/components/record/record-guard"
+import { RecordFields, useGuardedForm } from "@/components/record/record-guard"
 
 import {
   Form,
@@ -102,6 +102,7 @@ export function ProjectForm({
 
   return (
     <Form {...form}>
+      <RecordFields>
       <form
         onSubmit={onSubmit}
         className="space-y-5"
@@ -267,6 +268,7 @@ export function ProjectForm({
           </Button>
         </div>
       </form>
+      </RecordFields>
     </Form>
   )
 }

@@ -36,7 +36,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({
 }) }))
 
 import { redirect } from "next/navigation"
-import { createPurchaseBill, linkVendorCredit, markBillPaid, receivePurchase, removePurchaseLine, transitionPurchase, returnPurchase } from "@/app/(app)/purchases/actions"
+import { createPurchaseBill, linkVendorCredit, markBillPaid, receivePurchase, transitionPurchase, returnPurchase } from "@/app/(app)/purchases/actions"
 import { sendPurchaseRFQ } from "@/app/(app)/purchases/email-actions"
 import PurchasesPage from "@/app/(app)/purchases/page"
 import { saveVendor } from "@/app/(app)/vendors/actions"
@@ -53,11 +53,6 @@ const rfqClaim = {
 beforeEach(() => { state.orgId = seedId(1); state.rows = {}; state.filters = []; state.rpcs = []; vi.mocked(redirect).mockClear() })
 
 describe("purchasing accepts demo seed ids", () => {
-  it("removes a purchase line by seed ids", async () => {
-    expect(await removePurchaseLine(orderId, lineId)).toEqual({})
-    expect(state.filters).toEqual([["purchase_order_items", "org_id", state.orgId], ["purchase_order_items", "purchase_order_id", orderId], ["purchase_order_items", "id", lineId]])
-  })
-
   it("transitions a seed-id purchase", async () => {
     expect(await transitionPurchase(orderId, "confirmed")).toEqual({})
     expect(state.rpcs).toEqual([["transition_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_status: "confirmed" }]])
