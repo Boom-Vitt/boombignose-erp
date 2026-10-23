@@ -91,3 +91,16 @@ it("fails closed when any aggregate page fails", async () => {
   serve(Array.from({ length: 1001 }, () => ({ issue_date: "2026-10-01", total_satang: 100, vat_satang: 0, status: "sent" })), [], true)
   await expect(getReportData()).rejects.toThrow("Operational reports unavailable")
 })
+
+it("reports purchase input VAT net of credits by month, including inventory and excluding foreign tenants", async () => {
+  const client = databaseFixture({ monthly_purchase_vat: [
+    { org_id: "active-org", month: "2026-05-01", base_satang: 1000, input_vat_satang: 70, total_satang: 1070 },
+    { org_id: "active-org", month: "2026-10-01", base_satang: -100, input_vat_satang: -7, total_satang: -107 },
+    { org_id: "other-org", month: "2026-10-01", base_satang: 9999, input_vat_satang: 9999, total_satang: 19998 },
+    { org_id: "active-org", month: "2026-11-01", base_satang: 9999, input_vat_satang: 9999, total_satang: 19998 },
+  ] })
+  from.mockImplementation(client.from)
+  const report = await getReportData()
+  expect(report.purchaseVatByMonth[0]).toEqual({ month: "2026-05", base_satang: 1000, input_vat_satang: 70, total_satang: 1070 })
+  expect(report.purchaseVatByMonth[5]).toEqual({ month: "2026-10", base_satang: -100, input_vat_satang: -7, total_satang: -107 })
+})

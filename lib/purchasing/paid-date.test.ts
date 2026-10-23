@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({ costs: [] as unknown[] }))
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org", userId: "user", role: "owner" }) }))
 vi.mock("@/lib/queries/saved-views", () => ({ getFacetSavedViews: async () => [] }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (table: string) => {
-  const query = { select: () => query, eq: () => query, order: () => query, range: () => query, then: (resolve: (value: unknown) => unknown) => resolve({ data: table === "costs" ? state.costs : [], error: null }) }
+  const query = { select: () => query, eq: () => query, order: () => query, range: () => query, maybeSingle: async () => ({ data: null, error: null }), then: (resolve: (value: unknown) => unknown) => resolve({ data: table === "costs" ? state.costs : [], error: null }) }
   return query
 } }) }))
 vi.mock("@/app/(app)/purchases/_components/action-button", () => ({ PurchaseAction: ({ label }: { label: string }) => createElement("button", {}, label) }))
@@ -17,7 +17,7 @@ vi.mock("@/app/(app)/finance/_components/delete-cost-button", () => ({ DeleteCos
 import { VendorBills } from "@/app/(app)/purchases/_components/bills"
 import FinancePage from "@/app/(app)/finance/page"
 
-const bill: Tables<"costs"> = { purchase_cost_kind: "bill", id: "bill", org_id: "org", vendor_id: "vendor", purchase_order_id: null, expense_claim_id: null, bill_number: "B1", bill_date: "2026-10-23", due_date: "2026-11-23", paid_at: "2026-10-23T18:00:00Z", amount_satang: 101, category: "other", incurred_on: "2026-10-23", vendor: "Vendor", project_id: null, notes: null, created_at: "2026-10-23T18:00:00Z", updated_at: "2026-10-23T18:00:00Z" }
+const bill: Tables<"costs"> = { vendor_bill_match_id: null, vendor_invoice_reference: null, input_vat_rate: 0, input_vat_satang: 0, purchase_cost_kind: "bill", id: "bill", org_id: "org", vendor_id: "vendor", purchase_order_id: null, expense_claim_id: null, bill_number: "B1", bill_date: "2026-10-23", due_date: "2026-11-23", paid_at: "2026-10-23T18:00:00Z", amount_satang: 101, category: "other", incurred_on: "2026-10-23", vendor: "Vendor", project_id: null, notes: null, created_at: "2026-10-23T18:00:00Z", updated_at: "2026-10-23T18:00:00Z" }
 
 it("shows Bangkok payment dates in the vendor and PO bill table", () => {
   const html = renderToStaticMarkup(createElement(VendorBills, { bills: [bill], canManage: false }))

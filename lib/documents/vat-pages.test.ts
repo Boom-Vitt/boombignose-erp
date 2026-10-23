@@ -76,7 +76,7 @@ it("quote detail keeps VAT totals and the complete linked invoice count", async 
 })
 
 it("Finance keeps vendor bill metadata beyond the row cap alongside net receivables", async () => {
-  const costs = Array.from({ length: 1001 }, (_, n) => ({ id: `cost-${n}`, org_id: "A", category: "software", amount_satang: 1, incurred_on: "2026-10-23", vendor: "Vendor", vendor_id: "vendor", purchase_order_id: "purchase", bill_number: `BILL-${n}`, due_date: "2026-10-22", paid_at: null }))
+  const costs = Array.from({ length: 1001 }, (_, n) => ({ id: `cost-${n}`, org_id: "A", category: "software", input_vat_satang: 0, input_vat_rate: 0, vendor_invoice_reference: null, amount_satang: 1, incurred_on: "2026-10-23", vendor: "Vendor", vendor_id: "vendor", purchase_order_id: "purchase", bill_number: `BILL-${n}`, due_date: "2026-10-22", paid_at: null }))
   state.client = databaseFixture({ invoices: [{ ...header, status: "sent" }], payments, costs, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100, credited_satang: 0 }] })
   const content = pageContent(await FinancePage({ searchParams: Promise.resolve({}) }))
   expect(content).toContain("BILL-1000")
@@ -102,6 +102,30 @@ it("project profit counts every invoice and cost beyond the row cap, before WHT"
   state.client = databaseFixture({ projects: [{ id: "project", org_id: "A", name: "Project", status: "in_progress", client_id: "buyer" }], invoices, costs, project_labour_totals: [{ org_id: "A", project_id: "project", labour_cost_satang: 10000 }] })
   const cards = elements(await ProjectPage({ params: Promise.resolve({ id: "project" }) })).filter(node => node.type === StatCard).map(node => node.props as { label: string; value: string })
   expect(cards).toEqual(expect.arrayContaining([["Revenue", 100_100], ["Cost incl. labour", 60_050], ["Profit", 40_050]].map(([label, satang]) => expect.objectContaining({ label, value: formatTHB(satang as number) }))))
+})
+
+it.each([true, false])("Finance expenses and project profit use VAT registration %s", async (vatRegistered) => {
+  vi.useFakeTimers().setSystemTime(new Date("2026-10-23T06:00:00Z"))
+  try {
+    state.client = databaseFixture({
+      org_settings: [{ org_id: "A", vat_registered: vatRegistered }, { org_id: "B", vat_registered: !vatRegistered }],
+      projects: [{ id: "project", org_id: "A", name: "Project", status: "in_progress" }],
+      invoices: [{ ...header, status: "sent", project_id: "project" }],
+      costs: [
+        { id: "bill", org_id: "A", project_id: "project", category: "software", amount_satang: 107_000, input_vat_satang: 7_000, incurred_on: "2026-10-01" },
+        { id: "credit", org_id: "A", project_id: "project", category: "software", amount_satang: -21_400, input_vat_satang: -1_400, incurred_on: "2026-10-23" },
+      ],
+      project_labour_totals: [{ org_id: "A", project_id: "project", labour_cost_satang: 10_000 }],
+    })
+    const expenses = vatRegistered ? 80_000 : 85_600
+    const financeCards = elements(await FinancePage({ searchParams: Promise.resolve({}) })).filter(node => node.type === StatCard).map(node => node.props)
+    expect(financeCards).toContainEqual(expect.objectContaining({ label: "Operating costs this month", value: formatTHB(expenses) }))
+    const projectCards = elements(await ProjectPage({ params: Promise.resolve({ id: "project" }) })).filter(node => node.type === StatCard).map(node => node.props)
+    expect(projectCards).toContainEqual(expect.objectContaining({ label: "Cost incl. labour", value: formatTHB(expenses + 10_000) }))
+    expect(projectCards).toContainEqual(expect.objectContaining({ label: "Profit", value: formatTHB(1_000_000 - expenses - 10_000) }))
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it("shows labour cost and loss even before a project has invoices or expenses", async () => {

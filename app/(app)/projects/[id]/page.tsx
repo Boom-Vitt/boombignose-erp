@@ -108,6 +108,7 @@ export default async function ProjectDetailPage({
     labourRes,
     { data: timeTotal },
     { data: sourceQuotes, count: quoteCount },
+    settingsRes,
   ] = await Promise.all([
     supabase
       .from("project_tasks")
@@ -139,7 +140,7 @@ export default async function ProjectDetailPage({
       .order("created_at")
       .order("id")
       .range(from, to)),
-    readAllOrThrow((from, to) => supabase.from("costs").select("id, amount_satang").eq("org_id", ctx.orgId).eq("project_id", id).order("id").range(from, to)),
+    readAllOrThrow((from, to) => supabase.from("costs").select("id, amount_satang, input_vat_satang").eq("org_id", ctx.orgId).eq("project_id", id).order("id").range(from, to)),
     readAllOrThrow((from, to) => supabase
       .from("time_entries")
       .select("project_id, minutes, billable, rate_satang")
@@ -157,6 +158,7 @@ export default async function ProjectDetailPage({
       .eq("org_id", ctx.orgId)
       .eq("project_id", id)
       .order("created_at", { ascending: true }),
+    seesProfit ? supabase.from("org_settings").select("vat_registered").eq("org_id", ctx.orgId).maybeSingle() : null,
   ])
 
   const tasks = (tasksData ?? []) as Array<{
@@ -184,7 +186,7 @@ export default async function ProjectDetailPage({
     source_quote_id: string | null
     source_milestone_id: string | null
   }>
-  const costs = costsData as Array<{ amount_satang: number }>
+  const costs = costsData as Array<{ amount_satang: number; input_vat_satang: number }>
   const names = await profileNames(supabase, [
     p.owner,
     ...tasks.map((t) => t.assignee),
@@ -209,7 +211,8 @@ export default async function ProjectDetailPage({
   if (labourRes?.error) throw new Error("Project labour cost unavailable. Please reload.")
   const credits = labourRes ? await creditNoteRevenue(supabase, ctx.orgId) : []
   const creditedBase = sumSatang(credits.filter(credit => credit.project_id === id).map(credit => credit.base_satang))
-  const profit = labourRes && hasFinancials ? projectProfit(billedInvoices, costs, labourRes.data?.labour_cost_satang ?? 0, creditedBase) : null
+  if (settingsRes?.error) throw new Error("Project VAT registration unavailable. Please reload.")
+  const profit = labourRes && hasFinancials ? projectProfit(billedInvoices, costs, labourRes.data?.labour_cost_satang ?? 0, creditedBase, settingsRes?.data?.vat_registered ?? false) : null
 
   const projectId = p.id
   async function transitionProject(to: Enums<"project_status">) {

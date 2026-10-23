@@ -1,6 +1,13 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 select plan(44);
+
+create function pg_temp.bill_purchase_order(p_org_id uuid,p_order_id uuid) returns uuid language sql as $$
+select public.bill_purchase_order(p_org_id,p_order_id,jsonb_build_object(
+  'vendor_reference',p_order_id::text||'-'||(select count(*)+1 from public.costs where org_id=p_org_id and purchase_order_id=p_order_id),
+  'bill_date','2026-10-26','input_vat_rate',0,'input_vat_satang',0,
+  'vendor_total_satang',(select coalesce(sum(round((received_quantity-returned_quantity)*unit_cost_satang)-round(billed_quantity*unit_cost_satang)),0) from public.purchase_order_items where org_id=p_org_id and purchase_order_id=p_order_id and received_quantity-returned_quantity>billed_quantity)));
+$$;
 insert into auth.users(id,email,email_confirmed_at) values
  ('b6000000-0000-4000-8000-000000000001','purchase-owner@example.invalid',now()),
  ('b6000000-0000-4000-8000-000000000002','purchase-member@example.invalid',now());
@@ -54,14 +61,14 @@ select is((select received_quantity from public.purchase_order_items),1.250::num
 select throws_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","previous_received_quantity":1.25,"received_quantity":3}]')$$,'P0001','Invalid cumulative receipt quantity','overreceipt rejected');
 select throws_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","previous_received_quantity":1.25,"received_quantity":1}]')$$,'P0001','Invalid cumulative receipt quantity','backward receipt rejected');
 select throws_ok($$select public.transition_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'cancelled')$$,'P0001','Invalid purchase transition','received evidence cannot be cancelled');
-select set_config('test.bill',public.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid)::text,true);
+select set_config('test.bill',pg_temp.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid)::text,true);
 select is((select amount_satang from public.costs where id=current_setting('test.bill')::uuid),126::bigint,'partial bill uses received cost');
-select is(public.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid),current_setting('test.bill')::uuid,'bill retry returns previous bill');
+select throws_ok($$select pg_temp.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid)$$,'P0001','Receive quantities before creating a bill','another bill requires new received quantities');
 select is((select count(*)::int from public.costs),1,'retry does not duplicate money out');
 select is((select due_date-bill_date from public.costs),14,'bill inherits vendor payment terms');
 select lives_ok($$select public.receive_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid,'[{"id":"b6000000-0000-4000-8000-000000000040","previous_received_quantity":1.25,"received_quantity":2.5}]')$$,'remaining receipt accepted after partial bill');
 select is((select status::text from public.purchase_orders where id=current_setting('test.purchase')::uuid),'received','full receipt marks received');
-select public.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid);
+select pg_temp.bill_purchase_order('b6000000-0000-4000-8000-000000000010',current_setting('test.purchase')::uuid);
 select is((select sum(amount_satang)::bigint from public.costs),253::bigint,'incremental bills equal exact full cost');
 select is((select status::text from public.purchase_orders where id=current_setting('test.purchase')::uuid),'billed','fully billed order marks billed');
 select lives_ok($$update public.costs set paid_at=now() where id=current_setting('test.bill')::uuid$$,'owner can mark bill paid');

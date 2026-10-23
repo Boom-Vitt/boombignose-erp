@@ -30,7 +30,7 @@ function fmtHours(hours: number): string {
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<SearchParams> } = { searchParams: Promise.resolve({}) }) {
   const params = await searchParams
   const view = params.view === "line" || params.view === "pivot" ? params.view : "bar"
-  const { months, rangeLabel, revenue, hours, totalRevenueSatang, cogsByMonth, totalCogsSatang } =
+  const { months, rangeLabel, revenue, hours, totalRevenueSatang, cogsByMonth, totalCogsSatang, purchaseVatByMonth } =
     await getReportData()
 
   return (
@@ -99,6 +99,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <p className="text-sm text-muted-foreground mt-3">Delivery costs less customer returns, grouped by Bangkok month. Inventory bills are excluded from operating costs.</p>
         </CardContent>
       </Card>
+
+      <Card><CardHeader><CardTitle><h2>Purchase VAT by month</h2></CardTitle></CardHeader><CardContent>
+        <p className="mb-3 text-sm text-muted-foreground">Matched vendor invoices and linked credit notes by bill month, including inventory purchases. Credit notes reduce the totals. Operational report only.</p>
+        <Table><TableHeader><TableRow><TableHead>Month</TableHead><TableHead>Purchase base</TableHead><TableHead>Input VAT</TableHead><TableHead>Vendor total</TableHead></TableRow></TableHeader>
+          <TableBody>{purchaseVatByMonth.map(row => <TableRow key={row.month}><TableCell>{row.month}</TableCell><TableCell>{formatTHB(row.base_satang)}</TableCell><TableCell>{formatTHB(row.input_vat_satang)}</TableCell><TableCell>{formatTHB(row.total_satang)}</TableCell></TableRow>)}</TableBody>
+        </Table>
+      </CardContent></Card>
 
       {view !== "pivot" ? <div className="space-y-6">
         <Card><CardHeader><CardTitle>Revenue by month</CardTitle></CardHeader><CardContent>

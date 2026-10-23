@@ -26,3 +26,33 @@ it("accepts seed-shaped references that lack RFC 9562 version bits", () => {
 it("registers closed purchases in list and saved-view facets", () => {
   expect(parseFacets({ status: "closed" }, "purchases")).toEqual({ status: "closed" })
 })
+
+it("validates complete vendor invoice evidence and credit references", async () => {
+  const { BillInput, CreditInput } = await import("./schema")
+  const bill = { vendor_reference: " SUP-1 ", bill_date: "2026-10-01", due_date: "2026-10-15", input_vat_rate: 7, input_vat_satang: 7, vendor_total_satang: 107, variance_reason: "", lines: [{ id: "a6000000-0000-0000-0000-000000000001", quantity: 1, expected_quantity: 1, unit_cost_satang: 100 }] }
+  expect(BillInput.parse(bill).vendor_reference).toBe("SUP-1")
+  for (const patch of [{ vendor_reference: " " }, { bill_date: "2026-02-30" }, { due_date: "2026-09-30" }, { vendor_total_satang: 6 }, { input_vat_satang: -1 }, { input_vat_rate: 7.001 }, { lines: [] }]) expect(BillInput.safeParse({ ...bill, ...patch }).success).toBe(false)
+  expect(CreditInput.parse({ ...bill, cost_ids: [bill.lines[0].id], original_bill_id: bill.lines[0].id })).toEqual({ vendor_reference: "SUP-1", bill_date: bill.bill_date, input_vat_satang: 7, variance_reason: "", cost_ids: [bill.lines[0].id], allocations: [{ original_bill_id: bill.lines[0].id, lines: [{ id: bill.lines[0].id, quantity: 1 }] }] })
+  expect(CreditInput.safeParse({ ...bill, original_bill_id: "bad" }).success).toBe(false)
+  for (const patch of [{ lines: [] }, { lines: [{ id: bill.lines[0].id, quantity: 0 }] }, { cost_ids: [] }, { cost_ids: ["bad"] }]) expect(CreditInput.safeParse({ ...bill, original_bill_id: bill.lines[0].id, ...patch }).success).toBe(false)
+})
+
+it("validates one credit across multiple originals without an editable VAT rate", async () => {
+  const { CreditInput } = await import("./schema")
+  const first = "a6000000-0000-0000-0000-000000000001"
+  const second = "b6000000-0000-0000-0000-000000000002"
+  const allocation = { original_bill_id: first, lines: [{ id: first, quantity: 0.001 }] }
+  const credit = { vendor_reference: " CN-AB ", bill_date: "2026-10-01", input_vat_satang: 7, cost_ids: [first], allocations: [allocation, { ...allocation, original_bill_id: second }] }
+  expect(CreditInput.parse(credit)).toEqual({ ...credit, vendor_reference: "CN-AB", variance_reason: "" })
+  expect(CreditInput.parse({ ...credit, input_vat_rate: 100 })).not.toHaveProperty("input_vat_rate")
+  for (const patch of [
+    { allocations: [] },
+    { allocations: [{ ...allocation, original_bill_id: "bad" }] },
+    { allocations: [allocation, { ...allocation, original_bill_id: first.toUpperCase() }] },
+    { allocations: [{ ...allocation, lines: [] }] },
+    { allocations: [{ ...allocation, lines: [{ id: first, quantity: 0 }] }] },
+    { allocations: [{ ...allocation, lines: [...allocation.lines, { id: first.toUpperCase(), quantity: 1 }] }] },
+    { cost_ids: [first, first.toUpperCase()] },
+    { input_vat_satang: -1 },
+  ]) expect(CreditInput.safeParse({ ...credit, ...patch }).success).toBe(false)
+})

@@ -1,6 +1,13 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 select no_plan();
+
+create function pg_temp.bill_purchase_order(p_org_id uuid,p_order_id uuid) returns uuid language sql as $$
+select public.bill_purchase_order(p_org_id,p_order_id,jsonb_build_object(
+  'vendor_reference',p_order_id::text||'-'||(select count(*)+1 from public.costs where org_id=p_org_id and purchase_order_id=p_order_id),
+  'bill_date','2026-10-26','input_vat_rate',0,'input_vat_satang',0,
+  'vendor_total_satang',(select coalesce(sum(round((received_quantity-returned_quantity)*unit_cost_satang)-round(billed_quantity*unit_cost_satang)),0) from public.purchase_order_items where org_id=p_org_id and purchase_order_id=p_order_id and received_quantity-returned_quantity>billed_quantity)));
+$$;
 insert into auth.users(id,email,email_confirmed_at) values('b8400000-0000-4000-8000-000000000001','procure-stock@example.invalid',now());
 insert into public.organizations(id,name,slug) values
  ('b8400000-0000-4000-8000-000000000010','Procure stock test','procure-stock-test'),
@@ -52,7 +59,7 @@ select throws_ok($$select public.save_warehouse('b8400000-0000-4000-8000-0000000
 select public.transition_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_po')::uuid,'closed');
 select is((select status::text from public.purchase_orders where id=current_setting('test.ps_po')::uuid),'closed','B2 short receipt closes');
 select throws_ok($$select public.receive_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_po')::uuid,'[{"id":"b8400000-0000-4000-8000-000000000070","previous_received_quantity":4,"received_quantity":6}]')$$,'P0001','Confirmed purchase order required','B2 closure freezes remainder');
-select public.bill_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_po')::uuid);
+select pg_temp.bill_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_po')::uuid);
 select is((select category::text from public.costs where purchase_order_id=current_setting('test.ps_po')::uuid),'inventory','S11 stock bills classified as inventory');
 select public.return_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_po')::uuid,'[{"id":"b8400000-0000-4000-8000-000000000070","returned_quantity":1}]');
 select is((select unit_cost_satang from public.stock_moves where kind='vendor_return'),233::bigint,'S5 vendor return uses current average per coordinator policy');
@@ -78,7 +85,7 @@ select public.receive_purchase_order('b8400000-0000-4000-8000-000000000010',curr
 select public.return_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_unbilled')::uuid,'[{"id":"b8400000-0000-4000-8000-000000000071","returned_quantity":1}]');
 select is((select count(*)::int from public.costs where purchase_order_id=current_setting('test.ps_unbilled')::uuid),0,'S5 unbilled returns create no credit');
 select public.receive_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_unbilled')::uuid,'[{"id":"b8400000-0000-4000-8000-000000000071","previous_received_quantity":1,"received_quantity":2}]');
-select public.bill_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_unbilled')::uuid);
+select pg_temp.bill_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_unbilled')::uuid);
 select public.return_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_unbilled')::uuid,'[{"id":"b8400000-0000-4000-8000-000000000071","returned_quantity":1.5}]');
 select public.return_purchase_order('b8400000-0000-4000-8000-000000000010',current_setting('test.ps_unbilled')::uuid,'[{"id":"b8400000-0000-4000-8000-000000000071","returned_quantity":2}]');
 select is((select sum(amount_satang) from public.costs where purchase_order_id=current_setting('test.ps_unbilled')::uuid),0::numeric,'S5 fractional cumulative credits exactly reverse billed value');

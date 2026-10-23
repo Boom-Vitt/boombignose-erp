@@ -19,14 +19,17 @@ export async function purchaseOptions() {
 export async function purchaseDetail(id: string) {
   const ctx = await requireOrgContext()
   const db = await createClient()
-  const [order, lines, bills] = await Promise.all([
+  const [order, lines, bills, settings, matches] = await Promise.all([
     db.from("purchase_orders").select("*,vendors(*)").eq("org_id", ctx.orgId).eq("id", id).maybeSingle(),
     readAllOrThrow((from, to) => db.from("purchase_order_items").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("position").order("id").range(from, to)),
     readAllOrThrow((from, to) => db.from("costs").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("created_at").order("id").range(from, to)),
+    db.from("org_settings").select("bill_variance_tolerance_bps").eq("org_id", ctx.orgId).maybeSingle(),
+    readAllOrThrow((from, to) => db.from("vendor_bill_matches").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("created_at").order("id").range(from, to)),
   ])
+  if (settings.error) throw new Error("Bill matching settings unavailable")
   if (order.error) throw new Error("Purchase data unavailable. Please reload.")
   if (!order.data) notFound()
-  return { order: order.data, lines, bills }
+  return { order: order.data, lines, bills, matches, toleranceBps: settings.data?.bill_variance_tolerance_bps ?? 100 }
 }
 
 export async function vendorDetail(id: string) {

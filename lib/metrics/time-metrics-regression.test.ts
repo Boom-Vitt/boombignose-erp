@@ -28,7 +28,7 @@ describe("S9 issued revenue and labour", () => {
     expect(revenueForMonth(invoices, "2026-10")).toBe(10000)
   })
   it("subtracts the complete labour aggregate from project profit", () => {
-    const result = projectProfit([{ status: "sent", total_satang: 10700, vat_satang: 700 }], [{ amount_satang: 1000 }], 3028)
+    const result = projectProfit([{ status: "sent", total_satang: 10700, vat_satang: 700 }], [{ amount_satang: 1000, input_vat_satang: 0 }], 3028)
     expect(result.costSatang).toBe(4028)
     expect(result.profitSatang).toBe(5972)
   })
