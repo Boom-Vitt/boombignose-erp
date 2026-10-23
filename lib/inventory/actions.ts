@@ -6,7 +6,7 @@ import { redirect } from "next/navigation"
 import { requireCapability, requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { writeAudit } from "@/lib/audit"
-import { CountInput, DeliveryInput, ReorderInput, StockQuantity, WarehouseInput } from "./schema"
+import { CountInput, DeliveryInput, ReorderInput, StockQuantity, TransferInput, WarehouseInput } from "./schema"
 
 function refresh() {
   revalidatePath("/inventory", "layout")
@@ -115,6 +115,19 @@ export async function setNegativeStock(allow: boolean): Promise<{ error?: string
   const { error } = await db.from("org_settings").upsert({ org_id: ctx.orgId, allow_negative_stock: allow }, { onConflict: "org_id" })
   if (error) return { error: error.message }
   await writeAudit(ctx, { entity: "settings", action: "stock_policy_updated", summary: `Negative stock ${allow ? "allowed" : "blocked"}` })
+  refresh()
+  return {}
+}
+
+export async function transferStock(input: unknown): Promise<{ error?: string; rejected?: true }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "inventory:manage")
+  const parsed = TransferInput.safeParse(input)
+  if (!parsed.success) return { error: "Choose different warehouses, a positive quantity and a reason." }
+  const d = parsed.data
+  const db = await createClient()
+  const { error } = await db.rpc("transfer_stock", { p_org_id: ctx.orgId, p_product_id: d.product_id, p_from_warehouse_id: d.from_warehouse_id, p_to_warehouse_id: d.to_warehouse_id, p_quantity: d.quantity, p_reason: d.reason, p_key: d.key })
+  if (error) return { error: error.message, ...(error.code === "P0001" ? { rejected: true as const } : {}) }
   refresh()
   return {}
 }

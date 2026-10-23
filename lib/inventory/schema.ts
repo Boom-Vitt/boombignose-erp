@@ -25,3 +25,5 @@ export const InventorySnapshot = z.object({
     average_cost_satang: satang, value_satang: stockValue,
   })),
 })
+
+export const TransferInput = z.object({ product_id: z.guid(), from_warehouse_id: z.guid(), to_warehouse_id: z.guid(), quantity: quantity.refine(value => value > 0), reason: z.string().trim().min(1).max(2000), key: z.uuid() }).refine(value => value.from_warehouse_id !== value.to_warehouse_id, "Choose different warehouses")
