@@ -4,6 +4,7 @@ import { useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import type { Tables } from "@/lib/types/database"
 import { deliverInvoice, returnInvoiceDelivery } from "@/lib/inventory/actions"
+import { todayISO } from "@/lib/dates"
 import { formatTHB } from "@/lib/money"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,7 +22,7 @@ export function DeliveryForm({ invoiceId, lines, warehouses, products }: { invoi
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     start(async () => {
-      const result = await deliverInvoice(invoiceId, String(form.get("warehouse")), lines.map(line => ({ id: line.id, delivered_quantity: Number(form.get(line.id)), previous_delivered_quantity: line.delivered_quantity })))
+      const result = await deliverInvoice(invoiceId, String(form.get("warehouse")), lines.map(line => ({ id: line.id, delivered_quantity: Number(form.get(line.id)), previous_delivered_quantity: line.delivered_quantity })), String(form.get("date")))
       setError(result.error ?? "")
       if (!result.error) router.refresh()
     })
@@ -29,6 +30,7 @@ export function DeliveryForm({ invoiceId, lines, warehouses, products }: { invoi
   return <form id="deliver" onSubmit={submit} className="space-y-4 rounded-xl border p-4">
     <h2 className="font-semibold">Deliver products</h2>
     <p className="text-sm text-muted-foreground">Enter cumulative delivered totals. Available stock subtracts all undelivered issued invoice quantities, including this invoice.</p>
+    <div><Label htmlFor="delivery-date">Delivery date</Label><Input id="delivery-date" name="date" type="date" required defaultValue={todayISO()} /></div>
     <div><Label htmlFor="delivery-warehouse">Deliver from warehouse</Label><select id="delivery-warehouse" name="warehouse" className={selectStyle} defaultValue={warehouses.find(w => w.is_default)?.id ?? warehouses[0]?.id} required>{warehouses.map(w => <option key={w.id} value={w.id}>{w.code} · {w.name}</option>)}</select></div>
     {lines.map(line => {
       const product = products.find(product => product.id === line.product_id)

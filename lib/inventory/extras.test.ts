@@ -7,3 +7,13 @@ it("refuses same-warehouse, empty and overprecision transfers", () => {
   expect(TransferInput.safeParse({ ...command, to_warehouse_id: command.from_warehouse_id }).success).toBe(false)
   for (const quantity of [0, -1, NaN, 0.0001]) expect(TransferInput.safeParse({ ...command, quantity }).success).toBe(false)
 })
+
+it("prints the retained stock number, date and quantity while escaping user text", async () => {
+  const { renderStockDocument } = await import("./printable")
+  const html = renderStockDocument("<Org>", { kind: "delivery", number: "DO-2026-000001", document_date: "2026-10-23" }, [{ description: "<script>alert(1)</script>", quantity: 1.5, unit: "piece" }])
+  expect(html).toContain("DO-2026-000001")
+  expect(html).toContain("2026-10-23")
+  expect(html).toContain("1.5")
+  expect(html).toContain("&lt;script&gt;")
+  expect(html).not.toContain("<script>")
+})

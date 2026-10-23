@@ -51,6 +51,18 @@ export type Database = {
         Update: { delivered_quantity?: number; returned_quantity?: number }
         Relationships: []
       }
+      stock_documents: {
+        Row: { id: string; org_id: string; kind: "receipt" | "delivery"; number: string; document_date: string; warehouse_id: string | null; purchase_order_id: string | null; invoice_id: string | null; created_at: string; created_by: string | null }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      stock_document_lines: {
+        Row: { id: string; org_id: string; document_id: string; product_id: string | null; source_line_id: string; description: string; unit: string; quantity: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       stock_counts: {
         Row: { unit_cost_satang: number | null; org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
         Insert: { unit_cost_satang?: number | null; org_id: string; key: string; product_id: string; warehouse_id: string; quantity: number; reason: string }
@@ -58,8 +70,8 @@ export type Database = {
         Relationships: []
       }
       stock_moves: {
-        Row: { stock_value_satang: number; source_line_id: string | null; return_of_move_id: string | null; id: string; sequence: number; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: "purchase_order" | "invoice" | "adjustment" | "transfer"; source_id: string; note: string | null; moved_at: string; created_by: string | null; balance_after: number; average_cost_after: number }
-        Insert: { stock_value_satang?: number; source_line_id?: string | null; return_of_move_id?: string | null; id?: string; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: string; source_id: string; note?: string | null; balance_after: number; average_cost_after: number }
+        Row: { document_id: string | null; stock_value_satang: number; source_line_id: string | null; return_of_move_id: string | null; id: string; sequence: number; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: "purchase_order" | "invoice" | "adjustment" | "transfer"; source_id: string; note: string | null; moved_at: string; created_by: string | null; balance_after: number; average_cost_after: number }
+        Insert: { document_id?: string | null; stock_value_satang?: number; source_line_id?: string | null; return_of_move_id?: string | null; id?: string; org_id: string; product_id: string; warehouse_id: string; kind: Database["public"]["Enums"]["stock_move_kind"]; quantity: number; unit_cost_satang: number; source_type: string; source_id: string; note?: string | null; balance_after: number; average_cost_after: number }
         Update: never
         Relationships: []
       }
@@ -1339,9 +1351,9 @@ isOneToOne: false
       inventory_snapshot: { Args: { p_org_id: string; p_warehouse_id?: string; p_product_id?: string }; Returns: Json }
             save_warehouse: { Args: { p_org_id: string; p_id: string | null; p_code: string; p_name: string; p_address: string | null; p_default: boolean; p_active: boolean }; Returns: string }
             delete_warehouse: { Args: { p_org_id: string; p_id: string }; Returns: undefined }
-            deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string; p_lines?: Json }; Returns: undefined }
+            deliver_invoice: { Args: { p_org_id: string; p_invoice_id: string; p_warehouse_id?: string; p_lines?: Json; p_date?: string }; Returns: undefined }
             adjust_stock: { Args: { p_org_id: string; p_product_id: string; p_warehouse_id: string; p_count: number; p_reason: string; p_key: string; p_unit_cost_satang?: number | null }; Returns: string | null }
-            return_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string }; Returns: undefined }
+            return_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string; p_date?: string }; Returns: undefined }
             return_invoice_delivery: { Args: { p_org_id: string; p_invoice_id: string; p_move_id: string; p_returned_quantity: number }; Returns: undefined }
             create_replenishment_rfq: { Args: { p_org_id: string; p_vendor_id: string }; Returns: string }
             "bill_project_time": { Args: { p_org_id: string; p_project_id: string; p_key: string }; Returns: string }
@@ -1409,7 +1421,7 @@ isOneToOne: false
             finish_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_error?: string | null }; Returns: undefined }
             create_purchase_order: { Args: { p_org_id: string; p_vendor_id: string; p_order_date: string; p_expected_date?: string | null; p_notes?: string | null }; Returns: string }
             transition_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_status: Database["public"]["Enums"]["purchase_status"] }; Returns: undefined }
-            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string }; Returns: undefined }
+            receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string; p_date?: string }; Returns: undefined }
             bill_purchase_order: { Args: { p_org_id: string; p_order_id: string }; Returns: string }
             create_expense_claim: { Args: { p_org_id: string; p_title: string }; Returns: string }
             transition_expense_claim: { Args: { p_org_id: string; p_claim_id: string; p_status: Database["public"]["Enums"]["expense_status"]; p_note?: string | null }; Returns: undefined }

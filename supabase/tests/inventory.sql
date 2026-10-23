@@ -73,7 +73,7 @@ select is((select count(*)::int from public.stock_moves where kind='delivery'),1
 select throws_ok($$select public.deliver_invoice('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000051')$$,'P0001','Insufficient stock','second invoice cannot spend the same stock');
 select is((select quantity from public.stock_on_hand),3::numeric,'refused delivery preserves stock');
 select is((select count(*)::int from public.stock_moves where source_id='b8100000-0000-4000-8000-000000000051'),0,'failed delivery has no partial posting');
-select ok((select prosrc like '%private.lock_stock_balances%' from pg_proc where oid='public.deliver_invoice(uuid,uuid,uuid,jsonb)'::regprocedure),'multi-product deliveries prelock balance rows');
+select ok((select prosrc like '%private.lock_stock_balances%' from pg_proc where oid='public.deliver_invoice(uuid,uuid,uuid,jsonb,date)'::regprocedure),'multi-product deliveries prelock balance rows');
 reset role;
 select ok((select prosrc like '%private.lock_stock_balances%' and prosrc like '%from public.stock_balances%' from pg_proc where oid='private.value_stock_move()'::regprocedure),'posting locks balance before reading its committed quantity');
 set local role authenticated;

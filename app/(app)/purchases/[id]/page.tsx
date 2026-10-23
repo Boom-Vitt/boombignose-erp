@@ -36,6 +36,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
   const flow = { ...PURCHASE_FLOW, next: { ...PURCHASE_FLOW.next, confirmed: { ...PURCHASE_FLOW.next.confirmed, secondary: PURCHASE_FLOW.next.confirmed.secondary?.filter(action => !("to" in action) || (action.to === "closed" ? hasReceipts : action.to !== "cancelled" || !hasReceipts)) } } }
   return <div className="space-y-6">
     <PageHeader title={order.number} description={order.vendors?.name ?? "Purchase order"}>
+      <Button variant="outline" render={<Link href={`/inventory/documents?sourceId=${id}`} />}>Receipt documents</Button>
       <Button variant="outline" render={<Link href={`/purchases/${id}/pdf`} target="_blank" />}>Print RFQ / PDF</Button>
     </PageHeader>
     <StatusBar label="Purchase status" flow={flow} status={order.status} transition={manage ? transitionPurchase.bind(null, id) : undefined} commands={manage ? {

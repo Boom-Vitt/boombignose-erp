@@ -218,6 +218,7 @@ export default async function InvoiceDetailPage({
         <EmailInvoiceButton invoiceId={invoice.id} />
       </PageHeader>
 
+      <Link className="underline" href={`/inventory/documents?sourceId=${id}`}>Delivery documents</Link>
       <SmartButtons
         buttons={[
           { label: "Deliveries", icon: Truck, count: deliveryCount, href: `/inventory/moves?sourceId=${id}`, nextStep: !!invoice.issued_snapshot_id && stockableCount > 0 },

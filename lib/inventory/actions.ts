@@ -50,13 +50,13 @@ export async function adjustStock(input: unknown): Promise<{ error?: string; rej
   return {}
 }
 
-export async function deliverInvoice(id: string, warehouseId?: string, input?: unknown): Promise<{ error?: string }> {
+export async function deliverInvoice(id: string, warehouseId?: string, input?: unknown, date?: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "inventory:manage")
   const lines = input === undefined ? undefined : DeliveryInput.safeParse(input)
-  if (!z.guid().safeParse(id).success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success) || (lines && !lines.success)) return { error: "Invalid delivery" }
+  if ((date !== undefined && !z.iso.date().safeParse(date).success) || !z.guid().safeParse(id).success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success) || (lines && !lines.success)) return { error: "Invalid delivery" }
   const db = await createClient()
-  const { error } = await db.rpc("deliver_invoice", { p_org_id: ctx.orgId, p_invoice_id: id, ...(warehouseId ? { p_warehouse_id: warehouseId } : {}), ...(lines?.success ? { p_lines: lines.data } : {}) })
+  const { error } = await db.rpc("deliver_invoice", { p_org_id: ctx.orgId, p_invoice_id: id, ...(warehouseId ? { p_warehouse_id: warehouseId } : {}), ...(lines?.success ? { p_lines: lines.data } : {}), ...(date ? { p_date: date } : {}) })
   if (error) return { error: error.message }
   refresh()
   revalidatePath(`/finance/invoices/${id}`)

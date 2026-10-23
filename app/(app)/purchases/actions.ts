@@ -75,18 +75,18 @@ export async function transitionPurchase(id: string, status: Enums<"purchase_sta
   return {}
 }
 
-export async function receivePurchase(id: string, input: unknown, warehouseId?: string): Promise<{ error?: string }> {
+export async function receivePurchase(id: string, input: unknown, warehouseId?: string, date?: string): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
   const parsed = ReceiptInput.safeParse(input)
-  if (!z.guid().safeParse(id).success || !parsed.success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success)) return { error: "Invalid receipt" }
+  if ((date !== undefined && !z.iso.date().safeParse(date).success) || !z.guid().safeParse(id).success || !parsed.success || (warehouseId !== undefined && !z.guid().safeParse(warehouseId).success)) return { error: "Invalid receipt" }
   const db = await createClient()
   let receipt
   try {
     const lines = await readAllOrThrow((from, to) => db.from("purchase_order_items").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("id").range(from, to))
     receipt = applyReceipt(lines, parsed.data)
   } catch (error) { return { error: error instanceof Error ? error.message : "Invalid receipt" } }
-  const { error } = await receivePurchaseStock(db, ctx.orgId, id, receipt, warehouseId)
+  const { error } = await receivePurchaseStock(db, ctx.orgId, id, receipt, warehouseId, date)
   if (error) return { error: error.message }
   refresh(id)
   revalidatePath("/inventory", "layout")
