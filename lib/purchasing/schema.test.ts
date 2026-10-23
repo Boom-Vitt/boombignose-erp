@@ -32,6 +32,7 @@ it("validates complete vendor invoice evidence and credit references", async () 
   const bill = { vendor_reference: " SUP-1 ", bill_date: "2026-10-01", due_date: "2026-10-15", input_vat_rate: 7, input_vat_satang: 7, vendor_total_satang: 107, variance_reason: "", lines: [{ id: "a6000000-0000-0000-0000-000000000001", quantity: 1, expected_quantity: 1, unit_cost_satang: 100 }] }
   expect(BillInput.parse(bill).vendor_reference).toBe("SUP-1")
   for (const patch of [{ vendor_reference: " " }, { bill_date: "2026-02-30" }, { due_date: "2026-09-30" }, { vendor_total_satang: 6 }, { input_vat_satang: -1 }, { input_vat_rate: 7.001 }, { lines: [] }]) expect(BillInput.safeParse({ ...bill, ...patch }).success).toBe(false)
-  expect(CreditInput.safeParse({ ...bill, original_bill_id: bill.lines[0].id }).success).toBe(true)
+  expect(CreditInput.parse({ ...bill, cost_ids: [bill.lines[0].id], original_bill_id: bill.lines[0].id })).toMatchObject({ lines: [{ id: bill.lines[0].id, quantity: 1 }], cost_ids: [bill.lines[0].id] })
   expect(CreditInput.safeParse({ ...bill, original_bill_id: "bad" }).success).toBe(false)
+  for (const patch of [{ lines: [] }, { lines: [{ id: bill.lines[0].id, quantity: 0 }] }, { cost_ids: [] }, { cost_ids: ["bad"] }]) expect(CreditInput.safeParse({ ...bill, original_bill_id: bill.lines[0].id, ...patch }).success).toBe(false)
 })

@@ -84,6 +84,30 @@ it("project profit counts every invoice and cost beyond the row cap, before WHT"
   expect(cards).toEqual(expect.arrayContaining([["Revenue", 100_100], ["Cost incl. labour", 60_050], ["Profit", 40_050]].map(([label, satang]) => expect.objectContaining({ label, value: formatTHB(satang as number) }))))
 })
 
+it.each([true, false])("Finance expenses and project profit use VAT registration %s", async (vatRegistered) => {
+  vi.useFakeTimers().setSystemTime(new Date("2026-10-23T06:00:00Z"))
+  try {
+    state.client = databaseFixture({
+      org_settings: [{ org_id: "A", vat_registered: vatRegistered }, { org_id: "B", vat_registered: !vatRegistered }],
+      projects: [{ id: "project", org_id: "A", name: "Project", status: "in_progress" }],
+      invoices: [{ ...header, status: "sent", project_id: "project" }],
+      costs: [
+        { id: "bill", org_id: "A", project_id: "project", category: "software", amount_satang: 107_000, input_vat_satang: 7_000, incurred_on: "2026-10-01" },
+        { id: "credit", org_id: "A", project_id: "project", category: "software", amount_satang: -21_400, input_vat_satang: -1_400, incurred_on: "2026-10-23" },
+      ],
+      project_labour_totals: [{ org_id: "A", project_id: "project", labour_cost_satang: 10_000 }],
+    })
+    const expenses = vatRegistered ? 80_000 : 85_600
+    const financeCards = elements(await FinancePage({ searchParams: Promise.resolve({}) })).filter(node => node.type === StatCard).map(node => node.props)
+    expect(financeCards).toContainEqual(expect.objectContaining({ label: "Operating costs this month", value: formatTHB(expenses) }))
+    const projectCards = elements(await ProjectPage({ params: Promise.resolve({ id: "project" }) })).filter(node => node.type === StatCard).map(node => node.props)
+    expect(projectCards).toContainEqual(expect.objectContaining({ label: "Cost incl. labour", value: formatTHB(expenses + 10_000) }))
+    expect(projectCards).toContainEqual(expect.objectContaining({ label: "Profit", value: formatTHB(1_000_000 - expenses - 10_000) }))
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it("shows labour cost and loss even before a project has invoices or expenses", async () => {
   state.client = databaseFixture({
     projects: [{ id: "project", org_id: "A", name: "Project", status: "in_progress" }],

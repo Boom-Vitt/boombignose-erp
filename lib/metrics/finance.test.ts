@@ -35,13 +35,25 @@ describe("revenueForMonth", () => {
 })
 
 describe("costsForMonth", () => {
+  it("deducts recoverable VAT and reverses credit VAT only for registered organizations", () => {
+    const costs = [
+      { category: "software", amount_satang: 107_000, input_vat_satang: 7_000, incurred_on: "2026-06-05" },
+      { category: "software", amount_satang: -21_400, input_vat_satang: -1_400, incurred_on: "2026-06-25" },
+      { category: "inventory", amount_satang: 214_000, input_vat_satang: 14_000, incurred_on: "2026-06-05" },
+      { category: "software", amount_satang: 107_000, input_vat_satang: 7_000, incurred_on: "2026-07-01" },
+    ]
+    expect(costsForMonth(costs, "2026-06", undefined, true)).toBe(80_000)
+    expect(costsForMonth(costs, "2026-06", undefined, false)).toBe(85_600)
+    expect(costsForMonth(costs, "2026-06")).toBe(85_600)
+  })
+
   it("sums costs within the target month", () => {
     const costs: CostLike[] = [
-      { category: "software", amount_satang: 30_000, incurred_on: "2026-06-05" },
-      { category: "other", amount_satang: 20_000, incurred_on: "2026-06-25" },
-      { category: "other", amount_satang: 10_000, incurred_on: "2026-07-01" },
-      { category: "inventory", amount_satang: 100_000, incurred_on: "2026-06-05" },
-      { category: "inventory", amount_satang: -15_000, incurred_on: "2026-06-25" },
+      { category: "software", amount_satang: 30_000, input_vat_satang: 0, incurred_on: "2026-06-05" },
+      { category: "other", amount_satang: 20_000, input_vat_satang: 0, incurred_on: "2026-06-25" },
+      { category: "other", amount_satang: 10_000, input_vat_satang: 0, incurred_on: "2026-07-01" },
+      { category: "inventory", amount_satang: 100_000, input_vat_satang: 0, incurred_on: "2026-06-05" },
+      { category: "inventory", amount_satang: -15_000, input_vat_satang: 0, incurred_on: "2026-06-25" },
     ]
     expect(costsForMonth(costs, "2026-06")).toBe(50_000)
   })

@@ -10,9 +10,23 @@ describe("vendor invoice matching", () => {
     expect(billDueDate("2026-12-25", 14)).toBe("2027-01-08")
   })
   it("flags quantity, price and declared total variances above tolerance", () => {
-    expect(matchBill(po, [{ ...defaultBillLines(po)[0], quantity: 2, unit_cost_satang: 1300 }], { vatRate: 7, vat: 182, total: 2800, toleranceBps: 100 }).variances).toEqual(["Quantity: a", "Price: a", "Vendor total differs from matched lines"])
+    expect(matchBill(po, [{ ...defaultBillLines(po)[0], quantity: 2, unit_cost_satang: 1300 }], { vatRate: 7, vat: 182, total: 2782, toleranceBps: 100 }).variances).toEqual(["Quantity: a", "Price: a"])
     expect(matchBill(po, [{ ...defaultBillLines(po)[0], unit_cost_satang: 1235 }], { vatRate: 0, toleranceBps: 100 }).variances).toEqual([])
-    expect(matchBill(po, defaultBillLines(po), { vatRate: 7, vat: 129, toleranceBps: 100 }).variances).toEqual(["Input VAT differs from rate"])
+    expect(matchBill(po, defaultBillLines(po), { vatRate: 7, vat: 129, toleranceBps: 100 }).variances).toEqual([])
+  })
+  it("bounds VAT rounding and requires a coherent taxable base and total", () => {
+    const lines = defaultBillLines(po)
+    expect(matchBill(po, lines, { vatRate: 7, vat: 133, toleranceBps: 100 }).vat).toBe(133)
+    for (const options of [{ vatRate: 7, vat: 134 }, { vatRate: 0, vat: 1 }, { vatRate: 7, vat: 1851 }, { vatRate: 7, total: 2000 }]) {
+      expect(() => matchBill(po, lines, { toleranceBps: 100, ...options })).toThrow()
+    }
+  })
+  it("compares UUID identities and requires the exact eligible line set", () => {
+    const id = "a6000000-0000-0000-0000-000000000001"
+    const items = [{ ...po[0], id }, { ...po[0], id: "b6000000-0000-0000-0000-000000000002" }]
+    const first = defaultBillLines(items)[0]
+    expect(() => matchBill(items, [first, { ...first, id: id.toUpperCase() }], { vatRate: 0, toleranceBps: 0 })).toThrow()
+    expect(matchBill(items, defaultBillLines(items).map(line => ({ ...line, id: line.id.toUpperCase() })), { vatRate: 0, toleranceBps: 0 }).subtotal).toBe(3702)
   })
   it("handles a free PO line without dividing by zero", () => {
     const free = [{ ...po[0], unit_cost_satang: 0 }]
