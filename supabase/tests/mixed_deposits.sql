@@ -1,0 +1,37 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select no_plan();
+create function pg_temp.did(n integer) returns uuid language sql immutable as $$select ('cd000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid$$;
+insert into auth.users(id,email) values(pg_temp.did(1),'deposit-owner@example.invalid');
+insert into public.organizations(id,name,slug) values(pg_temp.did(10),'Mixed deposits','mixed-deposit-tests');
+insert into public.memberships(org_id,user_id,role) values(pg_temp.did(10),pg_temp.did(1),'owner');
+insert into public.clients(id,org_id,name) values(pg_temp.did(20),pg_temp.did(10),'Buyer');
+select set_config('request.jwt.claims',jsonb_build_object('role','authenticated','sub',pg_temp.did(1))::text,true);
+set local role authenticated;
+select public.update_tax_business_profile(pg_temp.did(10),'Seller','Address','1234567890123',true,700,false,'Head office');
+insert into public.quotes(id,org_id,client_id,number) values(pg_temp.did(30),pg_temp.did(10),pg_temp.did(20),'MIXED-DEPOSIT');
+insert into public.quote_items(id,org_id,quote_id,description,quantity,unit_price_satang,tax_rate_bps) values
+(pg_temp.did(40),pg_temp.did(10),pg_temp.did(30),'Exempt',2,5000,0),(pg_temp.did(41),pg_temp.did(10),pg_temp.did(30),'Taxed',2,5000,700);
+update public.quotes set status='sent' where id=pg_temp.did(30);
+update public.quotes set status='accepted' where id=pg_temp.did(30);
+select lives_ok($$select public.convert_accepted_quote(pg_temp.did(10),pg_temp.did(30),pg_temp.did(50),null,10000,null)$$,'Mixed-rate quote accepts a deposit');
+select is((select count(distinct l.tax_rate_bps) from public.invoice_items l join public.invoices i on i.id=l.invoice_id where i.source_quote_id=pg_temp.did(30)),2::bigint,'Deposit retains both VAT buckets');
+select is((select sum(l.amount_satang)::bigint from public.invoice_items l join public.invoices i on i.id=l.invoice_id where i.source_quote_id=pg_temp.did(30)),10000::bigint,'Deposit bucket amounts conserve entered deposit');
+
+select public.issue_invoice(org_id,id,version,pg_temp.did(51)) from public.invoices where source_quote_id=pg_temp.did(30) and quote_invoice_kind='deposit';
+select public.submit_internal_payment_claim(pg_temp.did(10),(select id from public.invoices where source_quote_id=pg_temp.did(30) and quote_invoice_kind='deposit'),10350,'Deposit transfer',pg_temp.did(52));
+select public.review_payment_claim_with_evidence(pg_temp.did(10),(select id from public.payment_claims where org_id=pg_temp.did(10)),10350,'Deposit bank evidence',pg_temp.did(53),'verified',current_date,'transfer');
+select lives_ok($$select public.convert_accepted_quote(pg_temp.did(10),pg_temp.did(30),pg_temp.did(54),'[{"quote_item_id":"cd000000-0000-4000-8000-000000000040","quantity":1}]',null,null)$$,'Partial line invoice respects per-rate deposit reserve');
+select throws_ok($$select public.convert_accepted_quote(pg_temp.did(10),pg_temp.did(30),pg_temp.did(55),'[{"quote_item_id":"cd000000-0000-4000-8000-000000000040","quantity":0.1}]',null,null)$$,'P0001','Partial invoice exceeds rate value reserved by deposits','Cannot consume deposit reservation from another rate');
+select lives_ok($$select public.convert_accepted_quote(pg_temp.did(10),pg_temp.did(30),pg_temp.did(56),null,null,null)$$,'Final remaining quantities invoice creates');
+select is((select discount_satang from public.invoices where id=(select converted_invoice_id from public.quotes where id=pg_temp.did(30))),0::bigint,'Mixed deposit is credited per original bucket rather than global discount');
+select lives_ok($$select public.issue_invoice(org_id,id,version,pg_temp.did(57)) from public.invoices where id=(select converted_invoice_id from public.quotes where id=pg_temp.did(30))$$,'Issuing final invoice credits deposit and transfers released cash atomically');
+select is((select count(*) from public.credit_notes where org_id=pg_temp.did(10)),1::bigint,'Deposit has one immutable credit note');
+select is((select (snapshot->'document'->>'vatSatang')::bigint from public.credit_notes where org_id=pg_temp.did(10)),350::bigint,'Credit note reverses the original deposit VAT bucket');
+select is((select paid_satang from public.invoice_balances where invoice_id=(select converted_invoice_id from public.quotes where id=pg_temp.did(30))),10350::bigint,'Existing deposit cash is applied to final invoice');
+select is((select outstanding_satang from public.invoice_balances where invoice_id=(select converted_invoice_id from public.quotes where id=pg_temp.did(30))),5350::bigint,'Final remaining amount uses correct tax buckets');
+select is((select sum(amount_satang)::bigint from public.payments where org_id=pg_temp.did(10)),10350::bigint,'Deposit transfer creates no additional cash');
+select lives_ok($$select public.issue_invoice(org_id,id,(select source_version from public.invoice_snapshots where id=invoices.issued_snapshot_id),pg_temp.did(57)) from public.invoices where id=(select converted_invoice_id from public.quotes where id=pg_temp.did(30))$$,'Final issue retry does not duplicate credit');
+select is((select count(*) from public.credit_notes where org_id=pg_temp.did(10)),1::bigint,'Exactly one deposit reversal after retry');
+select * from finish();
+rollback;
