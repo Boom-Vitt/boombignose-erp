@@ -26,7 +26,7 @@ export function applyReceipt(lines: PurchaseLine[], receipt: ReceiptLine[], tole
     if (target.previous_received_quantity !== line.received_quantity) throw new Error("Receipt changed, reload")
     const quantity = target.received_quantity
     if (quantity !== 0) serviceLineAmount(quantity, 0)
-    if (!Number.isFinite(quantity) || quantity < line.received_quantity || BigInt(Math.round(quantity * 1000)) * BigInt(10000) > BigInt(Math.round(line.quantity * 1000)) * tolerance) {
+    if (!Number.isFinite(quantity) || quantity < line.received_quantity || (quantity > line.received_quantity && BigInt(Math.round(quantity * 1000)) * BigInt(10000) > BigInt(Math.round(line.quantity * 1000)) * tolerance)) {
       throw new Error("Received total must be between the previous receipt and the allowed receipt quantity")
     }
     targets.set(target.id, quantity)

@@ -1,5 +1,6 @@
 import { requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
+import { readReplenishmentPlan } from "@/lib/inventory/replenishment"
 import { todayISO } from "@/lib/dates"
 import { can } from "@/lib/permissions"
 import { inventoryData } from "@/lib/inventory/queries"
@@ -15,8 +16,7 @@ export default async function ReplenishPage() {
   const manage = can(ctx.role, "inventory:manage")
   const { products, vendors } = await inventoryData()
   const db = await createClient()
-  const { data: preview, error } = await db.rpc("replenishment_plan", { p_org_id: ctx.orgId, p_date: todayISO() })
-  if (error || !preview) throw new Error("Replenishment preview unavailable")
+  const preview = await readReplenishmentPlan(db, ctx.orgId, todayISO())
   const active = products.filter(p => p.active)
   const groups = replenishmentGroups(active)
   return <div className="space-y-6"><PageHeader title="Replenishment" description="Forecast stock includes on hand and the remaining quantities on open purchase orders." />

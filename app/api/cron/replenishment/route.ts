@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { verifyWebhookSecret } from "@/lib/webhooks/verify"
 import { readAllOrThrow } from "@/lib/supabase/read-all"
+import { readReplenishmentPlan } from "@/lib/inventory/replenishment"
 import { todayISO } from "@/lib/dates"
 
 export const dynamic = "force-dynamic"
@@ -17,8 +18,9 @@ export async function POST(request: Request) {
     let failed = 0
     const preview = []
     for (const setting of settings) {
-      const { data: plan, error } = await db.rpc("replenishment_plan", { p_org_id: setting.org_id, p_date: todayISO() })
-      if (error || !plan) { failed++; continue }
+      let plan
+      try { plan = await readReplenishmentPlan(db, setting.org_id, todayISO()) }
+      catch { failed++; continue }
       if (dryRun) { preview.push({ orgId: setting.org_id, lines: plan }); continue }
       for (const vendorId of new Set(plan.map(line => line.vendor_id))) {
         const { error: createError } = await db.rpc("create_replenishment_rfq", { p_org_id: setting.org_id, p_vendor_id: vendorId })

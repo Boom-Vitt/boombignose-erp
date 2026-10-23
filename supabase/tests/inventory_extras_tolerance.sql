@@ -42,5 +42,7 @@ select is((select count(*)::int from public.stock_documents),0,'refused over-rec
 select lives_ok($$select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","previous_received_quantity":0,"received_quantity":6.6}]')$$,'exact tolerance boundary accepted');
 select is((select received_quantity from public.purchase_order_items where id='b8100000-0000-4000-8000-000000000060'),6.6::numeric,'over-received total retained');
 select is((select quantity from public.stock_on_hand where org_id='b8100000-0000-4000-8000-000000000010'),6.6::numeric,'over-receipt updates stock');
+update public.org_settings set over_receipt_tolerance_percent=0 where org_id='b8100000-0000-4000-8000-000000000010';
+select lives_ok($$select public.receive_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.po')::uuid,'[{"id":"b8100000-0000-4000-8000-000000000060","previous_received_quantity":6.6,"received_quantity":6.6}]')$$,'tightened policy acknowledges unchanged historical over-receipt');
 select throws_ok($$update public.org_settings set over_receipt_tolerance_percent=101 where org_id='b8100000-0000-4000-8000-000000000010'$$,'23514',null,'unbounded tolerance refused');
 select * from finish();rollback;

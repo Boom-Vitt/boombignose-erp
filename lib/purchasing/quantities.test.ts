@@ -76,3 +76,9 @@ it("accepts only over-receipts within the configured percentage without rounding
   expect(() => applyReceipt(lines, [{ id: "a", received_quantity: 2.751, previous_received_quantity: 0 }], 10)).toThrow()
   expect(() => applyReceipt([{ ...lines[0], quantity: 0.001 }], [{ id: "a", received_quantity: 0.002, previous_received_quantity: 0 }], 10)).toThrow()
 })
+
+it("preserves an unchanged over-receipt after tolerance is tightened", () => {
+  const received = [{ ...lines[0], received_quantity: 2.75 }]
+  expect(applyReceipt(received, [{ id: "a", received_quantity: 2.75, previous_received_quantity: 2.75 }], 0)[0].received_quantity).toBe(2.75)
+  expect(() => applyReceipt(received, [{ id: "a", received_quantity: 2.751, previous_received_quantity: 2.75 }], 0)).toThrow()
+})

@@ -1,0 +1,127 @@
+import { test, expect } from "@playwright/test"
+import { createClient } from "@supabase/supabase-js"
+import type { Database } from "@/lib/types/database"
+import { todayISO } from "@/lib/dates"
+import { loginDemo } from "./auth"
+
+const org = "a0000000-0000-0000-0000-000000000001"
+async function owner() {
+  const db = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } })
+  expect((await db.auth.signInWithPassword({ email: "demo@boombignose.org", password: "BoomDemo123!" })).error).toBeNull()
+  return db
+}
+
+test("approval, over-receipts, dated GRN/DO documents and warehouse transfer", async ({ page }) => {
+  const db = await owner()
+  const suffix = crypto.randomUUID().slice(0, 8)
+  const policy = await db.from("org_settings").select("over_receipt_tolerance_percent,purchase_approval_threshold_satang,scheduled_replenishment_enabled").eq("org_id", org).single()
+  expect(policy.error).toBeNull()
+  try {
+    expect((await db.from("org_settings").update({ over_receipt_tolerance_percent: 10, purchase_approval_threshold_satang: 100 }).eq("org_id", org)).error).toBeNull()
+    const product = await db.from("products").insert({ org_id: org, name: `Extras ${suffix}`, type: "goods", is_stockable: true, unit: "piece", cost_satang: 100 }).select("id,name").single()
+    expect(product.error).toBeNull()
+    const productId = product.data!.id
+    const warehouse = await db.from("warehouses").select("id").eq("org_id", org).eq("is_default", true).single()
+    expect(warehouse.error).toBeNull()
+    const destination = await db.rpc("save_warehouse", { p_org_id: org, p_id: null, p_code: `EX-${suffix}`, p_name: `Extras ${suffix}`, p_address: null, p_default: false, p_active: true })
+    expect(destination.error).toBeNull()
+    const po = await db.rpc("create_purchase_order", { p_org_id: org, p_vendor_id: "a6000000-0000-4000-8000-000000000001", p_order_date: todayISO() })
+    expect(po.error).toBeNull()
+    const lineId = crypto.randomUUID()
+    const extraLineId = crypto.randomUUID()
+    expect((await db.from("purchase_order_items").insert([
+      { id: lineId, org_id: org, purchase_order_id: po.data!, product_id: productId, description: product.data!.name, quantity: 6, unit: "piece", unit_cost_satang: 100 },
+      { id: extraLineId, org_id: org, purchase_order_id: po.data!, description: `Second line ${suffix}`, quantity: 2, unit: "piece", unit_cost_satang: 0 },
+    ])).error).toBeNull()
+    await loginDemo(page)
+    await page.goto(`/purchases/${po.data}`)
+    await page.getByRole("button", { name: "Confirm", exact: true }).click()
+    await expect(page.getByText("Owner/admin approval required for current purchase content", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Approve purchase order", exact: true }).click()
+    await expect(page.getByText(/^Last approved /)).toBeVisible()
+    await page.getByRole("button", { name: "Confirm", exact: true }).click()
+    await page.getByLabel(`Received total for ${product.data!.name}`, { exact: true }).fill("6.6")
+    await page.getByLabel(`Received total for Second line ${suffix}`, { exact: true }).fill("0")
+    await page.getByLabel("Receipt date", { exact: true }).fill("2026-10-21")
+    await page.getByRole("button", { name: "Record receipt", exact: true }).click()
+    await expect(page.getByRole("link", { name: "Receipts 1", exact: true })).toBeVisible()
+    expect((await db.from("org_settings").update({ over_receipt_tolerance_percent: 0 }).eq("org_id", org)).error).toBeNull()
+    await page.reload()
+    await expect(page.getByLabel(`Received total for ${product.data!.name}`, { exact: true })).toHaveValue("6.6")
+    await page.getByLabel(`Received total for Second line ${suffix}`, { exact: true }).fill("2")
+    await page.getByRole("button", { name: "Record receipt", exact: true }).click()
+    await expect(page.getByRole("link", { name: "Receive", exact: true })).toHaveCount(0)
+    const grn = await db.from("stock_documents").select("id,number,document_date").eq("org_id", org).eq("purchase_order_id", po.data!).eq("document_date", "2026-10-21").single()
+    expect(grn.error).toBeNull()
+    expect(grn.data!.number).toMatch(/^GRN-2026-\d{6}$/)
+    const printed = await page.request.get(`/inventory/documents/${grn.data!.id}/print`)
+    expect(printed.ok()).toBe(true)
+    expect(await printed.text()).toContain(grn.data!.number)
+
+    expect((await db.rpc("update_business_profile", { p_org_id: org, p_legal_name: "Synthetic seller", p_business_address: "Synthetic address", p_tax_id: "", p_tax_status: "unknown" })).error).toBeNull()
+    const invoice = await db.from("invoices").insert({ org_id: org, client_id: "c0000000-0000-0000-0000-000000000001", number: `EXTRA-${suffix}` }).select("id").single()
+    expect(invoice.error).toBeNull()
+    expect((await db.from("invoice_items").insert({ org_id: org, invoice_id: invoice.data!.id, product_id: productId, description: product.data!.name, quantity: 1, unit: "piece", unit_price_satang: 200 })).error).toBeNull()
+    const version = await db.from("invoices").select("version").eq("id", invoice.data!.id).single()
+    expect((await db.rpc("issue_invoice", { p_org_id: org, p_invoice_id: invoice.data!.id, p_expected_version: version.data!.version, p_key: crypto.randomUUID() })).error).toBeNull()
+    await page.goto(`/finance/invoices/${invoice.data!.id}`)
+    await page.getByLabel(`Delivered total for ${product.data!.name}`, { exact: true }).fill("1")
+    await page.getByLabel("Delivery date", { exact: true }).fill("2026-10-22")
+    await page.getByRole("button", { name: "Record delivery", exact: true }).click()
+    await expect(page.getByRole("link", { name: "Deliveries 1", exact: true })).toBeVisible()
+    const delivery = await db.from("stock_documents").select("id,number").eq("org_id", org).eq("invoice_id", invoice.data!.id).single()
+    expect(delivery.data!.number).toMatch(/^DO-2026-\d{6}$/)
+    expect(await (await page.request.get(`/inventory/documents/${delivery.data!.id}/print`)).text()).toContain("2026-10-22")
+    await page.goto("/inventory/transfer")
+    await page.getByLabel("Product", { exact: true }).selectOption(productId)
+    await page.getByLabel("From warehouse", { exact: true }).selectOption(warehouse.data!.id)
+    await page.getByLabel("To warehouse", { exact: true }).selectOption(destination.data!)
+    await page.getByLabel("Quantity", { exact: true }).fill("0.5")
+    await page.getByLabel("Reason", { exact: true }).fill(`Relocate ${suffix}`)
+    await page.getByRole("button", { name: "Transfer stock", exact: true }).click()
+    await expect(page.getByText("Stock transferred.", { exact: true })).toBeVisible()
+    await page.goto(`/inventory?product=${productId}&warehouse=${destination.data}`)
+    await expect(page.getByTestId(`on-hand-${productId}`)).toHaveText("0.5 piece")
+  } finally {
+    expect((await db.from("org_settings").update(policy.data!).eq("org_id", org)).error).toBeNull()
+  }
+})
+
+test("failed RFQ reopens for edited content and lead-time replenishment previews before creating a draft", async ({ page }) => {
+  const db = await owner()
+  const suffix = crypto.randomUUID().slice(0, 8)
+  const vendor = await db.from("vendors").insert({ org_id: org, name: `Extras vendor ${suffix}`, email: "synthetic@example.invalid" }).select("id").single()
+  expect(vendor.error).toBeNull()
+  const po = await db.rpc("create_purchase_order", { p_org_id: org, p_vendor_id: vendor.data!.id, p_order_date: todayISO() })
+  expect(po.error).toBeNull()
+  expect((await db.from("purchase_order_items").insert({ org_id: org, purchase_order_id: po.data!, description: "RFQ retry fixture", quantity: 1, unit_cost_satang: 100 })).error).toBeNull()
+  const first = await db.rpc("claim_purchase_rfq", { p_org_id: org, p_order_id: po.data! })
+  expect(first.error).toBeNull()
+  const key = (first.data as { delivery_key: string }).delivery_key
+  expect((await db.rpc("finish_purchase_rfq", { p_org_id: org, p_order_id: po.data!, p_delivery_key: key, p_error: "Synthetic provider rejection" })).error).toBeNull()
+  await loginDemo(page)
+  await page.goto(`/purchases/${po.data}`)
+  await page.getByRole("button", { name: "Verified not delivered: reopen RFQ for editing", exact: true }).click()
+  await page.getByLabel("Notes", { exact: true }).fill(`Corrected RFQ ${suffix}`)
+  await page.getByRole("button", { name: "Save RFQ details", exact: true }).click()
+  await expect(page.locator("dd").filter({ hasText: `Corrected RFQ ${suffix}` })).toBeVisible()
+  const second = await db.rpc("claim_purchase_rfq", { p_org_id: org, p_order_id: po.data! })
+  expect(second.error).toBeNull()
+  const claim = second.data as { delivery_key: string; snapshot: { notes: string } }
+  expect(claim.delivery_key).not.toBe(key)
+  expect(claim.snapshot.notes).toBe(`Corrected RFQ ${suffix}`)
+  const product = await db.from("products").insert({ org_id: org, name: `Lead goods ${suffix}`, type: "goods", is_stockable: true, cost_satang: 100 }).select("id,name").single()
+  expect(product.error).toBeNull()
+  expect((await db.rpc("save_reorder_rule", { p_org_id: org, p_product_id: product.data!.id, p_vendor_id: vendor.data!.id, p_min: 5, p_quantity: 10, p_lead_days: 7 })).error).toBeNull()
+  await page.goto("/inventory/replenish")
+  const preview = page.getByRole("region", { name: "Replenishment dry-run preview", exact: true })
+  await expect(preview).toContainText(product.data!.name)
+  await expect(preview).toContainText("Lead 7 days")
+  const section = page.locator("section").filter({ has: page.getByRole("heading", { name: `Extras vendor ${suffix}`, exact: true }) })
+  await section.getByRole("button", { name: "Create RFQ", exact: true }).click()
+  await expect(page.getByRole("heading", { name: /^PO-/ })).toBeVisible()
+  const order = await db.from("purchase_orders").select("expected_date,status").eq("org_id", org).eq("id", new URL(page.url()).pathname.split("/").pop()!).single()
+  const expected = new Date(`${todayISO()}T00:00:00Z`); expected.setUTCDate(expected.getUTCDate() + 7)
+  expect(order.data).toMatchObject({ expected_date: expected.toISOString().slice(0, 10), status: "draft" })
+  expect((await page.request.post("/api/cron/replenishment?dry_run=false", { headers: { "X-Cron-Secret": "wrong" } })).status()).toBe(401)
+})

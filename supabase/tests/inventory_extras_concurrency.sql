@@ -8,8 +8,9 @@ insert into public.products(id,org_id,name,type,is_stockable) values('be500000-0
 insert into public.warehouses(id,org_id,code,name) values('be500000-0000-4000-8000-000000000040','be500000-0000-4000-8000-000000000010','CON-A','Concurrent A'),('be500000-0000-4000-8000-000000000041','be500000-0000-4000-8000-000000000010','CON-B','Concurrent B');
 commit;
 select no_plan();
-select dblink_connect('stock_a','host=host.docker.internal port='||coalesce(nullif(current_setting('test.inventory_dblink_port',true),''),'56102')||' dbname=postgres user=postgres password=postgres');
-select dblink_connect('stock_b','host=host.docker.internal port='||coalesce(nullif(current_setting('test.inventory_dblink_port',true),''),'56102')||' dbname=postgres user=postgres password=postgres');
+select dblink_connect('stock_a',format('hostaddr=%s port=%s dbname=%L user=postgres password=postgres',host(inet_server_addr()),inet_server_port(),current_database()));
+select dblink_connect('stock_b',format('hostaddr=%s port=%s dbname=%L user=postgres password=postgres',host(inet_server_addr()),inet_server_port(),current_database()));
+select is((select identity from dblink('stock_a','select inet_server_addr()::text||'':''||inet_server_port()||'':''||current_database()') as t(identity text)),inet_server_addr()::text||':'||inet_server_port()||':'||current_database(),'concurrency connection is this database server');
 select dblink_exec('stock_a','begin');
 select dblink_exec('stock_b','begin');
 select dblink_exec('stock_a',$$insert into public.stock_moves(org_id,product_id,warehouse_id,kind,quantity,unit_cost_satang,source_type,source_id,balance_after,average_cost_after) values('be500000-0000-4000-8000-000000000010','be500000-0000-4000-8000-000000000030','be500000-0000-4000-8000-000000000040','receipt',1,100,'adjustment',gen_random_uuid(),0,0)$$);
