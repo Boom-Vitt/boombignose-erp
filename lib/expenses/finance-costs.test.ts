@@ -16,7 +16,7 @@ vi.mock("@/app/(app)/finance/_components/delete-cost-button", () => ({ DeleteCos
 
 import FinancePage from "@/app/(app)/finance/page"
 
-const expenseCost: Tables<"costs"> = { purchase_cost_kind: null, id: "cost", org_id: "org", vendor_id: null, purchase_order_id: null, expense_claim_id: "claim-1", bill_number: "EXP-0001", bill_date: null, due_date: null, paid_at: null, amount_satang: 12345, category: "other", incurred_on: "2026-10-23", vendor: "Employee expense", project_id: null, notes: "Expense claim EXP-0001", created_at: "2026-10-23T03:00:00Z", updated_at: "2026-10-23T03:00:00Z" }
+const expenseCost: Tables<"costs"> = { vendor_bill_match_id: null, vendor_invoice_reference: null, input_vat_rate: 0, input_vat_satang: 0, purchase_cost_kind: null, id: "cost", org_id: "org", vendor_id: null, purchase_order_id: null, expense_claim_id: "claim-1", bill_number: "EXP-0001", bill_date: null, due_date: null, paid_at: null, amount_satang: 12345, category: "other", incurred_on: "2026-10-23", vendor: "Employee expense", project_id: null, notes: "Expense claim EXP-0001", created_at: "2026-10-23T03:00:00Z", updated_at: "2026-10-23T03:00:00Z" }
 
 const renderCosts = async (costs: Tables<"costs">[]) => {
   state.costs = costs

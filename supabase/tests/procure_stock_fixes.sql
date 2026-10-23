@@ -1,6 +1,13 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 select no_plan();
+
+create function pg_temp.bill_purchase_order(p_org_id uuid,p_order_id uuid) returns uuid language sql as $$
+select public.bill_purchase_order(p_org_id,p_order_id,jsonb_build_object(
+  'vendor_reference',p_order_id::text||'-'||(select count(*)+1 from public.costs where org_id=p_org_id and purchase_order_id=p_order_id),
+  'bill_date','2026-10-26','input_vat_rate',0,'input_vat_satang',0,
+  'vendor_total_satang',(select coalesce(sum(round((received_quantity-returned_quantity)*unit_cost_satang)-round(billed_quantity*unit_cost_satang)),0) from public.purchase_order_items where org_id=p_org_id and purchase_order_id=p_order_id and received_quantity-returned_quantity>billed_quantity)));
+$$;
 insert into auth.users(id,email,email_confirmed_at) values
  ('b8450000-0000-4000-8000-000000000001','stock-fix-owner@example.invalid',now()),
  ('b8450000-0000-4000-8000-000000000002','stock-fix-member@example.invalid',now()),
@@ -73,7 +80,7 @@ select set_config('test.fix_po',public.create_purchase_order('b8450000-0000-4000
 insert into public.purchase_order_items(id,org_id,purchase_order_id,product_id,description,quantity,unit,unit_cost_satang) values('b8450000-0000-4000-8000-000000000070','b8450000-0000-4000-8000-000000000010',current_setting('test.fix_po')::uuid,'b8450000-0000-4000-8000-000000000032','Vendor fractional goods',1,'piece',1);
 select public.transition_purchase_order('b8450000-0000-4000-8000-000000000010',current_setting('test.fix_po')::uuid,'confirmed');
 select public.receive_purchase_order('b8450000-0000-4000-8000-000000000010',current_setting('test.fix_po')::uuid,'[{"id":"b8450000-0000-4000-8000-000000000070","previous_received_quantity":0,"received_quantity":1}]');
-select public.bill_purchase_order('b8450000-0000-4000-8000-000000000010',current_setting('test.fix_po')::uuid);
+select pg_temp.bill_purchase_order('b8450000-0000-4000-8000-000000000010',current_setting('test.fix_po')::uuid);
 select public.return_purchase_order('b8450000-0000-4000-8000-000000000010',current_setting('test.fix_po')::uuid,'[{"id":"b8450000-0000-4000-8000-000000000070","returned_quantity":0.5}]');
 select is((select sum(amount_satang) from public.costs where purchase_order_id=current_setting('test.fix_po')::uuid and purchase_cost_kind='credit'),0::numeric,'first half vendor return creates zero rounded credit');
 select is((select coalesce(sum(amount_satang),0) from public.costs where purchase_order_id=current_setting('test.fix_po')::uuid and purchase_cost_kind='return_adjustment'),0::numeric,'zero-credit zero-stock-value half return creates no phantom adjustment');

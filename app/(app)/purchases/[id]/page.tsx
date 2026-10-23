@@ -14,18 +14,19 @@ import { SmartButtons } from "@/components/record/smart-buttons"
 import { RecordHistory } from "@/components/record/record-history"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { transitionPurchase, createPurchaseBill, removePurchaseLine } from "../actions"
+import { transitionPurchase, removePurchaseLine } from "../actions"
 import { sendPurchaseRFQ } from "../email-actions"
 import { PurchaseAction } from "../_components/action-button"
 import { PurchaseLineForm } from "../_components/line-form"
 import { ReceiptForm, PurchaseReturnForm } from "../_components/receipt-form"
+import { BillForm } from "../_components/bill-form"
 import { VendorBills } from "../_components/bills"
 
 export const dynamic = "force-dynamic"
 export default async function PurchasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const ctx = await requireOrgContext()
-  const [{ order, lines, bills }, { warehouses }, receiptCount] = await Promise.all([purchaseDetail(id), inventoryData(), stockMoveCount({ sourceId: id })])
+  const [{ order, lines, bills, matches, toleranceBps }, { warehouses }, receiptCount] = await Promise.all([purchaseDetail(id), inventoryData(), stockMoveCount({ sourceId: id })])
   const manage = can(ctx.role, "purchase:manage")
   const editable = manage && order.status === "draft"
   const products = editable ? (await purchaseOptions()).products : []
@@ -41,7 +42,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
     <StatusBar label="Purchase status" flow={flow} status={order.status} transition={manage ? transitionPurchase.bind(null, id) : undefined} commands={manage ? {
       send_rfq: ({ label, variant }) => <PurchaseAction action={sendPurchaseRFQ.bind(null, id)} label={label} variant={variant} />,
       receive: "#receive",
-      ...(billable ? { bill: ({ label, variant }: { label: string; variant: "default" | "outline" }) => <PurchaseAction action={createPurchaseBill.bind(null, id)} label={label} variant={variant} /> } : {}),
+      ...(billable ? { bill: "#match-bill" } : {}),
     } : {}} />
     {order.rfq_delivery_key && <p role="status" className="rounded-lg border p-3 text-sm">{order.rfq_delivered_at ? "RFQ delivery accepted." : order.rfq_delivery_error ? `RFQ delivery failed: ${order.rfq_delivery_error}. This order is frozen; print the RFQ or verify delivery with an administrator.` : "RFQ delivery claimed. Verify its outcome before recovery; it will not be sent again automatically."}</p>}
     <SmartButtons buttons={[
@@ -59,6 +60,8 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
     {manage && can(ctx.role, "inventory:manage") && hasReceipts && <PurchaseReturnForm orderId={id} lines={lines.filter(line => line.received_quantity > 0)} warehouses={warehouses.filter(w => w.active)} />}
     {order.status === "closed" && <p className="text-sm">The remaining quantities are closed. Received quantities can still be billed or returned.</p>}
     {unbilled > 0 && <p className="text-sm">Received and not yet billed: {formatTHB(unbilled)}</p>}
+    {manage && billable && ["confirmed", "received", "closed", "billed"].includes(order.status) && <BillForm key={lines.map(line => `${line.id}:${line.received_quantity}:${line.returned_quantity}:${line.billed_quantity}`).join(",")} orderId={id} lines={lines} terms={order.vendors?.payment_terms_days ?? 30} toleranceBps={toleranceBps} />}
+    {matches.filter(match => match.variance_reason).map(match => <p key={match.id} className="rounded-lg border p-3 text-sm">{match.vendor_reference} · Accepted variance · {match.variance_reason}</p>)}
     <VendorBills bills={bills} canManage={manage} />
     <RecordHistory recordType="purchase_order" recordId={id} />
   </div>

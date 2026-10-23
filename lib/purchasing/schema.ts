@@ -47,3 +47,17 @@ export const RFQClaim = z.object({
     })).min(1),
   }),
 })
+
+const satangInput = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const BillFields = z.object({
+  vendor_reference: z.string().trim().min(1).max(200),
+  bill_date: z.iso.date(),
+  due_date: z.iso.date(),
+  input_vat_rate: z.number().min(0).max(100).refine(value => Math.abs(value * 100 - Math.round(value * 100)) < 0.00001),
+  input_vat_satang: satangInput,
+  vendor_total_satang: satangInput,
+  variance_reason: z.string().trim().max(2000),
+  lines: z.array(z.object({ id: z.guid(), quantity: serviceQuantityInput, expected_quantity: serviceQuantityInput, unit_cost_satang: satangInput })).min(1),
+})
+export const BillInput = BillFields.refine(value => value.due_date >= value.bill_date && value.vendor_total_satang >= value.input_vat_satang)
+export const CreditInput = BillFields.pick({ vendor_reference: true, bill_date: true, input_vat_rate: true, input_vat_satang: true, variance_reason: true }).extend({ original_bill_id: z.guid() })

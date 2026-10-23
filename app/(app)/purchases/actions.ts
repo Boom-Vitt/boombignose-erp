@@ -6,7 +6,7 @@ import { redirect } from "next/navigation"
 import { requireCapability, requireOrgContext } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { writeAudit } from "@/lib/audit"
-import { LineInput, PurchaseInput, ReceiptInput, ReturnInput } from "@/lib/purchasing/schema"
+import { BillInput, CreditInput, LineInput, PurchaseInput, ReceiptInput, ReturnInput } from "@/lib/purchasing/schema"
 import { receivePurchaseStock } from "@/lib/purchasing/receive"
 import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { applyReceipt, purchaseTotal } from "@/lib/purchasing/quantities"
@@ -19,6 +19,7 @@ function refresh(id: string) {
   revalidatePath("/vendors")
   revalidatePath("/finance")
   revalidatePath("/dashboard")
+  revalidatePath("/reports")
 }
 
 export async function createPurchase(input: unknown): Promise<{ error?: string }> {
@@ -109,12 +110,13 @@ export async function returnPurchase(id: string, input: unknown, warehouseId?: s
   return {}
 }
 
-export async function createPurchaseBill(id: string): Promise<{ error?: string }> {
+export async function createPurchaseBill(id: string, input: unknown): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   requireCapability(ctx, "purchase:manage")
-  if (!z.guid().safeParse(id).success) return { error: "Invalid purchase" }
+  const parsed = BillInput.safeParse(input)
+  if (!z.guid().safeParse(id).success || !parsed.success) return { error: "Invalid vendor bill details" }
   const db = await createClient()
-  const { error } = await db.rpc("bill_purchase_order", { p_org_id: ctx.orgId, p_order_id: id })
+  const { error } = await db.rpc("bill_purchase_order", { p_org_id: ctx.orgId, p_order_id: id, p_bill: parsed.data })
   if (error) return { error: error.message }
   refresh(id)
   return {}
@@ -132,5 +134,35 @@ export async function markBillPaid(id: string): Promise<{ error?: string }> {
     refresh(data.purchase_order_id ?? "")
     revalidatePath(`/vendors/${data.vendor_id}`)
   }
+  return {}
+}
+
+export async function linkVendorCredit(id: string, input: unknown): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "purchase:manage")
+  const parsed = CreditInput.safeParse(input)
+  if (!z.guid().safeParse(id).success || !parsed.success) return { error: "Invalid vendor credit details" }
+  const db = await createClient()
+  const { error } = await db.rpc("link_vendor_credit", { p_org_id: ctx.orgId, p_cost_id: id, p_bill: parsed.data })
+  if (error) return { error: error.message }
+  revalidatePath("/purchases", "layout")
+  revalidatePath("/vendors", "layout")
+  revalidatePath("/finance")
+  revalidatePath("/reports")
+  revalidatePath("/dashboard")
+  return {}
+}
+
+export async function updateBillTolerance(input: unknown): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "settings:manage")
+  const parsed = z.number().int().min(0).max(10000).safeParse(input)
+  if (!parsed.success) return { error: "Tolerance must be between 0 and 100 percent" }
+  const db = await createClient()
+  const { error } = await db.from("org_settings").upsert({ org_id: ctx.orgId, bill_variance_tolerance_bps: parsed.data }, { onConflict: "org_id" })
+  if (error) return { error: error.message }
+  await writeAudit(ctx, { entity: "organization", entityId: ctx.orgId, action: "bill_tolerance_updated", summary: "Updated vendor bill matching tolerance", meta: { tolerance_bps: parsed.data } })
+  revalidatePath("/settings/finance")
+  revalidatePath("/purchases", "layout")
   return {}
 }

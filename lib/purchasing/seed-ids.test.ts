@@ -36,7 +36,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({
 }) }))
 
 import { redirect } from "next/navigation"
-import { createPurchaseBill, markBillPaid, receivePurchase, removePurchaseLine, transitionPurchase, returnPurchase } from "@/app/(app)/purchases/actions"
+import { createPurchaseBill, linkVendorCredit, markBillPaid, receivePurchase, removePurchaseLine, transitionPurchase, returnPurchase } from "@/app/(app)/purchases/actions"
 import { sendPurchaseRFQ } from "@/app/(app)/purchases/email-actions"
 import PurchasesPage from "@/app/(app)/purchases/page"
 import { saveVendor } from "@/app/(app)/vendors/actions"
@@ -77,8 +77,21 @@ describe("purchasing accepts demo seed ids", () => {
   })
 
   it("bills a seed-id purchase", async () => {
-    expect(await createPurchaseBill(orderId)).toEqual({})
-    expect(state.rpcs).toEqual([["bill_purchase_order", { p_org_id: state.orgId, p_order_id: orderId }]])
+    const bill = { vendor_reference: "SUP-001", bill_date: "2026-10-01", due_date: "2026-10-31", input_vat_rate: 7, input_vat_satang: 7, vendor_total_satang: 107, variance_reason: "", lines: [{ id: lineId, quantity: 1, expected_quantity: 1, unit_cost_satang: 100 }] }
+    expect(await createPurchaseBill(orderId, bill)).toEqual({})
+    expect(state.rpcs).toEqual([["bill_purchase_order", { p_org_id: state.orgId, p_order_id: orderId, p_bill: bill }]])
+  })
+
+  it("rejects missing invoice evidence before calling the database", async () => {
+    expect(await createPurchaseBill(orderId, {})).toEqual({ error: "Invalid vendor bill details" })
+    expect(state.rpcs).toEqual([])
+  })
+
+  it("links an existing credit with seed identifiers", async () => {
+    const credit = { vendor_reference: "CN-1", bill_date: "2026-10-01", original_bill_id: seedId(9), input_vat_rate: 7, input_vat_satang: 7, variance_reason: "" }
+    expect(await linkVendorCredit(seedId(6), credit)).toEqual({})
+    expect(state.rpcs).toEqual([["link_vendor_credit", { p_org_id: state.orgId, p_cost_id: seedId(6), p_bill: credit }]])
+    expect(await linkVendorCredit("bad", credit)).toEqual({ error: "Invalid vendor credit details" })
   })
 
   it("marks a seed-id bill paid", async () => {

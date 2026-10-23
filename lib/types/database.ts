@@ -280,19 +280,27 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"vendor_bill_matches": {
+                  Row: { id: string; org_id: string; vendor_id: string; purchase_order_id: string; vendor_reference: string; kind: "bill" | "credit"; bill_date: string; due_date: string; original_bill_id: string | null; lines: Json; variances: Json; variance_reason: string | null; tolerance_bps: number; created_at: string }
+                  Insert: never
+                  Update: never
+                  Relationships: []
                 },"costs": {
                   Row: {
+                    vendor_bill_match_id: string | null; vendor_invoice_reference: string | null; input_vat_rate: number; input_vat_satang: number;
                     purchase_cost_kind: "bill" | "credit" | "return_adjustment" | null,
                     vendor_id: string | null; purchase_order_id: string | null; expense_claim_id: string | null; bill_number: string | null; bill_date: string | null; due_date: string | null; paid_at: string | null;
                     "amount_satang": number,"category": Database["public"]['Enums']["cost_category"],"created_at": string,"id": string,"incurred_on": string,"notes": string | null,"org_id": string,"project_id": string | null,"updated_at": string,"vendor": string | null
                   }
                   ComputedFields: never
                   Insert: {
+                    vendor_bill_match_id?: string | null; vendor_invoice_reference?: string | null; input_vat_rate?: number; input_vat_satang?: number;
                     purchase_cost_kind?: "bill" | "credit" | "return_adjustment" | null,
                     vendor_id?: string | null; purchase_order_id?: string | null; expense_claim_id?: string | null; bill_number?: string | null; bill_date?: string | null; due_date?: string | null; paid_at?: string | null;
                     "amount_satang": number,"category"?: Database["public"]['Enums']["cost_category"],"created_at"?: string,"id"?: string,"incurred_on"?: string,"notes"?: string | null,"org_id": string,"project_id"?: string | null,"updated_at"?: string,"vendor"?: string | null
                   }
                   Update: {
+                    vendor_bill_match_id?: string | null; vendor_invoice_reference?: string | null; input_vat_rate?: number; input_vat_satang?: number;
                     purchase_cost_kind?: "bill" | "credit" | "return_adjustment" | null,
                     vendor_id?: string | null; purchase_order_id?: string | null; expense_claim_id?: string | null; bill_number?: string | null; bill_date?: string | null; due_date?: string | null; paid_at?: string | null;
                     "amount_satang"?: number,"category"?: Database["public"]['Enums']["cost_category"],"created_at"?: string,"id"?: string,"incurred_on"?: string,"notes"?: string | null,"org_id"?: string,"project_id"?: string | null,"updated_at"?: string,"vendor"?: string | null
@@ -438,20 +446,20 @@ isOneToOne: false
                   ]
                 },"invoice_items": {
                   Row: {
-"quote_item_id": string | null,"wht_rate_bps": number,
+"quote_item_id": string | null,bill_variance_tolerance_bps: number, "wht_rate_bps": number,
 
 "tax_rate_bps": number,
                     "amount_satang": number,"created_at": string,"description": string,"id": string,"invoice_id": string,"org_id": string,"position": number,"quantity": number,"unit_price_satang": number,"updated_at": string,"product_id": string | null,"unit": string | null
                   }
                   ComputedFields: never
                   Insert: {
-"quote_item_id"?: string | null,"wht_rate_bps"?: number,
+"quote_item_id"?: string | null,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,
 
 "tax_rate_bps"?: number,
                     "amount_satang"?: number,"created_at"?: string,"description": string,"id"?: string,"invoice_id": string,"org_id": string,"position"?: number,"quantity"?: number,"unit_price_satang"?: number,"updated_at"?: string,"product_id"?: string | null,"unit"?: string | null
                   }
                   Update: {
-"quote_item_id"?: string | null,"wht_rate_bps"?: number,
+"quote_item_id"?: string | null,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,
 
 "tax_rate_bps"?: number,
                     "amount_satang"?: number,"created_at"?: string,"description"?: string,"id"?: string,"invoice_id"?: string,"org_id"?: string,"position"?: number,"quantity"?: number,"unit_price_satang"?: number,"updated_at"?: string,"product_id"?: string | null,"unit"?: string | null
@@ -508,7 +516,7 @@ isOneToOne: true
 "source_subscription_id": string | null,
 "quote_invoice_kind": string,"quote_invoice_sealed": boolean,"quote_deposit_satang": number,"quote_deposit_deduction_satang": number,"quote_discount_satang": number,
 
-"prices_include_vat": boolean,"wht_rate_bps": number,"subtotal_satang": number,"vat_satang": number,"wht_satang": number,"total_satang": number,"tax_breakdown": Json,
+"prices_include_vat": boolean,bill_variance_tolerance_bps: number, "wht_rate_bps": number,"subtotal_satang": number,"vat_satang": number,"wht_satang": number,"total_satang": number,"tax_breakdown": Json,
                     "amount_satang": number,"client_id": string,"created_at": string,"discount_satang": number,"due_date": string | null,"id": string,"is_recurring": boolean,"issue_date": string,"issued_snapshot_id": string | null,"notes": string | null,"number": string,"org_id": string,"project_id": string | null,"recurring_interval": Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id": string | null,"source_quote_id": string | null,"status": Database["public"]['Enums']["invoice_status"],"updated_at": string,"version": number
                   }
                   ComputedFields: never
@@ -516,14 +524,14 @@ isOneToOne: true
 "source_subscription_id"?: string | null,
 "quote_invoice_kind"?: string,"quote_invoice_sealed"?: boolean,"quote_deposit_satang"?: number,"quote_deposit_deduction_satang"?: number,"quote_discount_satang"?: number,
 
-"prices_include_vat"?: boolean,"wht_rate_bps"?: number,"subtotal_satang"?: number,"vat_satang"?: number,"wht_satang"?: number,"total_satang"?: number,"tax_breakdown"?: Json,
+"prices_include_vat"?: boolean,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,"subtotal_satang"?: number,"vat_satang"?: number,"wht_satang"?: number,"total_satang"?: number,"tax_breakdown"?: Json,
                     "amount_satang"?: number,"client_id": string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"issued_snapshot_id"?: string | null,"notes"?: string | null,"number": string,"org_id": string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string,"version"?: number
                   }
                   Update: {
 "source_subscription_id"?: string | null,
 "quote_invoice_kind"?: string,"quote_invoice_sealed"?: boolean,"quote_deposit_satang"?: number,"quote_deposit_deduction_satang"?: number,"quote_discount_satang"?: number,
 
-"prices_include_vat"?: boolean,"wht_rate_bps"?: number,"subtotal_satang"?: number,"vat_satang"?: number,"wht_satang"?: number,"total_satang"?: number,"tax_breakdown"?: Json,
+"prices_include_vat"?: boolean,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,"subtotal_satang"?: number,"vat_satang"?: number,"wht_satang"?: number,"total_satang"?: number,"tax_breakdown"?: Json,
                     "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"issued_snapshot_id"?: string | null,"notes"?: string | null,"number"?: string,"org_id"?: string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string,"version"?: number
                   }
                   Relationships: [
@@ -619,20 +627,20 @@ isOneToOne: false
                   ]
                 },"org_settings": {
                   Row: {
-"wht_rate_bps": number,
+bill_variance_tolerance_bps: number, "wht_rate_bps": number,
 
 "lock_date": string | null,"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
                     "allow_negative_stock": boolean,"business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-"wht_rate_bps"?: number,
+bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
-"wht_rate_bps"?: number,
+bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id"?: string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
@@ -1111,18 +1119,18 @@ isOneToOne: false
                   ]
                 },"subscriptions": {
                   Row: {
-"tax_rate_bps": number,"wht_rate_bps": number,"prices_include_vat": boolean,"product_id": string | null,"unit": string | null,
+"tax_rate_bps": number,bill_variance_tolerance_bps: number, "wht_rate_bps": number,"prices_include_vat": boolean,"product_id": string | null,"unit": string | null,
 
                     "amount_satang": number,"auto_generate": boolean,"client_id": string,"created_at": string,"id": string,"interval": Database["public"]['Enums']["recurring_interval"],"last_generated_on": string | null,"name": string,"next_run_date": string,"notes": string | null,"org_id": string,"project_id": string | null,"start_date": string,"status": Database["public"]['Enums']["subscription_status"],"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-"tax_rate_bps"?: number,"wht_rate_bps"?: number,"prices_include_vat"?: boolean,"product_id"?: string | null,"unit"?: string | null,
+"tax_rate_bps"?: number,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,"prices_include_vat"?: boolean,"product_id"?: string | null,"unit"?: string | null,
 
                     "amount_satang"?: number,"auto_generate"?: boolean,"client_id": string,"created_at"?: string,"id"?: string,"interval"?: Database["public"]['Enums']["recurring_interval"],"last_generated_on"?: string | null,"name": string,"next_run_date"?: string,"notes"?: string | null,"org_id": string,"project_id"?: string | null,"start_date"?: string,"status"?: Database["public"]['Enums']["subscription_status"],"updated_at"?: string
                   }
                   Update: {
-"tax_rate_bps"?: number,"wht_rate_bps"?: number,"prices_include_vat"?: boolean,"product_id"?: string | null,"unit"?: string | null,
+"tax_rate_bps"?: number,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,"prices_include_vat"?: boolean,"product_id"?: string | null,"unit"?: string | null,
 
                     "amount_satang"?: number,"auto_generate"?: boolean,"client_id"?: string,"created_at"?: string,"id"?: string,"interval"?: Database["public"]['Enums']["recurring_interval"],"last_generated_on"?: string | null,"name"?: string,"next_run_date"?: string,"notes"?: string | null,"org_id"?: string,"project_id"?: string | null,"start_date"?: string,"status"?: Database["public"]['Enums']["subscription_status"],"updated_at"?: string
                   }
@@ -1287,6 +1295,10 @@ isOneToOne: false
               Row: { org_id: string; product_id: string; on_order: number; reserved_quantity: number }
               Relationships: []
             }
+            monthly_purchase_vat: {
+              Row: { org_id: string; month: string; base_satang: number; input_vat_satang: number; total_satang: number }
+              Relationships: []
+            }
             monthly_inventory_cogs: {
               Row: { org_id: string; month: string; amount_satang: number }
               Relationships: []
@@ -1405,7 +1417,8 @@ isOneToOne: false
             create_purchase_order: { Args: { p_org_id: string; p_vendor_id: string; p_order_date: string; p_expected_date?: string | null; p_notes?: string | null }; Returns: string }
             transition_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_status: Database["public"]["Enums"]["purchase_status"] }; Returns: undefined }
             receive_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_lines: Json; p_warehouse_id?: string }; Returns: undefined }
-            bill_purchase_order: { Args: { p_org_id: string; p_order_id: string }; Returns: string }
+            bill_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_bill: Json }; Returns: string }
+            link_vendor_credit: { Args: { p_org_id: string; p_cost_id: string; p_bill: Json }; Returns: string }
             create_expense_claim: { Args: { p_org_id: string; p_title: string }; Returns: string }
             transition_expense_claim: { Args: { p_org_id: string; p_claim_id: string; p_status: Database["public"]["Enums"]["expense_status"]; p_note?: string | null }; Returns: undefined }
             record_activity_assignees: { Args: { p_org_id: string }; Returns: { user_id: string; full_name: string | null }[] }
