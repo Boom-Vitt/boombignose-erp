@@ -631,6 +631,7 @@ isOneToOne: false
                   ]
                 },"org_settings": {
                   Row: {
+"over_receipt_tolerance_percent": number,
 "wht_rate_bps": number,
 
 "lock_date": string | null,"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
@@ -638,12 +639,14 @@ isOneToOne: false
                   }
                   ComputedFields: never
                   Insert: {
+"over_receipt_tolerance_percent"?: number,
 "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
+"over_receipt_tolerance_percent"?: number,
 "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,

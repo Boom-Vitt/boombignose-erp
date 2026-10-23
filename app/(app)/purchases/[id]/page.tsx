@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Receipt, Users, Package } from "lucide-react"
 import { requireOrgContext } from "@/lib/auth"
 import { inventoryData, stockMoveCount } from "@/lib/inventory/queries"
+import { createClient } from "@/lib/supabase/server"
 import { can } from "@/lib/permissions"
 import { purchaseDetail, purchaseOptions } from "@/lib/purchasing/queries"
 import { billAmount, hasUnbilledQuantities, purchaseTotal } from "@/lib/purchasing/quantities"
@@ -26,6 +27,9 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
   const { id } = await params
   const ctx = await requireOrgContext()
   const [{ order, lines, bills }, { warehouses }, receiptCount] = await Promise.all([purchaseDetail(id), inventoryData(), stockMoveCount({ sourceId: id })])
+  const db = await createClient()
+  const { data: policy, error: policyError } = await db.from("org_settings").select("over_receipt_tolerance_percent").eq("org_id", ctx.orgId).maybeSingle()
+  if (policyError) throw new Error("Purchase policy unavailable")
   const manage = can(ctx.role, "purchase:manage")
   const editable = manage && order.status === "draft"
   const products = editable ? (await purchaseOptions()).products : []
@@ -56,7 +60,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
     </Table>
     {!lines.length && <p className="text-sm text-muted-foreground">Add a line before sending or confirming this order.</p>}
     {editable && <PurchaseLineForm orderId={id} products={products} />}
-    {manage && receivable && <ReceiptForm orderId={id} lines={lines} warehouses={warehouses.filter(w => w.active)} />}
+    {manage && receivable && <ReceiptForm orderId={id} lines={lines} warehouses={warehouses.filter(w => w.active)} tolerancePercent={policy?.over_receipt_tolerance_percent ?? 0} />}
     {manage && can(ctx.role, "inventory:manage") && hasReceipts && <PurchaseReturnForm orderId={id} lines={lines.filter(line => line.received_quantity > 0)} warehouses={warehouses.filter(w => w.active)} />}
     {order.status === "closed" && <p className="text-sm">The remaining quantities are closed. Received quantities can still be billed or returned.</p>}
     {unbilled > 0 && <p className="text-sm">Received and not yet billed: {formatTHB(unbilled)}</p>}

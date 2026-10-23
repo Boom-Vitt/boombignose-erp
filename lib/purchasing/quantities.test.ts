@@ -70,3 +70,9 @@ it("compares and bills returned decimal quantities in exact thousandths", () => 
   expect(hasUnbilledQuantities([{ received_quantity: 0.4, returned_quantity: 0.1, billed_quantity: 0.3 }])).toBe(false)
   expect(billAmount([{ received_quantity: 0.4, returned_quantity: 0.1, billed_quantity: 0.2, unit_cost_satang: 100 }])).toBe(10)
 })
+
+it("accepts only over-receipts within the configured percentage without rounding the ceiling up", () => {
+  expect(applyReceipt(lines, [{ id: "a", received_quantity: 2.75, previous_received_quantity: 0 }], 10)[0].received_quantity).toBe(2.75)
+  expect(() => applyReceipt(lines, [{ id: "a", received_quantity: 2.751, previous_received_quantity: 0 }], 10)).toThrow()
+  expect(() => applyReceipt([{ ...lines[0], quantity: 0.001 }], [{ id: "a", received_quantity: 0.002, previous_received_quantity: 0 }], 10)).toThrow()
+})

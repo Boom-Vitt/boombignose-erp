@@ -131,3 +131,17 @@ export async function transferStock(input: unknown): Promise<{ error?: string; r
   refresh()
   return {}
 }
+
+export async function savePurchasingPolicy(input: unknown): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "settings:manage")
+  const parsed = z.object({ over_receipt_tolerance_percent: z.number().finite().min(0).max(100).refine(value => Math.abs(value * 100 - Math.round(value * 100)) < 0.00001) }).safeParse(input)
+  if (!parsed.success) return { error: "Enter a tolerance from 0 to 100 with up to two decimals." }
+  const db = await createClient()
+  const { error } = await db.from("org_settings").upsert({ org_id: ctx.orgId, ...parsed.data }, { onConflict: "org_id" })
+  if (error) return { error: error.message }
+  await writeAudit(ctx, { entity: "settings", action: "purchase_policy_updated", summary: "Updated purchasing policy" })
+  revalidatePath("/settings/purchasing")
+  revalidatePath("/purchases", "layout")
+  return {}
+}

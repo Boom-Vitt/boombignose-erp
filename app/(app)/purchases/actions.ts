@@ -84,7 +84,9 @@ export async function receivePurchase(id: string, input: unknown, warehouseId?: 
   let receipt
   try {
     const lines = await readAllOrThrow((from, to) => db.from("purchase_order_items").select("*").eq("org_id", ctx.orgId).eq("purchase_order_id", id).order("id").range(from, to))
-    receipt = applyReceipt(lines, parsed.data)
+    const { data: policy, error: policyError } = await db.from("org_settings").select("over_receipt_tolerance_percent").eq("org_id", ctx.orgId).maybeSingle()
+    if (policyError) return { error: "Receipt policy unavailable" }
+    receipt = applyReceipt(lines, parsed.data, policy?.over_receipt_tolerance_percent ?? 0)
   } catch (error) { return { error: error instanceof Error ? error.message : "Invalid receipt" } }
   const { error } = await receivePurchaseStock(db, ctx.orgId, id, receipt, warehouseId, date)
   if (error) return { error: error.message }
