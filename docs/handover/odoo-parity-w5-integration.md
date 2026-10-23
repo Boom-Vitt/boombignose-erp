@@ -147,3 +147,85 @@ Four Pro-only browser skips are expected for Community. No Pro acceptance, live 
 A fresh independent read-only reviewer approved source candidate `f26e335a21b1d9a32ba5f44ceb3d476c7416c21b` after inspecting the three conflicted merge diffs, both follow-up commits, current source, and Graphify relationships. It found no new blocking issue. Scoped comment review found zero added comments or suppressions and required no changes. The reviewer did not execute database or browser gates; the owner ran the checks above. Local review evidence is `.audit/w5-integrate/final-source-review.md`, `guard-review.md`, and `inventory-review.md`.
 
 Attention: review used separate Codex agents with the inherited runtime model. A different model-family review is not claimed. The known P3 maximum-quantity receipt UI limit remains as required by the brief. Logs, Graphify output, memory, environment files, and the isolated stack are retained locally for the coordinator. No recurring background work was created.
+
+
+## Coordinator review fixes
+
+2026-10-23. Fix round 1 starts from integration handover `122e89a5cdb0b41c5a386fb813538464c6b91c22`. The following local commits supersede that source candidate. All work remains on `Boom-Vitt/odoo-w5-integrate` in this worktree. No push, deploy, main change, other worktree or stack change, dependency addition, lockfile change, or credential commit occurred.
+
+| Commit | Change |
+| --- | --- |
+| `372115b44e39ad1e9eb9503edb61168da08cc1ea` | Red pgTAP regressions for invoice stale-version issuance and purchase approval after a second staff editor saves a grid note. |
+| `f0f08c8418550a406ba72c9bf3117eaca0324a07` | New migration `20261026122000_document_content_identity.sql`, expanded SQL regressions, and complete RFQ snapshot parsing/rendering. |
+| `e38622f7160df8e083bf4c51d88107af1501c746` | Separate report fix. Purchase VAT now renders inside `.doc`, before the footer, with an order regression. |
+
+### Root cause and coverage
+
+The grid stored section/note rows outside the priced-line tables, but identity propagation and snapshot readers did not include them. The new shared AFTER trigger on `document_sections` updates the parent identity for inserts, semantic edits, placement changes, and deletes. It covers direct table writes and `save_document_lines`. Content-identical updates do not touch the parent. Existing BEFORE guards still own parent locks, tenant checks, reassignment protection, and document freezing.
+
+Invoices reuse the existing version increment on parent updates. Both invoice issue and legacy-adoption expected-version checks therefore see text changes. Updating the parent preserves header-only amounts and does not invoke priced-line recomputation. Issued PDF sections remain protected by the existing freeze guard.
+
+Quotes have no version column or expected-version API. Their sections now update the same parent timestamp as priced lines. Regressions verify draft/sent edits and accepted-content freezing. Quote conversion semantics are unchanged.
+
+Purchase approvals and RFQ deliveries share `private.purchase_section_content`, with deterministic ID, kind, description, lines-before and position fields. Timestamps are excluded. Approval JSON omits the sections key when empty, preserving old approvals without sections. An old approval that omitted existing section content now requires reapproval. RFQ snapshots retain frozen sections through `RFQClaim` and `renderRFQEmail`; historical snapshots default missing sections to `[]`. Rendering reuses `interleave`, escapes descriptions, and totals only priced lines.
+
+No public SQL signature changed, so `lib/types/database.ts` was not regenerated. Applied migrations were not edited. The known P3 maximum-quantity `receiptLimit` display limit remains unchanged.
+
+### Red and green evidence
+
+The two scenarios first ran against the original migrated schema before any production fix. Only their regression file was then committed as `372115b`. The decisive output in `.audit/w5-integrate/fix1-identity-red.log` is:
+
+```text
+# Failed test 1: "invoice issue rejects a version read before another editor saved a grid note"
+#       caught: no exception
+#       wanted: P0001
+# Failed test 2: "purchase confirmation rejects approval from before another editor saved a grid note"
+#       caught: no exception
+#       wanted: P0001
+# Looks like you failed 2 tests of 2
+Files=1, Tests=2
+Result: FAIL
+```
+
+The reproduction uses separate owner/admin JWT identities, a 500,000-satang PO and a 100,000-satang approval threshold. The invoice version and PO approval are captured before the other editor calls `save_document_lines` with the new notes. Expected exceptions are `Draft at expected version required` and `Owner/admin approval required for current purchase content`.
+
+After the new migration, focused SQL runs pass 5 files / 150 assertions, including 33 identity assertions. They cover inserts, direct edits, kind/placement changes, deletes, no-op retries, fresh invoice issue, fresh PO approval, preserved header-only amounts, frozen RFQ content and quote lifecycle behavior. Command:
+
+```sh
+pnpm exec supabase test db --workdir .local-stack "$PWD"/supabase/tests/document_content_identity.sql "$PWD"/supabase/tests/line_grid.sql "$PWD"/supabase/tests/inventory_extras_approval.sql "$PWD"/supabase/tests/inventory_extras_rfq.sql "$PWD"/supabase/tests/purchasing_fixes.sql
+```
+
+The fresh-reset preparation and focused SQL ran against the uncommitted fix before its commit. They are diagnostic evidence, not the committed-candidate acceptance run. Logs are `.audit/w5-integrate/fix1-green-reset-reset.log` and `fix1-identity-green.log`.
+
+The report unit regression first failed with `AssertionError: expected 4881 to be less than 4446`, proving the VAT table ended after the footer. After the move, all 7 report tests pass. Logs are `fix1-report-red.log` and `fix1-report-green.log`. The combined focused unit command passes 5 files / 34 tests in `fix1-focused-unit-green.log`:
+
+```sh
+pnpm exec vitest run lib/purchasing/rfq.test.ts lib/purchasing/schema.test.ts lib/purchasing/email-actions.test.ts lib/purchasing/seed-ids.test.ts lib/documents/report.test.ts
+```
+
+A separate read-only Codex reviewer approved exact committed candidate `e38622f7160df8e083bf4c51d88107af1501c746`, with zero correctness/security findings. One new comment was removed and no comment findings remain. This is a separate-agent source review, not a cross-model or runtime concurrency claim. Local summary is `fix1-review.md`.
+
+Graphify refreshed this worktree's graph to 6,011 nodes / 20,751 edges. The extracted two-hop import path is `RFQClaim <- purchases/email-actions.ts -> renderRFQEmail`. SQL claims were checked against source and runtime evidence because graph extraction does not establish SQL semantics. Graft supplied the report route/test callers. Model the Domain favored the existing section shape and interleaver. Fix Root Causes placed identity changes at section DML rather than only in the grid RPC.
+
+### Serial gate results
+
+The unchanged lane is project `erp-58f5b594f6-1`, app 3101, API 55101, DB 55102. The existing `.audit/w5-integrate/run-gates.py` validates that metadata and takes the lane's exclusive lock. It ran all eight gates serially with `python3 .audit/w5-integrate/run-gates.py fix1-candidate` on committed code candidate `e38622f7160df8e083bf4c51d88107af1501c746`. Node v24.20.0, pnpm 12.3.4 and Supabase CLI 2.120.0 remain unchanged. The reset log confirms the new migration applies in order.
+
+The SQL command below abbreviates the runner's sorted absolute file arguments with the equivalent absolute glob. `gates.jsonl` retains the expanded commands, tested SHA, exit code, duration and log path.
+
+| Gate | Command | Exit | Result | Log |
+| --- | --- | --- | --- | --- |
+| Reset | `pnpm exec supabase db reset --local --workdir .local-stack` | 0 | PASS, all migrations and seed replayed | `fix1-candidate-reset.log` |
+| Full SQL | `pnpm exec supabase test db --workdir .local-stack "$PWD"/supabase/tests/*.sql` | 0 | 60 files / 1,540 assertions; 0 failures, 0 skips | `fix1-candidate-sql.log` |
+| Lint | `pnpm lint` | 0 | 0 errors, 0 warnings | `fix1-candidate-lint.log` |
+| Types | `pnpm typecheck` | 0 | 0 errors | `fix1-candidate-typecheck.log` |
+| Unit | `pnpm test` | 0 | 161 files / 1,286 tests; 0 failures, 0 skips | `fix1-candidate-test.log` |
+| Build | `pnpm build` | 0 | PASS, production build | `fix1-candidate-build.log` |
+| Payment concurrency | `node supabase/tests/payment-concurrency.test.mjs` | 0 | 7 assertions; 0 failures, 0 skips | `fix1-candidate-concurrency.log` |
+| Full browser | `pnpm e2e` | 0 | 63 passed / 0 failed / 4 expected Community skips | `fix1-candidate-e2e.log` |
+
+All log names in this section are relative to `.audit/w5-integrate/`. No unexpected gate failures occurred in this fix round. The intentional red regressions above are not acceptance failures.
+
+After this handover is committed, the completion marker is withheld until all eight gates replay on that exact final HEAD with `python3 .audit/w5-integrate/run-gates.py fix1-final-head`. The local `fix1-final-head-*.log` files and `gates.jsonl` record that commit's authoritative final-head evidence without requiring another documentation-only commit. If any replay gate fails, the writer must fix it and refresh the evidence before claiming completion.
+
+No production/live-email or Pro-only acceptance is claimed. The stale-editor regressions run distinct identities sequentially; new competing-session section/issue races were not separately tested. Parent serialization is source-reviewed, and the required existing payment-concurrency gate passes. Coordinator still owns any main integration and publication.
