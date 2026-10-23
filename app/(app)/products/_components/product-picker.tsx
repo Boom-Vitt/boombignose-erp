@@ -10,11 +10,17 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { ProductForm } from "./product-form"
 
-export function ProductPicker({ products, value, onChange, canManage = false }: {
+export function ProductPicker({ products, value, onChange, canManage = false, label = "Product (optional)", hideLabel = false, withCost = false, disabled = false }: {
   products: ProductOption[]
   value: string | null | undefined
   onChange: (product: ProductOption | null) => void
   canManage?: boolean
+  label?: string
+  /** In a grid cell the column header shows the label; screen readers still get it. */
+  hideLabel?: boolean
+  /** Purchase lines need the product cost; the search then requires purchase rights. */
+  withCost?: boolean
+  disabled?: boolean
 }) {
   const id = useId()
   const [open, setOpen] = useState(false)
@@ -32,20 +38,20 @@ export function ProductPicker({ products, value, onChange, canManage = false }: 
     let current = true
     const timer = setTimeout(async () => {
       try {
-        const matches = await activeProductOptions(search)
+        const matches = await activeProductOptions(search, withCost)
         if (current) setResult({ search, products: matches })
       } catch {
         if (current) setResult({ search, products: [], error: "Unable to search products. Please retry." })
       }
     }, 250)
     return () => { current = false; clearTimeout(timer) }
-  }, [open, search, retry])
+  }, [open, search, retry, withCost])
   return (
-    <div className="space-y-2">
-      <label id={`${id}-label`} className="text-sm font-medium">Product (optional)</label>
+    <div className={hideLabel ? undefined : "space-y-2"}>
+      <label id={`${id}-label`} className={hideLabel ? "sr-only" : "text-sm font-medium"}>{label}</label>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger render={<Button type="button" variant="outline" role="combobox" aria-haspopup="dialog" aria-labelledby={`${id}-label`} aria-expanded={open} aria-controls={open ? `${id}-popup` : undefined} className="w-full justify-between" />}>
-          {selected?.name ?? (value ? "Saved product" : "Free-text line")}
+        <PopoverTrigger render={<Button type="button" variant="outline" role="combobox" aria-haspopup="dialog" aria-labelledby={`${id}-label`} aria-expanded={open} aria-controls={open ? `${id}-popup` : undefined} disabled={disabled} className="w-full justify-between" />}>
+          <span className="truncate">{selected?.name ?? (value ? "Saved product" : "Free-text line")}</span>
           <ChevronsUpDown className="opacity-50" />
         </PopoverTrigger>
         <PopoverContent id={`${id}-popup`} aria-labelledby={`${id}-label`} className="w-80 p-0" align="start">
@@ -67,7 +73,7 @@ export function ProductPicker({ products, value, onChange, canManage = false }: 
               {options.length === 20 && <p className="p-2 text-xs text-muted-foreground">Showing up to 20 products. Type to narrow the results.</p>}
               {canManage && <>
                 <CommandSeparator />
-                <CommandGroup forceMount><CommandItem value="create-product" forceMount onSelect={() => { setOpen(false); setCreating(true) }}><Plus /> Create product</CommandItem></CommandGroup>
+                <CommandGroup forceMount><CommandItem value="create-product" forceMount onSelect={() => { setOpen(false); setCreating(true) }}><Plus /> Create and edit…</CommandItem></CommandGroup>
               </>}
             </CommandList>
           </Command>
