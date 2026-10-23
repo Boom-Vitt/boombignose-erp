@@ -47,7 +47,7 @@ export function QuoteInvoiceForm({ quoteId, orgId, lines, label, variant }: {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Create draft invoice</DialogTitle>
-          <DialogDescription>Invoice the remaining scope, selected quantities, or a deposit. Deposits are deducted automatically when the final quantities are invoiced.</DialogDescription>
+          <DialogDescription>Invoice the remaining scope, selected quantities, or a deposit. Mixed-rate deposits are credited by tax bucket when the final invoice is issued.</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Label htmlFor={`invoice-mode-${quoteId}`}>Invoice scope</Label>
@@ -67,7 +67,7 @@ export function QuoteInvoiceForm({ quoteId, orgId, lines, label, variant }: {
         {mode.startsWith("deposit") ? <div className="space-y-2">
           <Label htmlFor={`invoice-deposit-${quoteId}`}>{mode === "deposit_percent" ? "Deposit (%)" : "Deposit (THB)"}</Label>
           <Input id={`invoice-deposit-${quoteId}`} inputMode="decimal" value={deposit} onChange={(event) => setDeposit(event.target.value)} />
-          <p className="text-muted-foreground text-sm">Deposit percentages apply to the quote subtotal after discount. Deposits require a single tax rate.</p>
+          <p className="text-muted-foreground text-sm">Deposit percentages apply to the quote subtotal after discount. Mixed-rate deposits keep separate VAT buckets. Issuing the final invoice creates linked deposit credit notes and transfers the settled cash.</p>
         </div> : null}
         {error ? <p role="status" className="text-destructive text-sm">{error}</p> : null}
         <ConvertQuoteButton quoteId={quoteId} orgId={orgId} request={request} label="Create draft invoice" variant="default" disabled={!!error || !available.length} />

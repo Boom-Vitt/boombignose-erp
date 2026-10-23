@@ -177,9 +177,9 @@ select pg_temp.w4c_quote(105,1,10000,0,0,false);
 insert into public.quote_items(org_id,quote_id,description,quantity,unit_price_satang,tax_rate_bps,position)
   values(pg_temp.w4c_id(10),pg_temp.w4c_id(105),'Different tax bucket',1,10000,700,1);
 update public.quotes set status='accepted' where id=pg_temp.w4c_id(105);
-select throws_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(105),pg_temp.w4c_id(208),null,1000,null)$$,'P0001','Deposits require one tax rate','mixed-rate deposit fails explicitly rather than misallocating tax');
+select lives_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(105),pg_temp.w4c_id(208),null,1000,null)$$,'mixed-rate deposit records original rate buckets');
 reset role;
-select is((select count(*) from public.quote_conversion_requests where org_id=pg_temp.w4c_id(10) and key=pg_temp.w4c_id(208)),0::bigint,'rejected deposit rolls back its idempotency claim');
+select is((select count(*) from public.quote_conversion_requests where org_id=pg_temp.w4c_id(10) and key=pg_temp.w4c_id(208)),1::bigint,'mixed deposit retains its idempotency claim');
 set local role authenticated;
 select throws_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(11),pg_temp.w4c_id(102),pg_temp.w4c_id(209))$$,'P0001',null,'owner cannot bill another workspace');
 select throws_ok($$select public.convert_accepted_quote(pg_temp.w4c_id(10),pg_temp.w4c_id(105),pg_temp.w4c_id(210),jsonb_build_array(jsonb_build_object('quote_item_id',pg_temp.w4c_id(1102),'quantity',1)))$$,'P0001',null,'invoice command rejects a line from another quote');
@@ -226,8 +226,8 @@ select throws_ok($$update public.invoice_items set quantity=2 where id=pg_temp.w
 select throws_ok($$update public.invoices set total_satang=1 where id=pg_temp.w4c_id(400)$$,'P0001','Issued tax content is frozen','unrelated issued invoice tax guard remains intact');
 
 reset role;
-insert into public.invoices(id,org_id,client_id,number,source_quote_id)
-  values(pg_temp.w4c_id(403),pg_temp.w4c_id(10),pg_temp.w4c_id(20),'W4C-TRUSTED-SOURCE-FIXTURE',pg_temp.w4c_id(105));
+insert into public.invoices(id,org_id,client_id,number,source_quote_id,project_id)
+  values(pg_temp.w4c_id(403),pg_temp.w4c_id(10),pg_temp.w4c_id(20),'W4C-TRUSTED-SOURCE-FIXTURE',pg_temp.w4c_id(105),(select project_id from public.quotes where id=pg_temp.w4c_id(105)));
 select throws_ok($$insert into public.invoice_items(org_id,invoice_id,quote_item_id,description,quantity,unit_price_satang)
   values(pg_temp.w4c_id(10),pg_temp.w4c_id(403),pg_temp.w4c_id(1102),'Wrong quote in trusted command',1,1000)$$,
   'P0001','Invoice and quote line source must match','trusted command cannot attach a line from another quote');

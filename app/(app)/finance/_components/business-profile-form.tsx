@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { updateBusinessProfile } from "../actions"
 
-export function BusinessProfileForm({ orgId, initial }: { orgId: string; initial: { legalName: string; address: string; taxId: string; taxStatus: "unknown" | "not_registered" | "registered"; vatRegistered: boolean; vatRateBps: number; pricesIncludeVat: boolean; branchLabel: string } }) {
+export function BusinessProfileForm({ orgId, initial }: { orgId: string; initial: { legalName: string; address: string; taxId: string; taxStatus: "unknown" | "not_registered" | "registered"; vatRateBps: number; pricesIncludeVat: boolean; branchLabel: string } }) {
   const [value, setValue] = useState(initial)
   const [pending, startTransition] = useTransition()
   const router = useRouter()
@@ -28,7 +28,7 @@ export function BusinessProfileForm({ orgId, initial }: { orgId: string; initial
 
     <p className="text-sm text-muted-foreground">ข้อมูลนี้เก็บไว้ในเอกสารที่ออกแต่ละครั้ง / Issued documents retain their own copy of this profile. Review tax treatment with your accountant.</p>
     <label className="block text-sm">Branch<Input maxLength={200} value={value.branchLabel} onChange={event => setValue({ ...value, branchLabel: event.target.value })} disabled={pending} placeholder="Head office" /></label>
-    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={value.vatRegistered} disabled={pending} onChange={event => setValue({ ...value, vatRegistered: event.target.checked, taxStatus: event.target.checked ? "registered" : "not_registered" })} />VAT registered</label>
+    <label className="block text-sm">VAT status<select className="block w-full rounded border p-2 bg-background" value={value.taxStatus} disabled={pending} onChange={event => setValue({ ...value, taxStatus: event.target.value as typeof value.taxStatus })}><option value="unknown">Unknown / ยังไม่ระบุ</option><option value="not_registered">Not registered / ไม่ได้จด VAT</option><option value="registered">Registered / จดทะเบียน VAT</option></select></label>
     <label className="block text-sm">Default VAT rate (bps)<Input type="number" min={0} max={10000} step={1} value={value.vatRateBps} onChange={event => setValue({ ...value, vatRateBps: Number(event.target.value) })} disabled={pending} />700 = 7%</label>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={value.pricesIncludeVat} disabled={pending} onChange={event => setValue({ ...value, pricesIncludeVat: event.target.checked })} />Prices include VAT for new documents</label>
     <p className="text-xs text-muted-foreground">VAT and withholding are document calculations only. This is not a legal tax system, accounting ledger, tax filing service or e-Tax Invoice. Review documents with your accountant.</p>

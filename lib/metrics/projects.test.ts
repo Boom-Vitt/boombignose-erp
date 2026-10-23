@@ -40,3 +40,7 @@ describe("projectProfit", () => {
     expect(r.profitSatang).toBe(50_000)
   })
 })
+
+it("subtracts issued credit-note bases from project revenue without changing costs", () => {
+  expect(projectProfit([{ status: "paid", total_satang: 10700, vat_satang: 700 }], [{ amount_satang: 2000 }], 1000, 4000)).toMatchObject({ revenueSatang: 6000, costSatang: 3000, profitSatang: 3000 })
+})

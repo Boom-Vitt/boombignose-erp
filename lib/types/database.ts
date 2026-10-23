@@ -24,6 +24,18 @@ export type Database = {
           }
         },"public": {
           Tables: {
+      credit_notes: {
+        Row: { id: string; org_id: string; invoice_id: string; number: string; issue_date: string; reason: string; amount_satang: number; snapshot: Json; issued_by: string; created_at: string }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      credit_note_lines: {
+        Row: { id: string; org_id: string; credit_note_id: string; invoice_item_id: string | null; raw_satang: number; quantity: number | null }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       deal_lost_reasons: {
         Row: { id: string; org_id: string; name: string; active: boolean; created_at: string }
         Insert: { id?: string; org_id: string; name: string; active?: boolean; created_at?: string }
@@ -618,20 +630,20 @@ isOneToOne: false
     }
                   ]
                 },"org_settings": {
-                  Row: {
+                  Row: { require_different_payment_reviewer: boolean;
 "wht_rate_bps": number,
 
 "lock_date": string | null,"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
                     "allow_negative_stock": boolean,"business_address": string | null,"cash_balance_satang": number,"created_at": string,"id": string,"legal_name": string | null,"monthly_burn_satang": number | null,"org_id": string,"tax_id": string | null,"tax_status": string,"updated_at": string
                   }
                   ComputedFields: never
-                  Insert: {
+                  Insert: { require_different_payment_reviewer?: boolean;
 "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
-                  Update: {
+                  Update: { require_different_payment_reviewer?: boolean;
 "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
@@ -720,12 +732,12 @@ isOneToOne: true
     }
                   ]
                 },"payment_claims": {
-                  Row: {
-                    "amount_satang": number,"client_id": string,"created_at": string,"id": string,"idempotency_key": string,"invoice_id": string,"org_id": string,"payment_id": string | null,"reference": string,"review_reference": string | null,"reviewed_at": string | null,"reviewed_by": string | null,"source": string,"status": string,"submitted_by": string | null,"updated_at": string
+                  Row: { requested_allocations: Json;
+                    "amount_satang": number,"client_id": string,"created_at": string,"id": string,"idempotency_key": string,"invoice_id": string | null,"org_id": string,"payment_id": string | null,"reference": string,"review_reference": string | null,"reviewed_at": string | null,"reviewed_by": string | null,"source": string,"status": string,"submitted_by": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_satang": number,"client_id": string,"created_at"?: string,"id"?: string,"idempotency_key": string,"invoice_id": string,"org_id": string,"payment_id"?: string | null,"reference": string,"review_reference"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"source"?: string,"status"?: string,"submitted_by"?: string | null,"updated_at"?: string
+                    "amount_satang": number,"client_id": string,"created_at"?: string,"id"?: string,"idempotency_key": string,"invoice_id": string | null,"org_id": string,"payment_id"?: string | null,"reference": string,"review_reference"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"source"?: string,"status"?: string,"submitted_by"?: string | null,"updated_at"?: string
                   }
                   Update: {
                     "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"id"?: string,"idempotency_key"?: string,"invoice_id"?: string,"org_id"?: string,"payment_id"?: string | null,"reference"?: string,"review_reference"?: string | null,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"source"?: string,"status"?: string,"submitted_by"?: string | null,"updated_at"?: string
@@ -778,14 +790,14 @@ isOneToOne: false
     }
                   ]
                 },"payments": {
-                  Row: {
-                    "amount_satang": number,"command_key": string | null,"created_at": string,"id": string,"invoice_id": string,"method": Database["public"]['Enums']["payment_method"],"notes": string | null,"org_id": string,"paid_at": string,"reconciled_payment_id": string | null,"updated_at": string,"verification_reference": string | null,"verification_state": string,"verified_by": string | null
+                  Row: { client_id: string; reversal_of: string | null; refund_of: string | null;
+                    "amount_satang": number,"command_key": string | null,"created_at": string,"id": string,"invoice_id": string | null,"method": Database["public"]['Enums']["payment_method"],"notes": string | null,"org_id": string,"paid_at": string,"reconciled_payment_id": string | null,"updated_at": string,"verification_reference": string | null,"verification_state": string,"verified_by": string | null
                   }
                   ComputedFields: never
-                  Insert: {
-                    "amount_satang": number,"command_key"?: string | null,"created_at"?: string,"id"?: string,"invoice_id": string,"method"?: Database["public"]['Enums']["payment_method"],"notes"?: string | null,"org_id": string,"paid_at"?: string,"reconciled_payment_id"?: string | null,"updated_at"?: string,"verification_reference"?: string | null,"verification_state"?: string,"verified_by"?: string | null
+                  Insert: { client_id?: string; reversal_of?: string | null; refund_of?: string | null;
+                    "amount_satang": number,"command_key"?: string | null,"created_at"?: string,"id"?: string,"invoice_id": string | null,"method"?: Database["public"]['Enums']["payment_method"],"notes"?: string | null,"org_id": string,"paid_at"?: string,"reconciled_payment_id"?: string | null,"updated_at"?: string,"verification_reference"?: string | null,"verification_state"?: string,"verified_by"?: string | null
                   }
-                  Update: {
+                  Update: { client_id?: string; reversal_of?: string | null; refund_of?: string | null;
                     "amount_satang"?: number,"command_key"?: string | null,"created_at"?: string,"id"?: string,"invoice_id"?: string,"method"?: Database["public"]['Enums']["payment_method"],"notes"?: string | null,"org_id"?: string,"paid_at"?: string,"reconciled_payment_id"?: string | null,"updated_at"?: string,"verification_reference"?: string | null,"verification_state"?: string,"verified_by"?: string | null
                   }
                   Relationships: [
@@ -1303,14 +1315,26 @@ isOneToOne: false
               Row: { org_id: string | null; deal_id: string | null; next_due_date: string | null; open_count: number | null }
               Relationships: []
             }
+            credit_note_revenue: {
+              Row: { org_id: string; id: string; invoice_id: string; issue_date: string; project_id: string | null; client_id: string; client_name: string; base_satang: number; total_satang: number }
+              Relationships: []
+            }
+            customer_receipt_balances: {
+              Row: { org_id: string; payment_id: string; client_id: string; amount_satang: number; paid_at: string; available_satang: number }
+              Relationships: []
+            }
+            invoice_receipts: {
+              Row: { org_id: string; invoice_id: string; id: string; client_id: string; amount_satang: number; receipt_amount_satang: number; paid_at: string; method: Database["public"]["Enums"]["payment_method"]; notes: string | null; verification_state: string; verification_reference: string | null; reconciled_payment_id: string | null; reversal_of: string | null }
+              Relationships: []
+            }
             "client_balances": {
-              Row: {
+              Row: { credit_satang: number | null;
                 "client_id": string | null,"invoiced_satang": number | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null
               }
               Relationships: []
             }
             "invoice_balances": {
-              Row: {
+              Row: { credited_satang: number | null; collectible_satang: number | null;
                 "amount_satang": number | null,"client_id": string | null,"invoice_id": string | null,"org_id": string | null,"outstanding_satang": number | null,"paid_satang": number | null,"status": Database["public"]["Enums"]["invoice_status"] | null
               }
               Relationships: []
@@ -1399,7 +1423,13 @@ isOneToOne: false
                            }
             cancel_draft_invoice: { Args: { p_org_id: string; p_invoice_id: string }; Returns: undefined }
             update_finance_lock_date: { Args: { p_org_id: string; p_lock_date: string | null }; Returns: undefined }
-            update_tax_business_profile: { Args: { p_org_id: string; p_legal_name: string; p_business_address: string; p_tax_id: string; p_vat_registered: boolean; p_vat_rate_bps: number; p_prices_include_vat: boolean; p_branch_label: string }; Returns: undefined }
+            submit_customer_payment_claim: { Args: { p_org_id: string; p_client_id: string; p_amount_satang: number; p_allocations: Json; p_reference: string; p_key: string }; Returns: string }
+            apply_customer_credit: { Args: { p_org_id: string; p_client_id: string; p_allocations: Json; p_key: string }; Returns: string }
+            refund_customer_credit: { Args: { p_org_id: string; p_payment_id: string; p_amount_satang: number; p_reference: string; p_paid_on: string; p_method: Database["public"]["Enums"]["payment_method"]; p_key: string }; Returns: string }
+            update_payment_review_policy: { Args: { p_org_id: string; p_required: boolean }; Returns: undefined }
+            reverse_payment: { Args: { p_org_id: string; p_payment_id: string; p_reason: string; p_reversed_on: string; p_key: string }; Returns: string }
+            issue_credit_note: { Args: { p_org_id: string; p_invoice_id: string; p_lines: Json; p_reason: string; p_key: string }; Returns: string }
+            update_tax_business_profile: { Args: { p_org_id: string; p_legal_name: string; p_business_address: string; p_tax_id: string; p_tax_status: string; p_vat_rate_bps: number; p_prices_include_vat: boolean; p_branch_label: string }; Returns: undefined }
             claim_purchase_rfq: { Args: { p_org_id: string; p_order_id: string }; Returns: Json }
             finish_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_error?: string | null }; Returns: undefined }
             create_purchase_order: { Args: { p_org_id: string; p_vendor_id: string; p_order_date: string; p_expected_date?: string | null; p_notes?: string | null }; Returns: string }

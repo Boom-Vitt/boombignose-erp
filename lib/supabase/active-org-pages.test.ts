@@ -37,6 +37,7 @@ beforeEach(() => {
     contacts: ['A','B'].map(org_id => ({ id: `contact-${org_id}`, org_id, name: `CONTACT_${org_id}`, client_id: 'client-A' })),
     org_settings: ['A','B'].map(org_id => ({ org_id, cash_balance_satang: org_id === 'A' ? 500 : 800 })),
     invoices: ['A','B'].map(org_id => ({id:`invoice-${org_id}`,org_id,status:'sent',amount_satang:org_id==='A'?1000:3000,total_satang:org_id==='A'?1070:3210,vat_satang:org_id==='A'?70:210,issue_date:date,due_date:'2000-01-01',is_recurring:true,recurring_interval:'monthly'})),
+    invoice_balances: ['A','B'].map(org_id => ({ org_id, invoice_id: `invoice-${org_id}`, paid_satang: org_id === 'A' ? 100 : 500, credited_satang: 0 })),
     payments: ['A','B'].map(org_id => ({org_id,invoice_id:`invoice-${org_id}`,amount_satang:org_id==='A'?100:500,paid_at:date,verification_state:'verified'})).concat([{org_id:'A',invoice_id:'invoice-A',amount_satang:777,paid_at:date,verification_state:'legacy_unverified'}]),
     costs: ['A','B'].map(org_id => ({org_id,amount_satang:org_id==='A'?300:900,incurred_on:date})),
     monthly_inventory_cogs: ['A','B'].map(org_id => ({org_id, month: `${currentMonthKey()}-01`, amount_satang: org_id === 'A' ? 200 : 700})),
@@ -249,7 +250,7 @@ it('dashboard reads beyond 1000 net receivables and uses issued pre-VAT revenue'
  vi.useFakeTimers().setSystemTime(new Date('2026-10-23T06:00:00Z'))
  const invoices = Array.from({length:1501},(_,n)=>({id:`vat-${n}`,org_id:'A',status:'sent',amount_satang:104000,total_satang:107000,vat_satang:7000,issue_date:'2026-10-01',due_date:'2026-10-01',is_recurring:false}))
  const payments = invoices.map(i=>({id:`paid-${i.id}`,org_id:'A',invoice_id:i.id,amount_satang:100000,paid_at:'2026-10-23T05:00:00Z',verification_state:'verified'}))
- state.client = databaseFixture({invoices,payments})
+ state.client = databaseFixture({invoices,payments,invoice_balances:invoices.map(i=>({org_id:i.org_id,invoice_id:i.id,paid_satang:100000,credited_satang:0}))})
  const result = await getDashboardData()
  expect(result.unpaidSatang).toBe(1501*4000)
  expect(result.unpaidInvoiceCount).toBe(1501)

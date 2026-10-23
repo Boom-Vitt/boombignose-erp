@@ -52,7 +52,7 @@ it("profile validation matches the database contract before dispatch", async () 
 })
 it("profile update leaves tax classification explicit and trusts active org only", async () => {
   expect(await updateBusinessProfile({ expectedOrgId: orgId, legalName: "ร้านทดลอง", address: "ที่อยู่ทดลอง", taxId: "", taxStatus: "unknown" })).toEqual({})
-  expect(rpc).toHaveBeenCalledExactlyOnceWith("update_tax_business_profile", { p_org_id: orgId, p_legal_name: "ร้านทดลอง", p_business_address: "ที่อยู่ทดลอง", p_tax_id: "", p_vat_registered: false, p_vat_rate_bps: 700, p_prices_include_vat: false, p_branch_label: "" })
+  expect(rpc).toHaveBeenCalledExactlyOnceWith("update_tax_business_profile", { p_org_id: orgId, p_legal_name: "ร้านทดลอง", p_business_address: "ที่อยู่ทดลอง", p_tax_id: "", p_tax_status: "unknown", p_vat_rate_bps: 700, p_prices_include_vat: false, p_branch_label: "" })
 })
 it("stale profile form cannot save an A profile after the active org switches to B", async () => {
   expect((await updateBusinessProfile({ expectedOrgId: invoiceId, legalName: "ร้าน A", address: "ที่อยู่ A", taxId: "", taxStatus: "unknown" })).error).toContain("Workspace changed")
@@ -65,4 +65,9 @@ it("withholding reaches a draft invoice whose seeded id lacks RFC 9562 version b
   expect(await updateInvoiceWithholding({ invoiceId: seeded, rateBps: 300 })).toEqual({})
   expect(query.update).toHaveBeenCalledWith({ wht_rate_bps: 300 })
   expect(query.eq).toHaveBeenCalledWith("id", seeded)
+})
+
+it.each(["registered", "not_registered", "unknown"] as const)("profile sends explicit %s status", async taxStatus => {
+  expect(await updateBusinessProfile({ expectedOrgId: orgId, legalName: "Seller", address: "Address", taxId: "1234567890123", taxStatus })).toEqual({})
+  expect(rpc).toHaveBeenCalledWith("update_tax_business_profile", expect.objectContaining({ p_tax_status: taxStatus }))
 })

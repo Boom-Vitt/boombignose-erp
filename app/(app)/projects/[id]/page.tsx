@@ -1,3 +1,4 @@
+import { creditNoteRevenue } from "@/lib/payments/balances"
 import { RecordHistory } from "@/components/record/record-history"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -18,7 +19,7 @@ import { createClient } from "@/lib/supabase/server"
 import { readAllOrThrow } from "@/lib/supabase/read-all"
 import { requireOrgContext } from "@/lib/auth"
 import { can } from "@/lib/permissions"
-import { formatTHB, formatTHBWhole } from "@/lib/money"
+import { sumSatang, formatTHB, formatTHBWhole } from "@/lib/money"
 import { projectProfit } from "@/lib/metrics/projects"
 import { minutesToHours, billableValueSatang } from "@/lib/metrics/timesheets"
 import { todayISO } from "@/lib/dates"
@@ -206,7 +207,9 @@ export default async function ProjectDetailPage({
   const billedInvoices = invoices.filter((invoice) => ["sent", "partially_paid", "paid", "overdue"].includes(invoice.status))
   const hasFinancials = billedInvoices.length > 0 || costs.length > 0 || timeEntries.length > 0
   if (labourRes?.error) throw new Error("Project labour cost unavailable. Please reload.")
-  const profit = labourRes && hasFinancials ? projectProfit(billedInvoices, costs, labourRes.data?.labour_cost_satang ?? 0) : null
+  const credits = labourRes ? await creditNoteRevenue(supabase, ctx.orgId) : []
+  const creditedBase = sumSatang(credits.filter(credit => credit.project_id === id).map(credit => credit.base_satang))
+  const profit = labourRes && hasFinancials ? projectProfit(billedInvoices, costs, labourRes.data?.labour_cost_satang ?? 0, creditedBase) : null
 
   const projectId = p.id
   async function transitionProject(to: Enums<"project_status">) {

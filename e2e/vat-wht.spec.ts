@@ -28,7 +28,7 @@ test("VAT-registered invoice with WHT 3% freezes and presents the same totals", 
     await page.getByLabel(/Business address/).fill("Synthetic seller address")
     await page.getByLabel(/Tax ID/).fill("1234567890123")
     await page.getByLabel("Branch", { exact: true }).fill("Head office")
-    await page.getByLabel("VAT registered", { exact: true }).check()
+    await page.getByRole("combobox", { name: "VAT status", exact: true }).selectOption("registered")
     await page.getByRole("button", { name: "Save business profile", exact: true }).click()
     await expect.poll(async () => (await admin.from("org_settings").select("vat_registered").eq("org_id", org).single()).data?.vat_registered).toBe(true)
     await page.goto("/finance/invoices/new")

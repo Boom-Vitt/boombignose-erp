@@ -20,6 +20,7 @@ vi.mock("@edition", () => ({
 import InvoicePage from "@/app/(app)/finance/invoices/[id]/page"
 import QuotePage from "@/app/(app)/quotes/[id]/page"
 import FinancePage from "@/app/(app)/finance/page"
+import ReceiptsPage from "@/app/(app)/finance/receipts/page"
 import ProjectPage from "@/app/(app)/projects/[id]/page"
 
 const header = { id: "invoice", org_id: "A", client_id: "buyer", number: "VAT-1", issue_date: "2026-10-01", status: "draft", amount_satang: 1040000, subtotal_satang: 1000000, discount_satang: 0, vat_satang: 70000, total_satang: 1070000, wht_satang: 30000, wht_rate_bps: 300, tax_breakdown: [], prices_include_vat: false, version: 1 }
@@ -31,7 +32,26 @@ function elements(node: ReactNode): ReactElement[] {
   return [node, ...elements(node.props.children)]
 }
 
-beforeEach(() => { state.role = "owner"; state.client = databaseFixture({ invoices: [header], payments, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100 }] }) })
+beforeEach(() => { state.role = "owner"; state.client = databaseFixture({ invoices: [header], payments, invoice_receipts: payments, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100 }] }) })
+
+it("customer receipts show Bangkok payment dates across a month boundary", async () => {
+  const clientId = "cb000000-0000-4000-8000-000000000020"
+  state.client = databaseFixture({
+    clients: [{ id: clientId, org_id: "A", name: "Buyer" }],
+    payments: [{ id: "receipt", org_id: "A", client_id: clientId, verification_state: "verified", amount_satang: 10001, paid_at: "2026-09-30T17:00:00Z", verification_reference: "Bank reference" }],
+  })
+  const content = pageContent(await ReceiptsPage({ searchParams: Promise.resolve({ client: clientId }) }))
+  expect(content).toContain("2026-10-01")
+  expect(content).not.toContain("2026-09-30")
+})
+
+it.each(["verified", "legacy_unverified"])("invoice details show Bangkok dates for %s receipts at a month boundary", async (verification_state) => {
+  const receipt = { id: "receipt", org_id: "A", invoice_id: "invoice", amount_satang: 10001, verification_state, paid_at: "2026-09-30T17:00:00Z", method: "transfer" }
+  state.client = databaseFixture({ invoices: [header], payments: [receipt], invoice_receipts: verification_state === "verified" ? [receipt] : [] })
+  const content = pageContent(await InvoicePage({ params: Promise.resolve({ id: "invoice" }) }))
+  expect(content).toContain("2026-10-01")
+  expect(content).not.toContain("2026-09-30")
+})
 
 it("invoice detail keeps tax totals, SQL net balance, and a payment count beyond the row cap", async () => {
   const page = await InvoicePage({ params: Promise.resolve({ id: "invoice" }) })
@@ -57,7 +77,7 @@ it("quote detail keeps VAT totals and the complete linked invoice count", async 
 
 it("Finance keeps vendor bill metadata beyond the row cap alongside net receivables", async () => {
   const costs = Array.from({ length: 1001 }, (_, n) => ({ id: `cost-${n}`, org_id: "A", category: "software", amount_satang: 1, incurred_on: "2026-10-23", vendor: "Vendor", vendor_id: "vendor", purchase_order_id: "purchase", bill_number: `BILL-${n}`, due_date: "2026-10-22", paid_at: null }))
-  state.client = databaseFixture({ invoices: [{ ...header, status: "sent" }], payments, costs })
+  state.client = databaseFixture({ invoices: [{ ...header, status: "sent" }], payments, costs, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100, credited_satang: 0 }] })
   const content = pageContent(await FinancePage({ searchParams: Promise.resolve({}) }))
   expect(content).toContain("BILL-1000")
   expect(content).toContain("/purchases/purchase")

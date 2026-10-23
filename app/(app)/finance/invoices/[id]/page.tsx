@@ -1,3 +1,5 @@
+import { ReversePaymentForm } from "../../_components/reverse-payment-form"
+import { CreditNoteForm } from "../../_components/credit-note-form"
 import { invoiceDisplayNumber } from "@/lib/documents/numbering"
 import { CancelDraftButton } from "../../_components/cancel-draft-button"
 import { readAll } from "@/lib/supabase/read-all"
@@ -128,12 +130,12 @@ export default async function InvoiceDetailPage({
       .eq("invoice_id", id)
       .order("position", { ascending: true }).order("id").range(from, to)),
     readAll((from, to) => supabase
-      .from("payments")
+      .from("invoice_receipts")
       .select("id, amount_satang, paid_at, method, notes").eq("verification_state", "verified").eq("org_id", ctx.orgId)
       .eq("invoice_id", id)
       .order("paid_at", { ascending: false }).order("id").range(from, to)),
-    supabase.from("payments").select("id", { count: "exact", head: true }).eq("verification_state", "verified").eq("org_id", ctx.orgId).eq("invoice_id", id),
-    supabase.from("invoice_balances").select("paid_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).maybeSingle(),
+    supabase.from("invoice_receipts").select("id", { count: "exact", head: true }).eq("verification_state", "verified").eq("org_id", ctx.orgId).eq("invoice_id", id),
+    supabase.from("invoice_balances").select("paid_satang, credited_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).maybeSingle(),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
     getInvoiceAccounting(ctx.orgId, id),
@@ -146,8 +148,9 @@ export default async function InvoiceDetailPage({
   const payments = paymentsRes.data ?? []
   if (paymentsRes.error || balanceRes.error || itemsRes.error || legacyRes.error || settingsRes.error || paymentCountRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
   const paid = balanceRes.data?.paid_satang ?? 0
-  const outstanding = outstandingSatang(invoice.amount_satang, paid)
-  const effectiveStatus = deriveInvoiceStatus(invoice, paid, today)
+  const credited = balanceRes.data?.credited_satang ?? 0
+  const outstanding = outstandingSatang(invoice.amount_satang, paid, credited)
+  const effectiveStatus = deriveInvoiceStatus({ ...invoice, credited_satang: credited }, paid, today)
 
   const clients: Option[] = (clientsRes.data ?? []).map((c) => ({
     value: c.id,
@@ -361,10 +364,11 @@ export default async function InvoiceDetailPage({
                   <TableBody>
                     {payments.map((p) => (
                       <TableRow key={p.id}>
-                        <TableCell>{p.paid_at}</TableCell>
+                        <TableCell>{todayISO(new Date(p.paid_at))}</TableCell>
                         <TableCell>{PAYMENT_METHOD_LABEL[p.method]}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {p.notes ?? "—"}
+                          {ctx.role !== "member" && p.amount_satang > 0 ? <ReversePaymentForm orgId={ctx.orgId} invoiceId={id} paymentId={p.id} today={today} /> : null}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {formatTHB(p.amount_satang)}
@@ -390,7 +394,7 @@ export default async function InvoiceDetailPage({
                 {claim.status === "pending" && ctx.role !== "member" ? <ReviewClaimForm today={today} orgId={ctx.orgId} claimId={claim.id} invoiceId={invoice.id} suggestedBaht={satangToBahtString(claim.amount_satang)} /> : null}
               </div>)}
               {ctx.role !== "member" && outstanding > 0 && !["draft", "cancelled"].includes(invoice.status) && !(claimsRes.data ?? []).some(claim => claim.status === "pending") && !claimsRes.error ? <div className="border-t pt-4"><h3 className="mb-3 text-sm font-medium">แจ้งชำระโดยเจ้าหน้าที่ / Staff report</h3><PaymentForm today={today} orgId={ctx.orgId} invoiceId={invoice.id} suggestedBaht={satangToBahtString(outstanding)} /></div> : null}
-              {legacyRes.data?.length ? <div className="mt-6 space-y-4"><h3 className="text-sm font-medium">ตรวจสอบยอดเดิม / Legacy reconciliation</h3><p className="text-xs text-muted-foreground">Retained records are excluded from verified cash. Match each to bank evidence before creating a linked verified receipt.</p>{legacyRes.data.map(legacy => <div key={legacy.id} className="rounded border p-3 space-y-2"><p className="text-sm">{formatTHB(legacy.amount_satang)} · {legacy.paid_at.slice(0,10)} · {legacy.verification_state}</p><p className="text-xs text-muted-foreground">{legacy.notes ?? "No original reference"}</p>{legacy.reconciled_payment_id ? <p className="text-xs">Linked verified receipt: {legacy.reconciled_payment_id}</p> : null}{legacy.verification_state === "legacy_unverified" && ctx.role !== "member" && outstanding > 0 && !["draft", "cancelled"].includes(invoice.status) ? <PaymentForm today={today} orgId={ctx.orgId} invoiceId={invoice.id} legacyPaymentId={legacy.id} suggestedBaht={satangToBahtString(Math.min(legacy.amount_satang, outstanding))} /> : null}</div>)}</div> : null}
+              {legacyRes.data?.length ? <div className="mt-6 space-y-4"><h3 className="text-sm font-medium">ตรวจสอบยอดเดิม / Legacy reconciliation</h3><p className="text-xs text-muted-foreground">Retained records are excluded from verified cash. Match each to bank evidence before creating a linked verified receipt.</p>{legacyRes.data.map(legacy => <div key={legacy.id} className="rounded border p-3 space-y-2"><p className="text-sm">{formatTHB(legacy.amount_satang)} · {todayISO(new Date(legacy.paid_at))} · {legacy.verification_state}</p><p className="text-xs text-muted-foreground">{legacy.notes ?? "No original reference"}</p>{legacy.reconciled_payment_id ? <p className="text-xs">Linked verified receipt: {legacy.reconciled_payment_id}</p> : null}{legacy.verification_state === "legacy_unverified" && ctx.role !== "member" && outstanding > 0 && !["draft", "cancelled"].includes(invoice.status) ? <PaymentForm today={today} orgId={ctx.orgId} invoiceId={invoice.id} legacyPaymentId={legacy.id} suggestedBaht={satangToBahtString(Math.min(legacy.amount_satang, outstanding))} /> : null}</div>)}</div> : null}
             </CardContent>
           </Card>
         </div>
@@ -410,7 +414,20 @@ export default async function InvoiceDetailPage({
           />
         </CardContent>
       </Card> : null}
+
+      {invoice.issued_snapshot_id ? <Card className="max-w-3xl"><CardHeader><CardTitle>Credit notes</CardTitle></CardHeader><CardContent className="space-y-4">
+        <p>Credited {formatTHB(credited)}</p>
+        <CreditNotes orgId={ctx.orgId} invoiceId={id} />
+        {ctx.role !== "member" && outstanding + paid > 0 ? <CreditNoteForm orgId={ctx.orgId} invoiceId={id} lines={itemsRes.data?.length ? itemsRes.data : [{ id, description: "Historical invoice amount", headerOnly: true }]} /> : null}
+      </CardContent></Card> : null}
       <RecordHistory recordType="invoice" recordId={id} />
     </div>
   )
+}
+
+async function CreditNotes({ orgId, invoiceId }: { orgId: string; invoiceId: string }) {
+  const supabase = await createClient()
+  const result = await readAll((from, to) => supabase.from("credit_notes").select("id, number, amount_satang, reason").eq("org_id", orgId).eq("invoice_id", invoiceId).order("created_at").order("id").range(from, to))
+  if (result.error) throw new Error("Credit notes unavailable")
+  return <ul>{(result.data ?? []).map(note => <li key={note.id}><a className="underline" href={`/finance/credit-notes/${note.id}/pdf`} target="_blank" rel="noreferrer">{note.number}</a> · {formatTHB(note.amount_satang)} · {note.reason}</li>)}</ul>
 }

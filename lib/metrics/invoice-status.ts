@@ -7,6 +7,7 @@ export type InvoiceForStatus = {
   status: InvoiceStatus
   amount_satang: number
   due_date: string | null
+  credited_satang?: number
 }
 
 /**
@@ -27,13 +28,13 @@ export function deriveInvoiceStatus(
   const { status, amount_satang, due_date } = invoice
 
   if (status === "draft" || status === "cancelled") return status
-  if (amount_satang > 0 && paidSatang >= amount_satang) return "paid"
+  if (amount_satang > 0 && paidSatang + (invoice.credited_satang ?? 0) >= amount_satang) return "paid"
   if (isPastDue(due_date, todayISOStr)) return "overdue"
-  if (paidSatang > 0) return "partially_paid"
+  if (paidSatang + (invoice.credited_satang ?? 0) > 0) return "partially_paid"
   return "sent"
 }
 
 /** Amount still owed on an invoice (never negative). */
-export function outstandingSatang(amountSatang: number, paidSatang: number): number {
-  return Math.max(0, amountSatang - paidSatang)
+export function outstandingSatang(amountSatang: number, paidSatang: number, creditedSatang = 0): number {
+  return Math.max(0, amountSatang - paidSatang - creditedSatang)
 }

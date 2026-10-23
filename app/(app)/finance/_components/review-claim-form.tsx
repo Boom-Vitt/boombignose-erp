@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { paymentCommandKey } from "@/lib/payments/retry-command"
 import { reviewPaymentClaim } from "../actions"
 
-export function ReviewClaimForm({orgId,claimId,invoiceId,suggestedBaht,today}:{orgId:string;claimId:string;invoiceId:string;suggestedBaht:string;today:string}) {
+export function ReviewClaimForm({orgId,claimId,invoiceId,suggestedBaht,today}:{orgId:string;claimId:string;invoiceId?:string;suggestedBaht:string;today:string}) {
   const router=useRouter()
   const [amount,setAmount]=useState(suggestedBaht)
   const [paidOn,setPaidOn]=useState(today)

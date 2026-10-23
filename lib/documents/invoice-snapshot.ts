@@ -14,7 +14,7 @@ const InvoiceSnapshot = z.object({
 }).refine(snapshot => snapshot.kind === "legacy_operational_invoice" || snapshot.lines.length > 0, { path: ["lines"], message: "Issued snapshots require priced lines" })
 
 /** Read immutable issued content; live seller and buyer profiles never substitute. */
-export function invoiceSnapshotDocument(value: unknown, status: string, verifiedPaidSatang: number): PrintableDocument {
+export function invoiceSnapshotDocument(value: unknown, status: string, verifiedPaidSatang: number, creditedSatang = 0): PrintableDocument {
   const snapshot = InvoiceSnapshot.parse(value)
   const document = snapshot.document
   const legacy = snapshot.kind === "legacy_operational_invoice"
@@ -28,6 +28,6 @@ export function invoiceSnapshotDocument(value: unknown, status: string, verified
     items: snapshot.lines.map(line => ({ description: line.description, quantity: line.quantity, unit: line.unit, unit_price_satang: line.unitPriceSatang, amount_satang: line.amountSatang })),
     subtotalSatang: totals.subtotalSatang, discountSatang: totals.discountSatang, totalSatang: totals.totalSatang,
     vatSatang: totals.vatSatang, vatByRate: totals.vatByRate, whtSatang: totals.whtSatang, whtRateBps: document.whtRateBps, amountDueSatang: totals.amountDueSatang, pricesIncludeVat: document.pricesIncludeVat,
-    verifiedPaidSatang, outstandingSatang: outstandingSatang(totals.amountDueSatang, verifiedPaidSatang),
+    verifiedPaidSatang, creditedSatang, outstandingSatang: outstandingSatang(totals.amountDueSatang, verifiedPaidSatang, creditedSatang),
   }
 }

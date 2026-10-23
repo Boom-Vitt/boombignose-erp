@@ -80,7 +80,7 @@ export default async function ClientDetailPage({
     supabase.from("projects").select("id", { count: "exact" }).eq("org_id", ctx.orgId).eq("client_id", id).limit(1),
     supabase
       .from("client_balances")
-      .select("outstanding_satang")
+      .select("outstanding_satang, credit_satang")
       .eq("org_id", ctx.orgId)
       .eq("client_id", id)
       .maybeSingle(),
@@ -98,9 +98,10 @@ export default async function ClientDetailPage({
     <div className="space-y-6">
       <PageHeader
         title={client.name}
-        description="Client details"
+        description={balanceKnown ? `Client details · Customer credit ${formatTHB(balanceRes.data?.credit_satang ?? 0)}` : "Client details"}
         breadcrumbs={[{ label: "Clients", href: "/clients" }]}
       >
+        <Button variant="outline" render={<Link href={`/finance/receipts?client=${id}`} />}>Customer receipts</Button>
         <Button
           variant="outline"
           size="sm"

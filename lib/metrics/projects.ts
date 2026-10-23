@@ -24,13 +24,14 @@ export type ProjectProfit = {
 export function projectProfit(
   invoices: InvoiceForProfit[],
   costs: CostForProfit[],
-  labourCostSatang: Satang = 0
+  labourCostSatang: Satang = 0,
+  creditedBaseSatang: Satang = 0
 ): ProjectProfit {
   const revenueSatang = sumSatang(
     invoices
       .filter((i) => i.status !== "cancelled" && i.status !== "draft")
       .map((i) => i.total_satang - i.vat_satang)
-  )
+  ) - creditedBaseSatang
   const costSatang = sumSatang([
     ...costs.map((c) => c.amount_satang),
     labourCostSatang,

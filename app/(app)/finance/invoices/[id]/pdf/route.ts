@@ -44,11 +44,14 @@ export async function GET(
       .eq("invoice_id", id)
       .eq("org_id", ctx.orgId)
       .order("position", { ascending: true }).order("id").range(from, to)),
-    readAll((from, to) => supabase.from("payments").select("amount_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).eq("verification_state", "verified").order("id").range(from, to)),
+    readAll((from, to) => supabase.from("invoice_receipts").select("amount_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).eq("verification_state", "verified").order("id").range(from, to)),
   ])
 
   if (invoiceRes.error || itemsRes.error || receiptsRes.error) return new Response("Invoice evidence unavailable", { status: 503 })
-  const paid = sumSatang((receiptsRes.data ?? []).map(p => p.amount_satang))
+  const balance = await supabase.from("invoice_balances").select("paid_satang, credited_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).maybeSingle()
+  if (balance.error) return new Response("Invoice balance unavailable", { status: 503 })
+  const paid = balance.data?.paid_satang ?? sumSatang((receiptsRes.data ?? []).map(p => p.amount_satang))
+  const credited = balance.data?.credited_satang ?? 0
   const invoice = invoiceRes.data
   if (!invoice) {
     return new Response("Invoice not found", { status: 404 })
@@ -77,7 +80,7 @@ export async function GET(
   let doc: PrintableDocument = {
     kind: "Invoice",
     number: invoiceDisplayNumber({ ...invoice, id }),
-    status: deriveInvoiceStatus(invoice, paid, todayISO()),
+    status: deriveInvoiceStatus({ ...invoice, credited_satang: credited }, paid, todayISO()),
     orgName: ctx.orgName,
     clientName: invoice.clients?.name ?? "—",
     issueDate: invoice.issue_date,
@@ -94,14 +97,15 @@ export async function GET(
     pricesIncludeVat: invoice.prices_include_vat,
     vatByRate: z.array(z.object({ rateBps: z.number(), vatSatang: z.number() })).parse(invoice.tax_breakdown ?? []),
     verifiedPaidSatang: paid,
-    outstandingSatang: outstandingSatang(invoice.amount_satang, paid),
+    creditedSatang: credited,
+    outstandingSatang: outstandingSatang(invoice.amount_satang, paid, credited),
     notes: invoice.notes,
   }
 
   if (invoice.issued_snapshot_id) {
     const snapshotRes = await supabase.from("invoice_snapshots").select("snapshot").eq("org_id", ctx.orgId).eq("invoice_id", id).eq("id", invoice.issued_snapshot_id).maybeSingle()
     if (snapshotRes.error || !snapshotRes.data) return new Response("Issued document unavailable", { status: 503 })
-    try { doc = invoiceSnapshotDocument(snapshotRes.data.snapshot, deriveInvoiceStatus(invoice, paid, todayISO()), paid) }
+    try { doc = invoiceSnapshotDocument(snapshotRes.data.snapshot, deriveInvoiceStatus({ ...invoice, credited_satang: credited }, paid, todayISO()), paid, credited) }
     catch { return new Response("Issued document snapshot could not be validated", { status: 503 }) }
   }
   return new Response(renderDocumentHtml(doc), {

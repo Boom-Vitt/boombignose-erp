@@ -1,3 +1,4 @@
+import { invoiceBalances, creditNoteRevenue } from "@/lib/payments/balances"
 import { invoiceDisplayNumber } from "@/lib/documents/numbering"
 import { readAll } from "@/lib/supabase/read-all"
 import { can } from "@/lib/permissions"
@@ -113,22 +114,16 @@ export default async function FinancePage({
   const activeSubscriptions = subscriptionsRes.data ?? []
 
   // Sum payments per invoice.
-  const paidByInvoice = new Map<string, number>()
-  for (const p of payments) {
-    paidByInvoice.set(
-      p.invoice_id,
-      sumSatang([paidByInvoice.get(p.invoice_id) ?? 0, p.amount_satang])
-    )
-  }
+  const [balances, credits] = await Promise.all([invoiceBalances(supabase, ctx.orgId), creditNoteRevenue(supabase, ctx.orgId)])
 
   const invoiceRows = invoices.map((inv) => {
-    const paid = paidByInvoice.get(inv.id) ?? 0
+    const paid = balances.get(inv.id)?.paid_satang ?? 0
     return {
       ...inv,
       displayNumber: invoiceDisplayNumber(inv),
       paid_satang: paid,
-      outstanding: outstandingSatang(inv.amount_satang, paid),
-      effectiveStatus: deriveInvoiceStatus(inv, paid, today),
+      outstanding: outstandingSatang(inv.amount_satang, paid, balances.get(inv.id)?.credited_satang ?? 0),
+      effectiveStatus: deriveInvoiceStatus({ ...inv, credited_satang: balances.get(inv.id)?.credited_satang ?? 0 }, paid, today),
     }
   })
 
@@ -140,12 +135,12 @@ export default async function FinancePage({
   // Metrics.
   const invoicesWithPaid = invoices.map((inv) => ({
     status: inv.status,
-    amount_satang: inv.amount_satang,
-    paid_satang: paidByInvoice.get(inv.id) ?? 0,
+    amount_satang: inv.amount_satang - (balances.get(inv.id)?.credited_satang ?? 0),
+    paid_satang: balances.get(inv.id)?.paid_satang ?? 0,
   }))
   const unpaidSatang = unpaidTotal(invoicesWithPaid)
   const openCount = unpaidCount(invoicesWithPaid)
-  const revenueSatang = revenueForMonth(invoices, month)
+  const revenueSatang = revenueForMonth(invoices, month) - sumSatang(credits.filter(credit => monthKey(credit.issue_date) === month).map(credit => credit.base_satang))
   const cashReceivedSatang = sumSatang(payments.filter(payment => monthKey(payment.paid_at) === month).map(payment => payment.amount_satang))
   const costsSatang = costsForMonth(costs, month)
   // MRR is derived from active subscriptions (source of truth) for consistency
@@ -158,6 +153,7 @@ export default async function FinancePage({
         title="Finance"
         description="การเงิน / Verified receipts, receivables, and recorded operating costs."
       >
+        <Button variant="outline" render={<Link href="/finance/receipts" />}>Customer receipts</Button>
         <Button variant="outline" render={<Link href="/finance/business-profile" />}>Business profile</Button>
         <Button variant="outline" render={<Link href="/finance/subscriptions" />}>
           <Repeat /> Subscriptions

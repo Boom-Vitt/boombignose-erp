@@ -19,6 +19,7 @@ export type PrintableDocument = {
   /** "Invoice" or "Quotation" — the document heading. */
   kind: string
   number: string
+  originalNumber?: string
   status: string
   orgName: string
   sellerAddress?: string | null
@@ -45,6 +46,7 @@ export type PrintableDocument = {
   totalSatang: Satang
   verifiedPaidSatang?: Satang
   outstandingSatang?: Satang
+  creditedSatang?: Satang
   notes?: string | null
 }
 
@@ -139,6 +141,7 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
       ${metaRow("Seller branch", doc.sellerBranch)}
       ${metaRow("Buyer branch", doc.buyerBranch)}
       ${metaRow("เลขที่ / Number", doc.number)}
+      ${metaRow("Original invoice", doc.originalNumber)}
       ${metaRow("ลูกค้า / Bill to", doc.clientName)}
       ${metaRow("ที่อยู่ลูกค้า / Buyer address", doc.buyerAddress)}
       ${metaRow("เลขผู้เสียภาษีลูกค้า / Buyer tax ID", doc.buyerTaxId)}
@@ -175,6 +178,7 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
       ${doc.pricesIncludeVat ? '<p>Entered prices and discounts include VAT.</p>' : ""}
       ${doc.verifiedPaidSatang !== undefined ? `<div class="total-row"><span>รับเงินที่ตรวจสอบแล้ว / Verified receipts</span><span class="num">${escapeHtml(formatTHB(doc.verifiedPaidSatang))}</span></div>` : ""}
       ${doc.outstandingSatang !== undefined ? `<div class="total-row"><span>ยอดคงค้าง / Outstanding</span><span class="num">${escapeHtml(formatTHB(doc.outstandingSatang))}</span></div>` : ""}
+      ${doc.creditedSatang ? `<div class="total-row"><span>Credit notes</span><span class="num">${escapeHtml(formatTHB(doc.creditedSatang))}</span></div>` : ""}
     </div>
 
     ${notesBlock}
