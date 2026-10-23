@@ -4,7 +4,7 @@ import { outstandingSatang } from "@/lib/metrics/invoice-status"
 import type { Enums } from "@/lib/types/database"
 
 export type RevenueInvoice = { status: Enums<"invoice_status">; issue_date: string; total_satang: number; vat_satang: number }
-export type CostLike = { category: string; amount_satang: number; incurred_on: string }
+export type CostLike = { category: string; amount_satang: number; input_vat_satang: number; incurred_on: string }
 
 export type RecurringInvoiceLike = {
   status: Enums<"invoice_status">
@@ -38,16 +38,17 @@ export function revenueForMonth(
   )
 }
 
-/** Operating costs incurred in the given 'YYYY-MM', excluding inventory assets. */
+/** Excludes inventory assets; gross for cash burn unless recovering input VAT. */
 export function costsForMonth(
   costs: CostLike[],
   monthKeyStr: string,
-  tz?: string
+  tz?: string,
+  vatRegistered = false
 ): Satang {
   return sumSatang(
     costs
       .filter((c) => c.category !== "inventory" && monthKey(c.incurred_on, tz) === monthKeyStr)
-      .map((c) => c.amount_satang)
+      .map((c) => c.amount_satang - (vatRegistered ? c.input_vat_satang : 0))
   )
 }
 

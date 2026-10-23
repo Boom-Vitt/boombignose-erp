@@ -744,6 +744,7 @@ describe("ERP MCP server", () => {
       org_id: ORG_A,
       category: "software",
       amount_satang: baht(amountBaht),
+      input_vat_satang: 0,
       incurred_on: incurredOn,
     })
     const store = (burnSatang: number | null = null) => ({

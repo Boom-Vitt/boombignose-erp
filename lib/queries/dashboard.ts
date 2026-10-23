@@ -99,7 +99,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       .select("id,status,amount_satang,total_satang,vat_satang,issue_date,is_recurring,recurring_interval,due_date")
       .eq("org_id", ctx.orgId).order("id").range(from, to)),
     readAll((from, to) => supabase.from("payments").select("invoice_id,amount_satang,paid_at").eq("org_id", ctx.orgId).eq("verification_state", "verified").order("id").range(from, to)),
-    readAll((from, to) => supabase.from("costs").select("category,amount_satang,incurred_on").eq("org_id", ctx.orgId).order("id").range(from, to)),
+    readAll((from, to) => supabase.from("costs").select("category,amount_satang,input_vat_satang,incurred_on").eq("org_id", ctx.orgId).order("id").range(from, to)),
     readAll((from, to) => supabase.from("projects").select("status").eq("org_id", ctx.orgId).order("id").range(from, to)),
     readAll((from, to) => supabase.from("activities").select("id,body,type,due_date,done").eq("org_id", ctx.orgId).order("id").range(from, to)),
     supabase

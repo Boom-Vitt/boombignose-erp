@@ -81,7 +81,7 @@ export default async function FinancePage({
   const config = parseFacets(params, "finance")
   const now = new Date()
 
-  const [invoicesRes, paymentsRes, costsRes, savedViews, subscriptionsRes] =
+  const [invoicesRes, paymentsRes, costsRes, savedViews, subscriptionsRes, settingsRes] =
     await Promise.all([
       readAll((from, to) => supabase
         .from("invoices")
@@ -104,9 +104,10 @@ export default async function FinancePage({
         .select("status, amount_satang, interval")
         .eq("org_id", ctx.orgId)
         .eq("status", "active").order("id").range(from, to)),
+      supabase.from("org_settings").select("vat_registered").eq("org_id", ctx.orgId).maybeSingle(),
     ])
 
-  if (invoicesRes.error || paymentsRes.error || costsRes.error || subscriptionsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
+  if (invoicesRes.error || paymentsRes.error || costsRes.error || subscriptionsRes.error || settingsRes.error) throw new Error("Finance data unavailable. Reload before relying on totals.")
   const invoices = invoicesRes.data ?? []
   const payments = paymentsRes.data ?? []
   const costs = costsRes.data ?? []
@@ -147,7 +148,7 @@ export default async function FinancePage({
   const openCount = unpaidCount(invoicesWithPaid)
   const revenueSatang = revenueForMonth(invoices, month)
   const cashReceivedSatang = sumSatang(payments.filter(payment => monthKey(payment.paid_at) === month).map(payment => payment.amount_satang))
-  const costsSatang = costsForMonth(costs, month)
+  const costsSatang = costsForMonth(costs, month, undefined, settingsRes.data?.vat_registered ?? false)
   // MRR is derived from active subscriptions (source of truth) for consistency
   // with the dashboard.
   const mrrSatang = subscriptionMrr(activeSubscriptions)

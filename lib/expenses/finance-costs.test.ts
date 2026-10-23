@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({ costs: [] as unknown[] }))
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org", userId: "user", role: "owner" }) }))
 vi.mock("@/lib/queries/saved-views", () => ({ getFacetSavedViews: async () => [] }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (table: string) => {
-  const query = { select: () => query, eq: () => query, order: () => query, range: () => query, then: (resolve: (value: unknown) => unknown) => resolve({ data: table === "costs" ? state.costs : [], error: null }) }
+  const query = { select: () => query, eq: () => query, order: () => query, range: () => query, maybeSingle: async () => ({ data: null, error: null }), then: (resolve: (value: unknown) => unknown) => resolve({ data: table === "costs" ? state.costs : [], error: null }) }
   return query
 } }) }))
 vi.mock("@/app/(app)/purchases/_components/action-button", () => ({ PurchaseAction: ({ label }: { label: string }) => createElement("button", null, label) }))
