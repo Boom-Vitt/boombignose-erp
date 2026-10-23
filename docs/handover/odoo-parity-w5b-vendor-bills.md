@@ -8,17 +8,23 @@ Purchasing now matches the vendor's reference, bill date, due date, line quantit
 
 `vendor_bill_matches` is immutable evidence with forced tenant RLS. Its unique index covers organization, vendor, and the trimmed case-insensitive vendor reference. The database refuses duplicates, including competing commands for different POs. An invoice can create inventory and other cost rows under one matching record. The evidence record does not store money totals.
 
-`costs.amount_satang` remains the sole recorded money-out amount. It now contains the vendor's gross payable amount, including input VAT. `input_vat_satang` records the VAT portion, and Finance displays both fields. Existing burn and money-out readers therefore include gross recorded costs. Inventory costs retain category `inventory`, so the established exclusion from operating costs remains. The monthly purchase VAT view includes inventory purchases.
+`costs.amount_satang` remains the sole recorded money-out amount. It now contains the vendor's gross payable amount, including input VAT. `input_vat_satang` records the VAT portion, and Finance displays both fields. Burn and money-out readers retain gross recorded costs. Finance operating expenses and project profit deduct input VAT only when org_settings.vat_registered is true; their queries now fetch that setting and the VAT field. Inventory costs retain category `inventory`, so the established exclusion from operating costs remains. The monthly purchase VAT view includes inventory purchases.
 
 Matching retains typed JSON line evidence for entered and expected quantities, vendor and PO prices, the matched base, and category. Accepting a quantity variance consumes the current net received baseline, as the previous bill command did. Entered vendor quantities remain evidence rather than changing physical receipts. Partial receipt bills retain the difference of rounded cumulative PO amounts, avoiding a repeated half-satang charge.
 
-Quantity and unit-price differences above `org_settings.bill_variance_tolerance_bps` require a reason. The default is 100 basis points, or 1 percent. Finance settings lets staff change the tolerance. Existing staff RLS protects that setting. Declared VAT or total discrepancies always require a reason. The command retains the reason and flags, applies the existing finance date lock, and audits the match. Safe integer satang bounds and exact category allocations are enforced.
+Quantity and unit-price differences above `org_settings.bill_variance_tolerance_bps` require a reason. The default is 100 basis points, or 1 percent. Finance settings lets staff change the tolerance. Existing staff RLS protects that setting. VAT must agree with the matched base and declared rate within three satang per line; zero-rate VAT is zero. Gross total must equal matched base plus VAT. A reason permits quantity and price variances, never contradictory VAT or hidden total adjustments. The command retains the reason and flags, applies the existing finance date lock, and audits the match. Safe integer satang bounds and exact category allocations are enforced.
 
 ## Return credits
 
-The existing `return_purchase_order` still creates the negative PO-cost rows and owns physical return behavior. `link_vendor_credit` attaches one unpaid negative cost to a unique vendor credit reference and an original matched invoice from the same vendor and PO. The form accepts a credit date, VAT rate, VAT amount, and discrepancy reason. The command subtracts VAT from the negative gross cost. Credits reverse input VAT in the credit month. Original-invoice locking and the remaining VAT ceiling prevent repeated credits from reversing more VAT than the original invoice.
+The existing `return_purchase_order` creates PO-price category credits and retains ownership of physical stock posting. `link_vendor_credit` now selects one or more unpaid return costs and explicit returned-line quantities. A single immutable credit match covers every selected category, retains one vendor reference, and allocates VAT atomically. Linking uses each original line's accepted billed base over its physical received quantity, with cumulative rounding so a full return reverses the exact billed base.
 
-Legacy bills and credits retain their existing fields. The migration invents no historical vendor references. Credit linking requires an original invoice matched by the new command. Credit price adjustments beyond the pre-existing PO-cost return base are not included in this track.
+Per-line cumulative limits cover the original invoice and all credited returns on the PO. Credit eligibility counts returned billed units, excluding returns of unbilled receipts even when the PO price is zero. The command serializes on the PO and original match, validates all selected costs and dates before writing, and rejects UUID aliases. It checks the source costs' incurred dates as well as the new date against the finance lock.
+
+Credit VAT uses the original invoice rate and cumulative original VAT allocation, preventing partial notes from consuming tax early or stranding a rounding remainder. The original invoice VAT must itself satisfy the matched base/rate rounding bound. Category and source-cost allocation sums remain exact. Input credit VAT is positive; costs store it negatively.
+
+For inventory, linking inserts a separate nonpayable `return_adjustment` for the matched-price difference. It never rewrites W5-d's adjustment row or changes stock moves. Signed credit base plus all return adjustments remains the negative stock value removed; recoverable VAT is a separate amount. Service credits fully cancel their billed base without stock adjustments.
+
+Legacy bills retain their existing fields. No historical vendor references or returned-line evidence are invented. A PO with an earlier linked credit whose line evidence is empty requires reconciliation before further linking. A PO combining evidence-free legacy bills with matched bills may also be conservatively refused when its remaining billed quantity cannot be attributed to the matched evidence; reconcile the legacy line quantities first. A historical invoice whose cost base contradicts its immutable line evidence or whose VAT was implausible is refused for credit linking. These safeguards do not repair preexisting inconsistent records automatically.
 
 ## Database functions and compatibility
 
@@ -27,22 +33,22 @@ Legacy bills and credits retain their existing fields. The migration invents no 
 | `public.bill_purchase_order(uuid,uuid)` | Removed. The evidence-free overload cannot remain as a bypass. |
 | `public.bill_purchase_order(uuid,uuid,jsonb)` | Created. Staff-only atomic matching, reference uniqueness, receipt snapshot validation, variances, VAT, category costs, audit, and PO status. |
 | `private.guard_vendor_bill()` | Replaced. Retains linked cost immutability and payment-only updates, and rejects forged VAT or match fields on manual costs. |
-| `public.link_vendor_credit(uuid,uuid,jsonb)` | Created. Links an existing negative return cost to vendor evidence, enforces original invoice and VAT limits, and audits the link. |
+| `public.link_vendor_credit(uuid,uuid,jsonb)` | Replaced in the follow-up migration. Links all selected return category costs atomically, validates cumulative matched quantities/base/VAT and source dates, posts inventory price reconciliation, and audits the original source costs. |
 
 `bill_purchase_order` takes `p_org_id`, `p_order_id`, and `p_bill`. JSON fields are `vendor_reference`, `bill_date`, optional `due_date`, `input_vat_rate`, `input_vat_satang`, `vendor_total_satang`, optional `variance_reason`, and optional `lines`. Each entered line has `id`, `quantity`, `expected_quantity`, and `unit_cost_satang`. Omitting lines uses the current default receipt baseline. The app always sends explicit lines and dates. Monetary JSON fields are integer satang, while the VAT rate is a percentage with at most two decimals.
 
-The credit command takes `p_org_id`, `p_cost_id`, and `p_bill`. Credit JSON uses `vendor_reference`, `bill_date`, `input_vat_rate`, `input_vat_satang`, `variance_reason`, and `original_bill_id`. Credit VAT is entered positively and stored negatively on the cost. No other track-owned function is redefined.
+The credit command takes `p_org_id`, `p_cost_id`, and `p_bill`. Credit JSON uses `vendor_reference`, `bill_date`, `input_vat_rate`, `input_vat_satang`, `variance_reason`, `original_bill_id`, required `lines` containing `{id, quantity}`, and optional `cost_ids` containing the complete selected return cost set (defaults to the anchor `p_cost_id`). Credit VAT is entered positively and stored negatively on the cost. No other track-owned function is redefined.
 
 ## Files and user-visible changes
 
-- `supabase/migrations/20261026100000_vendor_bill_matching.sql` owns the evidence table, cost fields, commands, guard, and `monthly_purchase_vat` view.
+- `supabase/migrations/20261026100000_vendor_bill_matching.sql` owns the original evidence table, cost fields, commands, guard, and `monthly_purchase_vat` view. It is unchanged. `20261026103000_vendor_bill_review_fixes.sql` replaces only the W5-b bill and credit commands.
 - `lib/purchasing/bill-matching.ts` owns pure matching and due-date math. Its Vitest tests cover defaults, tolerances, zero prices, rounding, and invalid data.
 - `lib/purchasing/schema.ts`, purchasing actions, and database types define the validated app boundary. Existing SQL purchasing fixtures now send complete invoice evidence through test-only helpers.
 - Purchasing bill and credit forms, PO details, vendor bills, and Finance display vendor references and VAT. Finance settings adds the tolerance form.
 - Reports and printable reports show monthly purchase base, input VAT, and gross vendor total. Cost CSV includes vendor invoice and VAT fields, and now uses the existing complete-row reader.
 - `supabase/tests/vendor_bills.sql` and `e2e/vendor-bills.spec.ts` cover the new contract. Existing purchasing e2e and typed cost/report fixtures were updated.
 
-## Verification evidence
+## Original implementation verification evidence
 
 The final code passed these gates on 2026-10-23.
 
@@ -66,3 +72,11 @@ Observed red-to-green evidence includes a missing matching module before the pur
 The isolated reset command is `.local-stack/db-reset.sh "$PWD"`. Its historical directory name is `odoo-w2d-db`. The coordinator confirmed exclusive assignment to this track, and its config was inspected for API 55901 and DB 55902. App tests use port 3108. Environment and isolation files remain ignored.
 
 Model the Domain selected one invoice evidence record for several category costs. Prove It Works required database assertions and a real production browser run. The one-worker decomposition keeps the coupled command, form, and report changes together. Independent integration review remains with the coordinator. No push, merge, external publication, or independent-review approval is claimed.
+
+## Review-fix validation, 2026-10-23
+
+The review fixes address all seven findings. The spurious tolerance field was removed from invoice-item, invoice and subscription Row/Insert/Update types; only org_settings retains it. The credit form submits explicit quantities and selected category costs from the PO; vendor pages link to the PO for this operation.
+
+Observed failing evidence includes the original 27 SQL regression failures, incorrect profit costs of 85,600 instead of 80,000 and 95,600 instead of 90,000, UUID-alias matching, a three-satang full-return VAT residual, and over-crediting five units when only two billed units were returned on a zero-price PO. The final focused SQL file passes 50 assertions, including skewed multi-line VAT rounding and grouped same-category returns. A read-only reviewer found no remaining correctness findings in the final command patch (migration SHA-256 `2a69e72a23eeb5702807abdc38ad58a2786761382c9ee645e99d2643ff74906d`); this is not merge approval. Vitest currently passes 151 files and 1207 tests. Final full SQL reset, browser run, and post-browser lint results will be recorded below.
+
+Model the Domain kept one invoice or credit evidence record for several category costs. Prove It Works required failing-then-passing pgTAP/Vitest checks plus production browser validation. Independent integration review and merge remain the coordinator's responsibility. No push or merge is authorized.
