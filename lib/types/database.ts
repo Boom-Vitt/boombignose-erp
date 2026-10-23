@@ -57,6 +57,12 @@ export type Database = {
         Update: never
         Relationships: []
       }
+      scheduled_replenishment_runs: {
+        Row: { org_id: string; run_date: string; vendor_id: string; purchase_order_id: string; created_at: string }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       warehouses: {
         Row: { id: string; org_id: string; code: string; name: string; address: string | null; is_default: boolean; active: boolean }
         Insert: { id?: string; org_id: string; code: string; name: string; address?: string | null; is_default?: boolean; active?: boolean }
