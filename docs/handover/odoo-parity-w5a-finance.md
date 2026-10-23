@@ -65,3 +65,35 @@ The resume replaced saved WIP commit `dc416cf` with logical commits `c5c0151` fo
 This uses the existing operational-document PDF convention and does not introduce a legal tax filing system. Historical adoption retains an amount-only correction contract because its original tax evidence was never certified. Single-rate final invoices retain the prior discount-deduction representation. Mixed-rate final invoices use linked credit notes.
 
 No dependency was added. No other stack, deployment, push or base-branch merge was performed. No track implementation or validation work remains. The coordinator owns integration. The four expected Pro-only browser tests were skipped in Community.
+
+
+## Review fixes (w5a-fix1)
+
+2026-10-23. Follow-up against `38d0917` verifies and fixes both should-fix findings from the W5a review. The original completion evidence above belongs to the earlier implementation. This follow-up has its own regression and gate evidence below.
+
+`20261026095000_credit_quantity_rounding.sql` adds nullable `quantity` to the existing forced-RLS, immutable `credit_note_lines` table. It backfills quantity-mode notes once from successful original command requests, matching the tenant, note, invoice and source item. Amount-only credits retain null quantity. The migration temporarily disables and restores the line immutability trigger for that backfill. Future crediting reads immutable line evidence, not the idempotency table.
+
+The replacement `issue_credit_note` retains its public signature, customer/invoice/quote locking, authorization, retry behavior, monetary limits, audit, snapshots and allocation release. Quantity credits compute the rounded cumulative quantity value less actual prior quantity-credit raw amounts. For newly issued sequences this is exactly the difference between successive rounded cumulative values. Subtracting actual prior amounts also absorbs rounding drift in already-issued notes without rewriting their evidence. Cumulative quantity cannot exceed the original line. Amount credits still consume the shared monetary limit without inventing returned quantities. The existing `credit_note_totals` residual VAT/WHT calculation is retained and covered across mixed tax buckets, discounts and both inclusive and exclusive prices.
+
+`supabase/tests/credit_quantity_rounding.sql` proves successive halves and `0.333 + 0.333 + 0.334` quantities against odd 10,001-satang unit prices, including exact raw, base, VAT, per-rate VAT, WHT and due totals, zero outstanding, quantity retention, overquantity rejection and retry identity. Initial red evidence showed second halves rejected with `Credit exceeds remaining line amount`, third raw amounts `{3330,3330,3340}` instead of `{3330,3331,3340}`, and 38 failures among the initial 58 assertions. The expanded corrected suite passes 73 assertions. A separate transactional probe at `.audit/w5a-fix1-upgrade.sql` loads the old command, issues old half/third and amount-only notes, applies the actual migration and passes eight assertions for recovered quantities, completion, zero balances and restored immutability.
+
+The customer receipts page and invoice payment/legacy reconciliation displays now use `todayISO(new Date(paid_at))`, the existing Asia/Bangkok house helper. Three page regressions at Bangkok midnight `2026-10-01`, stored as `2026-09-30T17:00:00Z`, failed before the fix and pass afterward. The expanded `lib/documents/vat-pages.test.ts` passes all 13 tests. The W5a screen/PDF/export sweep found no other UTC date slice to fix. PDF snapshot issue dates remain date-only values; receipt CSV retains its full, explicitly labeled recorded payment instant. No export contract changed.
+
+Regression-first commit `bbd70ad` precedes `680e8b1` for cumulative quantity evidence/rounding and `04679be` for Bangkok date display. An independent read-only reviewer approved implementation HEAD `04679be` against `38d0917` with no correctness findings. It inspected the backfill, mixed amount behavior, residual tax path, immutability and date tests; it did not run the owner's runtime gates. Model the Domain led to retaining explicit quantity on the existing immutable evidence structure. Prove It Works required actual red/green SQL and rendered-page results plus the full gates.
+
+Follow-up gates ran sequentially on 2026-10-23 against the assigned API 55701 and app 3106. Each command exited 0.
+
+| Order | Command | Observed result |
+| --- | --- | --- |
+| 1 | `.local-stack/db-reset.sh "$PWD"` | Full migration replay and all 40 SQL files / 1,213 assertions passed. |
+| 2 | `pnpm lint` | Passed with no errors or warnings. |
+| 3 | `pnpm typecheck` | Passed. |
+| 4 | `pnpm test` | All 152 files / 1,211 tests passed. |
+| 5 | `pnpm build` | Production build passed. |
+| 6 | `pnpm e2e` | One full run, 52 passed / four expected Community skips, no failures or retries. |
+| 7 | `pnpm lint` | Final lint passed with no errors or warnings. |
+| 8 | `node supabase/tests/payment-concurrency.test.mjs` | All seven competing-session allocation/reversal assertions passed. |
+
+Logs use `/tmp/w5a-fix1-{sql,lint,typecheck,test,build,e2e,lint-final,concurrency}.log`; focused evidence uses `/tmp/w5a-fix1-{quantity-red,quantity-green,dates-red,dates-green,upgrade}.log`. The migration/quantity regression, page regressions and real competing-session driver remain repeatable from their source/probe paths.
+
+No dependency, external deployment, push or merge was introduced. All requested fixes and gates are complete; the coordinator owns integration. The original limits above and four expected Community skips remain.
