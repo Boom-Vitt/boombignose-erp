@@ -40,7 +40,21 @@ export async function reversePayment(input: z.input<typeof Reversal>) {
   const { error } = await supabase.rpc("reverse_payment", { p_org_id: ctx.orgId, p_payment_id: d.paymentId, p_reason: d.reason, p_reversed_on: d.reversedOn, p_key: d.key })
   if (error) return { error: error.message }
   revalidatePath("/finance")
-  revalidatePath(`/finance/invoices/${d.invoiceId}`)
+  if (d.invoiceId) revalidatePath(`/finance/invoices/${d.invoiceId}`)
+  revalidatePath("/finance/receipts")
   revalidatePath("/clients")
+  return {}
+}
+
+const ReviewPolicy = z.object({ expectedOrgId: z.guid(), required: z.boolean() })
+export async function updatePaymentReviewPolicy(input: z.input<typeof ReviewPolicy>) {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "settings:manage")
+  const parsed = ReviewPolicy.safeParse(input)
+  if (!parsed.success || parsed.data.expectedOrgId !== ctx.orgId) return { error: "Workspace changed. Reload finance settings." }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("update_payment_review_policy", { p_org_id: ctx.orgId, p_required: parsed.data.required })
+  if (error) return { error: error.message }
+  revalidatePath("/settings/finance")
   return {}
 }

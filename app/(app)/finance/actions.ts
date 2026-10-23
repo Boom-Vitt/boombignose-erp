@@ -358,7 +358,7 @@ const BusinessProfile = z.object({
   legalName: z.string().trim().min(1).max(200), address: z.string().trim().min(1).max(1000),
   vatRegistered: z.boolean().optional(), vatRateBps: z.number().int().min(0).max(10000).default(700), pricesIncludeVat: z.boolean().default(false), branchLabel: z.string().trim().max(200).default(""),
   taxId: z.string().trim().refine(value => value === "" || /^[0-9]{13}$/.test(value), "Enter a 13-digit tax ID or leave it blank"), taxStatus: z.enum(["unknown", "not_registered", "registered"]),
-}).refine(value => !(value.vatRegistered ?? (value.taxStatus === "registered")) || value.taxId.length === 13, "Registered VAT profile needs a tax ID")
+}).refine(value => value.taxStatus !== "registered" || value.taxId.length === 13, "Registered VAT profile needs a tax ID")
 export async function updateBusinessProfile(input: z.input<typeof BusinessProfile>): Promise<{ error?: string }> {
   const ctx = await requireOrgContext()
   try { requireCapability(ctx, "settings:manage") }
@@ -370,7 +370,7 @@ export async function updateBusinessProfile(input: z.input<typeof BusinessProfil
   const supabase = await createSupabaseClient()
   const { error } = await supabase.rpc("update_tax_business_profile", {
     p_org_id: ctx.orgId, p_legal_name: d.legalName, p_business_address: d.address,
-    p_tax_id: d.taxId, p_vat_registered: d.vatRegistered ?? (d.taxStatus === "registered"), p_vat_rate_bps: d.vatRateBps, p_prices_include_vat: d.pricesIncludeVat, p_branch_label: d.branchLabel,
+    p_tax_id: d.taxId, p_tax_status: d.taxStatus, p_vat_rate_bps: d.vatRateBps, p_prices_include_vat: d.pricesIncludeVat, p_branch_label: d.branchLabel,
   })
   if (error) return { error: error.message }
   revalidatePath("/finance/business-profile")
