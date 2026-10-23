@@ -1,3 +1,5 @@
+begin;
+
 alter table public.org_settings add column scheduled_replenishment_enabled boolean not null default false;
 create table public.product_vendor_lead_times (
  org_id uuid not null references public.organizations(id), product_id uuid not null, vendor_id uuid not null,
@@ -111,3 +113,5 @@ begin
 end;
 $$;
 grant execute on function public.create_replenishment_rfq(uuid,uuid) to service_role;
+
+commit;

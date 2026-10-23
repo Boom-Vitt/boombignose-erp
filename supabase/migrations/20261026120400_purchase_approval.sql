@@ -1,3 +1,5 @@
+begin;
+
 alter table public.org_settings add column purchase_approval_threshold_satang bigint check(purchase_approval_threshold_satang between 0 and 9007199254740991);
 alter table public.purchase_orders add column approved_by uuid references auth.users(id), add column approved_at timestamptz, add column approval_snapshot jsonb;
 
@@ -47,3 +49,5 @@ begin
   update public.purchase_orders set status=p_status where org_id=p_org_id and id=po.id;
 end;
 $$;
+
+commit;

@@ -1,3 +1,5 @@
+begin;
+
 create table public.stock_documents (
  id uuid primary key default gen_random_uuid(), org_id uuid not null references public.organizations(id),
  kind text not null check(kind in ('receipt','delivery')), number text not null, document_date date not null check(isfinite(document_date)),
@@ -131,3 +133,5 @@ end;
 $$;
 revoke all on function public.deliver_invoice(uuid,uuid,uuid,jsonb,date) from public,anon;
 grant execute on function public.deliver_invoice(uuid,uuid,uuid,jsonb,date) to authenticated;
+
+commit;

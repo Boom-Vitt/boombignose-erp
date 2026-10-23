@@ -1,3 +1,5 @@
+begin;
+
 lock table public.stock_moves in exclusive mode;
 create table public.stock_balances (
   org_id uuid not null references public.organizations(id),
@@ -307,3 +309,5 @@ returns setof public.stock_moves language sql stable security invoker set search
 $$;
 revoke all on function public.stock_moves_page(uuid,bigint,text[],uuid,uuid,uuid,uuid,timestamptz,timestamptz,text) from public,anon;
 grant execute on function public.stock_moves_page(uuid,bigint,text[],uuid,uuid,uuid,uuid,timestamptz,timestamptz,text) to authenticated;
+
+commit;

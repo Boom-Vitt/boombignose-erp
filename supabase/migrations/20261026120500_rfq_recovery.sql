@@ -1,3 +1,5 @@
+begin;
+
 create function public.reopen_purchase_rfq(p_org_id uuid,p_order_id uuid,p_delivery_key uuid,p_verified_not_delivered boolean)
 returns void language plpgsql security definer set search_path='' as $$
 declare po public.purchase_orders;
@@ -29,3 +31,5 @@ end;
 $$;
 revoke all on function public.reopen_purchase_rfq(uuid,uuid,uuid,boolean),public.update_purchase_order(uuid,uuid,uuid,date,date,text) from public,anon;
 grant execute on function public.reopen_purchase_rfq(uuid,uuid,uuid,boolean),public.update_purchase_order(uuid,uuid,uuid,date,date,text) to authenticated;
+
+commit;

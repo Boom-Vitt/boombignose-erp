@@ -1,3 +1,5 @@
+begin;
+
 alter table public.org_settings add column over_receipt_tolerance_percent numeric(5,2) not null default 0 check(over_receipt_tolerance_percent between 0 and 100);
 alter table public.purchase_order_items drop constraint purchase_order_items_check;
 alter table public.purchase_order_items add constraint purchase_received_quantity_nonnegative check(received_quantity>=0 and received_quantity<>'NaN'::numeric),
@@ -50,3 +52,5 @@ select p.org_id,p.id as product_id,coalesce((select sum(greatest(i.quantity-i.re
     left join public.invoice_line_stock s on s.org_id=i.org_id and s.line_id=i.id
     where i.org_id=p.org_id and i.product_id=p.id and v.issued_snapshot_id is not null and v.status not in ('draft','cancelled')),0) as reserved_quantity
 from public.products p where p.is_stockable;
+
+commit;

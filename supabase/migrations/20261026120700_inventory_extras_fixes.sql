@@ -1,3 +1,5 @@
+begin;
+
 create or replace function private.lock_stock_balances(p_org_id uuid,p_products uuid[],p_warehouses uuid[])
 returns void language plpgsql security definer set search_path='' as $$
 declare product uuid; warehouse uuid;
@@ -89,3 +91,5 @@ begin
   return result;
 end;
 $$;
+
+commit;

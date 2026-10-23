@@ -1,3 +1,5 @@
+begin;
+
 create table public.stock_transfers (
  org_id uuid not null references public.organizations(id), key uuid not null, product_id uuid not null,
  from_warehouse_id uuid not null, to_warehouse_id uuid not null, quantity numeric(12,3) not null check(quantity>0 and quantity<>'NaN'::numeric),
@@ -105,3 +107,5 @@ end;
 $$;
 revoke all on function public.transfer_stock(uuid,uuid,uuid,uuid,numeric,text,uuid) from public,anon;
 grant execute on function public.transfer_stock(uuid,uuid,uuid,uuid,numeric,text,uuid) to authenticated;
+
+commit;
