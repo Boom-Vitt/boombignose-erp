@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense, useState } from "react"
+import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -100,6 +101,12 @@ function LoginForm() {
                 Use demo account
               </Button>
             ) : null}
+            <p className="text-muted-foreground text-center text-xs">
+              No account yet?{" "}
+              <Link href="/signup" className="underline underline-offset-4">
+                Sign up
+              </Link>
+            </p>
           </CardFooter>
         </form>
       </Card>
