@@ -446,20 +446,20 @@ isOneToOne: false
                   ]
                 },"invoice_items": {
                   Row: {
-"quote_item_id": string | null,bill_variance_tolerance_bps: number, "wht_rate_bps": number,
+"quote_item_id": string | null, "wht_rate_bps": number,
 
 "tax_rate_bps": number,
                     "amount_satang": number,"created_at": string,"description": string,"id": string,"invoice_id": string,"org_id": string,"position": number,"quantity": number,"unit_price_satang": number,"updated_at": string,"product_id": string | null,"unit": string | null
                   }
                   ComputedFields: never
                   Insert: {
-"quote_item_id"?: string | null,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,
+"quote_item_id"?: string | null, "wht_rate_bps"?: number,
 
 "tax_rate_bps"?: number,
                     "amount_satang"?: number,"created_at"?: string,"description": string,"id"?: string,"invoice_id": string,"org_id": string,"position"?: number,"quantity"?: number,"unit_price_satang"?: number,"updated_at"?: string,"product_id"?: string | null,"unit"?: string | null
                   }
                   Update: {
-"quote_item_id"?: string | null,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,
+"quote_item_id"?: string | null, "wht_rate_bps"?: number,
 
 "tax_rate_bps"?: number,
                     "amount_satang"?: number,"created_at"?: string,"description"?: string,"id"?: string,"invoice_id"?: string,"org_id"?: string,"position"?: number,"quantity"?: number,"unit_price_satang"?: number,"updated_at"?: string,"product_id"?: string | null,"unit"?: string | null
@@ -516,7 +516,7 @@ isOneToOne: true
 "source_subscription_id": string | null,
 "quote_invoice_kind": string,"quote_invoice_sealed": boolean,"quote_deposit_satang": number,"quote_deposit_deduction_satang": number,"quote_discount_satang": number,
 
-"prices_include_vat": boolean,bill_variance_tolerance_bps: number, "wht_rate_bps": number,"subtotal_satang": number,"vat_satang": number,"wht_satang": number,"total_satang": number,"tax_breakdown": Json,
+"prices_include_vat": boolean, "wht_rate_bps": number,"subtotal_satang": number,"vat_satang": number,"wht_satang": number,"total_satang": number,"tax_breakdown": Json,
                     "amount_satang": number,"client_id": string,"created_at": string,"discount_satang": number,"due_date": string | null,"id": string,"is_recurring": boolean,"issue_date": string,"issued_snapshot_id": string | null,"notes": string | null,"number": string,"org_id": string,"project_id": string | null,"recurring_interval": Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id": string | null,"source_quote_id": string | null,"status": Database["public"]['Enums']["invoice_status"],"updated_at": string,"version": number
                   }
                   ComputedFields: never
@@ -524,14 +524,14 @@ isOneToOne: true
 "source_subscription_id"?: string | null,
 "quote_invoice_kind"?: string,"quote_invoice_sealed"?: boolean,"quote_deposit_satang"?: number,"quote_deposit_deduction_satang"?: number,"quote_discount_satang"?: number,
 
-"prices_include_vat"?: boolean,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,"subtotal_satang"?: number,"vat_satang"?: number,"wht_satang"?: number,"total_satang"?: number,"tax_breakdown"?: Json,
+"prices_include_vat"?: boolean, "wht_rate_bps"?: number,"subtotal_satang"?: number,"vat_satang"?: number,"wht_satang"?: number,"total_satang"?: number,"tax_breakdown"?: Json,
                     "amount_satang"?: number,"client_id": string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"issued_snapshot_id"?: string | null,"notes"?: string | null,"number": string,"org_id": string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string,"version"?: number
                   }
                   Update: {
 "source_subscription_id"?: string | null,
 "quote_invoice_kind"?: string,"quote_invoice_sealed"?: boolean,"quote_deposit_satang"?: number,"quote_deposit_deduction_satang"?: number,"quote_discount_satang"?: number,
 
-"prices_include_vat"?: boolean,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,"subtotal_satang"?: number,"vat_satang"?: number,"wht_satang"?: number,"total_satang"?: number,"tax_breakdown"?: Json,
+"prices_include_vat"?: boolean, "wht_rate_bps"?: number,"subtotal_satang"?: number,"vat_satang"?: number,"wht_satang"?: number,"total_satang"?: number,"tax_breakdown"?: Json,
                     "amount_satang"?: number,"client_id"?: string,"created_at"?: string,"discount_satang"?: number,"due_date"?: string | null,"id"?: string,"is_recurring"?: boolean,"issue_date"?: string,"issued_snapshot_id"?: string | null,"notes"?: string | null,"number"?: string,"org_id"?: string,"project_id"?: string | null,"recurring_interval"?: Database["public"]['Enums']["recurring_interval"] | null,"source_milestone_id"?: string | null,"source_quote_id"?: string | null,"status"?: Database["public"]['Enums']["invoice_status"],"updated_at"?: string,"version"?: number
                   }
                   Relationships: [
@@ -1119,18 +1119,18 @@ isOneToOne: false
                   ]
                 },"subscriptions": {
                   Row: {
-"tax_rate_bps": number,bill_variance_tolerance_bps: number, "wht_rate_bps": number,"prices_include_vat": boolean,"product_id": string | null,"unit": string | null,
+"tax_rate_bps": number, "wht_rate_bps": number,"prices_include_vat": boolean,"product_id": string | null,"unit": string | null,
 
                     "amount_satang": number,"auto_generate": boolean,"client_id": string,"created_at": string,"id": string,"interval": Database["public"]['Enums']["recurring_interval"],"last_generated_on": string | null,"name": string,"next_run_date": string,"notes": string | null,"org_id": string,"project_id": string | null,"start_date": string,"status": Database["public"]['Enums']["subscription_status"],"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-"tax_rate_bps"?: number,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,"prices_include_vat"?: boolean,"product_id"?: string | null,"unit"?: string | null,
+"tax_rate_bps"?: number, "wht_rate_bps"?: number,"prices_include_vat"?: boolean,"product_id"?: string | null,"unit"?: string | null,
 
                     "amount_satang"?: number,"auto_generate"?: boolean,"client_id": string,"created_at"?: string,"id"?: string,"interval"?: Database["public"]['Enums']["recurring_interval"],"last_generated_on"?: string | null,"name": string,"next_run_date"?: string,"notes"?: string | null,"org_id": string,"project_id"?: string | null,"start_date"?: string,"status"?: Database["public"]['Enums']["subscription_status"],"updated_at"?: string
                   }
                   Update: {
-"tax_rate_bps"?: number,bill_variance_tolerance_bps?: number, "wht_rate_bps"?: number,"prices_include_vat"?: boolean,"product_id"?: string | null,"unit"?: string | null,
+"tax_rate_bps"?: number, "wht_rate_bps"?: number,"prices_include_vat"?: boolean,"product_id"?: string | null,"unit"?: string | null,
 
                     "amount_satang"?: number,"auto_generate"?: boolean,"client_id"?: string,"created_at"?: string,"id"?: string,"interval"?: Database["public"]['Enums']["recurring_interval"],"last_generated_on"?: string | null,"name"?: string,"next_run_date"?: string,"notes"?: string | null,"org_id"?: string,"project_id"?: string | null,"start_date"?: string,"status"?: Database["public"]['Enums']["subscription_status"],"updated_at"?: string
                   }

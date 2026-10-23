@@ -88,7 +88,7 @@ describe("purchasing accepts demo seed ids", () => {
   })
 
   it("links an existing credit with seed identifiers", async () => {
-    const credit = { vendor_reference: "CN-1", bill_date: "2026-10-01", original_bill_id: seedId(9), input_vat_rate: 7, input_vat_satang: 7, variance_reason: "" }
+    const credit = { vendor_reference: "CN-1", bill_date: "2026-10-01", original_bill_id: seedId(9), input_vat_rate: 7, input_vat_satang: 7, variance_reason: "", lines: [{ id: lineId, quantity: 1 }] }
     expect(await linkVendorCredit(seedId(6), credit)).toEqual({})
     expect(state.rpcs).toEqual([["link_vendor_credit", { p_org_id: state.orgId, p_cost_id: seedId(6), p_bill: credit }]])
     expect(await linkVendorCredit("bad", credit)).toEqual({ error: "Invalid vendor credit details" })

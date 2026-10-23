@@ -24,12 +24,12 @@ export function matchBill(purchaseLines: PurchaseLine[], lines: BillLine[], opti
   const expected = defaultBillLines(purchaseLines)
   const rateBps = Math.round(options.vatRate * 100)
   if (!safe(rateBps) || rateBps > 10000 || Math.abs(rateBps - options.vatRate * 100) > 0.00001 || !safe(options.toleranceBps) || options.toleranceBps > 10000) throw new Error("Invalid VAT rate or tolerance")
-  if (!lines.length || lines.length !== expected.length || new Set(lines.map(line => line.id)).size !== lines.length) throw new Error("Match every unbilled received line once")
+  if (!lines.length || lines.length !== expected.length || new Set(lines.map(line => line.id.toLowerCase())).size !== lines.length || expected.some(item => !lines.some(line => line.id.toLowerCase() === item.id.toLowerCase()))) throw new Error("Match every unbilled received line once")
   const variances: string[] = []
   const exceeds = (actual: number, baseline: number) => BigInt(Math.abs(actual - baseline)) * BigInt(10000) > BigInt(baseline) * BigInt(options.toleranceBps)
   const amounts = lines.map(line => {
-    const baseline = expected.find(item => item.id === line.id)
-    const po = purchaseLines.find(item => item.id === line.id)
+    const baseline = expected.find(item => item.id.toLowerCase() === line.id.toLowerCase())
+    const po = purchaseLines.find(item => item.id.toLowerCase() === line.id.toLowerCase())
     if (!baseline || !po || baseline.quantity !== line.expected_quantity) throw new Error("Receipt changed, reload")
     const amount = serviceLineAmount(line.quantity, line.unit_cost_satang)
     if (exceeds(Math.round(line.quantity * 1000), Math.round(baseline.quantity * 1000))) variances.push(`Quantity: ${line.id}`)
@@ -44,7 +44,7 @@ export function matchBill(purchaseLines: PurchaseLine[], lines: BillLine[], opti
   const vat = options.vat ?? calculatedVat
   const total = options.total ?? sumSatang([subtotal, vat])
   if (!safe(vat) || !safe(total) || total < vat) throw new Error("Invalid input VAT or vendor total")
-  if (vat !== calculatedVat) variances.push("Input VAT differs from rate")
-  if (total !== sumSatang([subtotal, vat])) variances.push("Vendor total differs from matched lines")
+  if (vat > subtotal || (rateBps === 0 && vat !== 0) || Math.abs(vat - calculatedVat) > Math.min(subtotal, 3 * lines.length)) throw new Error("Input VAT contradicts matched base and rate")
+  if (total !== sumSatang([subtotal, vat])) throw new Error("Vendor total must equal matched base plus VAT")
   return { subtotal, vat, total, variances }
 }
