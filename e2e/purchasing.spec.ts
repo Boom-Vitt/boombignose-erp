@@ -15,7 +15,7 @@ test("create, confirm, partially receive and bill a purchase order", async ({ pa
   const number = await page.getByRole("heading", { name: /^PO-/ }).innerText()
 
   await page.getByRole("combobox", { name: "Product (optional)" }).click()
-  await page.getByRole("option").filter({ hasNotText: "Free-text line" }).first().click()
+  await page.getByRole("listbox", { name: "Suggestions", exact: true }).getByRole("option").filter({ hasNotText: "Free-text line" }).first().click()
   await expect(page.getByLabel("Unit cost (THB)")).not.toHaveValue("")
   await page.getByLabel("Description", { exact: true }).fill("Smoke purchase line")
   await page.getByLabel("Quantity", { exact: true }).fill("4")
