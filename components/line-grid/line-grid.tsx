@@ -59,7 +59,7 @@ export function LineGrid({ document, documentId, rows: serverRows, editable, loc
   }
 
   const dirty = isDirty(state)
-  const issues = blockingIssues(state)
+  const issues = blockingIssues(state, document === "purchase_order")
   const taxed = taxRates !== undefined
   const priceLabel = document === "purchase_order" ? "Unit cost" : "Unit price"
   const extraHeaders = EXTRA_HEADERS[document]
@@ -200,7 +200,8 @@ export function LineGrid({ document, documentId, rows: serverRows, editable, loc
                 onDragStart={event => {
                   dragFrom.current = index
                   event.dataTransfer.effectAllowed = "move"
-                  event.dataTransfer.setData("text/plain", String(index))
+                  // A private type, so dropping on a cell never pastes the index as text.
+                  event.dataTransfer.setData("application/x-line-grid-row", String(index))
                   const rowElement = event.currentTarget.closest("tr")
                   if (rowElement) event.dataTransfer.setDragImage(rowElement, 0, 0)
                 }}
@@ -327,7 +328,7 @@ export function LineGrid({ document, documentId, rows: serverRows, editable, loc
   if (!editable) {
     return (
       <div className="space-y-4">
-        <div className="overflow-x-auto">{table}</div>
+        {table}
         {totalsBlock}
         {lockedMessage ? <p className="text-muted-foreground text-sm">{lockedMessage}</p> : null}
       </div>
@@ -348,7 +349,7 @@ export function LineGrid({ document, documentId, rows: serverRows, editable, loc
         <fieldset disabled={saving} aria-busy={saving} className="min-w-0 space-y-4">
           <p id={`${id}-reorder-hint`} className="sr-only">Drag the handle, or focus it and press the up or down arrow, to reorder rows.</p>
           <p className="sr-only" aria-live="polite">{announcement}</p>
-          <div className="overflow-x-auto">{table}</div>
+          {table}
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => add("line")}><ListPlus /> Add a line</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => add("section")}><Heading /> Add a section</Button>

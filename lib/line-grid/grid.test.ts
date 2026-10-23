@@ -60,15 +60,24 @@ describe("line grid reducer", () => {
 describe("line validation", () => {
   it("accepts a valid line and reports each invalid field", () => {
     expect(rowIssues(line("a"))).toEqual({})
-    expect(rowIssues(line("a", { description: "  ", quantity: "0", unit: "", unitPrice: "1.234" }))).toEqual({
+    expect(rowIssues(line("a", { description: "  ", quantity: "0", unit: "x".repeat(41), unitPrice: "1.234" }))).toEqual({
       description: "Description is required",
       quantity: "Positive quantity, up to three decimals",
-      unit: "Unit is required (up to 40 characters)",
+      unit: "Keep the unit under 40 characters",
       unitPrice: "Exact THB amount, up to two decimals",
     })
     expect(rowIssues(line("a", { quantity: "1.0005" })).quantity).toBeDefined()
     expect(rowIssues(line("a", { quantity: "999999999", unitPrice: "90071992547409.91" })).unitPrice).toBeDefined()
     expect(rowIssues(section("s", ""))).toEqual({ description: "Description is required" })
+  })
+
+  it("lets quote and invoice lines keep a blank unit, as older lines have, but not purchase lines", () => {
+    expect(rowIssues(line("a", { unit: " " }))).toEqual({})
+    expect(rowIssues(line("a", { unit: " " }), true)).toEqual({ unit: "Unit is required" })
+    const state = loaded([line("a", { unit: "" })])
+    expect(blockingIssues(state).size).toBe(0)
+    expect([...blockingIssues(state, true).keys()]).toEqual(["a"])
+    expect(savePayload(gridReducer(state, { type: "edit", id: "a", patch: { quantity: "2" } })).rows[0]).toMatchObject({ unit: null })
   })
 
   it("computes the amount the server's line guard stores, half up once", () => {

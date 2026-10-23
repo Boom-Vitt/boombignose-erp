@@ -16,7 +16,8 @@ const Line = z.object({
   product_id: z.guid().nullable(),
   description: z.string().trim().min(1).max(4000),
   quantity: z.string().trim(),
-  unit: z.string().trim().min(1).max(40),
+  // Purchase lines require a unit; the database refuses a missing one there.
+  unit: z.string().trim().min(1).max(40).nullable(),
   unit_price_satang: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   tax_rate_bps: z.number().int().min(0).max(10000),
 }).refine(line => { try { serviceLineAmount(line.quantity, line.unit_price_satang); return true } catch { return false } })

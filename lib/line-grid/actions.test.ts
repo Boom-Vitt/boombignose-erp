@@ -55,6 +55,7 @@ describe("saveDocumentLines", () => {
     ["an unsafe line total", { ...line, quantity: "999999999", unit_price_satang: Number.MAX_SAFE_INTEGER }],
     ["a blank description", { ...line, description: "  " }],
     ["a forged row id", { ...line, id: "line-1" }],
+    ["an overlong unit", { ...line, unit: "x".repeat(41) }],
   ])("rejects %s before any database call", async (_label, row) => {
     expect(await saveDocumentLines({ document: "invoice", documentId, rows: [row], deleted: [] })).toEqual({ error: "Some lines are invalid. Fix the highlighted cells and save again." })
     expect(state.rpc).not.toHaveBeenCalled()

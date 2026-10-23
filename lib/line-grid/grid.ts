@@ -72,7 +72,8 @@ export function isDirty(state: GridState) {
 
 export type RowIssues = Partial<Record<"description" | "quantity" | "unit" | "unitPrice", string>>
 
-export function rowIssues(row: GridRow): RowIssues {
+/** Purchase lines need a unit; quote and invoice lines may leave it blank, as older lines do. */
+export function rowIssues(row: GridRow, unitRequired = false): RowIssues {
   const issues: RowIssues = {}
   const description = row.description.trim()
   if (!description) issues.description = "Description is required"
@@ -80,7 +81,8 @@ export function rowIssues(row: GridRow): RowIssues {
   if (row.kind !== "line") return issues
   try { serviceLineAmount(row.quantity, 0) } catch { issues.quantity = "Positive quantity, up to three decimals" }
   const unit = row.unit.trim()
-  if (!unit || unit.length > 40) issues.unit = "Unit is required (up to 40 characters)"
+  if (unit.length > 40) issues.unit = "Keep the unit under 40 characters"
+  else if (unitRequired && !unit) issues.unit = "Unit is required"
   try {
     const price = serviceAmountSatang(row.unitPrice)
     if (!issues.quantity) serviceLineAmount(row.quantity, price)
@@ -115,7 +117,7 @@ export function untaxedTotal(rows: GridRow[]): number {
 }
 
 export type PayloadRow =
-  | { kind: "line"; id: string; product_id: string | null; description: string; quantity: string; unit: string; unit_price_satang: number; tax_rate_bps: number }
+  | { kind: "line"; id: string; product_id: string | null; description: string; quantity: string; unit: string | null; unit_price_satang: number; tax_rate_bps: number }
   | { kind: "section" | "note"; id: string; description: string }
 
 /** A new row the user never filled in, like Odoo's untouched new line, is dropped instead of blocking Save. */
@@ -130,17 +132,17 @@ export function savePayload(state: GridState): { rows: PayloadRow[]; deleted: st
   const keptIds = new Set(kept.map(row => row.id))
   return {
     rows: kept.map(row => row.kind === "line"
-      ? { kind: "line", id: row.id, product_id: row.productId, description: row.description.trim(), quantity: row.quantity.trim(), unit: row.unit.trim(), unit_price_satang: serviceAmountSatang(row.unitPrice), tax_rate_bps: row.taxRateBps }
+      ? { kind: "line", id: row.id, product_id: row.productId, description: row.description.trim(), quantity: row.quantity.trim(), unit: row.unit.trim() || null, unit_price_satang: serviceAmountSatang(row.unitPrice), tax_rate_bps: row.taxRateBps }
       : { kind: row.kind, id: row.id, description: row.description.trim() }),
     deleted: state.saved.filter(row => !keptIds.has(row.id)).map(row => row.id),
   }
 }
 
 /** Rows that would block Save; untouched new rows are skipped because Save drops them. */
-export function blockingIssues(state: GridState): Map<string, RowIssues> {
+export function blockingIssues(state: GridState, unitRequired = false): Map<string, RowIssues> {
   const savedIds = new Set(state.saved.map(row => row.id))
   return new Map(state.rows.filter(row => !untouched(row, savedIds))
-    .map(row => [row.id, rowIssues(row)] as const)
+    .map(row => [row.id, rowIssues(row, unitRequired)] as const)
     .filter(([, issues]) => Object.keys(issues).length > 0))
 }
 
