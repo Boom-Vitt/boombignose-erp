@@ -138,6 +138,7 @@ export default async function InvoiceDetailPage({
   const invoice = invoiceRes.data
   if (!invoice) notFound()
 
+  const creditLines = lineRows.filter(row => row.kind === "line")
   const payments = paymentsRes.data ?? []
   if (paymentsRes.error || balanceRes.error || legacyRes.error || settingsRes.error || paymentCountRes.error) throw new Error("Invoice evidence unavailable. Reload before making financial changes.")
   const paid = balanceRes.data?.paid_satang ?? 0
@@ -405,7 +406,7 @@ export default async function InvoiceDetailPage({
       {invoice.issued_snapshot_id ? <Card className="max-w-3xl"><CardHeader><CardTitle>Credit notes</CardTitle></CardHeader><CardContent className="space-y-4">
         <p>Credited {formatTHB(credited)}</p>
         <CreditNotes orgId={ctx.orgId} invoiceId={id} />
-        {ctx.role !== "member" && outstanding + paid > 0 ? <CreditNoteForm orgId={ctx.orgId} invoiceId={id} lines={itemsRes.data?.length ? itemsRes.data : [{ id, description: "Historical invoice amount", headerOnly: true }]} /> : null}
+        {ctx.role !== "member" && outstanding + paid > 0 ? <CreditNoteForm orgId={ctx.orgId} invoiceId={id} lines={creditLines.length ? creditLines : [{ id, description: "Historical invoice amount", headerOnly: true }]} /> : null}
       </CardContent></Card> : null}
       <RecordHistory recordType="invoice" recordId={id} />
     </div>

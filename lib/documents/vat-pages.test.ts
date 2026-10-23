@@ -5,6 +5,7 @@ import { databaseFixture, pageContent } from "@/lib/supabase/__tests__/tenant-fi
 import { GroupedTableRows } from "@/components/search/grouped-table-rows"
 import { DocumentTotals } from "@/components/document-totals"
 import { SmartButtons } from "@/components/record/smart-buttons"
+import { CreditNoteForm } from "@/app/(app)/finance/_components/credit-note-form"
 import { WithholdingForm } from "@/app/(app)/finance/_components/withholding-form"
 import { StatCard } from "@/components/stat-card"
 import { formatTHB } from "@/lib/money"
@@ -153,4 +154,15 @@ it("members see project hours but no labour cost or profit", async () => {
   const cards = elements(await ProjectPage({ params: Promise.resolve({ id: "project" }) })).filter(node => node.type === StatCard).map(node => node.props as { label: string; value: string })
   expect(cards).toContainEqual(expect.objectContaining({ label: "Hours logged", value: "1.5h" }))
   for (const label of ["Revenue", "Cost incl. labour", "Profit", "Margin"]) expect(cards.map(card => card.label)).not.toContain(label)
+})
+
+it.each([true, false])("issued invoice credit controls use priced grid rows or the legacy header fallback: %s", async (hasLines) => {
+  state.client = databaseFixture({
+    invoices: [{ ...header, status: "sent", issued_snapshot_id: "snapshot" }],
+    invoice_items: hasLines ? [{ id: "priced", org_id: "A", invoice_id: "invoice", description: "Priced service", quantity: 1, unit: "item", unit_price_satang: 10000, tax_rate_bps: 0, position: 0 }] : [],
+    document_sections: [{ id: "section", org_id: "A", invoice_id: "invoice", kind: "section", description: "Section heading", lines_before: 0, position: 0 }],
+  })
+  const page = await InvoicePage({ params: Promise.resolve({ id: "invoice" }) })
+  const control = elements(page).find(node => node.type === CreditNoteForm)
+  expect(control?.props).toMatchObject({ lines: hasLines ? [{ id: "priced", description: "Priced service" }] : [{ id: "invoice", description: "Historical invoice amount", headerOnly: true }] })
 })
