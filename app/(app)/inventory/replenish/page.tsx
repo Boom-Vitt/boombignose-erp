@@ -1,4 +1,6 @@
 import { requireOrgContext } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
+import { todayISO } from "@/lib/dates"
 import { can } from "@/lib/permissions"
 import { inventoryData } from "@/lib/inventory/queries"
 import { replenishmentGroups, replenishmentQuantity } from "@/lib/inventory/math"
@@ -12,9 +14,13 @@ export default async function ReplenishPage() {
   const ctx = await requireOrgContext()
   const manage = can(ctx.role, "inventory:manage")
   const { products, vendors } = await inventoryData()
+  const db = await createClient()
+  const { data: preview, error } = await db.rpc("replenishment_plan", { p_org_id: ctx.orgId, p_date: todayISO() })
+  if (error || !preview) throw new Error("Replenishment preview unavailable")
   const active = products.filter(p => p.active)
   const groups = replenishmentGroups(active)
   return <div className="space-y-6"><PageHeader title="Replenishment" description="Forecast stock includes on hand and the remaining quantities on open purchase orders." />
+    <section aria-label="Replenishment dry-run preview" className="rounded-lg border p-4"><h2 className="font-semibold">Dry-run preview</h2><p>No purchase orders are created by this preview.</p><ul>{preview.map(line => <li key={line.product_id}>{line.product_name} · Order {line.order_quantity} {line.unit} · Lead {line.lead_days} days · Expected {line.expected_date}</li>)}</ul></section>
     {groups.length === 0 && <p>No products require replenishment.</p>}
     {groups.map(group => {
       const vendor = vendors.find(v => v.id === group.vendorId)

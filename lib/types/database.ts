@@ -631,7 +631,7 @@ isOneToOne: false
                   ]
                 },"org_settings": {
                   Row: {
-"purchase_approval_threshold_satang": number | null,"over_receipt_tolerance_percent": number,
+"scheduled_replenishment_enabled": boolean,"purchase_approval_threshold_satang": number | null,"over_receipt_tolerance_percent": number,
 "wht_rate_bps": number,
 
 "lock_date": string | null,"vat_registered": boolean,"vat_rate_bps": number,"prices_include_vat": boolean,"branch_label": string | null,
@@ -639,14 +639,14 @@ isOneToOne: false
                   }
                   ComputedFields: never
                   Insert: {
-"purchase_approval_threshold_satang"?: number | null,"over_receipt_tolerance_percent"?: number,
+"scheduled_replenishment_enabled"?: boolean,"purchase_approval_threshold_satang"?: number | null,"over_receipt_tolerance_percent"?: number,
 "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
                     "allow_negative_stock"?: boolean,"business_address"?: string | null,"cash_balance_satang"?: number,"created_at"?: string,"id"?: string,"legal_name"?: string | null,"monthly_burn_satang"?: number | null,"org_id": string,"tax_id"?: string | null,"tax_status"?: string,"updated_at"?: string
                   }
                   Update: {
-"purchase_approval_threshold_satang"?: number | null,"over_receipt_tolerance_percent"?: number,
+"scheduled_replenishment_enabled"?: boolean,"purchase_approval_threshold_satang"?: number | null,"over_receipt_tolerance_percent"?: number,
 "wht_rate_bps"?: number,
 
 "lock_date"?: string | null,"vat_registered"?: never,"vat_rate_bps"?: number,"prices_include_vat"?: boolean,"branch_label"?: string | null,
@@ -1348,6 +1348,8 @@ isOneToOne: false
 "update_subscription_schedule": { Args: { p_org_id: string; p_subscription_id: string; p_start_date?: string | null; p_status?: Database["public"]["Enums"]["subscription_status"] | null; p_bill_missed_periods?: boolean; p_changes?: Json }; Returns: undefined },
             reopen_purchase_rfq: { Args: { p_org_id: string; p_order_id: string; p_delivery_key: string; p_verified_not_delivered: boolean }; Returns: undefined }
       update_purchase_order: { Args: { p_org_id: string; p_order_id: string; p_vendor_id: string; p_order_date: string; p_expected_date: string | null; p_notes: string | null }; Returns: undefined }
+      save_reorder_rule: { Args: { p_org_id: string; p_product_id: string; p_vendor_id: string | null; p_min: number; p_quantity: number; p_lead_days: number }; Returns: undefined }
+      replenishment_plan: { Args: { p_org_id: string; p_date?: string }; Returns: { product_id: string; vendor_id: string; product_name: string; unit: string; order_quantity: number; unit_cost_satang: number; lead_days: number; expected_date: string }[] }
       approve_purchase_order: { Args: { p_org_id: string; p_order_id: string }; Returns: undefined }
       transfer_stock: { Args: { p_org_id: string; p_product_id: string; p_from_warehouse_id: string; p_to_warehouse_id: string; p_quantity: number; p_reason: string; p_key: string }; Returns: string }
       stock_moves_page: {
