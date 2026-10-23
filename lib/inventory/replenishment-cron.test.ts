@@ -33,3 +33,10 @@ it("reports partial failures and treats a concurrent completed plan as skipped",
   state.plan.mockRejectedValue(new Error("unavailable"))
   expect((await POST(request("?dry_run=false"))).status).toBe(503)
 })
+
+it("executes every vendor when the complete plan has more than 1,000 lines", async () => {
+  state.plan.mockResolvedValue(Array.from({ length: 1001 }, (_, index) => ({ vendor_id: index === 1000 ? "last-vendor" : "first-vendor" })))
+  const response = await POST(request("?dry_run=false"))
+  expect(await response.json()).toMatchObject({ processed: 2, failed: 0 })
+  expect(state.rpc).toHaveBeenCalledWith("create_replenishment_rfq", { p_org_id: "org", p_vendor_id: "last-vendor" })
+})

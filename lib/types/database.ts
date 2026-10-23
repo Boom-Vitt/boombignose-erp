@@ -39,6 +39,24 @@ export type Database = {
           { foreignKeyName: "member_cost_rates_org_id_user_id_fkey"; columns: ["org_id", "user_id"]; isOneToOne: true; referencedRelation: "memberships"; referencedColumns: ["org_id", "user_id"] }
         ]
       }
+      stock_balances: {
+        Row: { org_id: string; product_id: string; warehouse_id: string; quantity: number; average_cost: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      stock_transfers: {
+        Row: { org_id: string; key: string; product_id: string; from_warehouse_id: string; to_warehouse_id: string; quantity: number; reason: string; created_at: string; created_by: string | null }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      product_vendor_lead_times: {
+        Row: { org_id: string; product_id: string; vendor_id: string; lead_days: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       warehouses: {
         Row: { id: string; org_id: string; code: string; name: string; address: string | null; is_default: boolean; active: boolean }
         Insert: { id?: string; org_id: string; code: string; name: string; address?: string | null; is_default?: boolean; active?: boolean }
