@@ -1,4 +1,5 @@
 import { formatTHB, type Satang } from "@/lib/money"
+import { interleave, type ServerSection } from "@/lib/line-grid/grid"
 
 /**
  * Pure renderer for a printable invoice/quote document. Returns a self-contained
@@ -40,6 +41,8 @@ export type PrintableDocument = {
   /** Quotes: valid-until date. Invoices: leave undefined. */
   validUntil?: string | null
   items: DocLineItem[]
+  /** Amount-free section and note rows, placed among the items by the priced lines above them. */
+  sections?: (Pick<ServerSection, "description" | "lines_before" | "position"> & { kind: "section" | "note" })[]
   subtotalSatang: Satang
   discountSatang?: Satang
   totalSatang: Satang
@@ -71,9 +74,9 @@ function metaRow(label: string, value: string | null | undefined): string {
 }
 
 export function renderDocumentHtml(doc: PrintableDocument): string {
-  const rows = doc.items
+  const rows = interleave(doc.items, doc.sections ?? [])
     .map(
-      (it) => `<tr>
+      (it) => "kind" in it ? `<tr class="${it.kind}"><td colspan="4">${escapeHtml(it.description)}</td></tr>` : `<tr>
       <td>${escapeHtml(it.description)}</td>
       <td class="num">${escapeHtml(fmtQty(it.quantity))}${it.unit ? ` ${escapeHtml(it.unit)}` : ""}</td>
       <td class="num">${escapeHtml(formatTHB(it.unit_price_satang))}</td>
@@ -114,6 +117,8 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
   td { padding: 8px 6px; border-bottom: 1px solid #e4e4e7; vertical-align: top; }
   .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .muted { color: #a1a1aa; text-align: center; padding: 16px; }
+  tr.section td { font-weight: 700; background: #f4f4f5; border-bottom: 1px solid #d4d4d8; }
+  tr.note td { font-style: italic; color: #52525b; white-space: pre-wrap; }
   .totals { margin-left: auto; width: 260px; margin-top: 8px; font-size: 14px; }
   .total-row { display: flex; justify-content: space-between; padding: 4px 6px; }
   .total-row.grand { border-top: 2px solid #18181b; margin-top: 6px; padding-top: 10px; font-weight: 700; font-size: 16px; }
@@ -157,7 +162,7 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
         </tr>
       </thead>
       <tbody>
-        ${doc.items.length ? rows : emptyRow}
+        ${rows || emptyRow}
       </tbody>
     </table>
 

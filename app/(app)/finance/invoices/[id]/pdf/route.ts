@@ -8,6 +8,7 @@ import { sumSatang } from "@/lib/money"
 import { deriveInvoiceStatus, outstandingSatang } from "@/lib/metrics/invoice-status"
 import { todayISO } from "@/lib/dates"
 import { subtotalSatang } from "@/lib/metrics/line-items"
+import { documentSections } from "@/lib/line-grid/queries"
 import {
   renderDocumentHtml,
   type DocLineItem,
@@ -29,7 +30,7 @@ export async function GET(
   const ctx = await requireOrgContext()
   const supabase = await createClient()
 
-  const [invoiceRes, itemsRes, receiptsRes] = await Promise.all([
+  const [invoiceRes, itemsRes, receiptsRes, sections] = await Promise.all([
     supabase
       .from("invoices")
       .select(
@@ -45,6 +46,7 @@ export async function GET(
       .eq("org_id", ctx.orgId)
       .order("position", { ascending: true }).order("id").range(from, to)),
     readAll((from, to) => supabase.from("payments").select("amount_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).eq("verification_state", "verified").order("id").range(from, to)),
+    documentSections(supabase, ctx.orgId, "invoice", id),
   ])
 
   if (invoiceRes.error || itemsRes.error || receiptsRes.error) return new Response("Invoice evidence unavailable", { status: 503 })
@@ -104,7 +106,8 @@ export async function GET(
     try { doc = invoiceSnapshotDocument(snapshotRes.data.snapshot, deriveInvoiceStatus(invoice, paid, todayISO()), paid) }
     catch { return new Response("Issued document snapshot could not be validated", { status: 503 }) }
   }
-  return new Response(renderDocumentHtml(doc), {
+  // Sections freeze with the issued lines, so they place among the snapshot's lines too.
+  return new Response(renderDocumentHtml({ ...doc, sections }), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   })
 }

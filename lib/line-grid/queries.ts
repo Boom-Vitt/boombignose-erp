@@ -1,19 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/types/database"
 import { readAllOrThrow } from "@/lib/supabase/read-all"
-import { toGridRows, type DocumentKind, type GridRow, type ServerLine } from "./grid"
+import { toGridRows, type DocumentKind, type GridRow, type ServerLine, type ServerSection } from "./grid"
 
 type Db = SupabaseClient<Database>
 const PARENT = { quote: "quote_id", invoice: "invoice_id", purchase_order: "purchase_order_id" } as const
 
 /** A document's lines and sections in display order, the shape the grid edits. */
 export async function gridRows(db: Db, orgId: string, document: DocumentKind, id: string): Promise<GridRow[]> {
-  const [lines, sections] = await Promise.all([
-    documentLines(db, orgId, document, id),
-    readAllOrThrow((from, to) => db.from("document_sections").select("id, kind, description, lines_before, position")
-      .eq("org_id", orgId).eq(PARENT[document], id).order("position").order("id").range(from, to)),
-  ])
+  const [lines, sections] = await Promise.all([documentLines(db, orgId, document, id), documentSections(db, orgId, document, id)])
   return toGridRows(lines, sections)
+}
+
+/** Section and note rows, which printable documents place among their priced lines. */
+export async function documentSections(db: Db, orgId: string, document: DocumentKind, id: string) {
+  const rows = await readAllOrThrow((from, to) => db.from("document_sections").select("id, kind, description, lines_before, position")
+    .eq("org_id", orgId).eq(PARENT[document], id).order("position").order("id").range(from, to))
+  return rows satisfies ServerSection[]
 }
 
 async function documentLines(db: Db, orgId: string, document: DocumentKind, id: string): Promise<ServerLine[]> {
