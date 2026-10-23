@@ -364,7 +364,7 @@ export default async function InvoiceDetailPage({
                   <TableBody>
                     {payments.map((p) => (
                       <TableRow key={p.id}>
-                        <TableCell>{p.paid_at}</TableCell>
+                        <TableCell>{todayISO(new Date(p.paid_at))}</TableCell>
                         <TableCell>{PAYMENT_METHOD_LABEL[p.method]}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {p.notes ?? "—"}
@@ -394,7 +394,7 @@ export default async function InvoiceDetailPage({
                 {claim.status === "pending" && ctx.role !== "member" ? <ReviewClaimForm today={today} orgId={ctx.orgId} claimId={claim.id} invoiceId={invoice.id} suggestedBaht={satangToBahtString(claim.amount_satang)} /> : null}
               </div>)}
               {ctx.role !== "member" && outstanding > 0 && !["draft", "cancelled"].includes(invoice.status) && !(claimsRes.data ?? []).some(claim => claim.status === "pending") && !claimsRes.error ? <div className="border-t pt-4"><h3 className="mb-3 text-sm font-medium">แจ้งชำระโดยเจ้าหน้าที่ / Staff report</h3><PaymentForm today={today} orgId={ctx.orgId} invoiceId={invoice.id} suggestedBaht={satangToBahtString(outstanding)} /></div> : null}
-              {legacyRes.data?.length ? <div className="mt-6 space-y-4"><h3 className="text-sm font-medium">ตรวจสอบยอดเดิม / Legacy reconciliation</h3><p className="text-xs text-muted-foreground">Retained records are excluded from verified cash. Match each to bank evidence before creating a linked verified receipt.</p>{legacyRes.data.map(legacy => <div key={legacy.id} className="rounded border p-3 space-y-2"><p className="text-sm">{formatTHB(legacy.amount_satang)} · {legacy.paid_at.slice(0,10)} · {legacy.verification_state}</p><p className="text-xs text-muted-foreground">{legacy.notes ?? "No original reference"}</p>{legacy.reconciled_payment_id ? <p className="text-xs">Linked verified receipt: {legacy.reconciled_payment_id}</p> : null}{legacy.verification_state === "legacy_unverified" && ctx.role !== "member" && outstanding > 0 && !["draft", "cancelled"].includes(invoice.status) ? <PaymentForm today={today} orgId={ctx.orgId} invoiceId={invoice.id} legacyPaymentId={legacy.id} suggestedBaht={satangToBahtString(Math.min(legacy.amount_satang, outstanding))} /> : null}</div>)}</div> : null}
+              {legacyRes.data?.length ? <div className="mt-6 space-y-4"><h3 className="text-sm font-medium">ตรวจสอบยอดเดิม / Legacy reconciliation</h3><p className="text-xs text-muted-foreground">Retained records are excluded from verified cash. Match each to bank evidence before creating a linked verified receipt.</p>{legacyRes.data.map(legacy => <div key={legacy.id} className="rounded border p-3 space-y-2"><p className="text-sm">{formatTHB(legacy.amount_satang)} · {todayISO(new Date(legacy.paid_at))} · {legacy.verification_state}</p><p className="text-xs text-muted-foreground">{legacy.notes ?? "No original reference"}</p>{legacy.reconciled_payment_id ? <p className="text-xs">Linked verified receipt: {legacy.reconciled_payment_id}</p> : null}{legacy.verification_state === "legacy_unverified" && ctx.role !== "member" && outstanding > 0 && !["draft", "cancelled"].includes(invoice.status) ? <PaymentForm today={today} orgId={ctx.orgId} invoiceId={invoice.id} legacyPaymentId={legacy.id} suggestedBaht={satangToBahtString(Math.min(legacy.amount_satang, outstanding))} /> : null}</div>)}</div> : null}
             </CardContent>
           </Card>
         </div>
