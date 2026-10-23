@@ -137,6 +137,14 @@ describe("save payload", () => {
     state = gridReducer(state, { type: "edit", id: "blank", patch: { productId: "p1" } })
     expect([...blockingIssues(state).keys()]).toEqual(["a", "blank"])
   })
+
+  it.each([{ quantity: "2" }, { unitPrice: "12.34" }, { unit: "hour" }])("keeps an unfinished new row with edited values %j so Save reports its missing description", patch => {
+    let state = loaded([])
+    state = gridReducer(state, { type: "add", kind: "line", id: "new", defaults })
+    state = gridReducer(state, { type: "edit", id: "new", patch })
+    expect(blockingIssues(state).get("new")).toEqual({ description: "Description is required" })
+    expect(savePayload(state).rows.map(row => row.id)).toEqual(["new"])
+  })
 })
 
 describe("server rows", () => {

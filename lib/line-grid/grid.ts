@@ -25,7 +25,7 @@ export type TextRow = { kind: "section" | "note"; id: string; description: strin
 export type GridRow = PricedLine | TextRow
 export type RowKind = GridRow["kind"]
 
-export type GridState = { saved: GridRow[]; rows: GridRow[] }
+export type GridState = { saved: GridRow[]; rows: GridRow[]; edited?: Set<string> }
 export type LineDefaults = { taxRateBps: number; unit: string }
 type LinePatch = Partial<Pick<PricedLine, "productId" | "description" | "quantity" | "unit" | "unitPrice" | "taxRateBps">>
 
@@ -40,7 +40,7 @@ export type GridAction =
 export function gridReducer(state: GridState, action: GridAction): GridState {
   switch (action.type) {
     case "reset": return { saved: action.rows, rows: action.rows }
-    case "discard": return { ...state, rows: state.saved }
+    case "discard": return { saved: state.saved, rows: state.saved }
     case "add": {
       const row: GridRow = action.kind === "line"
         ? { kind: "line", id: action.id, productId: null, description: "", quantity: "1", unit: action.defaults.unit, unitPrice: "0.00", taxRateBps: action.defaults.taxRateBps }
@@ -50,6 +50,7 @@ export function gridReducer(state: GridState, action: GridAction): GridState {
     }
     case "edit": return {
       ...state,
+      edited: new Set([...state.edited ?? [], action.id]),
       rows: state.rows.map(row => row.id !== action.id ? row
         : row.kind === "line" ? { ...row, ...action.patch }
         : action.patch.description === undefined ? row : { ...row, description: action.patch.description }),
@@ -121,14 +122,14 @@ export type PayloadRow =
   | { kind: "section" | "note"; id: string; description: string }
 
 /** A new row the user never filled in, like Odoo's untouched new line, is dropped instead of blocking Save. */
-function untouched(row: GridRow, savedIds: Set<string>) {
-  return !savedIds.has(row.id) && !row.description.trim() && (row.kind !== "line" || row.productId === null)
+function untouched(row: GridRow, savedIds: Set<string>, edited?: Set<string>) {
+  return !savedIds.has(row.id) && !edited?.has(row.id) && !row.description.trim() && (row.kind !== "line" || row.productId === null)
 }
 
 /** Rows to save in display order, plus the saved rows the user removed. Call only when no row has issues. */
 export function savePayload(state: GridState): { rows: PayloadRow[]; deleted: string[] } {
   const savedIds = new Set(state.saved.map(row => row.id))
-  const kept = state.rows.filter(row => !untouched(row, savedIds))
+  const kept = state.rows.filter(row => !untouched(row, savedIds, state.edited))
   const keptIds = new Set(kept.map(row => row.id))
   return {
     rows: kept.map(row => row.kind === "line"
@@ -141,7 +142,7 @@ export function savePayload(state: GridState): { rows: PayloadRow[]; deleted: st
 /** Rows that would block Save; untouched new rows are skipped because Save drops them. */
 export function blockingIssues(state: GridState, unitRequired = false): Map<string, RowIssues> {
   const savedIds = new Set(state.saved.map(row => row.id))
-  return new Map(state.rows.filter(row => !untouched(row, savedIds))
+  return new Map(state.rows.filter(row => !untouched(row, savedIds, state.edited))
     .map(row => [row.id, rowIssues(row, unitRequired)] as const)
     .filter(([, issues]) => Object.keys(issues).length > 0))
 }
