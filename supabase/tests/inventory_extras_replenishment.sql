@@ -55,4 +55,14 @@ select is((select expected_date from public.purchase_orders where org_id='b81000
 select is((select status::text from public.purchase_orders where org_id='b8100000-0000-4000-8000-000000000010'),'draft','scheduler leaves RFQ for review');
 select throws_ok($$select public.create_replenishment_rfq('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000020')$$,'P0001','No products require replenishment','retry sees draft quantities already on order');
 select is((select count(*)::int from public.purchase_orders where org_id='b8100000-0000-4000-8000-000000000010'),1,'scheduled retry creates no duplicate RFQ');
+select set_config('test.scheduled_po',(select id::text from public.purchase_orders where org_id='b8100000-0000-4000-8000-000000000010'),true);
+reset role;
+select set_config('request.jwt.claims','{"role":"authenticated","sub":"b8100000-0000-4000-8000-000000000001"}',true);
+set local role authenticated;
+select public.transition_purchase_order('b8100000-0000-4000-8000-000000000010',current_setting('test.scheduled_po')::uuid,'cancelled');
+reset role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+select is(public.create_replenishment_rfq('b8100000-0000-4000-8000-000000000010','b8100000-0000-4000-8000-000000000020'),current_setting('test.scheduled_po')::uuid,'cancel then same-day scheduled retry acknowledges the original RFQ');
+select is((select count(*)::int from public.purchase_orders where org_id='b8100000-0000-4000-8000-000000000010'),1,'cancel then retry creates no replacement RFQ');
 select * from finish();rollback;
