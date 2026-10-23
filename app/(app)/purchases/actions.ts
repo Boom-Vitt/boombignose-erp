@@ -147,3 +147,27 @@ export async function approvePurchase(id: string): Promise<{ error?: string }> {
   refresh(id)
   return {}
 }
+
+export async function reopenPurchaseRFQ(id: string, deliveryKey: string, verified: boolean): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "purchase:manage")
+  if (!z.guid().safeParse(id).success || !z.guid().safeParse(deliveryKey).success || verified !== true) return { error: "Verify non-delivery before reopening this RFQ" }
+  const db = await createClient()
+  const { error } = await db.rpc("reopen_purchase_rfq", { p_org_id: ctx.orgId, p_order_id: id, p_delivery_key: deliveryKey, p_verified_not_delivered: verified })
+  if (error) return { error: error.message }
+  refresh(id)
+  return {}
+}
+
+export async function updatePurchase(id: string, input: unknown): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  requireCapability(ctx, "purchase:manage")
+  const parsed = PurchaseInput.safeParse(input)
+  if (!z.guid().safeParse(id).success || !parsed.success) return { error: "Invalid purchase details" }
+  const db = await createClient()
+  const d = parsed.data
+  const { error } = await db.rpc("update_purchase_order", { p_org_id: ctx.orgId, p_order_id: id, p_vendor_id: d.vendor_id, p_order_date: d.order_date, p_expected_date: d.expected_date, p_notes: d.notes })
+  if (error) return { error: error.message }
+  refresh(id)
+  return {}
+}
