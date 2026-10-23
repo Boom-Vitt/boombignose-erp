@@ -1,6 +1,7 @@
 /** A header form on a record page. `save` resolves false when any of its edits remain unsaved. */
 export type GuardedForm = { dirty: boolean; save: () => Promise<boolean> }
-type GuardState = { busy: boolean; dirty: boolean }
+/** `acting`: a record action is past its saves and running, so record fields must not take edits it would discard. */
+type GuardState = { busy: boolean; dirty: boolean; acting: boolean }
 type RunResult = "done" | "busy" | "unsaved"
 
 /**
@@ -10,15 +11,17 @@ type RunResult = "done" | "busy" | "unsaved"
 export function createRecordGuard() {
   const forms = new Map<string, GuardedForm>()
   const holds = new Set<string>()
+  const acting = new Set<string>()
   const listeners = new Set<() => void>()
   let running = false
-  let state: GuardState = { busy: false, dirty: false }
+  let state: GuardState = { busy: false, dirty: false, acting: false }
 
   function publish() {
     const busy = running || holds.size > 0
     const dirty = [...forms.values()].some((form) => form.dirty)
-    if (busy === state.busy && dirty === state.dirty) return
-    state = { busy, dirty }
+    const frozen = acting.size > 0
+    if (busy === state.busy && dirty === state.dirty && frozen === state.acting) return
+    state = { busy, dirty, acting: frozen }
     for (const listener of listeners) listener()
   }
 
@@ -41,10 +44,14 @@ export function createRecordGuard() {
     /** Keeps the page locked while `id` waits, e.g. for the refreshed page after its action. */
     hold(id: string, on: boolean) {
       if (on) holds.add(id)
-      else holds.delete(id)
+      else {
+        holds.delete(id)
+        acting.delete(id)
+      }
       publish()
     },
-    async run(action: () => Promise<unknown>): Promise<RunResult> {
+    /** `owner` is the hold that waits for the action's refreshed page; fields stay frozen until it releases. */
+    async run(action: () => Promise<unknown>, owner?: string): Promise<RunResult> {
       if (state.busy) return "busy"
       running = true
       publish()
@@ -52,10 +59,13 @@ export function createRecordGuard() {
         for (const form of [...forms.values()]) {
           if (form.dirty && !(await form.save())) return "unsaved"
         }
+        acting.add(owner ?? "run")
+        publish()
         await action()
         return "done"
       } finally {
         running = false
+        acting.delete("run")
         publish()
       }
     },

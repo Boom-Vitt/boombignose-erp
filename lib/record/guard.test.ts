@@ -64,6 +64,35 @@ describe("record guard", () => {
     expect(guard.snapshot().busy).toBe(false)
   })
 
+  it("freezes record fields once the action itself runs, until its refreshed page renders", async () => {
+    const guard = createRecordGuard()
+    const saving = deferred()
+    const acting = deferred()
+    guard.setForm("header", { dirty: true, save: async () => { await saving.promise; return true } })
+    const run = guard.run(() => acting.promise, "accept")
+    // The transition's hold lands after run() starts, as React commits its pending state.
+    guard.hold("accept", true)
+    // Edits typed during the pre-action save stay possible; the guard then refuses to run over them.
+    expect(guard.snapshot()).toMatchObject({ busy: true, acting: false })
+    saving.resolve()
+    await vi.waitFor(() => expect(guard.snapshot().acting).toBe(true))
+    acting.resolve()
+    expect(await run).toBe("done")
+    expect(guard.snapshot().acting).toBe(true)
+    guard.hold("accept", false)
+    expect(guard.snapshot()).toMatchObject({ busy: false, acting: false })
+  })
+
+  it("never freezes fields for an action that did not run", async () => {
+    const guard = createRecordGuard()
+    guard.setForm("header", { dirty: true, save: async () => false })
+    const run = guard.run(vi.fn(), "accept")
+    guard.hold("accept", true)
+    expect(await run).toBe("unsaved")
+    expect(guard.snapshot().acting).toBe(false)
+    expect(await createRecordGuard().run(async () => {})).toBe("done")
+  })
+
   it("is clean again once the dirty form is gone or discarded", () => {
     const guard = createRecordGuard()
     guard.setForm("header", { dirty: true, save: async () => true })

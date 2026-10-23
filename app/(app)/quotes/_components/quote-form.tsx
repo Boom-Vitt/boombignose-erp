@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { useGuardedForm } from "@/components/record/record-guard"
+import { RecordFields, useGuardedForm } from "@/components/record/record-guard"
 
 import { serviceMoneyInput } from "@/lib/workflows/service"
 
@@ -89,6 +89,7 @@ export function QuoteForm({
 
   return (
     <Form {...form}>
+      <RecordFields>
       <form
         onSubmit={onSubmit}
         className="space-y-5"
@@ -215,6 +216,7 @@ export function QuoteForm({
           </Button>
         </div>
       </form>
+      </RecordFields>
     </Form>
   )
 }

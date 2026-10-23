@@ -45,24 +45,24 @@ function installLeaveGuard() {
 
 // A transition stays pending until the router.refresh() it started has rendered, so holding
 // the lock for it keeps the page from offering actions for the status it just left.
-function useHeldTransition() {
+export function useHeldTransition() {
   const id = useId()
   const [pending, startTransition] = useTransition()
   useEffect(() => {
     recordGuard.hold(id, pending)
   }, [id, pending])
   useEffect(() => () => recordGuard.hold(id, false), [id])
-  return [pending, startTransition] as const
+  return [pending, startTransition, id] as const
 }
 
 export function useRecordGuard() {
   // The server never runs an action, so its snapshot is the same idle state.
   const state = useSyncExternalStore(recordGuard.subscribe, recordGuard.snapshot, recordGuard.snapshot)
-  const [pending, startTransition] = useHeldTransition()
+  const [pending, startTransition, id] = useHeldTransition()
   const run = useCallback((action: () => Promise<unknown>) => startTransition(async () => {
-    const result = await recordGuard.run(action)
+    const result = await recordGuard.run(action, id)
     if (result === "unsaved") toast.error("Nothing ran because some of your changes are not saved yet. Save them, then try again.")
-  }), [startTransition])
+  }), [startTransition, id])
   return { ...state, pending, run }
 }
 
@@ -94,17 +94,9 @@ export function useGuardedForm<V extends FieldValues, O>(
     // Those edits are not saved, so a record action waiting on this save must not run over them.
     return !unsaved
   }
-  // Re-registers after every render so the guard always saves with the latest handler.
-  useEffect(() => {
-    recordGuard.setForm(id, {
-      dirty,
-      save: () => new Promise<boolean>((resolve, reject) => {
-        form.handleSubmit(async (values) => resolve(await commit(values)), () => resolve(false))().catch(reject)
-      }),
-    })
-    installLeaveGuard()
-  })
-  useEffect(() => () => recordGuard.setForm(id, null), [id])
+  useGuardedEditor(id, dirty, () => new Promise<boolean>((resolve, reject) => {
+    form.handleSubmit(async (values) => resolve(await commit(values)), () => resolve(false))().catch(reject)
+  }))
   // Its own Save holds the page too, so a record action cannot save the same edits again meanwhile.
   return async (event?: BaseSyntheticEvent) => {
     recordGuard.hold(`${id}:save`, true)
@@ -114,6 +106,25 @@ export function useGuardedForm<V extends FieldValues, O>(
       recordGuard.hold(`${id}:save`, false)
     }
   }
+}
+
+/**
+ * Registers any record editor with the page guard: record actions call `save` first, and
+ * leaving with unsaved edits asks first. `save` resolves true once every edit is saved.
+ */
+export function useGuardedEditor(id: string, dirty: boolean, save: () => Promise<boolean>) {
+  // Re-registers after every render so the guard always saves with the latest handler.
+  useEffect(() => {
+    recordGuard.setForm(id, { dirty, save })
+    installLeaveGuard()
+  })
+  useEffect(() => () => recordGuard.setForm(id, null), [id])
+}
+
+/** Record fields freeze while a record action runs, so nothing typed then is lost when it refreshes the page. */
+export function RecordFields({ className, children }: { className?: string; children: ReactNode }) {
+  const { acting } = useSyncExternalStore(recordGuard.subscribe, recordGuard.snapshot, recordGuard.snapshot)
+  return <fieldset disabled={acting} className={cn("min-w-0", className)}>{children}</fieldset>
 }
 
 /** Record action buttons, all disabled while any record action runs. */

@@ -1,14 +1,16 @@
 "use client"
-import { useRef, useState, useTransition } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { useRecordGuard } from "@/components/record/record-guard"
 import { paymentCommandKey } from "@/lib/payments/retry-command"
 import { issueInvoice } from "../actions"
 
 export function IssueInvoiceForm({ orgId, invoiceId, version }: { orgId: string; invoiceId: string; version: number }) {
   const [confirmed, setConfirmed] = useState(false)
-  const [pending, startTransition] = useTransition()
+  // A guarded action: record fields freeze while it runs, so nothing typed then is lost.
+  const { pending, run } = useRecordGuard()
   const request = useRef<string | null>(null)
   const router = useRouter()
   return <div className="space-y-3"><p className="text-sm text-muted-foreground">ออกใบแจ้งหนี้เพื่อการดำเนินงาน / Issuance freezes this version’s issuer, buyer, priced lines, discount and dates. It freezes document VAT and withholding calculations. This is not a legal tax system, accounting ledger, filing service or e-Tax Invoice.</p><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={pending} onChange={event => setConfirmed(event.target.checked)} />I checked the business profile, buyer, lines, discount and dates.</label><Button disabled={!confirmed || pending} onClick={() => {
@@ -17,7 +19,7 @@ export function IssueInvoiceForm({ orgId, invoiceId, version }: { orgId: string;
       catch { request.current = crypto.randomUUID() }
     }
     const key = request.current
-    startTransition(async () => {
+    run(async () => {
       try {
         const result = await issueInvoice({ invoiceId, expectedVersion: version, key })
         if (result.error) { toast.error(result.error); return }
