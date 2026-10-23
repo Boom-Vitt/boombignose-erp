@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-const state = vi.hoisted(() => ({ verified: false }))
+const state = vi.hoisted(() => ({ verified: false, credited: false, allocated: false }))
 vi.mock("@/lib/auth", () => ({ requireOrgContext: async () => ({ orgId: "org" }) }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (table: string) => {
   const filters: [string, unknown][] = []
@@ -18,8 +18,10 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (ta
       ]
       const data = table === "payments"
         ? receipts.filter(() => state.verified || !filters.some(([key, value]) => key === "verification_state" && value === "verified"))
-        : table === "invoices" ? [{ id: "invoice", status: "sent", amount_satang: 10_400_000, total_satang: 10_700_000, vat_satang: 700_000, issue_date: "2026-10-01" }]
+        : table === "invoices" ? [{ id: "invoice", status: "sent", amount_satang: 10_400_000, total_satang: 10_700_000, vat_satang: 700_000, issue_date: "2026-10-01", due_date: "2026-10-01" }]
         : table === "costs" ? [12_000_000, 1_500_000, 800_000, 2_500_000, 2_000_000].map((amount_satang) => ({ category: "other", amount_satang, incurred_on: "2026-10-01" })).concat([{ category: "inventory", amount_satang: 10_000_000, incurred_on: "2026-10-01" }])
+        : table === "invoice_balances" ? (state.allocated ? [{ invoice_id: "invoice", paid_satang: 4000000, credited_satang: 3000000 }] : [])
+        : table === "credit_note_revenue" ? (state.credited ? [{ org_id: "org", id: "credit", issue_date: "2026-10-23", base_satang: 4000000 }] : [])
         : table === "monthly_inventory_cogs" ? [{ month: "2026-10-01", amount_satang: 2_000_000 }] : []
       return resolve({ data, error: null, count: 0 })
     },
@@ -29,7 +31,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: (ta
 
 import { getDashboardData } from "./dashboard"
 
-afterEach(() => { vi.useRealTimers(); state.verified = false })
+afterEach(() => { vi.useRealTimers(); state.verified = false; state.credited = false; state.allocated = false })
 
 describe("dashboard revenue and cash definitions", () => {
   it("recognizes issued base revenue while cash burn only uses verified receipts", async () => {
@@ -44,4 +46,20 @@ describe("dashboard revenue and cash definitions", () => {
     expect(verified.monthlyRevenueSatang).toBe(10_000_000)
     expect(verified.netBurnSatang).toBe(5_800_000)
   })
+})
+
+it("recognizes credit-note base reductions in their issue period without changing cash", async () => {
+  vi.useFakeTimers().setSystemTime(new Date("2026-10-23T06:00:00Z"))
+  state.credited = true
+  const result = await getDashboardData()
+  expect(result.monthlyRevenueSatang).toBe(6000000)
+  expect(result.netBurnSatang).toBe(18800000)
+})
+
+it("does not count a credit twice when deriving overdue status", async () => {
+  vi.useFakeTimers().setSystemTime(new Date("2026-10-23T06:00:00Z"))
+  state.allocated = true
+  const result = await getDashboardData()
+  expect(result.unpaidSatang).toBe(3400000)
+  expect(result.overdueInvoiceCount).toBe(1)
 })

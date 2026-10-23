@@ -5,12 +5,10 @@ import { z } from "zod"
 import { requireOrgContext, type OrgContext } from "@/lib/auth"
 import { todayISO } from "@/lib/dates"
 import { deriveInvoiceStatus, outstandingSatang } from "@/lib/metrics/invoice-status"
-import { sumSatang } from "@/lib/money"
 import { can } from "@/lib/permissions"
 import { recordHref } from "@/lib/record-history/model"
 import { DEAL_FLOW, INVOICE_FLOW, PROJECT_FLOW, QUOTE_FLOW, SUBSCRIPTION_FLOW } from "@/lib/record/status"
 import { createClient } from "@/lib/supabase/server"
-import { readAll } from "@/lib/supabase/read-all"
 import type { Enums } from "@/lib/types/database"
 import { updateDealStage } from "@/app/(app)/deals/actions"
 import { setSubscriptionStatus } from "@/app/(app)/finance/subscription-actions"
@@ -52,23 +50,6 @@ export async function searchRecords(raw: string): Promise<{ hits: SearchHit[]; e
     })
   )
   return { hits: results.flat() }
-}
-
-/** Verified payments on one invoice, paged so the API row cap cannot truncate the sum; null on error. */
-async function verifiedPaidSatang(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  orgId: string,
-  invoiceId: string
-): Promise<number | null> {
-  const { data, error } = await readAll((from, to) => supabase
-    .from("invoice_receipts")
-    .select("amount_satang")
-    .eq("verification_state", "verified")
-    .eq("org_id", orgId)
-    .eq("invoice_id", invoiceId)
-    .order("id")
-    .range(from, to))
-  return error || !data ? null : sumSatang(data.map(payment => payment.amount_satang))
 }
 
 type RecordContext = { actions: PaletteAction[]; transition?: (to: string) => Promise<{ error?: string }> }
@@ -133,18 +114,20 @@ async function recordContext(ctx: OrgContext, { type, id }: StatusRecordRef): Pr
       }
     }
     case "invoice": {
-      const [{ data }, paid] = await Promise.all([
+      const [{ data }, balance] = await Promise.all([
         supabase.from("invoices").select("status, amount_satang, due_date").eq("org_id", ctx.orgId).eq("id", id).maybeSingle(),
-        verifiedPaidSatang(supabase, ctx.orgId, id),
+        supabase.from("invoice_balances").select("paid_satang, credited_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).maybeSingle(),
       ])
-      if (!data || paid === null) return null
+      if (!data || balance.error) return null
+      const paid = balance.data?.paid_satang ?? 0
+      const credited = balance.data?.credited_satang ?? 0
       const href = recordHref("invoice", id)
-      const payable = outstandingSatang(data.amount_satang, paid) > 0 && !["draft", "cancelled"].includes(data.status)
+      const payable = outstandingSatang(data.amount_satang, paid, credited) > 0 && !["draft", "cancelled"].includes(data.status)
       const commands =
         ctx.role === "member"
           ? {}
           : { issue: `${href}#issue-invoice`, ...(payable ? { pay: `${href}#payment-claims` } : {}) }
-      return { actions: paletteActions(INVOICE_FLOW, deriveInvoiceStatus(data, paid, todayISO()), false, commands) }
+      return { actions: paletteActions(INVOICE_FLOW, deriveInvoiceStatus({ ...data, credited_satang: credited }, paid, todayISO()), false, commands) }
     }
   }
 }

@@ -1,3 +1,4 @@
+import { creditNoteRevenue } from "@/lib/payments/balances"
 import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { createClient } from "@/lib/supabase/server"
 import { sumSatang } from "@/lib/money"
@@ -69,6 +70,9 @@ export async function getReportData(): Promise<ReportAggregates> {
       amount_satang: p.total_satang - p.vat_satang,
       paid_at: p.issue_date,
     }))
+
+  const credits = await creditNoteRevenue(supabase, ctx.orgId)
+  payments.push(...credits.filter(credit => inRange.has(monthKey(credit.issue_date))).map(credit => ({ client_name: credit.client_name, amount_satang: -credit.base_satang, paid_at: credit.issue_date })))
 
   const entries: ProjectTimeEntry[] = (entriesRes.data ?? [])
     .filter((e) => inRange.has(monthKey(e.work_date)))

@@ -1,3 +1,4 @@
+import { creditNoteRevenue } from "@/lib/payments/balances"
 import { readAll } from "@/lib/supabase/read-all"
 import { DocumentTotals } from "@/components/document-totals"
 import { RecordHistory } from "@/components/record/record-history"
@@ -103,7 +104,9 @@ export default async function QuoteDetailPage({
   if (itemsRes.error || clientsRes.error || projectsRes.error || invoicesRes.error || settingsRes.error) throw new Error("Quote details unavailable")
   const items = itemsRes.data ?? []
   const invoices = invoicesRes.data ?? []
-  const invoicedTotal = sumSatang(invoices.filter(invoice => invoice.status !== "cancelled").map(invoice => invoice.total_satang))
+  const credits = await creditNoteRevenue(supabase, ctx.orgId)
+  const linkedCredits = credits.filter(credit => invoices.some(invoice => invoice.id === credit.invoice_id))
+  const invoicedTotal = sumSatang(invoices.filter(invoice => invoice.status !== "cancelled").map(invoice => invoice.total_satang)) - sumSatang(linkedCredits.map(credit => credit.total_satang))
   const canAccept = can(ctx.role, "quote:convert")
   const canConvert = canAccept && ["accepted", "converted"].includes(quote.status)
   const flow = {
@@ -228,6 +231,7 @@ export default async function QuoteDetailPage({
             </ul>
           } /></dl> : null}
           {invoices.length ? <Field label="Invoiced vs quote" value={<div>
+            {linkedCredits.length ? <p>Includes credit notes of {formatTHB(sumSatang(linkedCredits.map(credit => credit.total_satang)))}</p> : null}
             <p>{formatTHB(invoicedTotal)} / {formatTHB(quote.total_satang)}</p>
             <p className="text-muted-foreground text-sm">Difference: {formatTHB(invoicedTotal - quote.total_satang)}. Each invoice rounds VAT independently; a few satang may differ after the full scope is invoiced.</p>
           </div>} /> : null}

@@ -109,3 +109,10 @@ describe("palette server actions", () => {
     expect(state.filters).toEqual([])
   })
 })
+
+it("fully credited invoices do not advertise another payment", async () => {
+  state.role = "owner"
+  state.records.invoices = { status: "paid", amount_satang: 10000, due_date: null }
+  state.records.invoice_balances = { paid_satang: 0, credited_satang: 10000 }
+  expect(await recordActions(`/finance/invoices/${ID}`)).toEqual([])
+})

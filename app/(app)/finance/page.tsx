@@ -1,4 +1,4 @@
-import { invoiceBalances } from "@/lib/payments/balances"
+import { invoiceBalances, creditNoteRevenue } from "@/lib/payments/balances"
 import { invoiceDisplayNumber } from "@/lib/documents/numbering"
 import { readAll } from "@/lib/supabase/read-all"
 import { can } from "@/lib/permissions"
@@ -114,7 +114,7 @@ export default async function FinancePage({
   const activeSubscriptions = subscriptionsRes.data ?? []
 
   // Sum payments per invoice.
-  const balances = await invoiceBalances(supabase, ctx.orgId)
+  const [balances, credits] = await Promise.all([invoiceBalances(supabase, ctx.orgId), creditNoteRevenue(supabase, ctx.orgId)])
 
   const invoiceRows = invoices.map((inv) => {
     const paid = balances.get(inv.id)?.paid_satang ?? 0
@@ -140,7 +140,7 @@ export default async function FinancePage({
   }))
   const unpaidSatang = unpaidTotal(invoicesWithPaid)
   const openCount = unpaidCount(invoicesWithPaid)
-  const revenueSatang = revenueForMonth(invoices, month)
+  const revenueSatang = revenueForMonth(invoices, month) - sumSatang(credits.filter(credit => monthKey(credit.issue_date) === month).map(credit => credit.base_satang))
   const cashReceivedSatang = sumSatang(payments.filter(payment => monthKey(payment.paid_at) === month).map(payment => payment.amount_satang))
   const costsSatang = costsForMonth(costs, month)
   // MRR is derived from active subscriptions (source of truth) for consistency

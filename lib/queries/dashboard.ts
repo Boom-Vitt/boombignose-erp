@@ -1,4 +1,4 @@
-import { invoiceBalances } from "@/lib/payments/balances"
+import { invoiceBalances, creditNoteRevenue } from "@/lib/payments/balances"
 import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -151,7 +151,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const quotes = quotesRes.data ?? []
   const timeEntries = timeEntriesRes.data ?? []
 
-  const balances = await invoiceBalances(supabase, ctx.orgId)
+  const [balances, credits] = await Promise.all([invoiceBalances(supabase, ctx.orgId), creditNoteRevenue(supabase, ctx.orgId)])
 
   const invoicesWithPaid = invoices.map((i) => ({
     status: i.status,
@@ -162,8 +162,8 @@ export async function getDashboardData(): Promise<DashboardData> {
   const overdueInvoiceCount = invoices.filter(
     (i) =>
       deriveInvoiceStatus(
-        { status: i.status, amount_satang: i.amount_satang - (balances.get(i.id)?.credited_satang ?? 0), due_date: i.due_date },
-        (balances.get(i.id)?.paid_satang ?? 0) + (balances.get(i.id)?.credited_satang ?? 0),
+        { ...i, credited_satang: balances.get(i.id)?.credited_satang ?? 0 },
+        balances.get(i.id)?.paid_satang ?? 0,
         today
       ) === "overdue"
   ).length
@@ -176,7 +176,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const billableValueThisMonthSatang = billableValueSatang(timeEntries)
   const utilizationThisMonth = utilization(timeEntries)
 
-  const monthlyRevenueSatang = revenueForMonth(invoices, month)
+  const monthlyRevenueSatang = revenueForMonth(invoices, month) - sumSatang(credits.filter(credit => monthKey(credit.issue_date) === month).map(credit => credit.base_satang))
   const computedBurn = costsForMonth(costs, month)
   const monthlyBurnSatang = settings?.monthly_burn_satang ?? computedBurn
   const cashReceived = sumSatang(payments.filter((p) => monthKey(p.paid_at) === month).map((p) => p.amount_satang))
@@ -195,7 +195,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     monthlyRevenueSatang,
     revenueHistory: lastNMonths(6, month).map((month) => ({
       month,
-      revenueSatang: revenueForMonth(invoices, month),
+      revenueSatang: revenueForMonth(invoices, month) - sumSatang(credits.filter(credit => monthKey(credit.issue_date) === month).map(credit => credit.base_satang)),
     })),
     monthlyBurnSatang,
     monthlyCogsSatang: sumSatang(cogs.map((row) => row.amount_satang)),

@@ -493,7 +493,7 @@ describe("ERP MCP server", () => {
     await supaLayer.getFinanceInputs(ORG_A)
     await supaLayer.getInvoiceInputs(ORG_A)
 
-    expect(eqCalls.length).toBe(16)
+    expect(eqCalls.length).toBe(18)
     for (const call of eqCalls) {
       expect(call.col).toBe("org_id")
       expect(call.val).toBe(ORG_A)
@@ -1299,4 +1299,22 @@ describe("ERP MCP server", () => {
       expect(called).toBe(false)
     })
   })
+})
+
+it("MCP finance readers use allocated cash and credits while preserving total cash", async () => {
+  const layer = createFakeDataLayer({
+    organizations: [{ id: ORG_A, name: "Finance test", slug: "finance-test" }],
+    invoices: [{ id: "allocated", org_id: ORG_A, status: "paid", amount_satang: 10000, total_satang: 10000, due_date: null }, { id: "credited", org_id: ORG_A, status: "paid", amount_satang: 10000, total_satang: 10000, due_date: null }],
+    payments: [{ id: "receipt", org_id: ORG_A, invoice_id: null, amount_satang: 15000, verification_state: "verified" }],
+    invoice_balances: [{ org_id: ORG_A, invoice_id: "allocated", paid_satang: 10000, credited_satang: 0, outstanding_satang: 0 }, { org_id: ORG_A, invoice_id: "credited", paid_satang: 0, credited_satang: 10000, outstanding_satang: 0 }],
+    credit_note_revenue: [{ id: "note", org_id: ORG_A, total_satang: 10000, base_satang: 10000 }],
+  })
+  const ctx = { dataLayer: layer, erpOrgId: ORG_A, now: new Date("2026-10-23T06:00:00Z") }
+  const listed = await runTool("list_invoices", {}, ctx)
+  if (!("items" in listed)) throw new Error("Expected invoice list")
+  expect(listed.items.map(i => [i.status, i.outstanding_satang])).toEqual([["paid", 0], ["paid", 0]])
+  const summary = await runTool("finance_summary", {}, ctx)
+  if (!("unpaid_satang" in summary)) throw new Error("Expected finance summary")
+  expect(summary.unpaid_satang).toBe(0)
+  expect(summary.verified_paid_satang).toBe(15000)
 })
