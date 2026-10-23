@@ -162,3 +162,59 @@ test("Accept saves dirty lines first and freezes record fields until it finishes
   await expect(page.getByText("Accepted scope is locked.", { exact: true })).toBeVisible()
   await expect(page.getByRole("table", { name: "Line items" })).toContainText("Agreed service, revised")
 })
+
+test("Accept saves header edits made while dirty lines are saving", async ({ page, cleanup }) => {
+  const { quoteId } = await quoteWorkspace(page, cleanup, "sent")
+  await page.goto(`/quotes/${quoteId}`)
+  await grid(page).getByLabel("Description, row 1").fill("Updated service")
+  let release = () => {}
+  const held = new Promise<void>(resolve => (release = resolve))
+  let reached = () => {}
+  const saving = new Promise<void>(resolve => (reached = resolve))
+  await page.route(`**/quotes/${quoteId}`, async route => {
+    if (route.request().method() === "POST" && (route.request().postData() ?? "").includes('"rows"')) {
+      reached()
+      await held
+    }
+    await route.continue()
+  })
+  await page.getByRole("button", { name: "Accept", exact: true }).click()
+  await saving
+  await page.getByLabel("Notes", { exact: true }).fill("Header edited during line save")
+  release()
+  await expect.poll(async () => ok(await admin.from("quotes").select("notes").eq("id", quoteId).single()).notes).toBe("Header edited during line save")
+  await expect.poll(async () => ok(await admin.from("quotes").select("status").eq("id", quoteId).single()).status).toBe("accepted")
+  await expect(grid(page)).toHaveCount(0)
+})
+
+test("Accept stops if lines change while the header is saving", async ({ page, cleanup }) => {
+  const { quoteId } = await quoteWorkspace(page, cleanup, "sent")
+  await page.goto(`/quotes/${quoteId}`)
+  await grid(page).getByLabel("Description, row 1").fill("First line edit")
+  await page.getByLabel("Notes", { exact: true }).fill("Header edit")
+  let release = () => {}
+  const held = new Promise<void>(resolve => (release = resolve))
+  let reached = () => {}
+  const saving = new Promise<void>(resolve => (reached = resolve))
+  await page.route(`**/quotes/${quoteId}`, async route => {
+    const body = route.request().postData() ?? ""
+    if (route.request().method() === "POST" && body.includes("Header edit") && !body.includes('"rows"')) {
+      reached()
+      await held
+    }
+    await route.continue()
+  })
+  await page.getByRole("button", { name: "Accept", exact: true }).click()
+  await saving
+  await grid(page).getByLabel("Description, row 1").fill("Later line edit")
+  release()
+  await expect(page.getByText("Nothing ran because some of your changes are not saved yet. Save them, then try again.", { exact: true })).toBeVisible()
+  expect(ok(await admin.from("quotes").select("status").eq("id", quoteId).single()).status).toBe("sent")
+  await expect(grid(page).getByLabel("Description, row 1")).toHaveValue("Later line edit")
+  await grid(page).getByRole("button", { name: "Save lines", exact: true }).click()
+  await expect(grid(page).getByText("Unsaved line changes", { exact: true })).toHaveCount(0)
+  await page.getByRole("button", { name: "Accept", exact: true }).click()
+  await expect.poll(async () => ok(await admin.from("quotes").select("status").eq("id", quoteId).single()).status).toBe("accepted")
+  await expect(grid(page)).toHaveCount(0)
+  expect(ok(await admin.from("quote_items").select("description").eq("quote_id", quoteId).single()).description).toBe("Later line edit")
+})

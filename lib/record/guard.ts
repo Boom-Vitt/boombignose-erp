@@ -56,9 +56,13 @@ export function createRecordGuard() {
       running = true
       publish()
       try {
-        for (const form of [...forms.values()]) {
-          if (form.dirty && !(await form.save())) return "unsaved"
+        for (const [id, form] of forms) {
+          if (!form.dirty) continue
+          if (!(await form.save())) return "unsaved"
+          const current = forms.get(id)
+          if (current) forms.set(id, { ...current, dirty: false })
         }
+        if ([...forms.values()].some(form => form.dirty)) return "unsaved"
         acting.add(owner ?? "run")
         publish()
         await action()
