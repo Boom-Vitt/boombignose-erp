@@ -1,0 +1,10 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select no_plan();
+select has_table('public','stock_balances','posting has materialized balance rows');
+select ok(position('stock_balances' in pg_get_viewdef('public.stock_on_hand'::regclass,true))>0,'on-hand reads balance rows');
+select ok(position('from public.products' in pg_get_functiondef('private.value_stock_move()'::regprocedure))=0,'posting does not lock the product row');
+select ok(position('private.lock_stock_balances' in pg_get_functiondef('public.deliver_invoice(uuid,uuid,uuid,jsonb)'::regprocedure))>0,'deliveries prelock balances');
+select ok(position('private.lock_stock_balances' in pg_get_functiondef('public.receive_purchase_order(uuid,uuid,jsonb,uuid)'::regprocedure))>0,'receipts prelock balances');
+select * from finish();
+rollback;
