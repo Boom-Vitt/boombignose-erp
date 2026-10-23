@@ -27,6 +27,7 @@ insert into payments(org_id,invoice_id,amount_satang,verification_state,verified
   ('cb000000-0000-4000-8000-000000000010','cb000000-0000-4000-8000-000000000022',20000,'verified','cb000000-0000-4000-8000-000000000001','bank slip',gen_random_uuid());
 insert into payments(org_id,invoice_id,amount_satang) values
   ('cb000000-0000-4000-8000-000000000010','cb000000-0000-4000-8000-000000000022',30000);
+insert into public.payment_allocations(org_id,payment_id,invoice_id,amount_satang) select org_id,id,invoice_id,amount_satang from public.payments where org_id='cb000000-0000-4000-8000-000000000010' and verification_state='verified';
 insert into projects(id,org_id,name) values('cb000000-0000-4000-8000-000000000031','cb000000-0000-4000-8000-000000000010','Long project');
 insert into time_entries(org_id,project_id,minutes)
 select 'cb000000-0000-4000-8000-000000000010','cb000000-0000-4000-8000-000000000031',30 from generate_series(1,1001);

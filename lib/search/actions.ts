@@ -61,7 +61,7 @@ async function verifiedPaidSatang(
   invoiceId: string
 ): Promise<number | null> {
   const { data, error } = await readAll((from, to) => supabase
-    .from("payments")
+    .from("invoice_receipts")
     .select("amount_satang")
     .eq("verification_state", "verified")
     .eq("org_id", orgId)

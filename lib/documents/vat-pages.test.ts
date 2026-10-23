@@ -31,7 +31,7 @@ function elements(node: ReactNode): ReactElement[] {
   return [node, ...elements(node.props.children)]
 }
 
-beforeEach(() => { state.role = "owner"; state.client = databaseFixture({ invoices: [header], payments, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100 }] }) })
+beforeEach(() => { state.role = "owner"; state.client = databaseFixture({ invoices: [header], payments, invoice_receipts: payments, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100 }] }) })
 
 it("invoice detail keeps tax totals, SQL net balance, and a payment count beyond the row cap", async () => {
   const page = await InvoicePage({ params: Promise.resolve({ id: "invoice" }) })
@@ -57,7 +57,7 @@ it("quote detail keeps VAT totals and the complete linked invoice count", async 
 
 it("Finance keeps vendor bill metadata beyond the row cap alongside net receivables", async () => {
   const costs = Array.from({ length: 1001 }, (_, n) => ({ id: `cost-${n}`, org_id: "A", category: "software", amount_satang: 1, incurred_on: "2026-10-23", vendor: "Vendor", vendor_id: "vendor", purchase_order_id: "purchase", bill_number: `BILL-${n}`, due_date: "2026-10-22", paid_at: null }))
-  state.client = databaseFixture({ invoices: [{ ...header, status: "sent" }], payments, costs })
+  state.client = databaseFixture({ invoices: [{ ...header, status: "sent" }], payments, costs, invoice_balances: [{ org_id: "A", invoice_id: "invoice", paid_satang: 150100, credited_satang: 0 }] })
   const content = pageContent(await FinancePage({ searchParams: Promise.resolve({}) }))
   expect(content).toContain("BILL-1000")
   expect(content).toContain("/purchases/purchase")

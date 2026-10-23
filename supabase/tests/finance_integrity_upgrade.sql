@@ -50,6 +50,7 @@ end;
 $$;
 create trigger zz_mutate_adoption before update on public.invoices for each row execute function pg_temp.mutate_adoption();
 
+insert into public.payment_allocations(org_id,payment_id,invoice_id,amount_satang) select org_id,id,invoice_id,amount_satang from public.payments where verification_state='verified' and not exists(select 1 from public.payment_allocations a where a.payment_id=payments.id);
 select set_config('request.jwt.claims',jsonb_build_object('role','authenticated','sub',pg_temp.upgrade_id(1))::text,true);
 set local role authenticated;
 select throws_ok($$select public.adopt_legacy_invoice(pg_temp.upgrade_id(10),pg_temp.upgrade_id(30),1,pg_temp.upgrade_id(97),'Reviewed legacy record')$$,'P0001','Legacy adoption must preserve original invoice','adoption fails closed if a trigger changes original content');

@@ -215,7 +215,7 @@ export async function reconcileLegacyPayment(input: z.input<typeof ReconcileLega
 }
 
 const ReviewClaimFields = {
-  claimId: z.guid(), invoiceId: z.guid(), key: z.uuid(),
+  claimId: z.guid(), invoiceId: z.guid().optional(), key: z.uuid(),
   amountBaht: z.string(), reference: z.string().trim().min(3).max(500),
 }
 const ReviewClaim = z.discriminatedUnion("decision", [
@@ -239,7 +239,8 @@ export async function reviewPaymentClaim(input: z.input<typeof ReviewClaim>): Pr
   const { error } = await supabase.rpc("review_payment_claim_with_evidence", { ...args, p_paid_on: d.decision === "verified" ? d.paidOn : null, p_method: d.decision === "verified" ? d.method : null })
   if (error) return { error: error.message }
   revalidatePath("/finance")
-  revalidatePath(`/finance/invoices/${d.invoiceId}`)
+  if (d.invoiceId) revalidatePath(`/finance/invoices/${d.invoiceId}`)
+  revalidatePath("/finance/receipts")
   return {}
 }
 

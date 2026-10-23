@@ -44,7 +44,7 @@ export async function GET(
       .eq("invoice_id", id)
       .eq("org_id", ctx.orgId)
       .order("position", { ascending: true }).order("id").range(from, to)),
-    readAll((from, to) => supabase.from("payments").select("amount_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).eq("verification_state", "verified").order("id").range(from, to)),
+    readAll((from, to) => supabase.from("invoice_receipts").select("amount_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).eq("verification_state", "verified").order("id").range(from, to)),
   ])
 
   if (invoiceRes.error || itemsRes.error || receiptsRes.error) return new Response("Invoice evidence unavailable", { status: 503 })

@@ -34,7 +34,7 @@ it("portal lists only customer-facing quotes and invoices", async () => {
     clients: [{ id: client_id, name: "Client", org_id: org, portal_token: "tok", portal_enabled: true }],
     organizations: [{ id: org, name: "Org" }],
     projects: [],
-    payments: [],
+    payments: [], invoice_balances: [],
     invoice_items: [],
     payment_claims: [],
     quotes: ["draft", "sent", "accepted", "declined", "expired", "converted"].map((s, i) => ({
@@ -67,6 +67,7 @@ it("portal shows gross VAT totals, net amount due and verified outstanding", asy
     clients: [{ id: client_id, name: "Client", org_id: org, portal_token: "vat-token", portal_enabled: true }],
     organizations: [{ id: org, name: "Org" }], projects: [], quotes: [], payment_claims: [], invoice_items: [],
     invoices: [{ ...doc("sent", 1), number: "VAT-1", amount_satang: 104000, subtotal_satang: 100000, discount_satang: 0, vat_satang: 7000, total_satang: 107000, wht_satang: 3000, wht_rate_bps: 300, tax_breakdown: [{ rateBps: 700, baseSatang: 100000, vatSatang: 7000 }], issue_date: "2026-10-01", due_date: null }],
+    invoice_balances: [{ org_id: org, client_id, invoice_id: "sent-1", paid_satang: 4000, credited_satang: 0 }],
     payments: [{ id: "paid", invoice_id: "sent-1", org_id: org, amount_satang: 4000, verification_state: "verified" }, { id: "legacy", invoice_id: "sent-1", org_id: org, amount_satang: 100000, verification_state: "legacy_unverified" }],
   })
   const html = renderToStaticMarkup(await ClientPortalPage({ params: Promise.resolve({ token: "vat-token" }) }))

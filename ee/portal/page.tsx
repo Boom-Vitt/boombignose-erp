@@ -118,11 +118,11 @@ export default async function ClientPortalPage({
   const [paymentsRes, itemsRes, claimsRes] = await Promise.all([
     invoiceIds.length
       ? readAll((from, to) => supabase
-          .from("payments")
-          .select("invoice_id, amount_satang, invoices!inner(client_id)").eq("verification_state", "verified")
-          .eq("invoices.client_id", client.id)
-          .eq("org_id", client.org_id).order("id").range(from, to))
-      : Promise.resolve({ data: [] as { invoice_id: string; amount_satang: number }[], error: null }),
+          .from("invoice_balances")
+          .select("invoice_id, paid_satang, credited_satang")
+          .eq("client_id", client.id)
+          .eq("org_id", client.org_id).order("invoice_id").range(from, to))
+      : Promise.resolve({ data: [] as { invoice_id: string; paid_satang: number; credited_satang: number }[], error: null }),
     invoiceIds.length
       ? readAll((from, to) => supabase
           .from("invoice_items")
@@ -144,13 +144,8 @@ export default async function ClientPortalPage({
   if (paymentsRes.error || itemsRes.error || claimsRes.error) return <Unavailable />
   const pendingInvoiceIds = new Set((claimsRes.data ?? []).map(c=>c.invoice_id))
 
-  const paidByInvoice = new Map<string, number>()
-  for (const p of paymentsRes.data ?? []) {
-    paidByInvoice.set(
-      p.invoice_id,
-      (paidByInvoice.get(p.invoice_id) ?? 0) + p.amount_satang
-    )
-  }
+  const paidByInvoice = new Map((paymentsRes.data ?? []).map(p => [p.invoice_id, p.paid_satang ?? 0]))
+  const creditedByInvoice = new Map((paymentsRes.data ?? []).map(p => [p.invoice_id, p.credited_satang ?? 0]))
 
   const itemsByInvoice = new Map<
     string,
@@ -234,8 +229,8 @@ export default async function ClientPortalPage({
           ) : (
             invoices.map((inv) => {
               const paid = paidByInvoice.get(inv.id) ?? 0
-              const outstanding = outstandingSatang(inv.amount_satang, paid)
-              const effectiveStatus = deriveInvoiceStatus(inv, paid, today)
+              const outstanding = outstandingSatang(inv.amount_satang, paid, creditedByInvoice.get(inv.id) ?? 0)
+              const effectiveStatus = deriveInvoiceStatus({ ...inv, credited_satang: creditedByInvoice.get(inv.id) ?? 0 }, paid, today)
               const items = itemsByInvoice.get(inv.id) ?? []
               const canPay =
                 effectiveStatus !== "paid" && effectiveStatus !== "cancelled"

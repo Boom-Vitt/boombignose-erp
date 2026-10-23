@@ -1,3 +1,4 @@
+import { invoiceBalances } from "@/lib/payments/balances"
 import { readAll, readAllOrThrow } from "@/lib/supabase/read-all"
 import { createClient } from "@/lib/supabase/server"
 import { requireOrgContext } from "@/lib/auth"
@@ -150,22 +151,19 @@ export async function getDashboardData(): Promise<DashboardData> {
   const quotes = quotesRes.data ?? []
   const timeEntries = timeEntriesRes.data ?? []
 
-  const paidByInvoice = new Map<string, number>()
-  for (const p of payments) {
-    paidByInvoice.set(p.invoice_id, (paidByInvoice.get(p.invoice_id) ?? 0) + p.amount_satang)
-  }
+  const balances = await invoiceBalances(supabase, ctx.orgId)
 
   const invoicesWithPaid = invoices.map((i) => ({
     status: i.status,
-    amount_satang: i.amount_satang,
-    paid_satang: paidByInvoice.get(i.id) ?? 0,
+    amount_satang: i.amount_satang - (balances.get(i.id)?.credited_satang ?? 0),
+    paid_satang: balances.get(i.id)?.paid_satang ?? 0,
   }))
 
   const overdueInvoiceCount = invoices.filter(
     (i) =>
       deriveInvoiceStatus(
-        { status: i.status, amount_satang: i.amount_satang, due_date: i.due_date },
-        paidByInvoice.get(i.id) ?? 0,
+        { status: i.status, amount_satang: i.amount_satang - (balances.get(i.id)?.credited_satang ?? 0), due_date: i.due_date },
+        (balances.get(i.id)?.paid_satang ?? 0) + (balances.get(i.id)?.credited_satang ?? 0),
         today
       ) === "overdue"
   ).length

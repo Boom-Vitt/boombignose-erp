@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { paymentCommandKey } from "@/lib/payments/retry-command"
 import { reversePayment } from "../correction-actions"
 
-export function ReversePaymentForm({ orgId, invoiceId, paymentId, today }: { orgId: string; invoiceId: string; paymentId: string; today: string }) {
+export function ReversePaymentForm({ orgId, invoiceId, paymentId, today }: { orgId: string; invoiceId?: string; paymentId: string; today: string }) {
   const [reason, setReason] = useState("")
   const [date, setDate] = useState(today)
   const [pending, startTransition] = useTransition()

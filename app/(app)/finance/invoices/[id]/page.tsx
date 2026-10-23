@@ -130,11 +130,11 @@ export default async function InvoiceDetailPage({
       .eq("invoice_id", id)
       .order("position", { ascending: true }).order("id").range(from, to)),
     readAll((from, to) => supabase
-      .from("payments")
+      .from("invoice_receipts")
       .select("id, amount_satang, paid_at, method, notes").eq("verification_state", "verified").eq("org_id", ctx.orgId)
       .eq("invoice_id", id)
       .order("paid_at", { ascending: false }).order("id").range(from, to)),
-    supabase.from("payments").select("id", { count: "exact", head: true }).eq("verification_state", "verified").eq("org_id", ctx.orgId).eq("invoice_id", id),
+    supabase.from("invoice_receipts").select("id", { count: "exact", head: true }).eq("verification_state", "verified").eq("org_id", ctx.orgId).eq("invoice_id", id),
     supabase.from("invoice_balances").select("paid_satang, credited_satang").eq("org_id", ctx.orgId).eq("invoice_id", id).maybeSingle(),
     supabase.from("clients").select("id, name").eq("org_id", ctx.orgId).order("name"),
     supabase.from("projects").select("id, name").eq("org_id", ctx.orgId).order("name"),
@@ -418,7 +418,7 @@ export default async function InvoiceDetailPage({
       {invoice.issued_snapshot_id ? <Card className="max-w-3xl"><CardHeader><CardTitle>Credit notes</CardTitle></CardHeader><CardContent className="space-y-4">
         <p>Credited {formatTHB(credited)}</p>
         <CreditNotes orgId={ctx.orgId} invoiceId={id} />
-        {ctx.role !== "member" && outstanding + paid > 0 ? <CreditNoteForm orgId={ctx.orgId} invoiceId={id} lines={itemsRes.data ?? []} /> : null}
+        {ctx.role !== "member" && outstanding + paid > 0 ? <CreditNoteForm orgId={ctx.orgId} invoiceId={id} lines={itemsRes.data?.length ? itemsRes.data : [{ id, description: "Historical invoice amount", headerOnly: true }]} /> : null}
       </CardContent></Card> : null}
       <RecordHistory recordType="invoice" recordId={id} />
     </div>
