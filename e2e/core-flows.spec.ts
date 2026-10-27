@@ -1,7 +1,18 @@
 import { randomUUID } from "node:crypto"
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 
 test.describe.configure({ retries: 0 })
+
+async function expectDashboard(page: Page) {
+  try {
+    await page.waitForURL((url) => url.pathname === "/dashboard")
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible()
+  } catch (error) {
+    const names = (await page.context().cookies()).map((cookie) => cookie.name).join(" ")
+    const text = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 400)
+    throw new Error(`url=${page.url()} cookies=${names || "(none)"} body=${text}`, { cause: error })
+  }
+}
 
 test("sign up, sign in, and record a customer, stock count, and VAT invoice", async ({ page }) => {
   test.setTimeout(240_000)
@@ -18,15 +29,14 @@ test("sign up, sign in, and record a customer, stock count, and VAT invoice", as
   await page.waitForURL("**/onboarding")
   await page.getByLabel("Workspace name / ชื่อพื้นที่ทำงาน").fill("Core flow shop")
   await page.getByRole("button", { name: "Create workspace / สร้างพื้นที่ทำงาน", exact: true }).click()
-  await page.waitForURL("**/dashboard")
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible()
+  await expectDashboard(page)
 
   await page.getByRole("button", { name: "Sign out", exact: true }).click()
-  await page.waitForURL("**/login")
+  await page.waitForURL((url) => url.pathname === "/login")
   await page.getByLabel("Email", { exact: true }).fill(email)
   await page.getByLabel("Password", { exact: true }).fill(password)
   await page.getByRole("button", { name: "Sign in", exact: true }).click()
-  await page.waitForURL("**/dashboard")
+  await expectDashboard(page)
 
   await page.goto("/clients/new")
   await page.getByLabel("Name", { exact: true }).fill(buyer)
