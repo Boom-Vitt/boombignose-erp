@@ -86,6 +86,81 @@ func TestEnsureLocalKeysStayOnDisk(t *testing.T) {
 	}
 }
 
+func TestEnsureLocalKeysDifferPerDataDirectory(t *testing.T) {
+	first, err := ensureLocalKeys(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ensureLocalKeys(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.secret == second.secret || len(first.secret) != 64 {
+		t.Fatal("each install must get its own 32-byte jwt secret")
+	}
+}
+
+func TestLocalServicesBindLoopbackWithoutAPassword(t *testing.T) {
+	t.Setenv("BOOMBIGNOSE_PG_PORT", "54329")
+	secret := "install-specific-secret"
+	groups := [][]string{
+		authProcessEnv("/opt/boombignose/migrations", secret),
+		postgrestProcessEnv(secret),
+	}
+	for _, env := range groups {
+		text := strings.Join(env, "\n")
+		if strings.Contains(text, "0.0.0.0") || strings.Contains(strings.ToLower(text), "password") {
+			t.Fatalf("env = %s", text)
+		}
+		for _, line := range env {
+			equals := strings.Index(line, "=")
+			raw := line[equals+1:]
+			if !strings.Contains(raw, "://") {
+				continue
+			}
+			parsed, err := url.Parse(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parsed.User != nil {
+				if _, set := parsed.User.Password(); set {
+					t.Fatalf("database url has a password: %s", parsed.Redacted())
+				}
+			}
+			if parsed.Hostname() != "" && parsed.Hostname() != "127.0.0.1" {
+				t.Fatalf("url host = %s", parsed.Hostname())
+			}
+		}
+	}
+	auth := strings.Join(groups[0], "\n")
+	if !strings.Contains(auth, "GOTRUE_API_HOST=127.0.0.1") || !strings.Contains(auth, "GOTRUE_JWT_SECRET="+secret) || !strings.Contains(auth, "GOTRUE_SITE_URL=http://127.0.0.1:3100") {
+		t.Fatal(auth)
+	}
+	rest := strings.Join(groups[1], "\n")
+	if !strings.Contains(rest, "PGRST_SERVER_HOST=127.0.0.1") || !strings.Contains(rest, "PGRST_JWT_SECRET="+secret) {
+		t.Fatal(rest)
+	}
+	if localAPIListenAddr() != "127.0.0.1:"+localAPIPort {
+		t.Fatal(localAPIListenAddr())
+	}
+}
+
+func TestCopiedProcessEnvDropsSecrets(t *testing.T) {
+	t.Setenv("HOME", "/tmp/boombignose-home")
+	t.Setenv("PGPASSWORD", "default-password")
+	t.Setenv("DATABASE_URL", "postgres://boombignose:default-password@0.0.0.0/boombignose")
+	t.Setenv("GOTRUE_JWT_SECRET", "compiled-secret")
+	got := strings.Join(copiedProcessEnv(), "\n")
+	if !strings.Contains(got, "HOME=/tmp/boombignose-home") {
+		t.Fatal(got)
+	}
+	for _, forbidden := range []string{"PGPASSWORD", "DATABASE_URL", "default-password", "compiled-secret", "0.0.0.0"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("copied env contains %s: %s", forbidden, got)
+		}
+	}
+}
+
 func TestWithLocalKeysReplacesThePlaceholder(t *testing.T) {
 	dir := t.TempDir()
 	keys, err := ensureLocalKeys(dir)

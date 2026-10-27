@@ -126,6 +126,41 @@ func authBootstrapSQL() []string {
 	}
 }
 
+func authProcessEnv(migrations, secret string) []string {
+	return []string{
+		"GOTRUE_DB_DRIVER=postgres",
+		"GOTRUE_DB_DATABASE_URL=" + authDBURL(),
+		"DATABASE_URL=" + authDBURL(),
+		"GOTRUE_DB_MIGRATIONS_PATH=" + migrations,
+		"GOTRUE_JWT_SECRET=" + secret,
+		"GOTRUE_JWT_EXP=3600",
+		"GOTRUE_API_HOST=127.0.0.1",
+		"GOTRUE_API_PORT=" + localAuthPort,
+		"API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
+		"GOTRUE_API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
+		"GOTRUE_API_API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
+		"GOTRUE_SITE_URL=http://127.0.0.1:3100",
+		"GOTRUE_DISABLE_SIGNUP=false",
+		"GOTRUE_MAILER_AUTOCONFIRM=true",
+		"GOTRUE_EXTERNAL_EMAIL_ENABLED=true",
+	}
+}
+
+func postgrestProcessEnv(secret string) []string {
+	return []string{
+		"PGRST_DB_URI=" + localDBURL(),
+		"PGRST_DB_SCHEMAS=public,storage",
+		"PGRST_DB_ANON_ROLE=anon",
+		"PGRST_JWT_SECRET=" + secret,
+		"PGRST_SERVER_HOST=127.0.0.1",
+		"PGRST_SERVER_PORT=" + localRESTPort,
+	}
+}
+
+func localAPIListenAddr() string {
+	return net.JoinHostPort("127.0.0.1", localAPIPort)
+}
+
 func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string) error {
 	migrations := filepath.Join(filepath.Dir(layout.Auth), "migrations")
 	if _, err := os.Stat(migrations); err != nil {
@@ -134,23 +169,7 @@ func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string)
 	cmd := Command{
 		Name: layout.Auth,
 		Dir:  filepath.Dir(layout.Auth),
-		Env: []string{
-			"GOTRUE_DB_DRIVER=postgres",
-			"GOTRUE_DB_DATABASE_URL=" + authDBURL(),
-			"DATABASE_URL=" + authDBURL(),
-			"GOTRUE_DB_MIGRATIONS_PATH=" + migrations,
-			"GOTRUE_JWT_SECRET=" + secret,
-			"GOTRUE_JWT_EXP=3600",
-			"GOTRUE_API_HOST=127.0.0.1",
-			"GOTRUE_API_PORT=" + localAuthPort,
-			"API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
-			"GOTRUE_API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
-			"GOTRUE_API_API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
-			"GOTRUE_SITE_URL=http://127.0.0.1:3100",
-			"GOTRUE_DISABLE_SIGNUP=false",
-			"GOTRUE_MAILER_AUTOCONFIRM=true",
-			"GOTRUE_EXTERNAL_EMAIL_ENABLED=true",
-		},
+		Env:  authProcessEnv(migrations, secret),
 	}
 	cmd.Env = append(cmd.Env, copiedProcessEnv()...)
 	if err := startLogged(cmd, dataDir, "auth.log", "auth.pid"); err != nil {
@@ -197,14 +216,7 @@ func startPostgREST(ctx context.Context, layout Layout, dataDir, secret string) 
 	cmd := Command{
 		Name: layout.PostgREST,
 		Dir:  filepath.Dir(layout.PostgREST),
-		Env: []string{
-			"PGRST_DB_URI=" + localDBURL(),
-			"PGRST_DB_SCHEMAS=public,storage",
-			"PGRST_DB_ANON_ROLE=anon",
-			"PGRST_JWT_SECRET=" + secret,
-			"PGRST_SERVER_HOST=127.0.0.1",
-			"PGRST_SERVER_PORT=" + localRESTPort,
-		},
+		Env:  postgrestProcessEnv(secret),
 	}
 	cmd.Env = append(cmd.Env, copiedProcessEnv()...)
 	if err := startLogged(cmd, dataDir, "postgrest.log", "postgrest.pid"); err != nil {
@@ -329,7 +341,7 @@ func tailRedacted(dataDir, name, secret string) string {
 }
 
 func startLocalAPI(ctx context.Context) error {
-	addr := net.JoinHostPort("127.0.0.1", localAPIPort)
+	addr := localAPIListenAddr()
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("local api: %w", err)
