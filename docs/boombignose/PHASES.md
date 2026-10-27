@@ -5,7 +5,7 @@ Work is in this repository. Nothing here reads or writes a live database.
 | Phase | Status |
 |---|---|
 | 1 Inventory | Recorded before this work. The October Rust inventory is parked and is not the current count. |
-| Landing | `site/index.html` on `main`. Pages deploys from `main`. Download links point at `BoomBigNose-macos-arm64.dmg`, `BoomBigNose-windows-x64-setup.exe`, and `BoomBigNose-linux-amd64.tar.gz` on tag `boombignose-v0.1.1`. Those files are the harness command, not a windowed ERP. |
+| Landing | `site/index.html` on `main`. Pages deploys from `main` to https://boom-vitt.github.io/boombignose-erp-harness-ai/ . The previous Pages address is retired. Download links point at the window installers on tag `boombignose-v0.2.0`. Tag `boombignose-v0.1.1` remains the harness command. |
 | 2 Go scaffold | `boombignose/` module. `go test ./...` covers it. |
 | 3 Domain | Not ported. Money formatting is integer satang only. Postgres functions remain the finance and stock rules. |
 | 4 GUI | `boombignose/cmd/boombignose-desktop` is a Wails webview of `http://127.0.0.1:3100` after the local gate. If that port is closed and a checkout is found, the window starts `node scripts/local/stack.mjs serve`. `.github/workflows/boombignose-desktop.yml` compiles it with `-tags desktop`. A cloud VM cannot click Open Anyway or Run anyway. |

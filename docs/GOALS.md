@@ -8,15 +8,15 @@ Status: done.
 
 Canonical page: https://boom-vitt.github.io/boombignose-erp-harness-ai/
 
-The previous address https://boom-vitt.github.io/boombignose-erp/ is retired and does not receive new deploys. On 2026-10-27, before this rename deploy, both addresses still returned the same HTML (HTTP 200, title BoomBigNose ERP Harness AI). Recheck both addresses after the next Pages run.
+The previous address https://boom-vitt.github.io/boombignose-erp/ is retired. After Pages run 40500045933 it returned HTTP 404. The new address returned HTTP 200 with the title BoomBigNose ERP Harness AI, `assets/favicon.svg`, `assets/logo.svg`, and `assets/og.png`.
 
-The page links the `boombignose-v0.1.1` harness-command installers until a green CI release of the window exists. It does not claim those files were click-tested.
+The page buttons point at `boombignose-v0.2.0` after that release's CI publish job succeeded and `sha256sum -c` matched. They do not claim a click-test on a physical machine.
 
 ## GOAL 2 — Desktop app
 
 Status: in progress.
 
-`boombignose/cmd/boombignose-desktop` is a Wails window titled BoomBigNose ERP Harness AI. It refuses cloud keys, including a remote `OLLAMA_HOST`. If `127.0.0.1:3100` is closed and a checkout is found (`BOOMBIGNOSE_ERP_DIR`, the working directory, or the executable directory), it runs `node scripts/local/stack.mjs serve --port 3100`, then opens that URL. `.github/workflows/boombignose-release.yml` packages that window as an unsigned Windows NSIS installer, an ad-hoc-signed macOS arm64 DMG, a Linux tar.gz, and a Linux AppImage, plus SHA256SUMS. Those assets are published only for a `boombignose-v*` release. Tag `boombignose-v0.1.1` is still the harness command. The window installers do not bundle Node, Docker, Postgres, or Ollama. A human still has to click Open Anyway and Run anyway on a real machine. This environment has not click-tested them.
+`boombignose/cmd/boombignose-desktop` is a Wails window titled BoomBigNose ERP Harness AI. It refuses cloud keys, including a remote `OLLAMA_HOST`. If `127.0.0.1:3100` is closed and a checkout is found (`BOOMBIGNOSE_ERP_DIR`, the working directory, or the executable directory), it runs `node scripts/local/stack.mjs serve --port 3100`, then opens that URL. Release https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.2.0 is a stable release, not a prerelease. Its CI publish job uploaded the unsigned Windows NSIS installer, the ad-hoc macOS arm64 DMG, the Linux tar.gz, the Linux AppImage, and SHA256SUMS. `sha256sum -c` matched those four files. Tag `boombignose-v0.1.1` remains the older harness command. The window installers do not bundle Node, Docker, Postgres, or Ollama. A human still has to click Open Anyway and Run anyway on a real machine. This environment has not click-tested them.
 
 ## GOAL 3 — Remaining phases and rename
 
