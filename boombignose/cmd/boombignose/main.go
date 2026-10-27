@@ -1,15 +1,24 @@
 // Command boombignose is the local harness for BoomBigNose.
-// It prints no secrets. It does not open a window and it does not call the network.
+// It prints no secrets. check and cutover do not open a socket.
+// serve binds the bundled ERP on loopback and does not call a cloud service.
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/bundle"
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/cutover"
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/policy"
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/shell"
 )
+
+const usage = "usage: boombignose check | boombignose cutover | boombignose serve | boombignose stop"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -20,7 +29,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: boombignose check | boombignose cutover")
+		return fmt.Errorf("%s", usage)
 	}
 	switch args[0] {
 	case "check":
@@ -39,7 +48,61 @@ func run(args []string) error {
 		}
 		fmt.Print(cutover.Plan())
 		return nil
+	case "serve":
+		return serveBundle()
+	case "stop":
+		return stopBundle()
 	default:
-		return fmt.Errorf("usage: boombignose check | boombignose cutover")
+		return fmt.Errorf("%s", usage)
 	}
+}
+
+func serveBundle() error {
+	if err := policy.CheckEnv(os.Getenv); err != nil {
+		return err
+	}
+	root := strings.TrimSpace(os.Getenv("BOOMBIGNOSE_BUNDLE"))
+	layout, err := bundle.Discover(root)
+	if err != nil {
+		return err
+	}
+	data, err := bundle.DataDir()
+	if err != nil {
+		return err
+	}
+	target, err := shell.ERPURL(os.Getenv("BOOMBIGNOSE_ERP_URL"))
+	if err != nil {
+		return fmt.Errorf("BOOMBIGNOSE_ERP_URL: %w", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := bundle.StartStack(ctx, layout, data, target, os.Environ(), nil); err != nil {
+		bundle.StopRunning()
+		return err
+	}
+	fmt.Printf("ready %s\n", target)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sig)
+	<-sig
+	bundle.StopRunning()
+	return nil
+}
+
+func stopBundle() error {
+	root := strings.TrimSpace(os.Getenv("BOOMBIGNOSE_BUNDLE"))
+	layout := bundle.Layout{}
+	if root != "" {
+		found, err := bundle.Discover(root)
+		if err == nil {
+			layout = found
+		} else if !errors.Is(err, bundle.ErrIncomplete) {
+			return err
+		}
+	}
+	data, err := bundle.DataDir()
+	if err != nil {
+		return err
+	}
+	return bundle.StopAt(layout, data)
 }

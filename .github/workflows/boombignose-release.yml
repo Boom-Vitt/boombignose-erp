@@ -88,14 +88,57 @@ jobs:
           path: dist/BoomBigNose-macos-arm64.dmg
           if-no-files-found: error
 
+  linux-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Assemble portable Linux bundle
+        run: sh packaging/linux/assemble-bundle.sh
+      - name: Smoke the bundled ERP
+        run: sh packaging/linux/smoke-bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundle
+          path: dist/bundle
+          if-no-files-found: error
+          include-hidden-files: true
+
   linux:
-    needs: test
+    needs: [test, linux-bundle]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-bundle
+          path: dist/linux-bundle-artifact
+      - name: Place bundle
+        run: |
+          set -eu
+          src=""
+          for candidate in dist/linux-bundle-artifact dist/linux-bundle-artifact/bundle dist/linux-bundle-artifact/dist/bundle; do
+            if [ -f "$candidate/node" ]; then
+              src=$candidate
+              break
+            fi
+          done
+          if [ -z "$src" ]; then
+            find dist/linux-bundle-artifact -maxdepth 5 -type f -name node -print
+            exit 1
+          fi
+          rm -rf dist/bundle
+          cp -a "$src" dist/bundle
+          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl
+          test -s dist/bundle/erp/server.js
+          test -d dist/bundle/erp/.next/static
+          test -x dist/bundle/postgres/bin/postgres
       - name: Install WebKit
         timeout-minutes: 40
         run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
@@ -104,12 +147,23 @@ jobs:
         env:
           CGO_ENABLED: "1"
         run: |
-          mkdir -p ../dist
+          mkdir -p ../dist/stage
           go build -tags "desktop production webkit2_41" -o ../dist/boombignose-desktop ./cmd/boombignose-desktop
           test -s ../dist/boombignose-desktop
-          cp ../dist/boombignose-desktop ../dist/BoomBigNose
-          tar -C ../dist -czf ../dist/BoomBigNose-linux-amd64.tar.gz BoomBigNose
+          cp ../dist/boombignose-desktop ../dist/stage/BoomBigNose
+          cp -a ../dist/bundle ../dist/stage/bundle
+          tar -C ../dist/stage -czf ../dist/BoomBigNose-linux-amd64.tar.gz BoomBigNose bundle
+          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/node'
+          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/erp/server.js'
+          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/postgres/bin/postgres'
           sh ../packaging/linux/make-appimage.sh
+          extract=$(mktemp -d)
+          appimage="$PWD/../dist/BoomBigNose-linux-amd64.AppImage"
+          ( cd "$extract" && APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --appimage-extract )
+          test -s "$extract/squashfs-root/usr/bin/bundle/node"
+          test -s "$extract/squashfs-root/usr/bin/bundle/erp/server.js"
+          test -s "$extract/squashfs-root/usr/bin/bundle/postgres/bin/postgres"
+          rm -rf "$extract"
       - uses: actions/upload-artifact@v4
         with:
           name: linux-tarball

@@ -163,6 +163,10 @@ func ChildEnv(parent []string, port string) ([]string, error) {
 			if strings.TrimSpace(value) != "" {
 				vals[key] = strings.TrimSpace(value)
 			}
+		case "LOCAL_TOTP_ENROLL":
+			if value == "1" {
+				vals[key] = "1"
+			}
 		default:
 			if keep[key] && value != "" {
 				vals[key] = value
@@ -170,6 +174,7 @@ func ChildEnv(parent []string, port string) ([]string, error) {
 		}
 	}
 	vals["HOST"] = "127.0.0.1"
+	vals["HOSTNAME"] = "127.0.0.1"
 	vals["PORT"] = port
 	vals["NODE_ENV"] = "production"
 	keys := make([]string, 0, len(vals))
@@ -238,6 +243,9 @@ func defaultRunner(cmd Command) (func() error, func(), error) {
 	proc.Stderr = os.Stderr
 	if err := proc.Start(); err != nil {
 		return nil, nil, err
+	}
+	if recordERP && erpPIDDir != "" && proc.Process != nil {
+		_ = writePID(erpPIDDir, proc.Process.Pid)
 	}
 	return proc.Wait, func() {
 		if proc.Process != nil {

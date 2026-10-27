@@ -48,6 +48,12 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals() })
 
 // Each page view prefetches dozens of routes through the proxy; an auth-server round trip per request exhausted the local auth service.
+it("the health check does not call the auth server", async () => {
+  const res = await updateSession(request("/api/health", await signedToken(signer.privateKey)))
+  expect(res.headers.get("location")).toBeNull()
+  expect(calls).toEqual([])
+})
+
 it("a validly signed session reaches app routes without an auth-server user lookup", async () => {
   const res = await updateSession(request("/deals", await signedToken(signer.privateKey)))
   expect(res.headers.get("location")).toBeNull()
