@@ -49,7 +49,7 @@ None created or replaced. This track has no migration.
 
 ## Open issues
 
-- **Private vulnerability reporting is off on GitHub.** `gh api repos/Boom-Vitt/boombignose-erp/private-vulnerability-reporting` returns `{"enabled":false}`, so the advisory link in `SECURITY.md` does not work until the owner enables it under Settings → Code security. The boombignose.org fallback covers the gap. I did not change repository settings.
+- **Private vulnerability reporting is off on GitHub.** `gh api repos/Boom-Vitt/boombignose-erp-harness-ai/private-vulnerability-reporting` returns `{"enabled":false}`, so the advisory link in `SECURITY.md` does not work until the owner enables it under Settings → Code security. The boombignose.org fallback covers the gap. I did not change repository settings.
 - `docs/ROADMAP.md`, `docs/ODOO_COMPARISON.md` and `docs/ODOO_TODO.md` still describe the product as a Company OS without inventory or purchasing. The README no longer links the roadmap. Updating those docs is a separate task.
 - Legal files linked from the README (`COMMERCIAL-LICENSE.md`, `NOTICE`) still say "Company OS". Changing them is the owner's decision.
 - The demo seed still reads like an AI studio (organization "BoomBigNose AI", deals such as "Website Chatbot"), the warehouse 3D scene has a "Founder office", and the AI prompts mention a "busy founder". These are demo data and scene flavour, not product naming.

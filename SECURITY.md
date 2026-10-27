@@ -8,7 +8,7 @@ Security fixes are made on the `main` branch. Update to the latest commit before
 
 Please do not report security problems in public issues, discussions or pull requests.
 
-Report them privately through GitHub Security Advisories: open the **Security** tab of this repository and choose **Report a vulnerability**, or go to <https://github.com/Boom-Vitt/boombignose-erp/security/advisories/new>.
+Report them privately through GitHub Security Advisories: open the **Security** tab of this repository and choose **Report a vulnerability**, or go to <https://github.com/Boom-Vitt/boombignose-erp-harness-ai/security/advisories/new>.
 
 If the **Report a vulnerability** button is not available, contact us privately through <https://boombignose.org> and ask for a secure channel. Leave exploit details out of that first message.
 

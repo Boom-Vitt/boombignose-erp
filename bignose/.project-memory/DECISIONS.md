@@ -42,7 +42,7 @@
 
 2026-10-14 — Owner: merge boombignose-erp into this repo as one codebase, built by Gemini 4
 - Asked what "merge ERP with BigNose" means; owner picked "One codebase" (over an MCP bridge, an ERP tab in the desktop app, or ERP-only AI) and "Merge all using gemini": every BBN build/fix runs on Gemini 4 (`google/gemini-4-argon` via OpenRouter) as the Hermes builder, and the product's AI (ERP AI features; BigNose via its existing `openrouter` provider) runs on Gemini 4.
-- Source: Boom-Vitt/boombignose-erp main 58867a0 (= origin/main 2026-10-14; the Claude Code desktop worktree brave-euclid fdb2a1c is already merged). Unmerged remote branches feat/company-os-v2 and claude/feature-comparison-odoo-ftonu6 are not part of it.
+- Source: Boom-Vitt/boombignose-erp-harness-ai main 58867a0 (= origin/main 2026-10-14; the Claude Code desktop worktree brave-euclid fdb2a1c is already merged). Unmerged remote branches feat/company-os-v2 and claude/feature-comparison-odoo-ftonu6 are not part of it.
 - Rule conflicts to settle in an ADR superseding part of 0001: 0001 limits repo-wide dev deps to typescript/@types/node/@tauri-apps/cli; the ERP is Next.js 16 + Supabase with its own deps. Its only LLM SDK use (`@anthropic-ai/sdk` in `lib/ai/client.ts`) is to be replaced by a hand-written OpenRouter call, which keeps the "no LLM vendor SDK" rule.
 
 2026-10-14 — Correction (same evening): the ERP is the base, not this repo

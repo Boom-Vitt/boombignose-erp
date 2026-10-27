@@ -1,7 +1,7 @@
-# Builds real unsigned installers for the BoomBigNose harness command.
-# A release is created only after the installers exist, and only on
-# workflow_dispatch. A published release receives the same files as assets.
-# Pull requests build the installers and do not publish anything.
+# Builds unsigned installers for the BoomBigNose window.
+# A release is updated only after the installers exist, and only when a
+# published release tag matches boombignose-v*. Pull requests build the
+# installers and do not publish anything.
 name: BoomBigNose release assets
 
 on:
@@ -37,9 +37,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - name: Build Windows binary
+      - name: Build Windows window
         working-directory: boombignose
-        run: go build -o ../packaging/windows/boombignose.exe ./cmd/boombignose
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          New-Item -ItemType Directory -Force -Path ..\packaging\windows | Out-Null
+          go build -tags "desktop production" -ldflags "-H windowsgui" -o ..\packaging\windows\boombignose-desktop.exe ./cmd/boombignose-desktop
+          if (-not (Test-Path ..\packaging\windows\boombignose-desktop.exe)) { throw "window binary missing" }
       - name: Install NSIS
         run: choco install nsis --no-progress -y
       - name: Build installer
@@ -69,15 +74,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - name: Build arm64 binary
+      - name: Build arm64 window
         working-directory: boombignose
         env:
-          CGO_ENABLED: "0"
-          GOOS: darwin
-          GOARCH: arm64
+          CGO_ENABLED: "1"
         run: |
           mkdir -p ../dist
-          go build -o ../dist/boombignose ./cmd/boombignose
+          go build -tags "desktop production" -o ../dist/boombignose-desktop ./cmd/boombignose-desktop
+          test -s ../dist/boombignose-desktop
       - name: Ad-hoc sign and make DMG
         run: sh packaging/macos/make-dmg.sh
       - uses: actions/upload-artifact@v4
@@ -94,16 +98,25 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - name: Build Linux tarball
+      - name: Install WebKit
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Build Linux window, tarball, and AppImage
         working-directory: boombignose
+        env:
+          CGO_ENABLED: "1"
         run: |
           mkdir -p ../dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../dist/boombignose ./cmd/boombignose
-          tar -C ../dist -czf ../dist/BoomBigNose-linux-amd64.tar.gz boombignose
+          go build -tags "desktop production webkit2_41" -o ../dist/boombignose-desktop ./cmd/boombignose-desktop
+          test -s ../dist/boombignose-desktop
+          cp ../dist/boombignose-desktop ../dist/BoomBigNose
+          tar -C ../dist -czf ../dist/BoomBigNose-linux-amd64.tar.gz BoomBigNose
+          sh ../packaging/linux/make-appimage.sh
       - uses: actions/upload-artifact@v4
         with:
           name: linux-tarball
-          path: dist/BoomBigNose-linux-amd64.tar.gz
+          path: |
+            dist/BoomBigNose-linux-amd64.tar.gz
+            dist/BoomBigNose-linux-amd64.AppImage
           if-no-files-found: error
 
   publish:
@@ -133,20 +146,14 @@ jobs:
           test -s BoomBigNose-windows-x64-setup.exe
           test -s BoomBigNose-macos-arm64.dmg
           test -s BoomBigNose-linux-amd64.tar.gz
-          sha256sum BoomBigNose-windows-x64-setup.exe BoomBigNose-macos-arm64.dmg BoomBigNose-linux-amd64.tar.gz > SHA256SUMS
+          test -s BoomBigNose-linux-amd64.AppImage
+          sha256sum \
+            BoomBigNose-windows-x64-setup.exe \
+            BoomBigNose-macos-arm64.dmg \
+            BoomBigNose-linux-amd64.tar.gz \
+            BoomBigNose-linux-amd64.AppImage \
+            > SHA256SUMS
           cat SHA256SUMS
-      - name: Notes
-        run: |
-          cat > /tmp/boombignose-notes.md <<'EOF'
-          Unsigned builds of the BoomBigNose harness command (`boombignose check` and `boombignose cutover`).
-
-          These files are not a windowed ERP. They install the local check and the printed cutover plan.
-
-          - Windows installer is unsigned. SmartScreen can show More info then Run anyway. Smart App Control may still block it.
-          - macOS disk image is ad-hoc signed (`codesign --sign -`). Opening can require Open Anyway.
-          - Linux tarball is the same command for amd64.
-          - SHA256SUMS covers the three files above.
-          EOF
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -154,27 +161,23 @@ jobs:
         run: |
           tag="${{ github.event.release.tag_name }}"
           if [ -z "$tag" ]; then
-            tag="boombignose-v0.1.1"
+            echo "no release tag; leaving releases unchanged"
+            exit 0
           fi
           case "$tag" in
             boombignose-v*) ;;
             *)
-              echo "tag $tag is not a harness installer release; leaving its assets unchanged"
+              echo "tag $tag is not a window installer release; leaving its assets unchanged"
               exit 0
               ;;
           esac
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" \
-              dist/BoomBigNose-windows-x64-setup.exe \
-              dist/BoomBigNose-macos-arm64.dmg \
-              dist/BoomBigNose-linux-amd64.tar.gz \
-              dist/SHA256SUMS --clobber
-          else
-            gh release create "$tag" \
-              dist/BoomBigNose-windows-x64-setup.exe \
-              dist/BoomBigNose-macos-arm64.dmg \
-              dist/BoomBigNose-linux-amd64.tar.gz \
-              dist/SHA256SUMS \
-              --title "BoomBigNose ERP Harness AI ${tag}" \
-              --notes-file /tmp/boombignose-notes.md
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag does not exist yet"
+            exit 1
           fi
+          gh release upload "$tag" \
+            dist/BoomBigNose-windows-x64-setup.exe \
+            dist/BoomBigNose-macos-arm64.dmg \
+            dist/BoomBigNose-linux-amd64.tar.gz \
+            dist/BoomBigNose-linux-amd64.AppImage \
+            dist/SHA256SUMS --clobber

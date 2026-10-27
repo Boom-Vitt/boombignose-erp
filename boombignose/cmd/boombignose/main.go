@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Boom-Vitt/boombignose-erp/boombignose/internal/cutover"
-	"github.com/Boom-Vitt/boombignose-erp/boombignose/internal/policy"
-	"github.com/Boom-Vitt/boombignose-erp/boombignose/internal/shell"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/cutover"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/policy"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/shell"
 )
 
 func main() {

@@ -1,6 +1,6 @@
 # Product Strategy — BoomBigNose Company OS
 
-BoomBigNose AI (founder + 2 junior devs, lean runway) is building an AI-native **operational layer** for a Thai AI-education and workflow-automation studio: CRM, project delivery, finance visibility, automation, and management dashboards. It is explicitly **not an ERP** — accounting/tax stays in FlowAccount/PEAK/Xero. This doc fixes the MVP scope, ICPs, roadmap, and the open-core boundary. (Note: the repo is named `boombignose-erp` for historical reasons; the product is a Company OS, not an ERP.)
+BoomBigNose AI (founder + 2 junior devs, lean runway) is building an AI-native **operational layer** for a Thai AI-education and workflow-automation studio: CRM, project delivery, finance visibility, automation, and management dashboards. It is explicitly **not an ERP** — accounting/tax stays in FlowAccount/PEAK/Xero. This doc fixes the MVP scope, ICPs, roadmap, and the open-core boundary. (Note: the GitHub repository is `boombignose-erp-harness-ai`. The local Supabase `project_id` stays `boombignose-erp`.)
 
 ## 1. Three product directions
 

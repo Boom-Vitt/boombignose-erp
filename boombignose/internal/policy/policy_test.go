@@ -64,4 +64,21 @@ func TestCheckEnv(t *testing.T) {
 	}); err == nil {
 		t.Fatal("expected hosted webhook to be refused")
 	}
+	if err := CheckEnv(func(k string) string {
+		if k == "OLLAMA_HOST" {
+			return "127.0.0.1:11434"
+		}
+		return ""
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err = CheckEnv(func(k string) string {
+		if k == "OLLAMA_HOST" {
+			return "https://ollama.example.com"
+		}
+		return ""
+	})
+	if err == nil || strings.Contains(err.Error(), "ollama.example.com") {
+		t.Fatalf("remote ollama: %v", err)
+	}
 }

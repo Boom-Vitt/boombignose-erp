@@ -42,6 +42,19 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// AllowService accepts an empty value, an http(s) loopback URL, or a
+// loopback host:port without a scheme. Ollama's default host uses that form.
+func AllowService(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	return AllowEndpoint(raw)
+}
+
 // CheckEnv refuses cloud credentials and any non-loopback service URL.
 // Errors name the variable only. Values are never copied into the error.
 func CheckEnv(getenv func(string) string) error {
@@ -63,6 +76,9 @@ func CheckEnv(getenv func(string) string) error {
 		if err := AllowEndpoint(getenv(name)); err != nil {
 			return fmt.Errorf("%s: %w", name, ErrNotLocal)
 		}
+	}
+	if err := AllowService(getenv("OLLAMA_HOST")); err != nil {
+		return fmt.Errorf("OLLAMA_HOST: %w", ErrNotLocal)
 	}
 	return nil
 }
