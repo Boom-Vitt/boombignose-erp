@@ -376,6 +376,21 @@ func writePID(dataDir string, pid int) error {
 	return os.WriteFile(filepath.Join(dataDir, "erp.pid"), []byte(strconv.Itoa(pid)+"\n"), 0o600)
 }
 
+func writeDataFile(dir, name string, body []byte) error {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	file, err := root.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.Write(body)
+	return err
+}
+
 func readBundleFile(root, name string) ([]byte, error) {
 	fsRoot, err := os.OpenRoot(root)
 	if err != nil {

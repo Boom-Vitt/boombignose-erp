@@ -66,12 +66,9 @@ type localKeys struct {
 }
 
 func ensureLocalKeys(dataDir string) (localKeys, error) {
-	secretPath := filepath.Join(dataDir, "jwt.secret")
-	anonPath := filepath.Join(dataDir, "anon.key")
-	servicePath := filepath.Join(dataDir, "service.key")
-	secret, secretErr := os.ReadFile(secretPath)
-	anon, anonErr := os.ReadFile(anonPath)
-	service, serviceErr := os.ReadFile(servicePath)
+	secret, secretErr := readBundleFile(dataDir, "jwt.secret")
+	anon, anonErr := readBundleFile(dataDir, "anon.key")
+	service, serviceErr := readBundleFile(dataDir, "service.key")
 	if secretErr == nil && anonErr == nil && serviceErr == nil {
 		return localKeys{
 			secret:  strings.TrimSpace(string(secret)),
@@ -93,13 +90,13 @@ func ensureLocalKeys(dataDir string) (localKeys, error) {
 	if err != nil {
 		return localKeys{}, err
 	}
-	if err := os.WriteFile(secretPath, []byte(keys.secret+"\n"), 0o600); err != nil {
+	if err := writeDataFile(dataDir, "jwt.secret", []byte(keys.secret+"\n")); err != nil {
 		return localKeys{}, err
 	}
-	if err := os.WriteFile(anonPath, []byte(keys.anon+"\n"), 0o600); err != nil {
+	if err := writeDataFile(dataDir, "anon.key", []byte(keys.anon+"\n")); err != nil {
 		return localKeys{}, err
 	}
-	if err := os.WriteFile(servicePath, []byte(keys.service+"\n"), 0o600); err != nil {
+	if err := writeDataFile(dataDir, "service.key", []byte(keys.service+"\n")); err != nil {
 		return localKeys{}, err
 	}
 	return keys, nil
@@ -134,7 +131,6 @@ func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string)
 	if _, err := os.Stat(migrations); err != nil {
 		return fmt.Errorf("auth migrations: %w", err)
 	}
-	logPath := filepath.Join(dataDir, "auth.log")
 	cmd := Command{
 		Name: layout.Auth,
 		Dir:  filepath.Dir(layout.Auth),
@@ -157,7 +153,7 @@ func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string)
 		},
 	}
 	cmd.Env = append(cmd.Env, copiedProcessEnv()...)
-	if err := startLogged(cmd, logPath, filepath.Join(dataDir, "auth.pid")); err != nil {
+	if err := startLogged(cmd, dataDir, "auth.log", "auth.pid"); err != nil {
 		return err
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
@@ -169,7 +165,7 @@ func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string)
 		return ok
 	}, nil)
 	if err != nil {
-		return fmt.Errorf("auth did not become ready: %s\n%s", reason, tailRedacted(logPath, secret))
+		return fmt.Errorf("auth did not become ready: %s\n%s", reason, tailRedacted(dataDir, "auth.log", secret))
 	}
 	return nil
 }
@@ -198,7 +194,6 @@ func authReady(ctx context.Context) (bool, string) {
 }
 
 func startPostgREST(ctx context.Context, layout Layout, dataDir, secret string) error {
-	logPath := filepath.Join(dataDir, "postgrest.log")
 	cmd := Command{
 		Name: layout.PostgREST,
 		Dir:  filepath.Dir(layout.PostgREST),
@@ -212,7 +207,7 @@ func startPostgREST(ctx context.Context, layout Layout, dataDir, secret string) 
 		},
 	}
 	cmd.Env = append(cmd.Env, copiedProcessEnv()...)
-	if err := startLogged(cmd, logPath, filepath.Join(dataDir, "postgrest.pid")); err != nil {
+	if err := startLogged(cmd, dataDir, "postgrest.log", "postgrest.pid"); err != nil {
 		return err
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -222,7 +217,7 @@ func startPostgREST(ctx context.Context, layout Layout, dataDir, secret string) 
 		return ok
 	}, nil)
 	if err != nil {
-		return fmt.Errorf("postgrest did not become ready: %s", tailRedacted(logPath, secret))
+		return fmt.Errorf("postgrest did not become ready: %s", tailRedacted(dataDir, "postgrest.log", secret))
 	}
 	return nil
 }
@@ -248,34 +243,77 @@ func copiedProcessEnv() []string {
 	return env
 }
 
-func startLogged(cmd Command, logPath, pidPath string) error {
-	proc := exec.Command(cmd.Name, cmd.Args...)
-	proc.Dir = cmd.Dir
-	proc.Env = cmd.Env
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+func allowLoggedCommand(name string, args []string) (string, error) {
+	if strings.ContainsAny(name, "\x00\r\n") || len(args) != 0 {
+		return "", errors.New("refusing local api command")
+	}
+	path := name
+	if !filepath.IsAbs(path) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return "", errors.New("refusing local api command")
+		}
+		path = abs
+	}
+	path = filepath.Clean(path)
+	switch filepath.Base(path) {
+	case "auth", "auth.exe", "postgrest", "postgrest.exe":
+		return path, nil
+	default:
+		return "", errors.New("refusing local api command")
+	}
+}
+
+func startLogged(cmd Command, dataDir, logName, pidName string) error {
+	bin, err := allowLoggedCommand(cmd.Name, cmd.Args)
 	if err != nil {
 		return err
 	}
+	root, err := os.OpenRoot(dataDir)
+	if err != nil {
+		return err
+	}
+	logFile, err := root.OpenFile(logName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		_ = root.Close()
+		return err
+	}
+	// #nosec G204 -- allowLoggedCommand allows only the absolute auth or postgrest binary and no arguments
+	proc := exec.Command(bin)
+	proc.Dir = cmd.Dir
+	proc.Env = cmd.Env
 	proc.Stdout = logFile
 	proc.Stderr = logFile
 	if err := proc.Start(); err != nil {
 		_ = logFile.Close()
+		_ = root.Close()
 		return err
 	}
-	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", proc.Process.Pid)), 0o600); err != nil {
+	pidFile, err := root.OpenFile(pidName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
 		_ = proc.Process.Kill()
 		_ = logFile.Close()
+		_ = root.Close()
 		return err
 	}
+	if _, err := pidFile.Write([]byte(fmt.Sprintf("%d\n", proc.Process.Pid))); err != nil {
+		_ = pidFile.Close()
+		_ = proc.Process.Kill()
+		_ = logFile.Close()
+		_ = root.Close()
+		return err
+	}
+	_ = pidFile.Close()
 	go func() {
 		_ = proc.Wait()
 		_ = logFile.Close()
+		_ = root.Close()
 	}()
 	return nil
 }
 
-func tailRedacted(path, secret string) string {
-	body, err := os.ReadFile(path)
+func tailRedacted(dataDir, name, secret string) string {
+	body, err := readBundleFile(dataDir, name)
 	if err != nil {
 		return "log unavailable"
 	}
@@ -371,7 +409,7 @@ func stopExtraPIDs(dataDir string) {
 }
 
 func stopOnePID(dataDir, name string) {
-	body, err := os.ReadFile(filepath.Join(dataDir, name))
+	body, err := readBundleFile(dataDir, name)
 	if err != nil {
 		return
 	}
@@ -388,11 +426,11 @@ func stopOnePID(dataDir, name string) {
 }
 
 func withLocalKeys(parent []string, dataDir string) []string {
-	anon, err := os.ReadFile(filepath.Join(dataDir, "anon.key"))
+	anon, err := readBundleFile(dataDir, "anon.key")
 	if err != nil {
 		return parent
 	}
-	service, err := os.ReadFile(filepath.Join(dataDir, "service.key"))
+	service, err := readBundleFile(dataDir, "service.key")
 	if err != nil {
 		return parent
 	}
