@@ -1,0 +1,157 @@
+# Builds real unsigned installers for the Bumik harness command.
+# A release is created only after both installers exist, and only on
+# workflow_dispatch. A published release receives the same files as assets.
+# Pull requests build the installers and do not publish anything.
+name: Bumik release assets
+
+on:
+  pull_request:
+    paths:
+      - "bumik/**"
+      - "packaging/**"
+      - ".github/workflows/bumik-release.yml"
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Test harness
+        working-directory: bumik
+        run: go test ./...
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build Windows binary
+        working-directory: bumik
+        run: go build -o ../packaging/windows/bumik.exe ./cmd/bumik
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $makensis = @(
+            "C:\Program Files (x86)\NSIS\makensis.exe",
+            "C:\Program Files\NSIS\makensis.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $makensis) { throw "makensis was not installed" }
+          Set-Location packaging\windows
+          & $makensis .\bumik.nsi
+          if (-not (Test-Path .\BumikNodeERP-windows-x64-setup.exe)) {
+            throw "installer was not produced"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-setup
+          path: packaging/windows/BumikNodeERP-windows-x64-setup.exe
+          if-no-files-found: error
+
+  macos:
+    needs: test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build arm64 binary
+        working-directory: bumik
+        env:
+          CGO_ENABLED: "0"
+          GOOS: darwin
+          GOARCH: arm64
+        run: |
+          mkdir -p ../dist
+          go build -o ../dist/bumik ./cmd/bumik
+      - name: Ad-hoc sign and make DMG
+        run: sh packaging/macos/make-dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/BumikNodeERP-macos-arm64.dmg
+          if-no-files-found: error
+
+  linux:
+    needs: test
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build Linux tarball
+        working-directory: bumik
+        run: |
+          mkdir -p ../dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../dist/bumik ./cmd/bumik
+          tar -C ../dist -czf ../dist/BumikNodeERP-linux-amd64.tar.gz bumik
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-tarball
+          path: dist/BumikNodeERP-linux-amd64.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: windows-setup
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macos-dmg
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          test -s BumikNodeERP-windows-x64-setup.exe
+          test -s BumikNodeERP-macos-arm64.dmg
+          sha256sum BumikNodeERP-windows-x64-setup.exe BumikNodeERP-macos-arm64.dmg > SHA256SUMS
+          cat SHA256SUMS
+      - name: Notes
+        run: |
+          cat > /tmp/bumik-notes.md <<'EOF'
+          Unsigned builds of the Bumik harness command (`bumik check` and `bumik cutover`).
+
+          These files are not a windowed ERP. The landing-page download buttons stay marked coming soon until a windowed build is published.
+
+          - Windows installer is unsigned. SmartScreen can show More info then Run anyway. Smart App Control may still block it.
+          - macOS disk image is ad-hoc signed (`codesign --sign -`). Opening can require Open Anyway.
+          - SHA256SUMS covers the two files above.
+          EOF
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          if [ -z "$tag" ]; then
+            tag="bumik-v0.1.0"
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/BumikNodeERP-windows-x64-setup.exe dist/BumikNodeERP-macos-arm64.dmg dist/SHA256SUMS --clobber
+          else
+            gh release create "$tag" dist/BumikNodeERP-windows-x64-setup.exe dist/BumikNodeERP-macos-arm64.dmg dist/SHA256SUMS \
+              --title "Bumik Node ERP harness AI ${tag}" \
+              --notes-file /tmp/bumik-notes.md
+          fi
