@@ -86,6 +86,9 @@ func startLocal(ctx context.Context, target string) error {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "boombignose: ollama: %s\n", err.Error())
 		}
+		if err = bundle.EnsurePostgres(ctx, layout, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "boombignose: postgres: %s\n", err.Error())
+		}
 		parent := os.Environ()
 		return bundle.EnsureERP(ctx, layout, target, parent, nil)
 	}

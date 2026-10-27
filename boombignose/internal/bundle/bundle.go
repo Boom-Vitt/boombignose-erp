@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -24,6 +25,9 @@ import (
 const (
 	// DefaultOllamaListen is the loopback address used when OLLAMA_HOST is empty.
 	DefaultOllamaListen = "127.0.0.1:11434"
+	// PostgresListen is the only address a bundled postgres may bind.
+	// It is not the Supabase container port.
+	PostgresListen = "127.0.0.1:54322"
 	// LocalModel is the documented pull. The window does not run the pull.
 	LocalModel = "qwen3:4b"
 )
@@ -33,6 +37,9 @@ var ErrIncomplete = errors.New("portable bundle is incomplete")
 
 // ErrNoOllama means neither the bundle nor PATH has an ollama binary.
 var ErrNoOllama = errors.New("ollama binary not found")
+
+// ErrPostgresData means the portable binary is present and the data directory is not.
+var ErrPostgresData = errors.New("postgres data directory is missing")
 
 // Command is a local process with an explicit environment.
 type Command struct {
@@ -225,6 +232,77 @@ func OllamaServe(binary, host string) (Command, error) {
 	}, nil
 }
 
+func postgresArgs(args []string) bool {
+	host, port, err := net.SplitHostPort(PostgresListen)
+	if err != nil || len(args) != 6 {
+		return false
+	}
+	if args[0] != "-D" || args[2] != "-h" || args[3] != host || args[4] != "-p" || args[5] != port {
+		return false
+	}
+	return filepath.IsAbs(args[1]) && !strings.Contains(args[1], "..") && !strings.ContainsAny(args[1], "\x00\r\n")
+}
+
+// PostgresCommand is the bundled postgres bound to 127.0.0.1:54322.
+// It does not run initdb and it does not change the ERP's Supabase URL.
+func PostgresCommand(layout Layout) (Command, error) {
+	if layout.Postgres == "" || strings.TrimSpace(layout.Root) == "" {
+		return Command{}, ErrIncomplete
+	}
+	rel, err := filepath.Rel(layout.Root, layout.Postgres)
+	if err != nil || !filepath.IsLocal(rel) || rel != filepath.Join("postgres", "bin", exeName("postgres")) {
+		return Command{}, errors.New("refusing postgres binary")
+	}
+	data := filepath.Join(layout.Root, "postgres", "data")
+	info, err := os.Stat(data)
+	if err != nil || !info.IsDir() {
+		return Command{}, ErrPostgresData
+	}
+	host, port, err := net.SplitHostPort(PostgresListen)
+	if err != nil {
+		return Command{}, err
+	}
+	return Command{
+		Name: layout.Postgres,
+		Args: []string{"-D", data, "-h", host, "-p", port},
+		Dir:  filepath.Dir(layout.Postgres),
+	}, nil
+}
+
+// EnsurePostgres starts the bundled server when the binary and data directory
+// exist and nothing is listening on PostgresListen. A missing binary is success.
+// A missing data directory is ErrPostgresData. This does not create a database.
+func EnsurePostgres(ctx context.Context, layout Layout, run Runner) error {
+	if layout.Postgres == "" {
+		return nil
+	}
+	cmd, err := PostgresCommand(layout)
+	if err != nil {
+		return err
+	}
+	listenURL := "http://" + PostgresListen
+	up, err := launch.Listening(listenURL)
+	if err != nil {
+		return err
+	}
+	if up {
+		return nil
+	}
+	if run == nil {
+		run = defaultRunner
+	}
+	wait, _, err := run(cmd)
+	if err != nil {
+		return err
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- wait() }()
+	return launch.WaitUntil(ctx, 50*time.Millisecond, func() bool {
+		ok, _ := launch.Listening(listenURL)
+		return ok
+	}, exited)
+}
+
 // Runner starts a command. The wait function blocks until the process exits.
 type Runner func(Command) (wait func() error, kill func(), err error)
 
@@ -244,6 +322,10 @@ func allowedBundleCommand(cmd Command) error {
 		if len(cmd.Args) != 1 || cmd.Args[0] != "serve" {
 			return errors.New("refusing bundle command")
 		}
+	case "postgres", "postgres.exe":
+		if !postgresArgs(cmd.Args) {
+			return errors.New("refusing bundle command")
+		}
 	default:
 		return errors.New("refusing bundle command")
 	}
@@ -258,7 +340,7 @@ func defaultRunner(cmd Command) (func() error, func(), error) {
 	if err := allowedBundleCommand(cmd); err != nil {
 		return nil, nil, err
 	}
-	// #nosec G204 -- allowedBundleCommand allows only the absolute node or ollama binary and its fixed arguments
+	// #nosec G204 -- allowedBundleCommand allows only bundled node, ollama serve, or postgres on 127.0.0.1:54322
 	proc := exec.Command(cmd.Name, cmd.Args...)
 	if cmd.Dir != "" {
 		proc.Dir = cmd.Dir

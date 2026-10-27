@@ -23,7 +23,7 @@ An optional portable binary is recorded when this file exists:
 
 - `bundle/postgres/bin/postgres` (`postgres.exe` on Windows)
 
-The window does not start it. Shipping `initdb`, a data directory, and the matching libraries is a later slice. v0.2.0 does not include that binary.
+When that binary exists and `bundle/postgres/data` is already a directory, and nothing is listening on `127.0.0.1:54322`, the window runs that binary with `-D <data> -h 127.0.0.1 -p 54322`. Other arguments are refused. The window does not run `initdb`, does not create roles, and does not point `server.js` at that port. The ERP still uses the loopback Supabase URL from the parent environment. A missing data directory is reported and startup of the Node server continues. Shipping `initdb`, the matching libraries, and a data directory inside the installer is a later slice. v0.2.0 does not include that binary. This start path was checked with `go test` and a fixture file, not with a real Postgres server.
 
 ## Ollama
 

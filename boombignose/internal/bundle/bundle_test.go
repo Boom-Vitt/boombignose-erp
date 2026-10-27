@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -66,6 +67,96 @@ func TestAllowedBundleCommandRejectsOtherPrograms(t *testing.T) {
 	}
 	if err := allowedBundleCommand(Command{Name: layout.Node, Args: []string{"-e", "process.exit(0)"}}); err == nil {
 		t.Fatal("node eval must be refused")
+	}
+}
+
+func TestPostgresCommandStaysOnLoopbackAndNeedsData(t *testing.T) {
+	root := t.TempDir()
+	layout := writeBundle(t, root, true)
+	if _, err := PostgresCommand(layout); !errors.Is(err, ErrPostgresData) {
+		t.Fatalf("missing data: %v", err)
+	}
+	data := filepath.Join(root, "postgres", "data")
+	if err := os.MkdirAll(data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd, err := PostgresCommand(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := allowedBundleCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(cmd.Args, " ")
+	if !strings.Contains(joined, "-h 127.0.0.1 -p 54322") || strings.Contains(joined, "0.0.0.0") {
+		t.Fatalf("args: %s", joined)
+	}
+	if cmd.Args[1] != data {
+		t.Fatalf("data dir: %s", cmd.Args[1])
+	}
+	outside := layout
+	outside.Postgres = filepath.Join(t.TempDir(), exeName("postgres"))
+	if err := os.WriteFile(outside.Postgres, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PostgresCommand(outside); err == nil {
+		t.Fatal("a postgres binary outside the bundle must be refused")
+	}
+	if err := allowedBundleCommand(Command{Name: layout.Postgres, Args: []string{"-c", "shared_preload_libraries=x"}}); err == nil {
+		t.Fatal("extra postgres arguments must be refused")
+	}
+}
+
+func TestEnsurePostgresStartsWhenThePortIsClosed(t *testing.T) {
+	probe, err := net.Listen("tcp", PostgresListen)
+	if err != nil {
+		t.Skip("postgres listen port is busy")
+	}
+	_ = probe.Close()
+	root := t.TempDir()
+	layout := writeBundle(t, root, true)
+	if err := os.MkdirAll(filepath.Join(root, "postgres", "data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err = EnsurePostgres(ctx, layout, func(cmd Command) (func() error, func(), error) {
+		if !strings.Contains(strings.Join(cmd.Args, " "), "-h 127.0.0.1 -p 54322") {
+			t.Fatalf("started with %v", cmd.Args)
+		}
+		ln, err := net.Listen("tcp", PostgresListen)
+		if err != nil {
+			return nil, nil, err
+		}
+		return func() error {
+			<-ctx.Done()
+			_ = ln.Close()
+			return nil
+		}, func() { _ = ln.Close() }, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnsurePostgresSkipsWhenThePortIsOpen(t *testing.T) {
+	ln, err := net.Listen("tcp", PostgresListen)
+	if err != nil {
+		t.Skip("postgres listen port is busy")
+	}
+	defer ln.Close()
+	root := t.TempDir()
+	layout := writeBundle(t, root, true)
+	if err := os.MkdirAll(filepath.Join(root, "postgres", "data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	err = EnsurePostgres(context.Background(), layout, func(Command) (func() error, func(), error) {
+		called = true
+		return func() error { return nil }, func() {}, nil
+	})
+	if err != nil || called {
+		t.Fatalf("err=%v called=%v", err, called)
 	}
 }
 
