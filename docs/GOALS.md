@@ -8,9 +8,9 @@ Status: done.
 
 Canonical page: https://boom-vitt.github.io/boombignose-erp-harness-ai/
 
-The previous address https://boom-vitt.github.io/boombignose-erp/ is retired. After Pages run 40500045933 it returned HTTP 404. The new address returned HTTP 200 with the title BoomBigNose ERP Harness AI, `assets/favicon.svg`, `assets/logo.svg`, and `assets/og.png`.
+The previous address https://boom-vitt.github.io/boombignose-erp/ is retired. It returned HTTP 404 after Pages run 40500045933 and again after Pages run 40502514277.
 
-The page buttons point at `boombignose-v0.2.0` after that release's CI publish job succeeded and `sha256sum -c` matched. They do not claim a click-test on a physical machine.
+Pages run 40502514277 deployed the v0.2.0 download page. https://boom-vitt.github.io/boombignose-erp-harness-ai/ returned HTTP 200 with the title BoomBigNose ERP Harness AI. `assets/favicon.svg`, `assets/logo.svg`, and `assets/og.png` returned HTTP 200. The buttons link to `BoomBigNose-windows-x64-setup.exe`, `BoomBigNose-macos-arm64.dmg`, `BoomBigNose-linux-amd64.tar.gz`, and `BoomBigNose-linux-amd64.AppImage` on tag `boombignose-v0.2.0`. The page includes the four SHA-256 values that matched `sha256sum -c`. It does not claim a click-test on a physical machine.
 
 ## GOAL 2 — Desktop app
 
