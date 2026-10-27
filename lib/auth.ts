@@ -5,6 +5,7 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import type { Enums } from "@/lib/types/database"
 import { can, type Capability } from "@/lib/permissions"
+import { stepUpPath } from "@/lib/auth/totp"
 
 export type Role = Enums<"role_enum">
 
@@ -73,8 +74,35 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
   }
 })
 
+function isNextRedirect(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    String((err as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT")
+  )
+}
+
+// An enrolled factor must be aal2. A lookup failure does not lock the session:
+// an account with no factor, and a machine whose auth server is down, stay usable.
+async function redirectIfAAL2Required(): Promise<void> {
+  try {
+    const supabase = await createClient()
+    const level = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    if (level.error || !level.data) return
+    const next = stepUpPath({
+      hasVerifiedTotp: level.data.nextLevel === "aal2",
+      authenticatorAssuranceLevel: level.data.currentLevel,
+    })
+    if (next) redirect(next)
+  } catch (err) {
+    if (isNextRedirect(err)) throw err
+  }
+}
+
 /** Login is for signed-out actors; signed-in actors without a workspace onboard. */
 export async function requireOrgContext(): Promise<OrgContext> {
+  await redirectIfAAL2Required()
   const ctx = await getOrgContext()
   if (!ctx) {
     if (await getAuthenticatedUser()) redirect("/onboarding")

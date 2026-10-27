@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { sessionNeedsStepUp, totpEnrollEnabled } from "@/lib/auth/totp"
+import { sessionNeedsStepUp, stepUpPath, totpEnrollEnabled } from "@/lib/auth/totp"
 
 describe("totpEnrollEnabled", () => {
   it("opens only for the exact flag value", () => {
@@ -13,40 +13,58 @@ describe("totpEnrollEnabled", () => {
 })
 
 describe("sessionNeedsStepUp", () => {
-  it("stays open when the flag is off, even if a factor exists", () => {
-    expect(
-      sessionNeedsStepUp({
-        enrollEnabled: false,
-        hasVerifiedTotp: true,
-        authenticatorAssuranceLevel: "aal1",
-      })
-    ).toBe(false)
-  })
-
   it("stays open when the account has no verified factor", () => {
     expect(
       sessionNeedsStepUp({
-        enrollEnabled: true,
         hasVerifiedTotp: false,
         authenticatorAssuranceLevel: "aal1",
       })
     ).toBe(false)
+    expect(
+      stepUpPath({
+        hasVerifiedTotp: false,
+        authenticatorAssuranceLevel: "aal1",
+      })
+    ).toBe("")
   })
 
-  it("asks for a step-up only after a verified factor and an aal1 session", () => {
+  it("sends an enrolled aal1 session to the authenticator challenge", () => {
     expect(
       sessionNeedsStepUp({
-        enrollEnabled: true,
         hasVerifiedTotp: true,
         authenticatorAssuranceLevel: "aal1",
       })
     ).toBe(true)
     expect(
+      stepUpPath({
+        hasVerifiedTotp: true,
+        authenticatorAssuranceLevel: "aal1",
+      })
+    ).toBe("/login/mfa")
+  })
+
+  it("leaves an enrolled aal2 session on the app", () => {
+    expect(
       sessionNeedsStepUp({
-        enrollEnabled: true,
         hasVerifiedTotp: true,
         authenticatorAssuranceLevel: "aal2",
       })
     ).toBe(false)
+    expect(
+      stepUpPath({
+        hasVerifiedTotp: true,
+        authenticatorAssuranceLevel: "aal2",
+      })
+    ).toBe("")
+  })
+
+  it("does not consult the enrollment flag", () => {
+    expect(
+      sessionNeedsStepUp({
+        hasVerifiedTotp: true,
+        authenticatorAssuranceLevel: null,
+      })
+    ).toBe(true)
+    expect(totpEnrollEnabled(undefined)).toBe(false)
   })
 })

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Wrap the Linux desktop binary in an AppImage.
-# The image still needs the system WebKitGTK 4.1 libraries. It does not
-# bundle Node, Docker, Postgres, or a model.
+# The image still needs the system WebKitGTK 4.1 libraries.
+# When dist/bundle exists, it is copied next to the binary so the window
+# finds bundle/node. The Postgres data directory stays in the home directory.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 bin=$root/dist/boombignose-desktop
@@ -12,6 +13,9 @@ app=$stage/BoomBigNose.AppDir
 mkdir -p "$app/usr/bin"
 cp "$bin" "$app/usr/bin/BoomBigNose"
 chmod 755 "$app/usr/bin/BoomBigNose"
+if [ -d "$root/dist/bundle" ]; then
+  cp -a "$root/dist/bundle" "$app/usr/bin/bundle"
+fi
 cat > "$app/AppRun" << 'EOF'
 #!/bin/sh
 HERE=$(dirname "$(readlink -f "$0")")

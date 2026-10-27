@@ -135,7 +135,7 @@ func TestChildEnvKeepsLocalSupabaseAndPort(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := strings.Join(env, "\n")
-	if !strings.Contains(text, "PORT=3100") || !strings.Contains(text, "HOST=127.0.0.1") {
+	if !strings.Contains(text, "PORT=3100") || !strings.Contains(text, "HOST=127.0.0.1") || !strings.Contains(text, "HOSTNAME=127.0.0.1") {
 		t.Fatalf("bind env: %s", text)
 	}
 	if !strings.Contains(text, "http://127.0.0.1:54421") || !strings.Contains(text, "local-test-role") {
@@ -158,6 +158,23 @@ func TestChildEnvKeepsLoopbackOllama(t *testing.T) {
 	_, err = ChildEnv([]string{"OLLAMA_HOST=https://models.example:11434"}, "3100")
 	if err == nil || strings.Contains(err.Error(), "models.example") {
 		t.Fatalf("remote ollama: %v", err)
+	}
+}
+
+func TestChildEnvCopiesTotpFlagOnlyWhenEnabled(t *testing.T) {
+	env, err := ChildEnv([]string{"LOCAL_TOTP_ENROLL=1"}, "3100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "LOCAL_TOTP_ENROLL=1") {
+		t.Fatalf("flag was not copied: %s", strings.Join(env, "\n"))
+	}
+	closed, err := ChildEnv([]string{"LOCAL_TOTP_ENROLL=true"}, "3100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(closed, "\n"), "LOCAL_TOTP_ENROLL") {
+		t.Fatalf("non-1 flag was copied: %s", strings.Join(closed, "\n"))
 	}
 }
 

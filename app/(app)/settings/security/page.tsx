@@ -17,7 +17,7 @@ export default async function SecuritySettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Authenticator"
-        description="Optional second step for this local account. Other pages stay available."
+        description="Optional authenticator for this local account. An account with no authenticator stays on one step."
       />
       <p className="text-sm">
         <Link href="/settings" className="underline">
@@ -39,8 +39,10 @@ export default async function SecuritySettingsPage() {
               Enrollment is off. Set LOCAL_TOTP_ENROLL=1 on the ERP server to
               open this screen. The committed local Supabase config allows TOTP
               enroll and verify. A stack that was already running needs a
-              restart before the API accepts a factor. Password sign-in stays
-              available, and an aal1 session is not rejected.
+              restart before the API accepts a factor. An account with no
+              authenticator stays signed in on one step. An account that already
+              has a verified authenticator is sent to the code page before the
+              rest of the app.
             </p>
           )}
         </CardContent>
