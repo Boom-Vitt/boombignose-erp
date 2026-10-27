@@ -16,7 +16,9 @@ Pages run 40502514277 deployed the v0.2.0 download page. https://boom-vitt.githu
 
 Status: in progress.
 
-`boombignose/cmd/boombignose-desktop` is a Wails window titled BoomBigNose ERP Harness AI. It refuses cloud keys, including a remote `OLLAMA_HOST`. If `127.0.0.1:3100` is closed and a checkout is found (`BOOMBIGNOSE_ERP_DIR`, the working directory, or the executable directory), it runs `node scripts/local/stack.mjs serve --port 3100`, then opens that URL. Release https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.2.0 is a stable release, not a prerelease. Its CI publish job uploaded the unsigned Windows NSIS installer, the ad-hoc macOS arm64 DMG, the Linux tar.gz, the Linux AppImage, and SHA256SUMS. `sha256sum -c` matched those four files. Tag `boombignose-v0.1.1` remains the older harness command. The window installers do not bundle Node, Docker, Postgres, or Ollama. A human still has to click Open Anyway and Run anyway on a real machine. This environment has not click-tested them.
+`boombignose/cmd/boombignose-desktop` is a Wails window titled BoomBigNose ERP Harness AI. It refuses cloud keys, including a remote `OLLAMA_HOST`. If `bundle/node` and `bundle/erp/server.js` are next to the executable (or under `BOOMBIGNOSE_BUNDLE`), it starts that bundled Node without Docker and without `node` on `PATH`. Otherwise, if `127.0.0.1:3100` is closed and a checkout is found, it runs `node scripts/local/stack.mjs serve --port 3100`, then opens that URL. Optional Ollama: when a local `ollama` binary exists and `127.0.0.1:11434` is closed, the window runs `ollama serve`. It does not run `ollama pull`. The documented pull is `ollama pull qwen3:4b`. SQLite is not a database for this ERP. A portable `bundle/postgres/bin/postgres` is recognized and is not started. See `docs/boombignose/BUNDLE.md`.
+
+Release https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.2.0 is still the latest stable release. Its files are the unsigned window installers, not a bundled stack. No newer release was cut: the release workflow would rebuild the same window, and the Node, Postgres, and Ollama binaries are not in CI yet. Tag `boombignose-v0.1.1` remains the older harness command. A human still has to click Open Anyway and Run anyway on a real machine. This environment has not click-tested the window or the bundle fixture on a physical machine. `go test` did start a local fixture process that listened on `127.0.0.1`.
 
 ## GOAL 3 — Remaining phases and rename
 
@@ -26,8 +28,8 @@ Status: in progress.
 - The GitHub repository is https://github.com/Boom-Vitt/boombignose-erp-harness-ai . The local Supabase `project_id` stays `boombignose-erp`.
 - Release `boombignose-v0.1.1` has the older harness-command installers. Tag `bumik-v0.1.0` was deleted.
 - `lib/local/stack.mjs` no longer copies `OPENROUTER_API_KEY` or `OPENROUTER_MODEL` into `next start`.
-- TOTP stays off. `docs/boombignose/TOTP.md` is the proposal. No AAL2 migration was added, because a blanket `aal1` refusal would lock local sign-in before an enrollment screen exists.
-- Milestone 2 (a download that bundles Postgres, auth, the API, Next.js, and Ollama) is not shipped. The window can start a checkout that is already on the machine.
+- TOTP enroll and verify are on in `supabase/config.toml`. The screen at `/settings/security` stays closed unless `LOCAL_TOTP_ENROLL=1`. `sessionNeedsStepUp` is tested and is not applied by the proxy or by RLS, so an `aal1` session is not locked. Phone MFA stays off. See `docs/boombignose/TOTP.md`.
+- Milestone 2 is not shipped. The launcher can use a portable Node and `server.js` when those files are present. The download still does not contain Postgres, the Next.js server, or Ollama.
 
 ## Blockers
 
