@@ -1,6 +1,22 @@
 import { describe, it, expect } from "vitest"
 
-import { todayISO, monthKey, currentMonthKey, lastNMonths, isPastDue, daysUntil, startOfDayInstant } from "@/lib/dates"
+import { buddhistEraLabel, withBuddhistEra, todayISO, monthKey, currentMonthKey, lastNMonths, isPastDue, daysUntil, startOfDayInstant } from "@/lib/dates"
+
+describe("Buddhist-era labels", () => {
+  it("converts a Gregorian date to day/month/พ.ศ.", () => {
+    expect(buddhistEraLabel("2026-10-28")).toBe("28/10/2569")
+    expect(buddhistEraLabel("2026-07-01")).toBe("01/07/2569")
+    expect(buddhistEraLabel("2024-02-29")).toBe("29/02/2567")
+  })
+
+  it("leaves invalid dates unlabeled", () => {
+    expect(buddhistEraLabel("2026-02-29")).toBeNull()
+    expect(buddhistEraLabel("2026-13-01")).toBeNull()
+    expect(buddhistEraLabel("not-a-date")).toBeNull()
+    expect(withBuddhistEra("2026-07-01")).toBe("2026-07-01 (01/07/2569)")
+    expect(withBuddhistEra("2026-02-29")).toBe("2026-02-29")
+  })
+})
 
 describe("dates in Asia/Bangkok (UTC+7)", () => {
   it("formats today, rolling over the date at +7", () => {

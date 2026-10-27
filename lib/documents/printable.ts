@@ -1,3 +1,4 @@
+import { withBuddhistEra } from "@/lib/dates"
 import { formatTHB, type Satang } from "@/lib/money"
 import { interleave, type ServerSection } from "@/lib/line-grid/grid"
 
@@ -66,6 +67,10 @@ export function escapeHtml(value: string): string {
 /** Trim trailing zeros from a quantity for display (1.000 → "1", 1.500 → "1.5"). */
 function fmtQty(quantity: number): string {
   return String(Number(quantity))
+}
+
+function displayDate(value: string | null | undefined): string | null | undefined {
+  return value ? withBuddhistEra(value) : value
 }
 
 function metaRow(label: string, value: string | null | undefined): string {
@@ -150,9 +155,9 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
       ${metaRow("ลูกค้า / Bill to", doc.clientName)}
       ${metaRow("ที่อยู่ลูกค้า / Buyer address", doc.buyerAddress)}
       ${metaRow("เลขผู้เสียภาษีลูกค้า / Buyer tax ID", doc.buyerTaxId)}
-      ${metaRow("วันที่ / Issue date", doc.issueDate)}
-      ${metaRow("ครบกำหนด / Due date", doc.dueDate)}
-      ${metaRow("ใช้ได้ถึง / Valid until", doc.validUntil)}
+      ${metaRow("วันที่ / Issue date", displayDate(doc.issueDate))}
+      ${metaRow("ครบกำหนด / Due date", displayDate(doc.dueDate))}
+      ${metaRow("ใช้ได้ถึง / Valid until", displayDate(doc.validUntil))}
     </div>
 
     <table>

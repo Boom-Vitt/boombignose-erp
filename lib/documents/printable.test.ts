@@ -38,6 +38,8 @@ describe("renderDocumentHtml", () => {
     const html = renderDocumentHtml(doc)
     expect(html.startsWith("<!doctype html>")).toBe(true)
     expect(html).toContain("INV-2026-001")
+    expect(html).toContain("2026-07-01 (01/07/2569)")
+    expect(html).toContain("2026-07-31 (31/07/2569)")
     expect(html).toContain("Acme Co")
     expect(html).toContain("Design")
     expect(html).toContain("Discount")
