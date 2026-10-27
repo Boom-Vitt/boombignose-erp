@@ -183,6 +183,36 @@ func TestEnsurePostgresRefusesASpaceInTheDataDir(t *testing.T) {
 	}
 }
 
+func TestEnsurePostgresStartsAStoppedClusterWithoutInitdb(t *testing.T) {
+	layout, data := postgresFixture(t)
+	if err := os.WriteFile(filepath.Join(data, "PG_VERSION"), []byte("16\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var cmds []Command
+	err := ensurePostgres(context.Background(), layout, data, func() bool { return false }, func(cmd Command) error {
+		cmds = append(cmds, cmd)
+		return nil
+	}, func(_ context.Context, _, _, _, sql string) ([][]string, error) {
+		if strings.HasPrefix(strings.TrimSpace(sql), "select filename") {
+			return [][]string{{"001.sql"}}, nil
+		}
+		if strings.Contains(sql, "to_regclass") {
+			return [][]string{{"organizations"}}, nil
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cmds) != 1 || !strings.Contains(filepath.Base(cmds[0].Name), "pg_ctl") {
+		t.Fatalf("commands = %#v", cmds)
+	}
+	joined := strings.Join(cmds[0].Args, " ")
+	if strings.Contains(joined, "initdb") || !strings.Contains(joined, data) || !strings.Contains(joined, filepath.Join(data, "server.log")) || !strings.Contains(joined, "start") {
+		t.Fatalf("start = %s", joined)
+	}
+}
+
 func TestEnsurePostgresRefusesAForeignListener(t *testing.T) {
 	layout, data := postgresFixture(t)
 	if err := os.WriteFile(filepath.Join(data, "PG_VERSION"), []byte("16\n"), 0o644); err != nil {
