@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>วิธีใช้ BoomBigNose</title>
+  <meta name="description" content="วิธีสมัคร บันทึกลูกค้า สินค้า สต็อก และใบแจ้งหนี้บน BoomBigNose ที่รันในเครื่อง รวม VAT 7% วันที่ พ.ศ. และ QR PromptPay ที่วาดในเครื่อง" />
+  <link rel="icon" href="assets/brandmark.png" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <meta property="og:title" content="วิธีใช้ BoomBigNose" />
+  <meta property="og:description" content="ERP บนเครื่องคุณ วันที่ พ.ศ. VAT 7% และ QR PromptPay ที่วาดในเครื่อง" />
+  <meta property="og:image" content="https://boom-vitt.github.io/boombignose-erp-harness-ai/assets/brandmark.png" />
+  <meta property="og:type" content="website" />
+  <style>
+    :root {
+      --paper: #0b0d12;
+      --surface: #12151c;
+      --line: #232733;
+      --text: #e8eaf0;
+      --muted: #9aa1b2;
+      --accent: #ff7a45;
+      --on-accent: #0b0d12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--text);
+      font-family: "IBM Plex Sans Thai", Inter, "Noto Sans Thai", Anuphan, Sarabun, system-ui, sans-serif;
+      line-height: 1.65;
+    }
+    a { color: var(--accent); }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .skip {
+      position: absolute; left: 16px; top: -48px; background: var(--accent); color: var(--on-accent);
+      padding: 8px 12px; border-radius: 8px; font-weight: 700; z-index: 20;
+    }
+    .skip:focus { top: 12px; }
+    .wrap { max-width: 800px; margin: 0 auto; padding: 0 20px; }
+    header.nav {
+      position: sticky; top: 0; z-index: 10;
+      background: rgb(11 13 18 / .92);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 72px; gap: 16px; flex-wrap: wrap; }
+    .nav-links { display: flex; gap: 16px; flex-wrap: wrap; }
+    .nav-links a { color: var(--text); text-decoration: none; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+    .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 700; }
+    .brand img { width: 36px; height: 36px; }
+    h1 { font-size: clamp(32px, 5vw, 48px); line-height: 1.2; margin: 28px 0 12px; }
+    h2 { font-size: 24px; margin: 0 0 8px; }
+    .lead, .sub { color: var(--muted); }
+    section { padding: 28px 0; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    code {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.92em;
+      overflow-wrap: anywhere;
+    }
+    p, li { overflow-wrap: break-word; }
+    ol, ul { margin: 0; padding-left: 1.2em; }
+    li + li { margin-top: 8px; }
+    footer { border-top: 1px solid var(--line); padding: 28px 0 48px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#content">ข้ามไปเนื้อหา</a>
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="index.html">
+        <img src="assets/brandmark.png" width="36" height="36" alt="" />
+        <span>BoomBigNose</span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html">หน้าแรก</a>
+        <a href="install.html">วิธีติดตั้ง</a>
+        <a href="first-run.html">ครั้งแรกที่เปิด</a>
+      </div>
+    </div>
+  </header>
+  <main id="content">
+    <div class="wrap">
+      <h1>วิธีใช้</h1>
+      <p class="lead">คู่มือนี้บอกวิธีบันทึกงานขายบน BoomBigNose ที่เปิดอยู่ในเครื่องคุณ เอกสารในแอปเป็นเอกสารดำเนินงาน ไม่ใช่ระบบยื่นภาษี และไม่ได้รับรองว่าเป็นใบกำกับภาษีตามกฎหมาย หน้านี้ยังไม่ได้คลิกทดสอบบนเครื่องจริง</p>
+    </div>
+
+    <section>
+      <div class="wrap card">
+        <h2>เปิดแอป</h2>
+        <ol>
+          <li>ติดตั้งจาก <a href="install.html">หน้าติดตั้ง</a> แล้วเปิด BoomBigNose</li>
+          <li>หน้าต่างเปิด ERP ที่ <code>http://127.0.0.1:3100</code> บริการฐานข้อมูล Auth และ API ฟังที่ <code>127.0.0.1</code> เท่านั้น</li>
+          <li>ครั้งแรกที่เปิด โปรแกรมสุ่มคีย์ของเครื่องนั้นไว้ในโฟลเดอร์ข้อมูล ไม่มีรหัสผ่านเริ่มต้นที่มากับตัวติดตั้ง รายละเอียดโฟลเดอร์อยู่ที่ <a href="first-run.html">ครั้งแรกที่เปิด</a></li>
+          <li>แอปไม่เรียก AI บนคลาวด์ ถ้าจะใช้โมเดลในเครื่อง ให้กดปุ่มในหน้าต่างหรือรัน <code>boombignose pull-model</code> เอง</li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>สมัครและเข้าสู่ระบบ</h2>
+        <ol>
+          <li>เปิด <code>/signup</code> แล้วสร้างบัญชีด้วยอีเมลและรหัสผ่านอย่างน้อย 10 ตัว มีทั้งตัวพิมพ์ใหญ่ พิมพ์เล็ก และตัวเลข</li>
+          <li>ตั้งชื่อพื้นที่ทำงาน เครื่องหนึ่งมีพื้นที่ทำงานแรกได้ชุดเดียว คนถัดไปเข้าด้วยคำเชิญ</li>
+          <li>ออกจากระบบที่ปุ่ม Sign out แล้วเข้าใหม่ที่หน้า Sign in</li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>ลูกค้า สินค้า และสต็อก</h2>
+        <ol>
+          <li>สร้างลูกค้าที่ Clients ชื่อเป็นข้อมูลที่ต้องมี เลขประจำตัวผู้เสียภาษีใส่ได้ 13 หลัก</li>
+          <li>สร้างสินค้าที่ Products เลือก Goods แล้วติ๊ก Stockable ถ้าต้องนับสต็อก</li>
+          <li>สร้างคลังที่ Inventory และติ๊ก Default warehouse สำหรับคลังหลัก</li>
+          <li>บันทึกจำนวนจริงที่ Adjust inventory count ใส่ต้นทุนต่อหน่วยเมื่อเพิ่มจากศูนย์ และใส่เหตุผล รายการนี้ไปอยู่ใน Stock moves เป็น Adjustment</li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>ใบแจ้งหนี้ VAT 7% และหัก ณ ที่จ่าย</h2>
+        <ol>
+          <li>ที่ Business profile ใส่ชื่อ ที่อยู่ และเลขประจำตัวผู้เสียภาษี ถ้าจด VAT ให้ตั้ง VAT status เป็น Registered อัตราเริ่มต้นคือ 700 basis points คือ 7%</li>
+          <li>สร้างใบแจ้งหนี้ เลือกลูกค้า แล้วใส่รายการ ช่อง VAT ของรายการจะเป็น 700 เมื่อผู้ขายจด VAT</li>
+          <li>หัก ณ ที่จ่าย 3% เลือก 300 ในช่อง Withholding tax ตัวอย่างรายการ 1,000.00 บาท: VAT 70.00 รวม 1,070.00 หัก ณ ที่จ่าย 30.00 ยอดที่ต้องชำระ 1,040.00</li>
+          <li>จำนวนเงินแสดงเป็นบาทตามรูปแบบไทย</li>
+          <li>ถ้าล็อกงวดการเงินถึงวันนี้ การออกเอกสารในวันนั้นจะถูกปฏิเสธพร้อมข้อความ Finance period is locked ลบวันที่ล็อกก่อนออกเอกสาร</li>
+          <li>ติ๊กข้อความตรวจข้อมูลแล้วกด Issue operational invoice เอกสารที่ออกแล้วเก็บสแนปช็อตไว้</li>
+          <li>หัวเอกสารเป็น <q>Tax Invoice / ใบกำกับภาษี</q> เมื่อผู้ขายจด VAT ถ้าไม่ได้จด หัวเอกสารเป็น Invoice ท้ายเอกสารยังบอกว่าเป็นเอกสารดำเนินงาน ไม่ใช่ใบกำกับภาษีตามกฎหมาย</li>
+          <li>วันที่ออก วันครบกำหนด และวันที่ใช้ได้ถึง แสดงทั้งวันที่เกรโกเรียนและวันเดือนปี พ.ศ. เช่น <code>2026-10-28 (28/10/2569)</code> ค่าที่เก็บในระบบยังเป็นวันที่เกรโกเรียน</li>
+          <li>QR PromptPay ปรากฏเมื่อหัวเอกสารเป็น Invoice หรือ Tax Invoice / ใบกำกับภาษี ผู้ขายมีเลขประจำตัวผู้เสียภาษี 13 หลัก และมียอดที่ต้องชำระ รูปถูกวาดบนเครื่องนี้จากเลขนั้นกับยอด ไม่มีการเชื่อมธนาคาร คำบรรยายใต้รูปบอกว่าไม่ใช่การยืนยันจากธนาคารและไม่ใช่ใบเสร็จ</li>
+        </ol>
+        <p class="sub">ตรวจอัตราและเอกสารกับผู้ทำบัญชีของกิจการก่อนใช้ยื่นภาษี</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>สิ่งที่ถอนการติดตั้งไม่ลบ</h2>
+        <p>บน Windows ตัวถอนลบไฟล์โปรแกรมและโฟลเดอร์ bundle ไม่ลบโฟลเดอร์ข้อมูลที่ <code>%USERPROFILE%\.local\share\boombignose\pg</code> บันทึก Postgres อยู่ใน <code>server.log</code> ของโฟลเดอร์นั้น</p>
+      </div>
+    </section>
+  </main>
+  <footer>
+    <div class="wrap">
+      <p>BoomBigNose ERP Harness AI · เอกสารนี้อธิบายหน้าจอในแอป ไม่ใช่คำแนะนำทางกฎหมายหรือภาษี</p>
+    </div>
+  </footer>
+</body>
+</html>
