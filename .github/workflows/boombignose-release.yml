@@ -27,14 +27,92 @@ jobs:
         working-directory: boombignose
         run: go test ./...
 
+  windows-bundle:
+    needs: linux-bundle
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+      - uses: actions/download-artifact@v4
+        with:
+          name: erp-standalone
+          path: dist/erp-artifact
+      - name: Place standalone server
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = $null
+          foreach ($candidate in @(
+            "dist\erp-artifact",
+            "dist\erp-artifact\erp",
+            "dist\erp-artifact\dist\bundle\erp"
+          )) {
+            if (Test-Path -LiteralPath (Join-Path $candidate "server.js")) { $src = $candidate; break }
+          }
+          if (-not $src) {
+            Get-ChildItem -Recurse -Depth 4 dist\erp-artifact | Select-Object -First 40 -ExpandProperty FullName
+            throw "standalone server.js missing"
+          }
+          $dest = "dist\bundle\erp"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          robocopy $src $dest /E /NFL /NDL /NJH /NJS /nc /ns /np
+          if ($LASTEXITCODE -ge 8) { throw "robocopy exit $LASTEXITCODE" }
+          $global:LASTEXITCODE = 0
+          if (-not (Test-Path -LiteralPath "dist\bundle\erp\server.js")) { throw "server.js was not copied" }
+          if (-not (Test-Path -LiteralPath "dist\bundle\erp\.next\static")) { throw ".next/static was not copied" }
+      - name: Assemble Windows node and postgres
+        shell: pwsh
+        run: ./packaging/windows/assemble-bundle.ps1
+      - name: Smoke the bundled ERP
+        shell: pwsh
+        run: ./packaging/windows/smoke-bundle.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-bundle
+          path: dist/bundle
+          if-no-files-found: error
+          include-hidden-files: true
+
   windows:
-    needs: test
+    needs: [test, windows-bundle]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.3"
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-bundle
+          path: packaging/windows/windows-bundle-artifact
+      - name: Place bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = $null
+          foreach ($candidate in @(
+            "packaging\windows\windows-bundle-artifact",
+            "packaging\windows\windows-bundle-artifact\bundle",
+            "packaging\windows\windows-bundle-artifact\dist\bundle"
+          )) {
+            if (Test-Path -LiteralPath (Join-Path $candidate "node.exe")) { $src = $candidate; break }
+          }
+          if (-not $src) {
+            Get-ChildItem -Recurse -Depth 4 packaging\windows\windows-bundle-artifact | Select-Object -First 40 -ExpandProperty FullName
+            throw "bundle node.exe missing"
+          }
+          $dest = "packaging\windows\bundle"
+          if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          robocopy $src $dest /E /NFL /NDL /NJH /NJS /nc /ns /np
+          if ($LASTEXITCODE -ge 8) { throw "robocopy exit $LASTEXITCODE" }
+          $global:LASTEXITCODE = 0
+          foreach ($rel in @("node.exe", "erp\server.js", "postgres\bin\postgres.exe", "erp\.next\static")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $dest $rel))) { throw "missing $rel" }
+          }
       - name: Build Windows window
         working-directory: boombignose
         env:
@@ -48,6 +126,7 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $makensis = @(
             "C:\Program Files (x86)\NSIS\makensis.exe",
             "C:\Program Files\NSIS\makensis.exe"
@@ -55,23 +134,108 @@ jobs:
           if (-not $makensis) { throw "makensis was not installed" }
           Set-Location packaging\windows
           & $makensis .\boombignose.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis exit $LASTEXITCODE" }
           if (-not (Test-Path .\BoomBigNose-windows-x64-setup.exe)) {
             throw "installer was not produced"
           }
+          $dest = "C:\bbn-nsis-check"
+          if (Test-Path $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+          $setup = (Resolve-Path .\BoomBigNose-windows-x64-setup.exe).Path
+          $installed = Start-Process -FilePath $setup -ArgumentList "/S","/D=$dest" -Wait -PassThru
+          if ($installed.ExitCode -ne 0) { throw "installer exit $($installed.ExitCode)" }
+          foreach ($rel in @(
+            "BoomBigNose.exe",
+            "bundle\node.exe",
+            "bundle\erp\server.js",
+            "bundle\postgres\bin\postgres.exe",
+            "bundle\erp\.next\static"
+          )) {
+            if (-not (Test-Path -LiteralPath (Join-Path $dest $rel))) { throw "installer missing $rel" }
+          }
+          $uninstalled = Start-Process -FilePath (Join-Path $dest "uninstall.exe") -ArgumentList "/S" -Wait -PassThru
+          if ($uninstalled.ExitCode -ne 0) { throw "uninstall exit $($uninstalled.ExitCode)" }
+          if (Test-Path -LiteralPath (Join-Path $dest "bundle")) { throw "uninstall left bundle" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-setup
           path: packaging/windows/BoomBigNose-windows-x64-setup.exe
           if-no-files-found: error
 
+  macos-bundle:
+    needs: linux-bundle
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+      - uses: actions/download-artifact@v4
+        with:
+          name: erp-standalone
+          path: dist/erp-artifact
+      - name: Place standalone server
+        run: |
+          set -eu
+          src=""
+          for candidate in dist/erp-artifact dist/erp-artifact/erp dist/erp-artifact/dist/bundle/erp; do
+            if [ -f "$candidate/server.js" ]; then
+              src=$candidate
+              break
+            fi
+          done
+          if [ -z "$src" ]; then
+            find dist/erp-artifact -maxdepth 5 -type f -name server.js -print
+            exit 1
+          fi
+          rm -rf dist/bundle/erp
+          mkdir -p dist/bundle
+          cp -a "$src" dist/bundle/erp
+          test -s dist/bundle/erp/server.js
+          test -d dist/bundle/erp/.next/static
+      - name: Assemble macOS node and postgres
+        run: sh packaging/macos/assemble-bundle.sh
+      - name: Smoke the bundled ERP
+        run: sh packaging/linux/smoke-bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-bundle
+          path: dist/bundle
+          if-no-files-found: error
+          include-hidden-files: true
+
   macos:
-    needs: test
+    needs: [test, macos-bundle]
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.3"
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-bundle
+          path: dist/macos-bundle-artifact
+      - name: Place bundle
+        run: |
+          set -eu
+          src=""
+          for candidate in dist/macos-bundle-artifact dist/macos-bundle-artifact/bundle dist/macos-bundle-artifact/dist/bundle; do
+            if [ -f "$candidate/node" ]; then
+              src=$candidate
+              break
+            fi
+          done
+          if [ -z "$src" ]; then
+            find dist/macos-bundle-artifact -maxdepth 5 -type f -name node -print
+            exit 1
+          fi
+          rm -rf dist/bundle
+          mkdir -p dist
+          cp -a "$src" dist/bundle
+          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl
+          test -s dist/bundle/erp/server.js
+          test -d dist/bundle/erp/.next/static
       - name: Build arm64 window
         working-directory: boombignose
         env:
@@ -104,6 +268,12 @@ jobs:
         with:
           name: linux-bundle
           path: dist/bundle
+          if-no-files-found: error
+          include-hidden-files: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: erp-standalone
+          path: dist/bundle/erp
           if-no-files-found: error
           include-hidden-files: true
 
