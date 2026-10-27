@@ -185,6 +185,30 @@ func TestEnsurePostgresSkipsWhenBinaryIsAbsent(t *testing.T) {
 	}
 }
 
+func TestAllowedPostgresCommandMatchesTheLauncher(t *testing.T) {
+	bin := t.TempDir()
+	initdb := filepath.Join(bin, "initdb")
+	pgCtl := filepath.Join(bin, "pg_ctl")
+	for _, name := range []string{initdb, pgCtl} {
+		if err := os.WriteFile(name, []byte("x"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data := t.TempDir()
+	if err := allowedPostgresCommand(initdb, initdbArgs("linux", data)); err != nil {
+		t.Fatal(err)
+	}
+	if err := allowedPostgresCommand(initdb, initdbArgs("windows", data)); err != nil {
+		t.Fatal(err)
+	}
+	for _, goos := range []string{"linux", "windows"} {
+		args := []string{"-D", data, "-l", filepath.Join(data, "server.log"), "-w", "-o", pgStartOptions(goos, data), "start"}
+		if err := allowedPostgresCommand(pgCtl, args); err != nil {
+			t.Fatalf("%s: %v", goos, err)
+		}
+	}
+}
+
 func TestAllowedPostgresCommandRejectsAPublicListen(t *testing.T) {
 	bin := t.TempDir()
 	initdb := filepath.Join(bin, "initdb")
@@ -192,8 +216,13 @@ func TestAllowedPostgresCommandRejectsAPublicListen(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := t.TempDir()
-	good := []string{"-D", data, "-U", "boombignose", "--auth-local=trust", "--auth-host=trust", "--locale=C", "--encoding=UTF8"}
+	good := []string{"-D", data, "-U", "boombignose", "--auth-local=trust", "--auth-host=trust", "--encoding=UTF8", "--locale=C"}
 	if err := allowedPostgresCommand(initdb, good); err != nil {
+		t.Fatal(err)
+	}
+	windows := append([]string{}, good...)
+	windows[7] = "--no-locale"
+	if err := allowedPostgresCommand(initdb, windows); err != nil {
 		t.Fatal(err)
 	}
 	pgCtl := filepath.Join(bin, "pg_ctl")

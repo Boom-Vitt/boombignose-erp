@@ -67,13 +67,32 @@ func allowedPgCtl(args []string) bool {
 	if args[3] != filepath.Join(args[1], "server.log") {
 		return false
 	}
-	prefix := "-c listen_addresses=127.0.0.1 -c port="
-	suffix := " -c unix_socket_directories=" + args[1]
-	port, ok := strings.CutPrefix(args[6], prefix)
-	if !ok || !strings.HasSuffix(port, suffix) {
+	return loopbackStartOptions(args[6], args[1])
+}
+
+func initdbAllowed(args []string) bool {
+	if len(args) != 8 || args[0] != "-D" || !safeDataDir(args[1]) || args[2] != "-U" || args[3] != "boombignose" {
 		return false
 	}
-	port = strings.TrimSuffix(port, suffix)
+	if args[4] != "--auth-local=trust" || args[5] != "--auth-host=trust" || args[6] != "--encoding=UTF8" {
+		return false
+	}
+	return args[7] == "--locale=C" || args[7] == "--no-locale"
+}
+
+func loopbackStartOptions(opts, dataDir string) bool {
+	const prefix = "-c listen_addresses=127.0.0.1 -c port="
+	rest, ok := strings.CutPrefix(opts, prefix)
+	if !ok {
+		return false
+	}
+	port := rest
+	if i := strings.IndexByte(rest, ' '); i >= 0 {
+		port = rest[:i]
+		if rest[i+1:] != "-c unix_socket_directories="+dataDir {
+			return false
+		}
+	}
 	n, err := strconv.Atoi(port)
 	return err == nil && n >= 1 && n <= 65535 && strconv.Itoa(n) == port
 }
@@ -87,7 +106,7 @@ func allowedPostgresCommand(name string, args []string) error {
 	base := strings.ToLower(filepath.Base(name))
 	switch base {
 	case "initdb", "initdb.exe":
-		if len(args) != 8 || args[0] != "-D" || !safeDataDir(args[1]) || args[2] != "-U" || args[3] != "boombignose" || args[4] != "--auth-local=trust" || args[5] != "--auth-host=trust" || args[6] != "--locale=C" || args[7] != "--encoding=UTF8" {
+		if !initdbAllowed(args) {
 			return errors.New("refusing postgres command")
 		}
 	case "pg_ctl", "pg_ctl.exe":
