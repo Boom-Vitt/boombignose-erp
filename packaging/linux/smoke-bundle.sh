@@ -49,33 +49,29 @@ sys.stderr.write("127.0.0.1:3100 is already in use\n")
 sys.exit(1)
 PY
 
+# Connect, do not bind. A port in TIME_WAIT after the previous smoke still
+# refuses bind, and this job smokes the tarball and then the AppImage.
+port_busy() {
+  python3 - "$1" << 'PY'
+import socket, sys
+port = int(sys.argv[1])
+s = socket.socket()
+s.settimeout(0.3)
+try:
+    s.connect(("127.0.0.1", port))
+except OSError:
+    sys.exit(0)
+finally:
+    s.close()
+sys.stderr.write("127.0.0.1:%s is already in use\n" % port)
+sys.exit(1)
+PY
+}
 pg_port=54329
 for extra in 54321 54323 54324; do
-  python3 - "$extra" << 'PY'
-import socket, sys
-port = int(sys.argv[1])
-s = socket.socket()
-try:
-    s.bind(("127.0.0.1", port))
-except OSError:
-    sys.stderr.write("127.0.0.1:%s is already in use\n" % port)
-    sys.exit(1)
-finally:
-    s.close()
-PY
+  port_busy "$extra"
 done
-python3 - "$pg_port" << 'PY'
-import socket, sys
-port = int(sys.argv[1])
-s = socket.socket()
-try:
-    s.bind(("127.0.0.1", port))
-except OSError:
-    sys.stderr.write("127.0.0.1:%s is already in use\n" % port)
-    sys.exit(1)
-finally:
-    s.close()
-PY
+port_busy "$pg_port"
 
 data=$(mktemp -d)
 pgdata=$data/pg
