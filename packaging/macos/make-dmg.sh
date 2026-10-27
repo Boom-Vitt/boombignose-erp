@@ -2,7 +2,7 @@
 # Build an ad-hoc-signed disk image of the BoomBigNose window and dist/bundle.
 # Run on a macOS arm64 runner after `go build` produces ./dist/boombignose-desktop.
 # codesign --sign - is not a paid Developer ID signature. Opening can require Open Anyway.
-# The mounted check looks for the files. It does not boot the server from the read-only image.
+# The mounted check looks for the files, then the smoke boots that mounted bundle.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 bin=$root/dist/boombignose-desktop
@@ -14,6 +14,8 @@ test -s "$bundle/postgres/bin/postgres"
 test -d "$bundle/erp/.next/static"
 test -s "$bundle/auth/auth"
 test -s "$bundle/postgrest/postgrest"
+test -s "$bundle/ollama/ollama"
+test -s "$bundle/ollama/OLLAMA_LICENSE.txt"
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 cp "$bin" "$stage/BoomBigNose"
@@ -44,4 +46,11 @@ test -s "$mount/bundle/postgres/bin/postgres"
 test -d "$mount/bundle/erp/.next/static"
 test -s "$mount/bundle/auth/auth"
 test -s "$mount/bundle/postgrest/postgrest"
+test -s "$mount/bundle/ollama/ollama"
+test -s "$mount/bundle/ollama/OLLAMA_LICENSE.txt"
+if [ -d "$mount/bundle/ollama/lib/ollama/cuda_v12" ] || [ -d "$mount/bundle/ollama/lib/ollama/cuda_v13" ]; then
+  echo "cuda runner was packed" >&2
+  exit 1
+fi
+BOOMBIGNOSE_SMOKE_BUNDLE="$mount/bundle" sh "$root/packaging/linux/smoke-bundle.sh"
 echo "wrote $dmg"

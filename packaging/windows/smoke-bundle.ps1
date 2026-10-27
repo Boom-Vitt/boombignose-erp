@@ -6,7 +6,8 @@ $PSNativeCommandUseErrorActionPreference = $true
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $root
 
-$bundle = Join-Path $root "dist\bundle"
+$bundle = $env:BOOMBIGNOSE_SMOKE_BUNDLE
+if (-not $bundle) { $bundle = Join-Path $root "dist\bundle" }
 foreach ($rel in @(
   "node.exe",
   "erp\server.js",
@@ -15,11 +16,18 @@ foreach ($rel in @(
   "postgres\prelude-after-auth.sql",
   "auth\auth.exe",
   "auth\migrations\00_init_auth_schema.up.sql",
-  "postgrest\postgrest.exe"
+  "postgrest\postgrest.exe",
+  "ollama\ollama.exe",
+  "ollama\OLLAMA_LICENSE.txt"
 )) {
   $path = Join-Path $bundle $rel
   if (-not (Test-Path -LiteralPath $path)) {
     throw "missing $path"
+  }
+}
+foreach ($cuda in @("cuda_v12", "cuda_v13")) {
+  if (Test-Path -LiteralPath (Join-Path $bundle "ollama\lib\ollama\$cuda")) {
+    throw "cuda runner was packed"
   }
 }
 
@@ -124,6 +132,11 @@ try {
     throw "PG_VERSION missing"
   }
   Write-Host "health ok"
+  $serveText = ""
+  foreach ($log in @($stdout, $stderr)) {
+    if (Test-Path -LiteralPath $log) { $serveText += Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue }
+  }
+  if ($serveText -match "pull qwen3") { throw "serve pulled a model" }
   $anon = (Get-Content -LiteralPath (Join-Path $pgdata "anon.key") -Raw).Trim()
   $email = "smoke-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())@example.com"
   $body = @{ email = $email; password = "SmokeTest1a" } | ConvertTo-Json

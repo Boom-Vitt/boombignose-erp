@@ -277,3 +277,84 @@ func TestEnsureERPUsesBundledNode(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDiscoverFindsOllamaBesideOrUnderBin(t *testing.T) {
+	flat := t.TempDir()
+	writeBundle(t, flat, false)
+	flatBin := filepath.Join(flat, "ollama", exeName("ollama"))
+	if err := os.MkdirAll(filepath.Dir(flatBin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(flatBin, []byte("ollama"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	found, err := Discover(flat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.Ollama != flatBin {
+		t.Fatalf("flat ollama = %s", found.Ollama)
+	}
+
+	nested := t.TempDir()
+	writeBundle(t, nested, false)
+	nestedBin := filepath.Join(nested, "ollama", "bin", exeName("ollama"))
+	if err := os.MkdirAll(filepath.Dir(nestedBin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nestedBin, []byte("ollama"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	found, err = Discover(nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.Ollama != nestedBin {
+		t.Fatalf("nested ollama = %s", found.Ollama)
+	}
+}
+
+func TestPullCommandIsNotAStartupCommand(t *testing.T) {
+	root := t.TempDir()
+	binary := filepath.Join(root, exeName("ollama"))
+	if err := os.WriteFile(binary, []byte("ollama"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd, err := PullCommand(binary, "", []string{
+		"OPENAI_API_KEY=sk-test",
+		"PATH=/usr/bin",
+		"HOME=/home/me",
+		"OLLAMA_HOST=http://127.0.0.1:11434",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := allowedBundleCommand(cmd); err == nil {
+		t.Fatal("startup must refuse pull")
+	}
+	if err := allowPullCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(cmd.Env, "\n")
+	if strings.Contains(text, "OPENAI") || strings.Contains(text, "sk-test") {
+		t.Fatalf("cloud key leaked: %s", text)
+	}
+	if !strings.Contains(text, "OLLAMA_HOST=127.0.0.1:11434") || !strings.Contains(text, "HOME=/home/me") {
+		t.Fatalf("pull env: %s", text)
+	}
+	if strings.Join(cmd.Args, " ") != "pull qwen3:4b" {
+		t.Fatalf("args: %#v", cmd.Args)
+	}
+	_, err = PullCommand(binary, "https://models.example", nil)
+	if err == nil || strings.Contains(err.Error(), "models.example") {
+		t.Fatalf("remote pull: %v", err)
+	}
+	other := cmd
+	other.Args = []string{"pull", "llama3"}
+	if err := allowPullCommand(other); err == nil {
+		t.Fatal("another model must be refused")
+	}
+	if err := runPull(context.Background(), Command{Name: binary, Args: []string{"serve"}, Env: cmd.Env}); err == nil {
+		t.Fatal("pull runner must refuse serve")
+	}
+}

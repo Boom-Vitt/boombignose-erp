@@ -5,9 +5,32 @@
   <title>BoomBigNose ERP Harness AI</title>
   <style>
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0b0d12; color: #e8eaf0; font-family: system-ui, sans-serif; }
+    main { display: grid; gap: 12px; justify-items: center; max-width: 36rem; text-align: center; }
+    button { background: #e8eaf0; color: #0b0d12; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; cursor: pointer; }
+    #pull-status { margin: 0; color: #b7bdc9; }
   </style>
 </head>
 <body>
-  <p>กำลังเปิด ERP ที่ 127.0.0.1:3100</p>
+  <main>
+    <p>กำลังเปิด ERP ที่ 127.0.0.1:3100</p>
+    <button id="pull-model" type="button">ดาวน์โหลดโมเดล qwen3:4b</button>
+    <p id="pull-status">การเปิดโปรแกรมไม่ได้ดาวน์โหลดโมเดล</p>
+  </main>
+  <script>
+    document.getElementById("pull-model").addEventListener("click", function () {
+      var status = document.getElementById("pull-status");
+      var bridge = window.go && window.go.main && window.go.main.App;
+      if (!bridge || !bridge.PullLocalModel) {
+        status.textContent = "ปุ่มนี้ใช้ในหน้าต่าง BoomBigNose เท่านั้น คำสั่งคือ boombignose pull-model";
+        return;
+      }
+      status.textContent = "กำลังดาวน์โหลด qwen3:4b";
+      bridge.PullLocalModel().then(function () {
+        status.textContent = "ดาวน์โหลด qwen3:4b แล้ว";
+      }).catch(function () {
+        status.textContent = "ดาวน์โหลดไม่สำเร็จ";
+      });
+    });
+  </script>
 </body>
 </html>
