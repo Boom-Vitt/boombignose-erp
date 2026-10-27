@@ -2,6 +2,7 @@
 # Build dist/bundle for Linux amd64: pinned Node, standalone Next server,
 # and portable Postgres 16.10. Checksums are verified before anything is packed.
 # The Node process is not given the Postgres OpenSSL 1.1 library path.
+# Windows and macOS jobs reuse dist/bundle/erp and add their own Node and Postgres.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$root"

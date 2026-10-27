@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -88,7 +89,7 @@ func ensurePostgres(ctx context.Context, layout Layout, dataDir string, up func(
 		initdb := filepath.Join(binDir, exeName("initdb"))
 		if err := run(Command{
 			Name: initdb,
-			Args: []string{"-D", dataDir, "-U", "boombignose", "--auth-local=trust", "--auth-host=trust", "--locale=C", "--encoding=UTF8"},
+			Args: initdbArgs(runtime.GOOS, dataDir),
 			Env:  env,
 		}); err != nil {
 			return fmt.Errorf("initdb: %w", err)
@@ -102,7 +103,7 @@ func ensurePostgres(ctx context.Context, layout Layout, dataDir string, up func(
 				"-D", dataDir,
 				"-l", filepath.Join(dataDir, "server.log"),
 				"-w",
-				"-o", fmt.Sprintf("-c listen_addresses=127.0.0.1 -c port=%s -c unix_socket_directories=%s", pgPort(), dataDir),
+				"-o", pgStartOptions(runtime.GOOS, dataDir),
 				"start",
 			},
 			Env: env,
@@ -131,13 +132,45 @@ func ensurePostgres(ctx context.Context, layout Layout, dataDir string, up func(
 	return last
 }
 
-func postgresEnv(layout Layout) []string {
-	lib := filepath.Join(filepath.Dir(filepath.Dir(layout.Postgres)), "lib")
-	env := []string{
-		"LD_LIBRARY_PATH=" + lib,
-		"PATH=" + filepath.Dir(layout.Postgres),
+func initdbArgs(goos, dataDir string) []string {
+	args := []string{"-D", dataDir, "-U", "boombignose", "--auth-local=trust", "--auth-host=trust", "--encoding=UTF8"}
+	if goos == "windows" {
+		return append(args, "--no-locale")
 	}
-	for _, key := range []string{"HOME", "LANG", "TMPDIR", "SystemRoot"} {
+	return append(args, "--locale=C")
+}
+
+func pgStartOptions(goos, dataDir string) string {
+	opts := fmt.Sprintf("-c listen_addresses=127.0.0.1 -c port=%s", pgPort())
+	if goos != "windows" {
+		opts += " -c unix_socket_directories=" + dataDir
+	}
+	return opts
+}
+
+func postgresEnv(layout Layout) []string {
+	return postgresEnvFor(runtime.GOOS, layout)
+}
+
+func postgresEnvFor(goos string, layout Layout) []string {
+	root := filepath.Dir(filepath.Dir(layout.Postgres))
+	bin := filepath.Dir(layout.Postgres)
+	lib := filepath.Join(root, "lib")
+	path := bin
+	if goos == "windows" {
+		if systemRoot := os.Getenv("SystemRoot"); systemRoot != "" {
+			path = bin + ";" + filepath.Join(systemRoot, "System32")
+		}
+	}
+	env := []string{"PATH=" + path}
+	switch goos {
+	case "darwin":
+		env = append(env, "DYLD_LIBRARY_PATH="+lib, "DYLD_FALLBACK_LIBRARY_PATH="+lib)
+	case "windows":
+	default:
+		env = append(env, "LD_LIBRARY_PATH="+lib)
+	}
+	for _, key := range []string{"HOME", "LANG", "TMPDIR", "SystemRoot", "USERPROFILE", "APPDATA", "LOCALAPPDATA"} {
 		if value := os.Getenv(key); value != "" {
 			env = append(env, key+"="+value)
 		}

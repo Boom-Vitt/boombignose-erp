@@ -1,6 +1,7 @@
 #!/bin/sh
-# Boot the Linux bundle and require GET http://127.0.0.1:3100/api/health.
-# This uses the harness serve command, not a click of the AppImage.
+# Boot the Linux or macOS bundle and require GET http://127.0.0.1:3100/api/health.
+# This uses the harness serve command, not a click of the AppImage or DMG.
+# Windows uses packaging/windows/smoke-bundle.ps1 (node.exe / postgres.exe).
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$root"
