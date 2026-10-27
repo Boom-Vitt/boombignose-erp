@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,6 +185,26 @@ func TestEnsureSkipsStartWhenListening(t *testing.T) {
 	defer ln.Close()
 	called := false
 	err = Ensure(context.Background(), "", "node", "http://"+ln.Addr().String(), func(string, []string, string) (func() error, func(), error) {
+		called = true
+		return func() error { return nil }, func() {}, nil
+	})
+	if err == nil || called || !strings.Contains(err.Error(), "already in use") || !strings.Contains(err.Error(), ln.Addr().String()) {
+		t.Fatalf("err=%v called=%v", err, called)
+	}
+}
+
+func TestEnsureKeepsAHealthyERP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/health" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	called := false
+	err := Ensure(context.Background(), "", "node", srv.URL, func(string, []string, string) (func() error, func(), error) {
 		called = true
 		return func() error { return nil }, func() {}, nil
 	})

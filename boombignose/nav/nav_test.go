@@ -25,3 +25,16 @@ func TestScript(t *testing.T) {
 		t.Fatalf("quote was not kept inside the script string: %s", got)
 	}
 }
+
+func TestBootFailureStaysOnTheSplash(t *testing.T) {
+	got, err := BootFailure("127.0.0.1:3100 is already in use\n<script>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "location.replace") || strings.Contains(got, "<script>") {
+		t.Fatalf("script = %s", got)
+	}
+	if !strings.Contains(got, "boot-status") || !strings.Contains(got, "เปิด ERP ไม่สำเร็จ") || !strings.Contains(got, "already in use") {
+		t.Fatalf("script = %s", got)
+	}
+}

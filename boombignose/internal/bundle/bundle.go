@@ -455,7 +455,14 @@ func EnsureERP(ctx context.Context, layout Layout, rawURL string, parent []strin
 		return err
 	}
 	if up {
-		return nil
+		ok, err := launch.Ready(ctx, rawURL)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+		return launch.Busy(rawURL)
 	}
 	cmd, err := ERPCommand(layout, rawURL, parent)
 	if err != nil {

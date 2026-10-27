@@ -22,3 +22,13 @@ func Script(target string) (string, error) {
 	}
 	return "window.location.replace(" + string(quoted) + ")", nil
 }
+
+// BootFailure returns a script that writes message onto the splash and does
+// not navigate. The message is JSON-encoded so it cannot close the script.
+func BootFailure(message string) (string, error) {
+	quoted, err := json.Marshal(message)
+	if err != nil {
+		return "", err
+	}
+	return `var el=document.getElementById("boot-status"); if(el){el.textContent="เปิด ERP ไม่สำเร็จ "+` + string(quoted) + `;}`, nil
+}
