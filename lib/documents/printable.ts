@@ -1,5 +1,6 @@
 import { withBuddhistEra } from "@/lib/dates"
 import { formatTHB, type Satang } from "@/lib/money"
+import { bahtFromSatang, promptPayPayload, promptPaySvg } from "@/lib/payments/promptpay"
 import { interleave, type ServerSection } from "@/lib/line-grid/grid"
 
 /**
@@ -71,6 +72,14 @@ function fmtQty(quantity: number): string {
 
 function displayDate(value: string | null | undefined): string | null | undefined {
   return value ? withBuddhistEra(value) : value
+}
+
+function promptPayBlock(doc: PrintableDocument): string {
+  if (doc.kind !== "Invoice" && doc.kind !== "Tax Invoice / ใบกำกับภาษี") return ""
+  const amount = bahtFromSatang(doc.amountDueSatang ?? doc.totalSatang)
+  const payload = amount && doc.sellerTaxId ? promptPayPayload({ taxId: doc.sellerTaxId }, amount) : null
+  if (!payload) return ""
+  return `<figure class="promptpay">${promptPaySvg(payload)}<figcaption>PromptPay QR สร้างบนเครื่องนี้ จากเลขผู้เสียภาษีและยอดที่ต้องชำระ ไม่ใช่การยืนยันจากธนาคารและไม่ใช่ใบเสร็จ / Generated on this computer from the seller tax ID and amount due. Not a bank confirmation and not a receipt.</figcaption></figure>`
 }
 
 function metaRow(label: string, value: string | null | undefined): string {
@@ -192,6 +201,8 @@ export function renderDocumentHtml(doc: PrintableDocument): string {
     </div>
 
     ${notesBlock}
+
+    ${promptPayBlock(doc)}
 
     <footer>เอกสารเพื่อการดำเนินงาน · Operational document, not a legal tax invoice. VAT and withholding treatment require accountant review.</footer>
   </div>

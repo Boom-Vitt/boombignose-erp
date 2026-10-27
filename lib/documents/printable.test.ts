@@ -43,6 +43,7 @@ describe("renderDocumentHtml", () => {
     expect(html).toContain("Acme Co")
     expect(html).toContain("Design")
     expect(html).toContain("Discount")
+    expect(html).not.toContain("<svg ")
   })
 
   it("escapes untrusted field values", () => {
@@ -57,6 +58,19 @@ describe("renderDocumentHtml", () => {
   it("shows a zero discount consistently with the totals block", () => {
     const html = renderDocumentHtml({ ...doc, discountSatang: 0 })
     expect(html).toContain("Discount")
+  })
+
+  it("adds a local PromptPay QR when an invoice has a 13-digit seller tax ID and an amount due", () => {
+    const html = renderDocumentHtml({
+      ...doc,
+      kind: "Tax Invoice / ใบกำกับภาษี",
+      sellerTaxId: "1234567890123",
+      amountDueSatang: 104000,
+    })
+    expect(html).toContain("<svg ")
+    expect(html).toContain("สร้างบนเครื่องนี้")
+    expect(html).toContain("Not a bank confirmation")
+    expect(html).not.toContain("000201010212")
   })
 
   it("prints section and note rows between the priced lines, escaped and without amounts", () => {
