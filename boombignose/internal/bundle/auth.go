@@ -42,8 +42,10 @@ func EnsureAuth(ctx context.Context, layout Layout, dataDir string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := queryPostgres(ctx, pgAddr(), "boombignose", "boombignose", "create extension if not exists pgcrypto; create schema if not exists auth"); err != nil {
-		return fmt.Errorf("auth schema: %w", err)
+	for _, stmt := range authBootstrapSQL() {
+		if _, err := queryPostgres(ctx, pgAddr(), "boombignose", "boombignose", stmt); err != nil {
+			return fmt.Errorf("auth bootstrap: %w", err)
+		}
 	}
 	if err := startAuthServer(ctx, layout, dataDir, keys.secret); err != nil {
 		return err
@@ -115,6 +117,16 @@ func mintRoleJWT(secret, role string) (string, error) {
 	mac.Write([]byte(header + "." + body))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return header + "." + body + "." + sig, nil
+}
+
+// authBootstrapSQL prepares a cluster whose only superuser is boombignose.
+// Auth migrations grant to the role named postgres, which initdb does not create.
+func authBootstrapSQL() []string {
+	return []string{
+		"create extension if not exists pgcrypto",
+		"create schema if not exists auth",
+		"do $$ begin create role postgres nologin; exception when duplicate_object then null; end $$",
+	}
 }
 
 func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string) error {

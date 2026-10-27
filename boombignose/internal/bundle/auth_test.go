@@ -11,6 +11,19 @@ import (
 	"testing"
 )
 
+func TestAuthBootstrapCreatesThePostgresRole(t *testing.T) {
+	sql := strings.Join(authBootstrapSQL(), "\n")
+	if !strings.Contains(sql, "create extension if not exists pgcrypto") {
+		t.Fatal("pgcrypto missing")
+	}
+	if !strings.Contains(sql, "create schema if not exists auth") {
+		t.Fatal("auth schema missing")
+	}
+	if !strings.Contains(sql, "create role postgres nologin") {
+		t.Fatal("postgres role missing")
+	}
+}
+
 func TestMintRoleJWTSignsTheRole(t *testing.T) {
 	token, err := mintRoleJWT("test-secret", "anon")
 	if err != nil {
