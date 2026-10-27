@@ -11,7 +11,7 @@ import (
 // window to the BoomBigNose shell. Both windows use port 3100, so only one may listen.
 func Plan() string {
 	lines := []string{
-		"BoomBigNose cutover plan (no data is read or written)",
+		"BoomBigNose ERP Harness AI cutover plan (no data is read or written)",
 		"1. Stop the program that is already listening on 127.0.0.1:3100, including BigNose OS.",
 		"2. Keep the existing local database. Do not export, reset, or restore it for this switch.",
 		"3. Start the ERP on http://127.0.0.1:3100.",

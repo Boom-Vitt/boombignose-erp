@@ -1,4 +1,4 @@
-# Cutover to the BoomBigNose shell
+# Cutover to the BoomBigNose ERP Harness AI shell
 
 `boombignose cutover` prints this plan. It does not connect to Postgres, and it does not read or write rows.
 

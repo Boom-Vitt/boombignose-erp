@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 48" role="img" aria-labelledby="logoTitle">
+  <title id="logoTitle">BoomBigNose</title>
+  <rect width="48" height="48" rx="12" fill="#12151C"/>
+  <path fill="#FF7A45" d="M12 36 L24 12 L36 36 H30.2 L24 23.2 L17.8 36 Z"/>
+  <text x="60" y="32" fill="#0B0D12" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="22" font-weight="700">BoomBigNose</text>
+</svg>

@@ -39,6 +39,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-bbn-accent: var(--bbn-accent);
+  --color-bbn-ink: var(--bbn-ink);
+  --color-bbn-paper: var(--bbn-paper);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -81,6 +84,9 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --bbn-accent: #ff7a45;
+  --bbn-ink: #e8eaf0;
+  --bbn-paper: #0b0d12;
 }
 
 .dark {
