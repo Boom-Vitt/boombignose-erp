@@ -42,8 +42,8 @@ cat > "$app/Info.plist" << 'EOF'
   <key>CFBundleIdentifier</key><string>ai.boombignose.harness</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.3.1</string>
-  <key>CFBundleVersion</key><string>0.3.1</string>
+  <key>CFBundleShortVersionString</key><string>1.0.0</string>
+  <key>CFBundleVersion</key><string>1.0.0</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
@@ -64,12 +64,25 @@ chmod 755 \
   "$stage/bundle/postgrest/postgrest" \
   "$stage/bundle/ollama/ollama"
 dmg=$root/dist/BoomBigNose-macos-arm64.dmg
-hdiutil create \
-  -volname "BoomBigNose" \
-  -srcfolder "$stage" \
-  -ov \
-  -format UDZO \
-  "$dmg"
+attempt=1
+while [ "$attempt" -le 3 ]; do
+  if hdiutil create \
+    -volname "BoomBigNose" \
+    -srcfolder "$stage" \
+    -ov \
+    -format UDZO \
+    "$dmg"
+  then
+    break
+  fi
+  echo "hdiutil create failed on attempt $attempt" >&2
+  hdiutil detach "/Volumes/BoomBigNose" >/dev/null 2>&1 || true
+  if [ "$attempt" -eq 3 ]; then
+    exit 1
+  fi
+  sleep $((attempt * 5))
+  attempt=$((attempt + 1))
+done
 set +e
 attach=$(hdiutil attach -nobrowse -readonly "$dmg" 2>&1)
 attach_status=$?
