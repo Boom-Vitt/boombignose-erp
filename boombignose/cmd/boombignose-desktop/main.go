@@ -54,6 +54,9 @@ func run() error {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
+		Bind: []interface{}{
+			&App{},
+		},
 		OnDomReady: func(ctx context.Context) {
 			go func() {
 				wait, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -69,6 +72,34 @@ func run() error {
 			bundle.StopRunning()
 		},
 	})
+}
+
+// App exposes the explicit model download. Startup does not call it.
+type App struct{}
+
+// PullLocalModel runs `ollama pull qwen3:4b` on loopback. The splash button
+// is the only caller. A cloud host is refused and is not included in the error.
+func (a *App) PullLocalModel() error {
+	if err := policy.CheckEnv(os.Getenv); err != nil {
+		return err
+	}
+	root := os.Getenv("BOOMBIGNOSE_BUNDLE")
+	if root == "" {
+		if exe, err := os.Executable(); err == nil {
+			root = filepath.Join(filepath.Dir(exe), "bundle")
+		}
+	}
+	layout := bundle.Layout{}
+	if bundle.Valid(root) {
+		found, err := bundle.Discover(root)
+		if err != nil {
+			return err
+		}
+		layout = found
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	defer cancel()
+	return bundle.PullModel(ctx, layout, os.Getenv("OLLAMA_HOST"), os.Environ())
 }
 
 func startLocal(ctx context.Context, target string) error {

@@ -64,6 +64,26 @@ func TestRunServeRequiresBundle(t *testing.T) {
 	}
 }
 
+func TestRunPullModelWithoutBinary(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("RESEND_API_KEY", "")
+	t.Setenv("NEXT_PUBLIC_SUPABASE_URL", "")
+	t.Setenv("N8N_OUTBOUND_URL", "")
+	t.Setenv("OLLAMA_HOST", "")
+	t.Setenv("BOOMBIGNOSE_ERP_URL", "")
+	t.Setenv("BOOMBIGNOSE_BUNDLE", "")
+	t.Setenv("PATH", t.TempDir())
+	err := run([]string{"pull-model"})
+	if err == nil {
+		t.Fatal("missing ollama must fail")
+	}
+	if strings.Contains(err.Error(), "http://") || strings.Contains(err.Error(), "sk-") {
+		t.Fatalf("error leaked a remote value: %v", err)
+	}
+}
+
 func TestRunStopOnEmptyData(t *testing.T) {
 	t.Setenv("BOOMBIGNOSE_BUNDLE", "")
 	t.Setenv("BOOMBIGNOSE_DATA", t.TempDir())

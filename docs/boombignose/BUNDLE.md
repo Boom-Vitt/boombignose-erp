@@ -44,18 +44,26 @@ Auth migrates its own schema before `prelude-after-auth.sql` and the ERP migrati
 
 ## Ollama
 
-An optional binary is `bundle/ollama/ollama` (`ollama.exe` on Windows). If that file is missing, the window looks up `ollama` on `PATH`. If neither exists, startup continues. None of the platform bundles include Ollama.
+The platform bundles pack Ollama v0.40.11. The archive checksum is checked before staging. The MIT license is `packaging/ollama/OLLAMA_LICENSE.txt`, SHA-256 `5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226`, and it is copied to `bundle/ollama/OLLAMA_LICENSE.txt`.
 
-When a binary exists and nothing is listening on `127.0.0.1:11434`, the window runs `ollama serve` with `OLLAMA_HOST=127.0.0.1:11434`. A remote host is refused. The window does not download a model.
+Linux uses `ollama-linux-amd64.tar.zst`, SHA-256 `7bedab90dd122661be78798e9f0edf37fccf0cccf2699d2c58ea1a3afdc04b6d`. The binary is `bundle/ollama/bin/ollama`, with CPU and Vulkan runners in `bundle/ollama/lib/ollama`. Windows uses `ollama-windows-amd64.zip`, SHA-256 `bda4a493ba8a7c24d57263cd843cd68cee84f44aed4299eeed532acad7eda12a`. The binary is `bundle/ollama/ollama.exe`. macOS uses the universal `ollama-darwin.tgz`, SHA-256 `aea7d3f2e32371b7644a6e2ec8d4f26820a0e3965918cce8a46cef3e947f6291`. The binary is `bundle/ollama/ollama`, and the Metal runners stay beside it. `ollama --version` in the assemble script must print `0.40.11`. That check does not pull a model.
 
-The documented pull, which an operator runs by hand, is:
+`cuda_v12` and `cuda_v13` are not copied from the Linux or Windows archives. Together they are about 2.3 GB uncompressed. NSIS compression is off, and a GitHub release asset has to stay under 2 GiB. The macOS archive has no CUDA directory, so it is packed in full. CPU inference of `qwen3:4b` uses the runners that remain. A machine that needs CUDA can install upstream Ollama separately; this bundle does not include those runners.
+
+If `bundle/ollama/ollama` or `bundle/ollama/bin/ollama` is missing (`ollama.exe` on Windows), the window looks up `ollama` on `PATH`. If neither exists, startup continues.
+
+When a binary exists and nothing is listening on `127.0.0.1:11434`, the window runs `ollama serve` with `OLLAMA_HOST=127.0.0.1:11434`. A remote host is refused. Startup does not download a model. `boombignose serve` does not start Ollama.
+
+The model download is a separate action. The splash has a button labeled “ดาวน์โหลดโมเดล qwen3:4b”. Nothing clicks it. The command is:
 
 ```sh
-ollama pull qwen3:4b
+boombignose pull-model
 ```
+
+That runs `ollama pull qwen3:4b` with `OLLAMA_HOST=127.0.0.1:11434`. The child environment does not receive cloud keys. The pull contacts the Ollama model registry to fetch the weights. Chat still goes to loopback. The startup process list refuses `pull`. CI does not run the pull.
 
 ## What is in which installer
 
-The Linux tar.gz lists `bundle/node`, `bundle/erp/server.js`, and `bundle/postgres/bin/postgres`. The AppImage copies the same tree to `usr/bin/bundle`. The NSIS script copies `bundle\` beside `BoomBigNose.exe` and a silent install checks those files. The DMG copies `bundle` beside `BoomBigNose` and the mount check looks for the same three paths. NSIS compression is off because the tree is large.
+The Linux tar.gz lists `bundle/node`, `bundle/erp/server.js`, `bundle/postgres/bin/postgres`, `bundle/auth/auth`, `bundle/postgrest/postgrest`, and `bundle/ollama/bin/ollama`. The AppImage copies the same tree to `usr/bin/bundle`. The NSIS script copies `bundle\` beside `BoomBigNose.exe`. A silent install checks those files, including `bundle\ollama\ollama.exe`, then the smoke boots that installed directory. The DMG copies `bundle` beside `BoomBigNose`. The mount check looks for `bundle/ollama/ollama`, then the smoke boots the mounted bundle. NSIS compression is off. The Linux installer job also smokes the extracted tar.gz and the extracted AppImage. Those smokes are `health`, sign-up, and sign-in. They do not pull `qwen3:4b`. A green run of that installer smoke is not recorded in this paragraph until CI finishes.
 
-Tag `boombignose-v0.2.0` is the older window-only release. Tag `boombignose-v0.2.1` is the current download. Workflow run 40537854881 packed Node, `server.js`, and portable Postgres into those installers and required `/api/health` before upload. It did not pack Auth, PostgREST, or Ollama. The sign-in smoke above is the pull-request run, not the published v0.2.1 artifacts. v0.3.0 is not cut. The download page still points at v0.2.1. Ollama is not in the bundle. The launcher was checked with `go test`. The smokes are CI processes, not clicks on a physical machine.
+Tag `boombignose-v0.2.0` is the older window-only release. Tag `boombignose-v0.2.1` is the current download. Workflow run 40537854881 packed Node, `server.js`, and portable Postgres into those installers and required `/api/health` before upload. It did not pack Auth, PostgREST, or Ollama. The sign-in smoke above is the pull-request run, not the published v0.2.1 artifacts. v0.3.0 is not cut. The download page still points at v0.2.1. The launcher was checked with `go test`. The smokes are CI processes, not clicks on a physical machine.

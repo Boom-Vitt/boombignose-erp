@@ -30,7 +30,7 @@ jobs:
   windows-bundle:
     needs: linux-bundle
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
@@ -83,6 +83,7 @@ jobs:
   windows:
     needs: [test, windows-bundle]
     runs-on: windows-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
@@ -114,7 +115,7 @@ jobs:
           robocopy $src $dest /E /NFL /NDL /NJH /NJS /nc /ns /np
           if ($LASTEXITCODE -ge 8) { throw "robocopy exit $LASTEXITCODE" }
           $global:LASTEXITCODE = 0
-          foreach ($rel in @("node.exe", "erp\server.js", "postgres\bin\postgres.exe", "erp\.next\static")) {
+          foreach ($rel in @("node.exe", "erp\server.js", "postgres\bin\postgres.exe", "erp\.next\static", "auth\auth.exe", "postgrest\postgrest.exe", "ollama\ollama.exe", "ollama\OLLAMA_LICENSE.txt")) {
             if (-not (Test-Path -LiteralPath (Join-Path $dest $rel))) { throw "missing $rel" }
           }
       - name: Build Windows window
@@ -154,10 +155,17 @@ jobs:
             "bundle\postgres\bin\postgres.exe",
             "bundle\erp\.next\static",
             "bundle\auth\auth.exe",
-            "bundle\postgrest\postgrest.exe"
+            "bundle\postgrest\postgrest.exe",
+            "bundle\ollama\ollama.exe",
+            "bundle\ollama\OLLAMA_LICENSE.txt"
           )) {
             if (-not (Test-Path -LiteralPath (Join-Path $dest $rel))) { throw "installer missing $rel" }
           }
+          foreach ($cuda in @("cuda_v12", "cuda_v13")) {
+            if (Test-Path -LiteralPath (Join-Path $dest "bundle\ollama\lib\ollama\$cuda")) { throw "cuda runner was packed" }
+          }
+          $env:BOOMBIGNOSE_SMOKE_BUNDLE = Join-Path $dest "bundle"
+          & "$env:GITHUB_WORKSPACE\packaging\windows\smoke-bundle.ps1"
           $uninstalled = Start-Process -FilePath (Join-Path $dest "uninstall.exe") -ArgumentList "/S" -Wait -PassThru
           if ($uninstalled.ExitCode -ne 0) { throw "uninstall exit $($uninstalled.ExitCode)" }
           if (Test-Path -LiteralPath (Join-Path $dest "bundle")) { throw "uninstall left bundle" }
@@ -170,7 +178,7 @@ jobs:
   macos-bundle:
     needs: linux-bundle
     runs-on: macos-14
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
@@ -212,6 +220,7 @@ jobs:
 
   macos:
     needs: [test, macos-bundle]
+    timeout-minutes: 120
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v5
@@ -239,7 +248,7 @@ jobs:
           rm -rf dist/bundle
           mkdir -p dist
           cp -a "$src" dist/bundle
-          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl
+          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl dist/bundle/auth/auth dist/bundle/postgrest/postgrest dist/bundle/ollama/ollama
           test -s dist/bundle/erp/server.js
           test -d dist/bundle/erp/.next/static
       - name: Build arm64 window
@@ -260,14 +269,17 @@ jobs:
 
   linux-bundle:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.3"
       - name: Assemble portable Linux bundle
-        run: sh packaging/linux/assemble-bundle.sh
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd
+          sh packaging/linux/assemble-bundle.sh
       - name: Smoke the bundled ERP
         run: sh packaging/linux/smoke-bundle.sh
       - uses: actions/upload-artifact@v4
@@ -296,6 +308,7 @@ jobs:
   linux:
     needs: [test, linux-bundle]
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
@@ -321,7 +334,7 @@ jobs:
           fi
           rm -rf dist/bundle
           cp -a "$src" dist/bundle
-          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl
+          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl dist/bundle/auth/auth dist/bundle/postgrest/postgrest dist/bundle/ollama/bin/ollama
           test -s dist/bundle/erp/server.js
           test -d dist/bundle/erp/.next/static
           test -x dist/bundle/postgres/bin/postgres
@@ -338,10 +351,26 @@ jobs:
           test -s ../dist/boombignose-desktop
           cp ../dist/boombignose-desktop ../dist/stage/BoomBigNose
           cp -a ../dist/bundle ../dist/stage/bundle
+          test -x ../dist/bundle/ollama/bin/ollama || { echo "dist/bundle has no ollama binary"; ls -la ../dist/bundle/ollama || true; exit 1; }
           tar -C ../dist/stage -czf ../dist/BoomBigNose-linux-amd64.tar.gz BoomBigNose bundle
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/node'
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/erp/server.js'
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/postgres/bin/postgres'
+          list=$(mktemp)
+          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz > "$list"
+          for rel in bundle/node bundle/erp/server.js bundle/postgres/bin/postgres bundle/auth/auth bundle/postgrest/postgrest bundle/ollama/bin/ollama bundle/ollama/OLLAMA_LICENSE.txt; do
+            if ! grep -qx "$rel" "$list"; then
+              echo "tar missing $rel" >&2
+              grep ollama "$list" | head >&2 || true
+              exit 1
+            fi
+          done
+          if grep -q 'bundle/ollama/lib/ollama/cuda_' "$list"; then
+            echo "cuda runner was packed" >&2
+            exit 1
+          fi
+          rm -f "$list"
+          tar_root=$(mktemp -d)
+          tar -xzf ../dist/BoomBigNose-linux-amd64.tar.gz -C "$tar_root"
+          BOOMBIGNOSE_SMOKE_BUNDLE="$tar_root/bundle" sh ../packaging/linux/smoke-bundle.sh
+          rm -rf "$tar_root"
           sh ../packaging/linux/make-appimage.sh
           extract=$(mktemp -d)
           appimage="$PWD/../dist/BoomBigNose-linux-amd64.AppImage"
@@ -349,6 +378,13 @@ jobs:
           test -s "$extract/squashfs-root/usr/bin/bundle/node"
           test -s "$extract/squashfs-root/usr/bin/bundle/erp/server.js"
           test -s "$extract/squashfs-root/usr/bin/bundle/postgres/bin/postgres"
+          test -s "$extract/squashfs-root/usr/bin/bundle/auth/auth"
+          test -s "$extract/squashfs-root/usr/bin/bundle/postgrest/postgrest"
+          test -s "$extract/squashfs-root/usr/bin/bundle/ollama/bin/ollama"
+          test -s "$extract/squashfs-root/usr/bin/bundle/ollama/OLLAMA_LICENSE.txt"
+          b="$extract/squashfs-root/usr/bin/bundle"
+          chmod 755 "$b/node" "$b/postgres/bin/initdb" "$b/postgres/bin/pg_ctl" "$b/postgres/bin/postgres" "$b/auth/auth" "$b/postgrest/postgrest" "$b/ollama/bin/ollama"
+          BOOMBIGNOSE_SMOKE_BUNDLE="$b" sh ../packaging/linux/smoke-bundle.sh
           rm -rf "$extract"
       - uses: actions/upload-artifact@v4
         with:

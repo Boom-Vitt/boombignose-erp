@@ -5,14 +5,37 @@
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$root"
-test -x dist/bundle/node
-test -s dist/bundle/erp/server.js
-test -x dist/bundle/postgres/bin/postgres
-test -s dist/bundle/postgres/prelude.sql
-test -s dist/bundle/postgres/prelude-after-auth.sql
-test -x dist/bundle/auth/auth
-test -d dist/bundle/auth/migrations
-test -x dist/bundle/postgrest/postgrest
+bundle=${BOOMBIGNOSE_SMOKE_BUNDLE:-$root/dist/bundle}
+need_exec() {
+  if [ ! -x "$1" ]; then
+    echo "not executable: $1" >&2
+    ls -l "$1" >&2 || true
+    exit 1
+  fi
+}
+need_exec "$bundle/node"
+test -s "$bundle/erp/server.js"
+need_exec "$bundle/postgres/bin/postgres"
+test -s "$bundle/postgres/prelude.sql"
+test -s "$bundle/postgres/prelude-after-auth.sql"
+need_exec "$bundle/auth/auth"
+test -d "$bundle/auth/migrations"
+need_exec "$bundle/postgrest/postgrest"
+if [ -x "$bundle/ollama/ollama" ]; then
+  ollama_bin=$bundle/ollama/ollama
+elif [ -x "$bundle/ollama/bin/ollama" ]; then
+  ollama_bin=$bundle/ollama/bin/ollama
+else
+  echo "ollama binary missing in $bundle" >&2
+  ls -l "$bundle/ollama" "$bundle/ollama/bin" >&2 || true
+  exit 1
+fi
+test -s "$bundle/ollama/OLLAMA_LICENSE.txt"
+if [ -d "$bundle/ollama/lib/ollama/cuda_v12" ] || [ -d "$bundle/ollama/lib/ollama/cuda_v13" ]; then
+  echo "cuda runner was packed" >&2
+  exit 1
+fi
+# This smoke does not run `ollama pull` or `boombignose pull-model`.
 
 python3 - << 'PY'
 import socket, sys
@@ -26,40 +49,36 @@ sys.stderr.write("127.0.0.1:3100 is already in use\n")
 sys.exit(1)
 PY
 
+# Connect, do not bind. A port in TIME_WAIT after the previous smoke still
+# refuses bind, and this job smokes the tarball and then the AppImage.
+port_busy() {
+  python3 - "$1" << 'PY'
+import socket, sys
+port = int(sys.argv[1])
+s = socket.socket()
+s.settimeout(0.3)
+try:
+    s.connect(("127.0.0.1", port))
+except OSError:
+    sys.exit(0)
+finally:
+    s.close()
+sys.stderr.write("127.0.0.1:%s is already in use\n" % port)
+sys.exit(1)
+PY
+}
 pg_port=54329
 for extra in 54321 54323 54324; do
-  python3 - "$extra" << 'PY'
-import socket, sys
-port = int(sys.argv[1])
-s = socket.socket()
-try:
-    s.bind(("127.0.0.1", port))
-except OSError:
-    sys.stderr.write("127.0.0.1:%s is already in use\n" % port)
-    sys.exit(1)
-finally:
-    s.close()
-PY
+  port_busy "$extra"
 done
-python3 - "$pg_port" << 'PY'
-import socket, sys
-port = int(sys.argv[1])
-s = socket.socket()
-try:
-    s.bind(("127.0.0.1", port))
-except OSError:
-    sys.stderr.write("127.0.0.1:%s is already in use\n" % port)
-    sys.exit(1)
-finally:
-    s.close()
-PY
+port_busy "$pg_port"
 
 data=$(mktemp -d)
 pgdata=$data/pg
 mkdir -p "$pgdata"
 trap 'rm -rf "$data"' EXIT
 unset OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY RESEND_API_KEY OPENROUTER_MODEL || true
-export BOOMBIGNOSE_BUNDLE="$root/dist/bundle"
+export BOOMBIGNOSE_BUNDLE="$bundle"
 export BOOMBIGNOSE_DATA="$pgdata"
 export BOOMBIGNOSE_PG_PORT="$pg_port"
 export BOOMBIGNOSE_ERP_URL="http://127.0.0.1:3100"
@@ -102,6 +121,10 @@ if [ "$ok" != 1 ]; then
 fi
 test -s "$pgdata/PG_VERSION"
 echo "health ok"
+if grep -F "pull qwen3" "$data/serve.log"; then
+  echo "serve pulled a model" >&2
+  exit 1
+fi
 anon=$(tr -d '\n\r' < "$pgdata/anon.key")
 email="smoke-$(date +%s)@example.com"
 dump_auth() {
