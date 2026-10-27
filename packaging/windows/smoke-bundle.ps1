@@ -1,0 +1,149 @@
+# Boot the Windows bundle and require GET http://127.0.0.1:3100/api/health.
+# This uses the harness serve command, not a click of the installer.
+$ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
+
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+Set-Location $root
+
+$bundle = Join-Path $root "dist\bundle"
+foreach ($rel in @(
+  "node.exe",
+  "erp\server.js",
+  "postgres\bin\postgres.exe",
+  "postgres\prelude.sql"
+)) {
+  $path = Join-Path $bundle $rel
+  if (-not (Test-Path -LiteralPath $path)) {
+    throw "missing $path"
+  }
+}
+
+function Assert-PortFree([int]$Port) {
+  $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+  try {
+    $listener.Start()
+  } catch {
+    throw "127.0.0.1:${Port} is already in use"
+  } finally {
+    $listener.Stop()
+  }
+}
+
+function Test-PortClosed([int]$Port) {
+  $client = [System.Net.Sockets.TcpClient]::new()
+  try {
+    $iar = $client.BeginConnect("127.0.0.1", $Port, $null, $null)
+    $ok = $iar.AsyncWaitHandle.WaitOne(200)
+    if (-not $ok) { return $true }
+    $client.EndConnect($iar)
+    return $false
+  } catch {
+    return $true
+  } finally {
+    $client.Close()
+  }
+}
+
+Assert-PortFree 3100
+$pgPort = 54329
+Assert-PortFree $pgPort
+
+$data = Join-Path "C:\" ("bbn-smoke-" + [guid]::NewGuid().ToString("n"))
+if ($data -match " ") { throw "data path contains a space: $data" }
+$pgdata = Join-Path $data "pg"
+New-Item -ItemType Directory -Force -Path $pgdata | Out-Null
+
+foreach ($name in @(
+  "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+  "RESEND_API_KEY", "OPENROUTER_MODEL", "LD_LIBRARY_PATH"
+)) {
+  Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+}
+$env:BOOMBIGNOSE_BUNDLE = $bundle
+$env:BOOMBIGNOSE_DATA = $pgdata
+$env:BOOMBIGNOSE_PG_PORT = "$pgPort"
+$env:BOOMBIGNOSE_ERP_URL = "http://127.0.0.1:3100"
+if (-not $env:NEXT_PUBLIC_SUPABASE_URL) {
+  $env:NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321"
+}
+if (-not $env:NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  $env:NEXT_PUBLIC_SUPABASE_ANON_KEY = "local-anon-not-a-secret"
+}
+
+$exe = Join-Path $data "boombignose.exe"
+Push-Location (Join-Path $root "boombignose")
+try {
+  go build -o $exe ./cmd/boombignose
+} finally {
+  Pop-Location
+}
+
+$stdout = Join-Path $data "serve.log"
+$stderr = Join-Path $data "serve.err"
+$proc = Start-Process -FilePath $exe -ArgumentList "serve" -WorkingDirectory $data `
+  -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
+
+function Show-Logs {
+  foreach ($log in @($stdout, $stderr)) {
+    if (Test-Path -LiteralPath $log) {
+      Write-Host "----- $log -----"
+      Get-Content -LiteralPath $log -ErrorAction SilentlyContinue
+    }
+  }
+}
+
+try {
+  $ok = $false
+  for ($i = 0; $i -lt 150; $i++) {
+    if ($proc.HasExited) {
+      Show-Logs
+      throw "serve exited before the health check"
+    }
+    try {
+      $resp = Invoke-WebRequest -Uri "http://127.0.0.1:3100/api/health" -UseBasicParsing -TimeoutSec 2
+      if ($resp.Content -match '"ok"\s*:\s*true') {
+        $ok = $true
+        break
+      }
+    } catch {
+    }
+    Start-Sleep -Seconds 2
+  }
+  if (-not $ok) {
+    Show-Logs
+    throw "health check failed"
+  }
+  if (-not (Test-Path -LiteralPath (Join-Path $pgdata "PG_VERSION"))) {
+    Show-Logs
+    throw "PG_VERSION missing"
+  }
+  Write-Host "health ok"
+
+  $PSNativeCommandUseErrorActionPreference = $false
+  & $exe stop
+  $stopCode = $LASTEXITCODE
+  $PSNativeCommandUseErrorActionPreference = $true
+  if ($stopCode -ne 0) {
+    Write-Host "boombignose stop exit $stopCode"
+  }
+  $closed = $false
+  for ($i = 0; $i -lt 30; $i++) {
+    if (Test-PortClosed $pgPort) {
+      $closed = $true
+      break
+    }
+    Start-Sleep -Seconds 1
+  }
+  if (-not $closed) {
+    Show-Logs
+    throw "postgres stayed up on 127.0.0.1:$pgPort"
+  }
+  Write-Host "postgres stopped"
+} finally {
+  if ($proc -and -not $proc.HasExited) {
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    $proc.WaitForExit(15000) | Out-Null
+  }
+  Remove-Item -LiteralPath $data -Recurse -Force -ErrorAction SilentlyContinue
+}

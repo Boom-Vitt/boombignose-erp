@@ -53,6 +53,15 @@ func TestEnsurePostgresInitsAndAppliesOnce(t *testing.T) {
 	if !strings.Contains(cmds[1], "listen_addresses=127.0.0.1") || !strings.Contains(cmds[1], "start") {
 		t.Fatalf("start = %s", cmds[1])
 	}
+	if runtime.GOOS != "windows" && !strings.Contains(cmds[1], "unix_socket_directories=") {
+		t.Fatalf("unix socket missing: %s", cmds[1])
+	}
+	if runtime.GOOS == "windows" && !strings.Contains(cmds[0], "--no-locale") {
+		t.Fatalf("windows initdb: %s", cmds[0])
+	}
+	if runtime.GOOS != "windows" && !strings.Contains(cmds[0], "--locale=C") {
+		t.Fatalf("unix initdb: %s", cmds[0])
+	}
 	if err := ensurePostgres(ctx, layout, data, func() bool { return true }, func(Command) error {
 		t.Fatal("second launch must not init or start")
 		return nil
@@ -109,6 +118,47 @@ func TestEnsurePostgresReportsMissingOrganizations(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "organizations") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPostgresLaunchOptionsByPlatform(t *testing.T) {
+	win := pgStartOptions("windows", `C:\bbn\pg`)
+	if strings.Contains(win, "unix_socket") {
+		t.Fatalf("windows options: %s", win)
+	}
+	if !strings.Contains(win, "listen_addresses=127.0.0.1") {
+		t.Fatalf("windows options: %s", win)
+	}
+	unix := pgStartOptions("linux", "/tmp/bbnpg")
+	if !strings.Contains(unix, "unix_socket_directories=/tmp/bbnpg") {
+		t.Fatalf("linux options: %s", unix)
+	}
+	if !strings.Contains(strings.Join(initdbArgs("windows", `C:\bbn\pg`), " "), "--no-locale") {
+		t.Fatal("windows initdb")
+	}
+	if !strings.Contains(strings.Join(initdbArgs("darwin", "/tmp/bbnpg"), " "), "--locale=C") {
+		t.Fatal("darwin initdb")
+	}
+	layout := Layout{Postgres: filepath.Join("bundle", "postgres", "bin", exeName("postgres"))}
+	has := func(env, key string) bool {
+		for _, line := range strings.Split(env, "\n") {
+			if strings.HasPrefix(line, key+"=") {
+				return true
+			}
+		}
+		return false
+	}
+	darwin := strings.Join(postgresEnvFor("darwin", layout), "\n")
+	if !has(darwin, "DYLD_LIBRARY_PATH") || has(darwin, "LD_LIBRARY_PATH") {
+		t.Fatalf("darwin env: %s", darwin)
+	}
+	linux := strings.Join(postgresEnvFor("linux", layout), "\n")
+	if !has(linux, "LD_LIBRARY_PATH") || has(linux, "DYLD_LIBRARY_PATH") {
+		t.Fatalf("linux env: %s", linux)
+	}
+	windows := strings.Join(postgresEnvFor("windows", layout), "\n")
+	if has(windows, "LD_LIBRARY_PATH") || has(windows, "DYLD_LIBRARY_PATH") {
+		t.Fatalf("windows env: %s", windows)
 	}
 }
 
