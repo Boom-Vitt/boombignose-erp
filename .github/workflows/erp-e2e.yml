@@ -1,0 +1,62 @@
+# Browser test of the unseeded local stack. A green run is this job's
+# Chromium script, not a physical click-through of the desktop installers.
+name: ERP core flows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: erp-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-flows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.4 --activate
+          pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Prepare an isolated stack
+        run: node scripts/worktree-env.mjs 1
+      - name: Start the local stack without seed data
+        run: |
+          supabase start --workdir .local-stack --exclude studio,imgproxy,edge-runtime,logflare,vector,supavisor,realtime,storage-api
+          supabase db reset --local --no-seed --yes --workdir .local-stack
+          node scripts/e2e-env.mjs
+      - name: Build the app
+        run: pnpm build
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run core flows
+        env:
+          ERP_E2E_CORE: "1"
+          OLLAMA_HOST: 127.0.0.1:1
+        run: pnpm exec playwright test e2e/core-flows.spec.ts
+      - name: Upload the failure trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: erp-e2e-trace
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
+      - name: Stop the local stack
+        if: always()
+        run: supabase stop --workdir .local-stack || true

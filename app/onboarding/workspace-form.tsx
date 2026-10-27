@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
+import { unstable_rethrow } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { workspaceProvisionRequest, type WorkspaceProvisionRequest } from "@/lib/supabase/workspace-request"
 import { Button } from "@/components/ui/button"
@@ -27,7 +28,10 @@ export function WorkspaceForm({ userId, action }: {
     try {
       const result = await action(request.current)
       if (result?.error) setError(result.error)
-    } catch {
+    } catch (error) {
+      // createFirstWorkspace redirects to the dashboard. A caught redirect
+      // stays on this form and the new workspace looks like it failed.
+      unstable_rethrow(error)
       setError("Unable to confirm workspace creation. Retry with the same name to continue safely.")
     } finally {
       setPending(false)
