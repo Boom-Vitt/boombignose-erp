@@ -1,6 +1,6 @@
 # Portable bundle
 
-Checked 2026-10-27. Linux CI packs this tree and has smoke-tested it. The Windows and macOS jobs are written to pack the same shape. A green run of those two smokes is not recorded here yet. The published v0.2.0 installers do not contain the tree.
+Checked 2026-10-27. Linux, Windows, and macOS CI pack this shape and smoke-test `/api/health`. Release workflow run [40526064339](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/actions/runs/40526064339) printed `health ok` and `postgres stopped` on all three. The published v0.2.0 installers do not contain the tree.
 
 ## What the window does
 
@@ -36,7 +36,7 @@ The Next.js standalone server is built once, on Linux, and reused. `package.json
 
 On first launch the data directory is `BOOMBIGNOSE_DATA` or `~/.local/share/boombignose/pg` (not inside the AppImage or DMG mount). A path containing a space is refused. `initdb` creates superuser `boombignose` with trust authentication. Unix `initdb` uses `--locale=C`. The launcher then creates database `boombignose`. The server listens on `127.0.0.1` port `54329` (`BOOMBIGNOSE_PG_PORT` overrides it). Each migration in `bundle/postgres/migrations` is applied once, in order, through one simple-query message, then recorded in `public.schema_migrations`. Startup fails if `public.organizations` is missing. A later launch skips files that are already recorded. A run on this machine against the pinned Postgres 16.10 binaries recorded every file in `supabase/migrations`. The cluster was stopped afterward.
 
-`GET /api/health` returns `{"ok":true}` without a database and without a cloud call. The Linux smoke test requires that response from `http://127.0.0.1:3100/api/health`. Release workflow run [40520719762](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/actions/runs/40520719762) printed `health ok` and `postgres stopped`. The Windows smoke is `packaging/windows/smoke-bundle.ps1`. The macOS smoke is the same shell script as Linux. A green run of those two jobs is not recorded here yet. The smoke does not sign in. The Next server in the bundle still expects a loopback Supabase URL for sign-in. GoTrue and PostgREST are not packed. The smoke boots a writable `dist/bundle`. It does not boot the server from a read-only DMG or AppImage mount.
+`GET /api/health` returns `{"ok":true}` without a database and without a cloud call. The Linux smoke test requires that response from `http://127.0.0.1:3100/api/health`. Release workflow run [40520719762](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/actions/runs/40520719762) printed `health ok` and `postgres stopped`. The Windows smoke is `packaging/windows/smoke-bundle.ps1`. The macOS smoke is the same shell script as Linux. Run [40526064339](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/actions/runs/40526064339) printed `health ok` and `postgres stopped` for both. The smoke does not sign in. The Next server in the bundle still expects a loopback Supabase URL for sign-in. GoTrue and PostgREST are not packed. The smoke boots a writable `dist/bundle`. It does not boot the server from a read-only DMG or AppImage mount.
 
 ## Ollama
 
