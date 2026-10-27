@@ -1,4 +1,4 @@
-# Release assets
+# Release assets for BoomBigNose ERP Harness AI
 
 `.github/workflows/boombignose-release.yml` builds installers on GitHub-hosted runners:
 

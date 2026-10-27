@@ -168,6 +168,6 @@ jobs:
               dist/BoomBigNose-macos-arm64.dmg \
               dist/BoomBigNose-linux-amd64.tar.gz \
               dist/SHA256SUMS \
-              --title "BoomBigNose ${tag}" \
+              --title "BoomBigNose ERP Harness AI ${tag}" \
               --notes-file /tmp/boombignose-notes.md
           fi

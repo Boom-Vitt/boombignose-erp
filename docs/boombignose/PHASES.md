@@ -1,4 +1,4 @@
-# Phase status for BoomBigNose
+# Phase status for BoomBigNose ERP Harness AI
 
 Work is in this repository. Nothing here reads or writes a live database.
 

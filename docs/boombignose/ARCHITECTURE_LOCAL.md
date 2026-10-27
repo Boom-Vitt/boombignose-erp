@@ -1,6 +1,6 @@
-# BoomBigNose — local architecture
+# BoomBigNose ERP Harness AI — local architecture
 
-Product name: **BoomBigNose**. The desktop product stays fully local at runtime: data and rules on the machine, and no cloud model call.
+Product name: **BoomBigNose ERP Harness AI**. The short name on the window title, installer, and asset filenames is **BoomBigNose**. The desktop product stays fully local at runtime: data and rules on the machine, and no cloud model call.
 
 ## Milestones
 

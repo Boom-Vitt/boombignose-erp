@@ -1,4 +1,4 @@
-# BoomBigNose
+# BoomBigNose ERP Harness AI
 
 Local gate for the desktop shell. It does not open a window and it does not make network calls.
 
