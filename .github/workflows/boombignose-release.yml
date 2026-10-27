@@ -72,6 +72,15 @@ jobs:
       - name: Test harness
         working-directory: boombignose
         run: go test ./...
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Test ERP flows
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.4 --activate
+          pnpm install --frozen-lockfile
+          pnpm test
 
   windows-bundle:
     needs: linux-bundle
