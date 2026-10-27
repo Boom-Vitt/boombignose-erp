@@ -24,7 +24,7 @@
 	<a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues">Issues</a>
 </div>
 
-หน้าดาวน์โหลดอยู่ที่ [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/) ที่อยู่เดิม [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) เลิกใช้แล้ว และจะไม่ได้รับไฟล์ใหม่ รายการ Release อยู่ที่ [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest)
+หน้าดาวน์โหลดอยู่ที่ [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/) ที่อยู่เดิม [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) เลิกใช้แล้ว และตอบ HTTP 404 หลังดีพลอยชื่อใหม่ รายการ Release อยู่ที่ [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest) แท็ก `boombignose-v0.2.0` คือหน้าต่างเดสก์ท็อป แท็ก `boombignose-v0.1.1` คือคำสั่งฮาร์เนสชุดก่อน
 
 Release `boombignose-v0.2.0` คือหน้าต่าง Wails ที่ GitHub Actions สร้างด้วย Go แล้วแนบไฟล์ `BoomBigNose-windows-x64-setup.exe` (NSIS ไม่ได้ลงชื่อร้านค้า), `BoomBigNose-macos-arm64.dmg` (เซ็นแบบ ad-hoc ไม่มีใบรับรองที่ซื้อจาก Apple), `BoomBigNose-linux-amd64.tar.gz`, `BoomBigNose-linux-amd64.AppImage` และ `SHA256SUMS` ติดตั้งแล้วเปิดเป็นหน้าต่าง ไม่ใช่แค่คำสั่ง harness ไฟล์ไม่ได้รวม Node, Docker, Postgres หรือ Ollama และยังไม่ได้คลิกทดสอบบนเครื่องจริง แท็ก `boombignose-v0.1.1` เป็นคำสั่ง harness รุ่นเก่า Windows อาจขึ้น SmartScreen (More info แล้ว Run anyway) และ Smart App Control อาจบล็อกแอปที่ไม่ได้ลงชื่อ macOS อาจต้องกด Open Anyway Linux ต้องมี WebKitGTK 4.1
 

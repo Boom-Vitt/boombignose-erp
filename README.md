@@ -24,7 +24,7 @@
 	<a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues">Issues</a>
 </div>
 
-The download page is [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/). The previous address [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) is retired and does not receive new deploys. Releases are at [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest).
+The download page is [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/). The previous address [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) is retired and returned HTTP 404 after the rename deploy. Releases are at [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest). Tag `boombignose-v0.2.0` is the desktop window. Tag `boombignose-v0.1.1` is the older harness command.
 
 Release `boombignose-v0.2.0` is the Wails window. GitHub Actions builds it with Go and attaches:
 
