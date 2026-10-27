@@ -1,5 +1,5 @@
 <!-- BBN:HEADER:START -->
-<img src=".github/brand/banner.svg" width="100%" alt="BoomBigNose ERP · ระบบ ERP โอเพนซอร์สสำหรับธุรกิจทุกขนาด (AGPL-3.0)" />
+<img src="site/assets/logo.svg" width="280" alt="BoomBigNose" />
 <!-- BBN:HEADER:END -->
 
 <div align="center">
