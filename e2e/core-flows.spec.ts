@@ -3,14 +3,25 @@ import { expect, test, type Page } from "@playwright/test"
 
 test.describe.configure({ retries: 0 })
 
+async function pageClue(page: Page) {
+  const names = (await page.context().cookies()).map((cookie) => cookie.name).sort().join(" ")
+  const text = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 400)
+  return `url=${page.url()} cookies=${names || "(none)"} body=${text}`
+}
+
 async function expectDashboard(page: Page) {
   try {
     await page.waitForURL((url) => url.pathname === "/dashboard")
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible()
   } catch (error) {
-    const names = (await page.context().cookies()).map((cookie) => cookie.name).join(" ")
-    const text = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 400)
-    throw new Error(`url=${page.url()} cookies=${names || "(none)"} body=${text}`, { cause: error })
+    throw new Error(await pageClue(page), { cause: error })
+  }
+}
+
+async function gotoApp(page: Page, path: string) {
+  await page.goto(path)
+  if (new URL(page.url()).pathname === "/login") {
+    throw new Error(`redirected to login from ${path}; ${await pageClue(page)}`)
   }
 }
 
@@ -38,14 +49,14 @@ test("sign up, sign in, and record a customer, stock count, and VAT invoice", as
   await page.getByRole("button", { name: "Sign in", exact: true }).click()
   await expectDashboard(page)
 
-  await page.goto("/clients/new")
+  await gotoApp(page, "/clients/new")
   await page.getByLabel("Name", { exact: true }).fill(buyer)
   await page.getByLabel("Tax ID", { exact: true }).fill("9876543210123")
   await page.getByRole("button", { name: "Create client", exact: true }).click()
   await page.waitForURL(/\/clients\/[^/]+$/)
   await expect(page.getByRole("heading", { name: buyer, exact: true })).toBeVisible()
 
-  await page.goto("/products/new")
+  await gotoApp(page, "/products/new")
   await page.getByLabel("Name", { exact: true }).fill(product)
   await page.getByLabel("Type", { exact: true }).click()
   await page.getByRole("option", { name: "Goods", exact: true }).click()
@@ -57,7 +68,7 @@ test("sign up, sign in, and record a customer, stock count, and VAT invoice", as
   await expect(page.getByRole("heading", { name: product, exact: true })).toBeVisible()
   const productId = new URL(page.url()).pathname.split("/").pop()!
 
-  await page.goto("/inventory/warehouses")
+  await gotoApp(page, "/inventory/warehouses")
   await page.getByLabel("Code", { exact: true }).fill("MAIN")
   await page.getByLabel("Name", { exact: true }).fill("Main warehouse")
   await page.getByRole("checkbox", { name: "Default warehouse", exact: true }).check()
@@ -66,20 +77,20 @@ test("sign up, sign in, and record a customer, stock count, and VAT invoice", as
   await expect(warehouse).toContainText("MAIN")
   await expect(warehouse.getByText("Default", { exact: true })).toBeVisible()
 
-  await page.goto("/inventory/adjust")
+  await gotoApp(page, "/inventory/adjust")
   await page.getByLabel("Product", { exact: true }).selectOption({ label: product })
   await page.getByLabel("Counted quantity", { exact: true }).fill("4")
   await page.getByLabel("Unit cost (THB)", { exact: true }).fill("10.00")
   await page.getByLabel("Reason", { exact: true }).fill(reason)
   await page.getByRole("button", { name: "Record count", exact: true }).click()
   await expect(page.getByRole("status")).toContainText("Count recorded.")
-  await page.goto(`/inventory?product=${productId}`)
+  await gotoApp(page, `/inventory?product=${productId}`)
   await expect(page.getByTestId(`on-hand-${productId}`)).toHaveText("4 piece")
-  await page.goto("/inventory/moves")
+  await gotoApp(page, "/inventory/moves")
   await expect(page.getByRole("cell", { name: "Adjustment In", exact: true })).toBeVisible()
   await expect(page.getByRole("cell", { name: reason, exact: true })).toBeVisible()
 
-  await page.goto("/finance/business-profile")
+  await gotoApp(page, "/finance/business-profile")
   await page.getByLabel(/Legal business name/).fill("Core flow seller")
   await page.getByLabel(/Business address/).fill("Core flow address")
   await page.getByLabel(/Tax ID/).fill("1234567890123")
@@ -88,7 +99,7 @@ test("sign up, sign in, and record a customer, stock count, and VAT invoice", as
   await page.getByRole("button", { name: "Save business profile", exact: true }).click()
   await expect(page.getByText("Business profile saved")).toBeVisible()
 
-  await page.goto("/finance/invoices/new")
+  await gotoApp(page, "/finance/invoices/new")
   await page.getByRole("combobox", { name: "Client", exact: true }).click()
   await page.getByRole("option", { name: buyer, exact: true }).click()
   await page.getByRole("button", { name: "Create invoice", exact: true }).click()
@@ -110,20 +121,20 @@ test("sign up, sign in, and record a customer, stock count, and VAT invoice", as
 
   const invoiceUrl = page.url()
   const bangkokToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())
-  await page.goto("/settings/finance")
+  await gotoApp(page, "/settings/finance")
   await page.getByLabel("Lock transactions through", { exact: true }).fill(bangkokToday)
   await page.getByRole("button", { name: "Save finance lock", exact: true }).click()
   await expect(page.getByText("Finance lock date saved", { exact: true })).toBeVisible()
-  await page.goto(invoiceUrl)
+  await gotoApp(page, invoiceUrl)
   await page.getByLabel("I checked the business profile, buyer, lines, discount and dates.").check()
   await page.getByRole("button", { name: "Issue operational invoice", exact: true }).click()
   await expect(page.getByText("Finance period is locked", { exact: true })).toBeVisible()
 
-  await page.goto("/settings/finance")
+  await gotoApp(page, "/settings/finance")
   await page.getByLabel("Lock transactions through", { exact: true }).fill("")
   await page.getByRole("button", { name: "Save finance lock", exact: true }).click()
   await expect(page.getByText("Finance lock date saved", { exact: true })).toBeVisible()
-  await page.goto(invoiceUrl)
+  await gotoApp(page, invoiceUrl)
   await page.getByLabel("I checked the business profile, buyer, lines, discount and dates.").check()
   await page.getByRole("button", { name: "Issue operational invoice", exact: true }).click()
   await expect(page.getByText("Issued snapshot retained. Corrections must preserve the original document.")).toBeVisible()

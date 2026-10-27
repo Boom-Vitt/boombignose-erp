@@ -25,7 +25,7 @@ export default defineConfig({
   reporter: "list",
   use: {
     baseURL,
-    trace: "on-first-retry",
+    trace: process.env.ERP_E2E_CORE === "1" ? "retain-on-failure" : "on-first-retry",
     launchOptions: { executablePath: process.env.ERP_PLAYWRIGHT_EXECUTABLE_PATH },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

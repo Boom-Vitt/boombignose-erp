@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, type FormEvent } from "react"
-import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -12,7 +11,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function MfaPage() {
-  const router = useRouter()
   const [code, setCode] = useState("")
   const [loading, setLoading] = useState(false)
 
@@ -40,13 +38,12 @@ export default function MfaPage() {
       challengeId: challenge.data.id,
       code: code.trim(),
     })
-    setLoading(false)
     if (checked.error) {
+      setLoading(false)
       toast.error("Code was not accepted", { description: checked.error.message })
       return
     }
-    router.push("/dashboard")
-    router.refresh()
+    window.location.assign("/dashboard")
   }
 
   return (

@@ -11,6 +11,10 @@ import { ActivityCounter } from "@/components/record/activity-counter"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { CommandPalette } from "@/components/command-palette/command-palette"
 
+// Authenticated pages read the session cookie. A build without one must not
+// freeze a redirect to /login and serve it to a signed-in browser.
+export const dynamic = "force-dynamic"
+
 export default async function AppLayout({
   children,
 }: {
