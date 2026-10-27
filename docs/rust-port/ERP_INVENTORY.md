@@ -1,5 +1,7 @@
 # BoomBigNose Company OS — System Inventory (source of truth for the Rust port)
 
+> **Parked (2026-10-27).** This inventory fed the Rust port plan, which is parked. It is a snapshot of `main` at `ae0f68e` and does not describe the current tree. The active desktop notes are in `docs/bumik/`.
+
 Snapshot of `main` @ `ae0f68e` (2026-10-09). Extracted from the code, not the docs.
 Size: ~24k lines TS (`app/` + `lib/`), 8 SQL migrations, 26 Vitest files / 232 tests, Playwright e2e.
 
