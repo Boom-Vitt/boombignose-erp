@@ -4,6 +4,7 @@
 The browser never calls GitHub. This script runs in CI before GitHub Pages
 uploads site/, and it can be run locally. It reads the newest release whose
 tag matches boombignose-vX.Y.Z, is not a draft, and is not a prerelease.
+It fills index.html, install.html, and first-run.html.
 SHA-256 values come only from that release's SHA256SUMS asset. Sizes come
 from the GitHub asset metadata for the same filenames.
 
@@ -40,7 +41,7 @@ ARCH = {
 }
 
 ROOT = Path(__file__).resolve().parent
-HTML_FILES = (ROOT / "index.html", ROOT / "install.html")
+HTML_FILES = (ROOT / "index.html", ROOT / "install.html", ROOT / "first-run.html")
 JSON_PATH = ROOT / "release.json"
 SCRIPT_OPEN = '<script id="bbn-release" type="application/json">'
 
@@ -284,6 +285,13 @@ def self_test() -> None:
         ]
     )
     assert chosen["tag_name"] == "boombignose-v1.2.3"
+    assert any(path.name == "first-run.html" for path in HTML_FILES)
+    first = (ROOT / "first-run.html").read_text(encoding="utf-8")
+    filled_first = fill_html(first, built, json.dumps(built, sort_keys=True))
+    assert "boombignose-v9.9.9" in filled_first
+    for asset in built["assets"].values():
+        assert asset["sha256"] in filled_first
+        assert asset["url"] in filled_first
     saved_github = os.environ.pop("GITHUB_TOKEN", None)
     saved_gh = os.environ.pop("GH_TOKEN", None)
     try:
