@@ -1,7 +1,8 @@
 # Builds unsigned installers for the BoomBigNose window.
-# A release is updated only after the installers exist, and only when a
-# published release tag matches boombignose-v*. Pull requests build the
-# installers and do not publish anything.
+# Create a boombignose-v* release as a draft. This workflow builds it,
+# smokes the installers, uploads the files, and only then publishes the
+# release. A published release that already has the four installers and
+# SHA256SUMS does not build again. Pull requests build and do not publish.
 name: BoomBigNose release assets
 
 on:
@@ -10,14 +11,54 @@ on:
   pull_request:
   workflow_dispatch:
   release:
-    types: [published]
+    types: [created, published]
 
 permissions:
   contents: write
   actions: write
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          build=true
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+            case "$tag" in
+              boombignose-v*) ;;
+              *)
+                echo "build=true" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+            esac
+            names="$(gh release view "$tag" --json assets --jq '.assets[].name' || true)"
+            have=0
+            for file in SHA256SUMS BoomBigNose-windows-x64-setup.exe BoomBigNose-macos-arm64.dmg BoomBigNose-linux-amd64.tar.gz BoomBigNose-linux-amd64.AppImage; do
+              if printf '%s\n' "$names" | grep -qx "$file"; then
+                have=$((have + 1))
+              fi
+            done
+            if [ "$have" -ge 5 ] && [ "${{ github.event.action }}" = "published" ]; then
+              echo "release $tag already has its installers"
+              build=false
+            elif [ "$have" -lt 5 ]; then
+              gh release edit "$tag" --draft
+              echo "marked $tag draft so Latest stays on the previous release"
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -270,6 +311,8 @@ jobs:
           if-no-files-found: error
 
   linux-bundle:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -460,6 +503,8 @@ jobs:
             dist/BoomBigNose-linux-amd64.tar.gz \
             dist/BoomBigNose-linux-amd64.AppImage \
             dist/SHA256SUMS --clobber
+          gh release edit "$tag" --draft=false --latest
+          echo "published $tag"
       - name: Refresh the download page
         if: startsWith(github.event.release.tag_name, 'boombignose-v')
         env:

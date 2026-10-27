@@ -10,7 +10,15 @@ Repository: https://github.com/Boom-Vitt/boombignose-erp-harness-ai
 - `BoomBigNose-linux-amd64.AppImage` wraps that same binary and copies `bundle/` to `usr/bin/bundle`. It also needs WebKitGTK 4.1. It does not bundle Docker. The Postgres data directory stays in the home directory. CI extracts the AppImage and smokes that tree.
 - `SHA256SUMS` covers those four files.
 
-The workflow runs on push to `main` and on pull requests. Those runs build and upload Actions artifacts. They upload release assets only for a published release whose tag matches `boombignose-v*`. The workflow does not create a release by itself, and it does not replace assets on any other tag.
+The workflow runs on push to `main` and on pull requests. Those runs build and upload Actions artifacts. They do not publish a release.
+
+A desktop release is created as a draft, not published:
+
+```
+gh release create boombignose-vX.Y.Z --draft --target <commit on main> --title "BoomBigNose X.Y.Z" --notes-file notes.md
+```
+
+Creating that draft starts the workflow (`release` type `created`). The workflow marks an incomplete `boombignose-v*` release as a draft so `releases/latest` stays on the previous release. Installer jobs smoke the built files. After those jobs pass, the publish job uploads the four installers and `SHA256SUMS`, then runs `gh release edit <tag> --draft=false --latest`. Publishing that release starts the workflow again, and the gate skips the build when those five assets are already present. Do not publish the draft by hand before the upload. The workflow does not create the draft itself, and it does not replace assets on any other tag.
 
 Tag `boombignose-v0.2.0` is the window only. It does not contain `bundle/`. Tag `boombignose-v0.2.1` contains Node, `server.js`, and portable Postgres. It does not contain Auth, PostgREST, or Ollama. Tag `boombignose-v0.3.0` is a non-prerelease from commit `0652c87`. Workflow run [40549096601](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/actions/runs/40549096601) packed Node, `server.js`, portable Postgres, Auth v2.197.0, PostgREST v16.5, and Ollama v0.40.11, then printed `health ok`, `signup ok`, and `signin ok` against the extracted tar.gz, the extracted AppImage, the silent NSIS directory, and a writable copy of the mounted DMG. `sha256sum -c` matched the four uploaded files. https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest redirects to that tag. Tag `boombignose-v0.1.1` is the older harness command (`boombignose check` and `boombignose cutover`). These builds are compiled in CI. They have not been click-tested on a physical machine. There is no paid code-signing certificate.
 
