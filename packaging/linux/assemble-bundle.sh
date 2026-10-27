@@ -43,9 +43,15 @@ mkdir -p "$dist/postgres"
 tar -xJf "$tmp/postgres.txz" -C "$dist/postgres"
 chmod 755 "$dist/postgres/bin/initdb" "$dist/postgres/bin/pg_ctl" "$dist/postgres/bin/postgres"
 cp packaging/postgres/prelude.sql "$dist/postgres/prelude.sql"
+cp packaging/postgres/prelude-after-auth.sql "$dist/postgres/prelude-after-auth.sql"
 cp packaging/postgres/POSTGRESQL_LICENSE.txt "$dist/postgres/POSTGRESQL_LICENSE.txt"
 mkdir -p "$dist/postgres/migrations"
 cp supabase/migrations/*.sql "$dist/postgres/migrations/"
+
+AUTH_SHA=b5c2991d1df760c9b099c1c2395a94bd1c2f83ed58901934921997179dc9f7ea
+AUTH_URL="https://github.com/supabase/auth/releases/download/v2.197.0/auth-v2.197.0-amd64.tar.xz"
+PGRST_SHA=5099e7ada38f9f6846cd87c14c5f158b7c165f1e9959665ad412e61f4dceba95
+PGRST_URL="https://github.com/PostgREST/postgrest/releases/download/v16.5/postgrest-v16.5-linux-static-x86-64.tar.xz"
 
 cat > "$dist/PROVENANCE" << EOF
 platform=linux-amd64
@@ -57,7 +63,29 @@ postgres=16.10.0
 postgres_url=${PG_URL}
 postgres_sha256=${PG_SHA}
 postgres_license=PostgreSQL License (postgres/POSTGRESQL_LICENSE.txt)
+auth=v2.197.0
+auth_url=${AUTH_URL}
+auth_sha256=${AUTH_SHA}
+auth_license=MIT (auth/AUTH_LICENSE.txt)
+postgrest=v16.5
+postgrest_url=${PGRST_URL}
+postgrest_sha256=${PGRST_SHA}
+postgrest_license=MIT (postgrest/POSTGREST_LICENSE.txt)
 EOF
+
+curl -fsSL -o "$tmp/auth.txz" "$AUTH_URL"
+echo "$AUTH_SHA  $tmp/auth.txz" | sha256sum -c -
+mkdir -p "$dist/auth"
+tar -xJf "$tmp/auth.txz" -C "$dist/auth"
+chmod 755 "$dist/auth/auth"
+cp packaging/auth/AUTH_LICENSE.txt "$dist/auth/AUTH_LICENSE.txt"
+test -d "$dist/auth/migrations"
+curl -fsSL -o "$tmp/postgrest.txz" "$PGRST_URL"
+echo "$PGRST_SHA  $tmp/postgrest.txz" | sha256sum -c -
+mkdir -p "$dist/postgrest"
+tar -xJf "$tmp/postgrest.txz" -C "$dist/postgrest"
+chmod 755 "$dist/postgrest/postgrest"
+cp packaging/postgrest/POSTGREST_LICENSE.txt "$dist/postgrest/POSTGREST_LICENSE.txt"
 
 export PATH="$node_dir/bin:$PATH"
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}"

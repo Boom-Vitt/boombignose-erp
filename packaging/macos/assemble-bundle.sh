@@ -45,9 +45,15 @@ mkdir -p "$dist/postgres"
 tar -xJf "$tmp/postgres.txz" -C "$dist/postgres"
 chmod 755 "$dist/postgres/bin/initdb" "$dist/postgres/bin/pg_ctl" "$dist/postgres/bin/postgres"
 cp packaging/postgres/prelude.sql "$dist/postgres/prelude.sql"
+cp packaging/postgres/prelude-after-auth.sql "$dist/postgres/prelude-after-auth.sql"
 cp packaging/postgres/POSTGRESQL_LICENSE.txt "$dist/postgres/POSTGRESQL_LICENSE.txt"
 mkdir -p "$dist/postgres/migrations"
 cp supabase/migrations/*.sql "$dist/postgres/migrations/"
+
+AUTH_SHA=3fb7998e7061e2c14f3f9555b1d94d447358c965395728e0d81eac82e0e5868b
+AUTH_URL="https://github.com/supabase/auth/releases/download/v2.197.0/auth-v2.197.0-darwin-arm64.tar.gz"
+PGRST_SHA=d8095cb439de0a3151036df542139e7afca5cebb109ce7f1bae52b3a97e9846a
+PGRST_URL="https://github.com/PostgREST/postgrest/releases/download/v16.5/postgrest-v16.5-macos-aarch64.tar.xz"
 
 cat > "$dist/PROVENANCE" << EOF
 platform=darwin-arm64
@@ -61,7 +67,29 @@ postgres_sha256=${PG_SHA}
 postgres_archive=${PG_INNER}
 postgres_license=PostgreSQL License (postgres/POSTGRESQL_LICENSE.txt)
 erp=linux-built Next.js standalone server.js
+auth=v2.197.0
+auth_url=${AUTH_URL}
+auth_sha256=${AUTH_SHA}
+auth_license=MIT (auth/AUTH_LICENSE.txt)
+postgrest=v16.5
+postgrest_url=${PGRST_URL}
+postgrest_sha256=${PGRST_SHA}
+postgrest_license=MIT (postgrest/POSTGREST_LICENSE.txt)
 EOF
+
+curl -fsSL -o "$tmp/auth.tgz" "$AUTH_URL"
+echo "$AUTH_SHA  $tmp/auth.tgz" | shasum -a 256 -c -
+mkdir -p "$dist/auth"
+tar -xzf "$tmp/auth.tgz" -C "$dist/auth"
+chmod 755 "$dist/auth/auth"
+cp packaging/auth/AUTH_LICENSE.txt "$dist/auth/AUTH_LICENSE.txt"
+test -d "$dist/auth/migrations"
+curl -fsSL -o "$tmp/postgrest.txz" "$PGRST_URL"
+echo "$PGRST_SHA  $tmp/postgrest.txz" | shasum -a 256 -c -
+mkdir -p "$dist/postgrest"
+tar -xJf "$tmp/postgrest.txz" -C "$dist/postgrest"
+chmod 755 "$dist/postgrest/postgrest"
+cp packaging/postgrest/POSTGREST_LICENSE.txt "$dist/postgrest/POSTGREST_LICENSE.txt"
 
 # curl marks the download with quarantine. Clear it and ad-hoc sign the
 # binaries the smoke executes. This is not a Developer ID signature.
@@ -70,7 +98,9 @@ codesign --force --sign - \
   "$dist/node" \
   "$dist/postgres/bin/initdb" \
   "$dist/postgres/bin/pg_ctl" \
-  "$dist/postgres/bin/postgres"
+  "$dist/postgres/bin/postgres" \
+  "$dist/auth/auth" \
+  "$dist/postgrest/postgrest"
 test -x "$dist/node"
 test -x "$dist/postgres/bin/postgres"
 test -s "$dist/postgres/prelude.sql"

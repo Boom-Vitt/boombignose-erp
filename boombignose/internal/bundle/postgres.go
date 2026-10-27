@@ -189,7 +189,7 @@ func ensurePostgres(ctx context.Context, layout Layout, dataDir string, up func(
 	var last error
 	for i := 0; i < 25; i++ {
 		last = ensureDatabase(ctx, pgAddr(), query)
-		if last == nil {
+		if last == nil && layout.Auth == "" {
 			last = applyMigrations(ctx, layout, pgAddr(), query)
 		}
 		if last == nil {
@@ -265,17 +265,32 @@ func ensureDatabase(ctx context.Context, addr string, query sqlQuery) error {
 }
 
 func applyMigrations(ctx context.Context, layout Layout, addr string, query sqlQuery) error {
+	return applyMigrationsFrom(ctx, layout, addr, query, "prelude.sql")
+}
+
+// migrationTable is the bookkeeping table for ERP files. Auth's runner already
+// owns public.schema_migrations, so the bundled Auth path records filenames
+// separately.
+func migrationTable(preludeName string) string {
+	if preludeName == "prelude-after-auth.sql" {
+		return "public.erp_schema_migrations"
+	}
+	return "public.schema_migrations"
+}
+
+func applyMigrationsFrom(ctx context.Context, layout Layout, addr string, query sqlQuery, preludeName string) error {
 	if query == nil {
 		query = queryPostgres
 	}
-	rows, err := query(ctx, addr, "boombignose", "boombignose", "select filename from public.schema_migrations")
+	table := migrationTable(preludeName)
+	rows, err := query(ctx, addr, "boombignose", "boombignose", "select filename from "+table)
 	applied := map[string]bool{}
 	if err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "schema_migrations") {
 			return err
 		}
 		root := filepath.Dir(filepath.Dir(layout.Postgres))
-		body, readErr := readBundleFile(root, "prelude.sql")
+		body, readErr := readBundleFile(root, preludeName)
 		if readErr != nil {
 			return readErr
 		}
@@ -320,7 +335,7 @@ func applyMigrations(ctx context.Context, layout Layout, addr string, query sqlQ
 		if err != nil {
 			return err
 		}
-		insert := "insert into public.schema_migrations (filename) values (" + quoted + ")"
+		insert := "insert into " + table + " (filename) values (" + quoted + ")"
 		if _, err := query(ctx, addr, "boombignose", "boombignose", insert); err != nil {
 			return err
 		}
@@ -422,14 +437,19 @@ func StartStack(ctx context.Context, layout Layout, dataDir, rawURL string, pare
 	if err := EnsurePostgres(ctx, layout, dataDir); err != nil {
 		return err
 	}
-	return EnsureERP(ctx, layout, rawURL, parent, run)
+	if err := EnsureAuth(ctx, layout, dataDir); err != nil {
+		return err
+	}
+	return EnsureERP(ctx, layout, rawURL, withLocalKeys(parent, dataDir), run)
 }
 
 // StopAt stops the recorded ERP pid and the portable cluster in dataDir.
 func StopAt(layout Layout, dataDir string) error {
 	if dataDir != "" {
 		stopPID(dataDir)
+		stopExtraPIDs(dataDir)
 	}
+	stopLocalAPI()
 	return StopPostgres(layout, dataDir)
 }
 
