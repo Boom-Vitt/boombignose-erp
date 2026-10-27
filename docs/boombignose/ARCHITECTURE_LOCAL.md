@@ -8,7 +8,7 @@ Product name: **BoomBigNose ERP Harness AI**. The short name on the window title
 
 **Milestone 2.** Ship a bundled local stack so the download does not ask the operator to install Node, pnpm, and Docker by hand. That bundle is not in this tree. The window can start the checkout that is already on the machine. It does not bundle Postgres, Ollama, or the Next.js app. Hosted Supabase (`*.supabase.co`) is refused. An empty `OLLAMA_HOST` is allowed. A remote `OLLAMA_HOST` is refused. See `docs/boombignose/TOTP.md` for the second-factor proposal. The TOTP flags stay off.
 
-BigNose OS stays beside this app. Both use port 3100, so only one may listen. See `docs/boombignose/CUTOVER.md`.
+The shell in `bignose/` also uses port 3100, so only one program may listen. See `docs/boombignose/CUTOVER.md`.
 
 ## What stays where it is
 
@@ -22,10 +22,10 @@ Sign-in stays the ERP's Supabase email and password session, stored in cookies f
 
 ## Cloud calls the gate refuses
 
-- `lib/ai/client.ts` posts to `https://openrouter.ai` when `OPENROUTER_API_KEY` is set. The harness refuses that variable.
+- `lib/ai/client.ts` posts to Ollama on loopback (`OLLAMA_HOST`, default `127.0.0.1:11434`). A remote host throws before any request. A refused connection becomes a not-configured notice.
 - `lib/email/send.ts` posts to Resend when `RESEND_API_KEY` is set. The harness refuses that variable.
 - `app/api/cron/outbox/route.ts` posts to `N8N_OUTBOUND_URL`. The harness allows that URL only when it is loopback or empty.
-- `lib/local/stack.mjs` does not copy `OPENROUTER_API_KEY` or `OPENROUTER_MODEL` into `next start`. The ERP process started by `serve` has those variables unset even when the parent environment has them.
+- `lib/local/stack.mjs` does not copy cloud model keys into `next start`. It forwards `OLLAMA_HOST` only when that value is loopback, and it forwards `OLLAMA_MODEL`.
 
 ## Pages
 

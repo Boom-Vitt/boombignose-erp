@@ -24,7 +24,7 @@ core/                     @bignose/core — daemon + CLI, Node >= 24, ESM, zero 
   src/app/                runtime wiring, daemon, doctor                             (stream core-app)
   src/cli.ts              `bignose` entry                                            (stream core-app)
   test/<area>/*.test.ts   node:test suites, one folder per area
-desktop/                  package "desktop" — Tauri 2 app "BigNose OS"               (stream desktop)
+desktop/                  package "desktop" — Tauri 2 app "BoomBigNose"               (stream desktop)
   src/                    web UI: vanilla TypeScript, no framework, no bundler
   src-tauri/              Rust shell
 docs/                     requirements, this design, ADRs in docs/decisions/
@@ -157,10 +157,7 @@ export interface Config {
 - Secret names in use: each provider's `apiKeyEnv` (defaults below), `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`.
   MCP `env`/`headers` values may reference secrets as `${NAME}`, expanded at connect time.
 - Defaults:
-  - providers: `anthropic` (anthropic, `https://api.anthropic.com`, `ANTHROPIC_API_KEY`, contextWindow 200000,
-    maxTokens 8192); `openai` (openai-compatible, `https://api.openai.com/v1`, `OPENAI_API_KEY`, 128000);
-    `openrouter` (openai-compatible, `https://openrouter.ai/api/v1`, `OPENROUTER_API_KEY`, 128000);
-    `ollama` (openai-compatible, label `Ollama (local)`, `http://127.0.0.1:11434/v1`, optional `OLLAMA_API_KEY`, 32768).
+  - providers: `ollama` only (openai-compatible, label `Ollama (local)`, `http://127.0.0.1:11434/v1`, optional `OLLAMA_API_KEY`, contextWindow 32768). Cloud model hosts are refused before a request is sent.
   - active `{ provider: 'ollama', model: 'qwen3:4b' }`; agent `{ maxTurns: 30, workspace: <os home>,
     compactAt: 0.8 }`; permissions `{}`; hooks `{}`; api `{ port: 47821 }`.
   - mcp.servers: `rea` = `{ transport: 'stdio', command: 'npx', args: ['-y', 'rea-agents@6.1.0', 'mcp'], enabled: false }`.
@@ -513,7 +510,7 @@ export interface Config {
 
 ## 8. Desktop
 
-- Tauri 2, `productName` `BigNose OS`, identifier `com.boombignose.bignose`, own icon regenerated with
+- Tauri 2, `productName` `BoomBigNose`, identifier `com.boombignose.bignose`, own icon regenerated with
   `pnpm --filter desktop tauri icon src-tauri/icons/source/boombignose-1024.png` from the committed source
   `desktop/src-tauri/icons/source/boombignose-1024.png`; macOS `app` bundle only. UI = vanilla TypeScript compiled by `tsc` to
   `desktop/dist` (+ copied `index.html`, `style.css`), `withGlobalTauri` for `invoke`; no framework, no bundler.
@@ -560,7 +557,7 @@ export interface Config {
 | zero runtime deps / no SDKs | core-app acceptance: dependency + import guard |
 | `bignose chat -q` tool round trip vs a mock OpenAI-compatible server | `core/test/e2e/chat.test.ts` |
 | `bignose mcp test rea` lists ≥ 100 tools (skipped with `BIGNOSE_SKIP_NETWORK=1`) | `core/test/e2e/rea.test.ts` + acceptance |
-| `pnpm --filter desktop tauri build --bundles app` → `BigNose OS.app`, CFBundleName `BigNose OS` | desktop acceptance |
+| `pnpm --filter desktop tauri build --bundles app` → `BoomBigNose.app`, CFBundleName `BoomBigNose` | desktop acceptance |
 
 Note: the BBN harness runs checks with `CI=1`, which the Tauri CLI rejects (`--ci` wants true/false), so the build
 check sets `CI=true` itself.
@@ -957,7 +954,7 @@ it with the project's own Tauri CLI (`pnpm --filter desktop tauri icon src-tauri
 from the repo root; the path is relative to `desktop/`). Extra files the CLI writes (Windows, iOS, Android, Store logos)
 are not committed; the icon list in `tauri.conf.json` stays as v1. The v1 SVG drawing (`app-icon.svg` in `desktop/`) is
 deleted (not referenced anywhere). No other UI change. A release build (`tauri build --bundles app`) puts the regenerated `icon.icns`
-into `BigNose OS.app/Contents/Resources/` under the name in `CFBundleIconFile`.
+into `BoomBigNose.app/Contents/Resources/` under the name in `CFBundleIconFile`.
 
 ### 13.12 Owner-run checks (manual, never in tests)
 A real chat with an agent on a local Ollama model (and the context warning when Ollama runs with a small context), and a

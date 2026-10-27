@@ -23,7 +23,7 @@ third-party work. Do not submit secrets or private/customer material.
 Read [the strategy](docs/OPEN_CORE_STRATEGY.md) and
 [the implementation boundary](docs/OPEN_CORE_BOUNDARY.md). Keep Community work
 in the existing core modules and Pro implementation/tests under `ee/`.
-BigNose OS is a separate proprietary product in `bignose/`; do not copy it into
+BoomBigNose is a separate proprietary product in `bignose/`; do not copy it into
 the ERP Community Edition. Preserve third-party notices listed in [NOTICE](NOTICE).
 
 Reuse the existing TypeScript, React, Zod, Supabase/RLS, and UI conventions.

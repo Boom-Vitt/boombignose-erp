@@ -1,4 +1,4 @@
-// The simple UI (design-spec §12): the chat routes, the BigNose OS panel, the agents pages and the five Settings tabs.
+// The simple UI (design-spec §12): the chat routes, the BoomBigNose panel, the agents pages and the five Settings tabs.
 // Each test has its own daemon with a temp home and a scripted mock model; nothing touches ~/.bignose or 127.0.0.1:47821.
 // Set BIGNOSE_SHOTS=<dir> to also save chat-light.png and chat-dark.png (1280x800) for human review.
 import test from 'node:test';
@@ -258,8 +258,8 @@ test('the simple chat UI', { timeout: 300_000 }, async (t) => {
 
 test('the OS panel at 420x640 has no horizontal overflow and keeps the composer in view', { timeout: 180_000 }, async (t) => {
   const home = testHome(t);
-  // the ERP assistant is created on openrouter, so the provider has to exist; nothing answers on it, so a message fails
-  configured(home, 'http://127.0.0.1:1/v1', (c) => { c.providers.push({ id: 'openrouter', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1/v1' }); });
+  // the ERP assistant is created on local Ollama; nothing answers on it, so a message fails
+  configured(home, 'http://127.0.0.1:1/v1', (c) => { c.providers.push({ id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:11434/v1' }); });
   const app = await startDaemon({ home }); t.after(() => app.close());
   const ui = await openUi(t, app, { os: true, viewport: { width: 420, height: 640 }, commands: { os_status: ready, os_info: osInfo } });
   await ui.wait(`document.querySelector('[aria-label="Chat agent"]')?.selectedOptions[0]?.textContent.includes('ERP assistant')`);

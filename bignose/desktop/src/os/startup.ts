@@ -1,4 +1,4 @@
-// BigNose OS startup screen: what the ERP launcher is doing, or why it stopped, until the ERP answers.
+// BoomBigNose startup screen: what the ERP launcher is doing, or why it stopped, until the ERP answers.
 import { appIcon, btn, el, errMsg, toast } from '../dom.ts';
 
 /** Mirrors the Rust `Status` (src-tauri/src/launcher.rs). */
@@ -24,8 +24,8 @@ export function startupView(status: OsStatus, actions: StartupActions): HTMLElem
       return el('div', { class: 'splash', role: 'alert' }, appIcon(),
         el('h1', {}, status.installed ? 'Docker is not running' : 'Docker is not installed'),
         el('p', { class: 'muted splash-text' }, status.installed
-          ? 'BigNose OS keeps your ERP data in a local database that runs in Docker. Open Docker, wait until it says it is running, then press Retry.'
-          : 'BigNose OS keeps your ERP data in a local database that runs in Docker. Install Docker Desktop from docker.com, then press Retry.'),
+          ? 'BoomBigNose keeps your ERP data in a local database that runs in Docker. Open Docker, wait until it says it is running, then press Retry.'
+          : 'BoomBigNose keeps your ERP data in a local database that runs in Docker. Install Docker Desktop from docker.com, then press Retry.'),
         el('div', { class: 'actions' },
           status.installed ? btn('Open Docker', () => actions.openDocker(), 'primary') : null,
           btn('Retry', () => actions.retry(), status.installed ? '' : 'primary')));

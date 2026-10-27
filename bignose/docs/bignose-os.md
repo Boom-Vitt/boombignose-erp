@@ -1,7 +1,7 @@
-# BigNose OS
+# BoomBigNose
 
-BigNose OS is the BigNose desktop app as one native window that shows the BoomBigNose ERP, with the BigNose agent
-UI as a slide-out panel on the right. The app is `BigNose OS.app` (`CFBundleName` `BigNose OS`); the bundle identifier
+BoomBigNose is the BigNose desktop app as one native window that shows the BoomBigNose ERP, with the BigNose agent
+UI as a slide-out panel on the right. The app is `BoomBigNose.app` (`CFBundleName` `BoomBigNose`); the bundle identifier
 stays `com.boombignose.bignose`, so the existing `~/.bignose` home, daemon, agents and LINE settings carry over.
 Design record: `docs/decisions/0002-bignose-os.md`.
 
@@ -27,7 +27,7 @@ shell environment; Node 24 or newer is required, `BIGNOSE_NODE` overrides). Thei
 
 **The ERP folder** is, in order:
 
-1. `erpDir` in `<BIGNOSE_HOME>/os.json` (`{ "erpDir": "/path/to/boombignose-erp" }`),
+1. `erpDir` in `<BIGNOSE_HOME>/os.json` (`{ "erpDir": "/path/to/boombignose-erp-harness-ai" }`),
 2. the `BIGNOSE_OS_ERP_DIR` environment variable,
 3. the repo this app was built from (`bignose/desktop/src-tauri/../../..`, fixed at compile time).
 
@@ -35,13 +35,13 @@ The third is a build-time path: an app built in a git worktree keeps pointing at
 the worktree goes away. `serve` builds the **committed** `HEAD` of that folder, so uncommitted ERP changes are not shown.
 
 **Cloud model keys** are not given to the ERP server. `serve` builds the `next start` environment from a local
-allowlist, and that allowlist omits `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`. The desktop product does not call
-a cloud model at runtime.
+allowlist. That allowlist forwards `OLLAMA_HOST` only when it is loopback, and it forwards `OLLAMA_MODEL`.
+The desktop product does not call a cloud model at runtime.
 
 When everything answers, the ERP opens at `http://127.0.0.1:3100` (the port is fixed: it is the ERP's `site_url`).
 The ERP is a normal first-party page, so Supabase login cookies work. Links to other sites open in the default browser
 instead of replacing the ERP. Links that open a new window (`target="_blank"`: the quote and invoice PDF, the print
-views) open in their own BigNose OS window and share the ERP's session, so they work while you are signed in; a new
+views) open in their own BoomBigNose window and share the ERP's session, so they work while you are signed in; a new
 window for any other web address goes to the browser, and non-web addresses are refused.
 
 ### When something is wrong
@@ -51,7 +51,7 @@ window for any other web address goes to the browser, and non-web addresses are 
 | Docker is not running | the local database runs in Docker | **Open Docker** (`open -a Docker`), wait until it is running, then **Retry** |
 | Docker is not installed | no Docker found | install Docker Desktop, then **Retry** |
 | ERP folder not found | `scripts/local/stack.mjs` is missing in the folder shown | set `erpDir` in `os.json` or `BIGNOSE_OS_ERP_DIR`, then **Retry** |
-| macOS is blocking access to the ERP folder | `EPERM`: macOS folder privacy (the repo is under `~/Desktop`) | System Settings > Privacy & Security > Files & Folders (or Full Disk Access): allow BigNose OS, then **Retry** |
+| macOS is blocking access to the ERP folder | `EPERM`: macOS folder privacy (the repo is under `~/Desktop`) | System Settings > Privacy & Security > Files & Folders (or Full Disk Access): allow BoomBigNose, then **Retry** |
 | The local database did not start | `stack.mjs up` failed; the last lines of its output are shown | read them; a failed migration needs the owner (the app never resets the database) |
 | The ERP server did not start / stopped | `stack.mjs serve` exited; the last lines are shown (a busy port 3100 is reported here) | fix the cause, then **Retry** |
 
@@ -61,37 +61,27 @@ On every start the panel makes sure, through the local API only, that these exis
 
 - the MCP connector **`erp`**: stdio, `command` = the absolute Node, `args` = `[<erp>/lib/mcp/erp-server.mjs]`,
   enabled (the 8 read-only tools in `docs/desktop/erp-mcp.md` of the ERP);
-- the agent **ERP assistant**: provider `openrouter`, model `google/gemini-4-argon`, connector `erp`, read-only
+- the agent **ERP assistant**: provider `ollama`, model `qwen3:4b`, connector `erp`, read-only
   instructions. Its permissions are an allow-list: `*` is denied and only `mcp__erp__*` is allowed (so a read is not an
   approval card). That keeps it off every built-in and core tool: `shell`, `read_file`, `list_files`, `search_files`,
   `write_file`, `edit_file`, `web_fetch`, `delegate`, memory, session search, skills and schedules are also denied by name,
-  because an exact name in your global permissions would otherwise beat `*`. ERP text can carry a prompt injection, local
-  files (for example an `.env.local`) must not reach the cloud model, and `web_fetch` would let it send data out.
-  `desktop/test/os/erp-setup.test.ts` checks every core tool name against core's own `effectivePolicy`.
+  because an exact name in your global permissions would otherwise beat `*`. ERP text can carry a prompt injection, and
+  `web_fetch` would let it send data out. `desktop/test/os/erp-setup.test.ts` checks every core tool name against core's own `effectivePolicy`.
 
-Other agents, the active model (for example `ollama/qwen3:4b`) and all other settings are left as they are. An existing
+Other agents, the active model and all other settings are left as they are. An existing
 agent named ERP assistant is never changed, so a model you picked for it stays. If the ERP folder or Node moves, the
 `erp` connector is replaced with the new command; a connector you disabled is enabled again.
 
-**Output cap (OpenRouter).** Without a `max_tokens`, OpenRouter reserves the model's full output and answers
-`402 ... You requested up to 65536 tokens` when the account cannot cover that. So a new ERP assistant is created with
-`maxTokens` 4096, and the default `openrouter` provider has `maxTokens` 8192. A provider saved in `config.json` replaces
-the defaults, so `loadConfig` gives a saved provider that has no `maxTokens` the default one with the same id (a number
-you set is never changed; `openrouter` is the one that matters). Trade-off: every OpenRouter agent without its own
-`maxTokens` is now capped at 8192 output tokens, and the cap counts reasoning tokens, so a long reply from a thinking
-model can stop at `max_tokens` (the agent form's "leave it blank" now means 8192 on OpenRouter). To lift the cap, set a
-larger `maxTokens` on the provider or on the agent; clearing the provider's field in Settings does not stick, because the
-next daemon start puts 8192 back. The daemon and CLI save the filled value, after which it counts as one you set.
+A new ERP assistant is created with `maxTokens` 4096 so one reply cannot fill the whole local context.
 
-**Privacy (PDPA).** Answers about ERP data go through the model provider (OpenRouter): ERP records the assistant reads
-are sent to it. The tools are read-only and leave out contact details, notes, tax ids and bank references (see the ERP's
+**Privacy (PDPA).** Answers about ERP data stay on the local Ollama process. The tools are read-only and leave out contact details, notes, tax ids and bank references (see the ERP's
 `docs/desktop/erp-mcp.md`), but client names can be natural persons.
 
 ## Lifecycle
 
 - **Close** (the red button, `Cmd+W`) only hides the window. The daemon, the ERP server, LINE and schedules keep running.
 - **Dock click** brings the window back.
-- **Quit** (`Cmd+Q`, the BigNose OS > Quit item, or Quit in the Dock menu) stops every child this run started: the ERP
+- **Quit** (`Cmd+Q`, the BoomBigNose > Quit item, or Quit in the Dock menu) stops every child this run started: the ERP
   launcher with the Next server under it, then the daemon, each with SIGTERM and SIGKILL after a few seconds. A daemon the
   app only attached to (one already running) is left running.
 - **The Supabase stack keeps running** after a quit. It is shared with other work on the machine; stop it yourself with
@@ -125,7 +115,7 @@ content, so it gets no IPC: a page served by the ERP cannot call the app, the da
 - Remembered notes (memory) are still part of every chat's prompt, the ERP assistant's included; the assistant has no
   tool to read or write them.
 - The panel does not watch the ERP server after it is ready; if the server dies, use the window's menu to relaunch
-  BigNose OS (the launcher's status is also available to the UI through the `os_status` command).
+  BoomBigNose (the launcher's status is also available to the UI through the `os_status` command).
 - Opening Docker is manual: **Open Docker** starts it, then **Retry** re-checks.
 - The slide animation, hide-on-close, Dock reopen and quit are native window behavior; they are covered by pure decision
   tests, not by an automated window test.

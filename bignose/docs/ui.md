@@ -77,7 +77,7 @@ hides when nothing does; a new agent shows "New agent · Cancel · Create agent"
 Not built, because the core has no field for it: the "Last run failed" line on a row (`lastError`), the "Chat opens the newest desktop
 chat" rule (the session list has no origin kind), and an introduction line for a blank instruction (the hint only says what is true).
 
-## BigNose OS panel
+## BoomBigNose panel
 
 `body.os-panel` (set by `main.ts` when the Tauri side says so) turns the shell into one 420 px column: the nav becomes a top
 bar (switcher, then New chat, Agents and Settings as icons with screen-reader labels, then a dot for the connection), the chat

@@ -32,11 +32,8 @@ test('defaults when there is no config file', (t) => {
   assert.deepEqual(cfg, defaultConfig());
   assert.equal(cfg.version, 1);
   assert.deepEqual(cfg.active, { provider: 'ollama', model: 'qwen3:4b' });
-  assert.deepEqual(cfg.providers.map((p) => p.id), ['anthropic', 'openai', 'openrouter', 'ollama']);
+  assert.deepEqual(cfg.providers.map((p) => p.id), ['ollama']);
   assert.deepEqual(cfg.providers, [
-    { id: 'anthropic', kind: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKeyEnv: 'ANTHROPIC_API_KEY', contextWindow: 200000, maxTokens: 8192 },
-    { id: 'openai', kind: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY', contextWindow: 128000 },
-    { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', apiKeyEnv: 'OPENROUTER_API_KEY', contextWindow: 128000, maxTokens: 8192 },
     { id: 'ollama', kind: 'openai-compatible', label: 'Ollama (local)', baseUrl: 'http://127.0.0.1:11434/v1', apiKeyEnv: 'OLLAMA_API_KEY', contextWindow: 32768 },
   ]);
   assert.equal(cfg.agent.workspace, os.homedir());
@@ -89,34 +86,31 @@ test('stored providers and active model keep the existing install unchanged', (t
   fs.writeFileSync(paths(home).config, JSON.stringify(stored));
   const cfg = loadConfig();
   assert.deepEqual(cfg.active, stored.active);
-  // the only addition is the default cap (anthropic: 8192) that the saved entry lacked
-  assert.deepEqual(cfg.providers, [{ ...stored.providers[0], maxTokens: 8192 }, stored.providers[1]]);
+  // ollama is the only default, and it has no maxTokens, so a saved list is kept as written
+  assert.deepEqual(cfg.providers, stored.providers);
 });
 
-test('a saved openrouter provider without maxTokens gets the default', (t) => {
+test('a saved provider that is not a default does not gain maxTokens', (t) => {
   const home = tmpHome(t);
   const stored = {
     providers: [
-      { id: 'openai', kind: 'openai-compatible', baseUrl: 'https://api.openai.com/v1' },
-      { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://example.invalid/v1', apiKeyEnv: 'MY_KEY' },
+      { id: 'openai', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1234/v1' },
+      { id: 'custom', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:9/v1', apiKeyEnv: 'MY_KEY' },
       { id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://localhost:11434/v1', contextWindow: 32000 },
     ],
   };
   fs.writeFileSync(paths(home).config, JSON.stringify(stored));
   const cfg = loadConfig();
-  assert.equal(defaultConfig().providers.find((p) => p.id === 'openrouter')!.maxTokens, 8192);
-  assert.deepEqual(cfg.providers[1], { ...stored.providers[1], maxTokens: 8192 });
-  // no default cap, nothing is added (and no undefined key)
-  assert.deepEqual(cfg.providers[0], stored.providers[0]);
-  assert.deepEqual(cfg.providers[2], stored.providers[2]);
+  assert.equal(defaultConfig().providers.find((p) => p.id === 'ollama')!.maxTokens, undefined);
+  assert.deepEqual(cfg.providers, stored.providers);
   assert.equal(Object.hasOwn(cfg.providers[2]!, 'maxTokens'), false);
 });
 
 test('a malformed providers list fails validation', (t) => {
   const home = tmpHome(t);
-  const good = { id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1' };
+  const good = { id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:11434/v1' };
   // loadConfig must not throw a TypeError on these; validateConfig is what reports them
-  for (const providers of ['nope', { id: 'openrouter' }, [null], [good, 7], [good, ['x']]]) {
+  for (const providers of ['nope', { id: 'custom' }, [null], [good, 7], [good, ['x']]]) {
     fs.writeFileSync(paths(home).config, JSON.stringify({ providers }));
     let cfg!: ReturnType<typeof loadConfig>;
     assert.doesNotThrow(() => { cfg = loadConfig(); }, JSON.stringify(providers));
@@ -126,7 +120,7 @@ test('a malformed providers list fails validation', (t) => {
 
 test('a user-set provider maxTokens is kept', (t) => {
   const home = tmpHome(t);
-  const stored = { providers: [{ id: 'openrouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', maxTokens: 32000 }] };
+  const stored = { providers: [{ id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:11434/v1', maxTokens: 32000 }] };
   fs.writeFileSync(paths(home).config, JSON.stringify(stored));
   assert.deepEqual(loadConfig().providers, stored.providers);
 });
@@ -231,12 +225,9 @@ test('values with edge whitespace or quotes survive a round trip', (t) => {
 test('getApiKey reads the provider apiKeyEnv from .env', (t) => {
   tmpHome(t);
   const cfg = defaultConfig();
-  assert.equal(getApiKey(cfg, 'anthropic'), undefined, 'not set yet');
-  setSecret('ANTHROPIC_API_KEY', 'fake-anthropic');
-  setSecret('OPENAI_API_KEY', '');
-  assert.equal(getApiKey(cfg, 'anthropic'), 'fake-anthropic');
-  assert.equal(getApiKey(cfg, 'openai'), undefined, 'empty = unset');
   assert.equal(getApiKey(cfg, 'ollama'), undefined, 'optional key is unset');
+  setSecret('OLLAMA_API_KEY', '');
+  assert.equal(getApiKey(cfg, 'ollama'), undefined, 'empty = unset');
   setSecret('OLLAMA_API_KEY', 'fake-local');
   assert.equal(getApiKey(cfg, 'ollama'), 'fake-local');
   assert.equal(getApiKey(cfg, 'nope'), undefined, 'unknown provider');

@@ -115,7 +115,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![daemon_info, os_info, os_status, os_retry, os_open_docker, os_toggle_panel])
         .build(tauri::generate_context!())
-        .expect("error while building BigNose OS")
+        .expect("error while building BoomBigNose")
         .run(|app, event| match event {
             RunEvent::ExitRequested { api, .. } => {
                 if lifecycle::on_exit_requested(app.state::<Quitting>().get()) {

@@ -6,8 +6,8 @@ import type { McpServerConfig, Policy } from '../types.ts';
 
 export const ERP_CONNECTOR = 'erp';
 export const ERP_AGENT = 'ERP assistant';
-export const ERP_PROVIDER = 'openrouter';
-export const ERP_MODEL = 'google/gemini-4-argon';
+export const ERP_PROVIDER = 'ollama';
+export const ERP_MODEL = 'qwen3:4b';
 
 /** Node and the ERP's MCP server, from the Rust `os_info` command (a Finder launch has no shell PATH). */
 export interface OsInfo { node: string; erpDir: string; mcpServer: string }
@@ -28,7 +28,7 @@ export const ERP_PERMISSIONS: Record<string, Policy> = {
 };
 
 export const ERP_INSTRUCTIONS = [
-  'You are the ERP assistant inside BigNose OS. You answer questions about the company ERP (workspaces, clients, deals, quotes, projects, invoices, payment claims, finance summary) with the read-only erp tools.',
+  'You are the ERP assistant inside BoomBigNose. You answer questions about the company ERP (workspaces, clients, deals, quotes, projects, invoices, payment claims, finance summary) with the read-only erp tools.',
   'Rules:',
   '1. Read only. You cannot create, change or delete anything, and you never say that you did.',
   '2. Get every name and number from a tool. If a tool fails or returns nothing, say so; never guess.',
@@ -59,7 +59,7 @@ export async function provisionErp(api: Pick<Api, 'getSettings' | 'listAgents' |
   const created = await api.createAgent({
     name: ERP_AGENT, icon: '🧾', instructions: ERP_INSTRUCTIONS, provider: ERP_PROVIDER, model: ERP_MODEL,
     connectors: [ERP_CONNECTOR], permissions: ERP_PERMISSIONS,
-    maxTokens: 4096, // without a cap OpenRouter reserves the model's full output and answers 402
+    maxTokens: 4096, // a local cap so one reply cannot fill the whole context
   });
   return created.id;
 }

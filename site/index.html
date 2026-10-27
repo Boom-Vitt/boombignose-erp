@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>BoomBigNose ERP Harness AI</title>
-  <meta name="description" content="BoomBigNose ERP Harness AI เป็นเดสก์ท็อปบนเครื่องคุณ ไม่เรียก AI บนคลาวด์ ไฟล์ boombignose-v0.1.1 เป็นตัวติดตั้งคำสั่งฮาร์เนสที่ไม่ได้ลงชื่อร้านค้า" />
+  <meta name="description" content="BoomBigNose ERP Harness AI เป็นหน้าต่างบนเครื่องคุณ ไม่เรียก AI บนคลาวด์ ตัวติดตั้ง boombignose-v0.2.0 ไม่ได้ลงชื่อร้านค้า" />
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -126,8 +126,8 @@
       <h1>BoomBigNose ERP Harness AI</h1>
       <p class="lead">เดสก์ท็อปบนเครื่องคุณ ไม่เรียก AI บนคลาวด์</p>
       <p class="en">Fully local. No cloud AI at runtime.</p>
-      <a class="btn" id="primary-download" href="#download">ดาวน์โหลด boombignose-v0.1.1</a>
-      <p class="meta" id="primary-meta">ถ้าเบราว์เซอร์ไม่บอกระบบ ให้เลือกการ์ดด้านล่าง ขนาดเป็นจำนวนไบต์จริงจาก Release</p>
+      <a class="btn" id="primary-download" href="#download">ดาวน์โหลด boombignose-v0.2.0</a>
+      <p class="meta" id="primary-meta">หน้าต่างแอป ไม่ใช่แค่คำสั่ง harness ถ้าเบราว์เซอร์ไม่บอกระบบ ให้เลือกการ์ดด้านล่าง</p>
       <div class="window" role="img" aria-label="ภาพจำลองกรอบหน้าต่าง ไม่ใช่ภาพจับจากโปรแกรม">
         <div class="chrome"><i></i><i></i><i></i><span>BoomBigNose ERP Harness AI</span></div>
         <div class="panes">
@@ -167,9 +167,9 @@
       <div class="wrap">
         <h2>สามขั้น</h2>
         <div class="steps">
-          <article class="card"><h3>1. เลือกไฟล์ของระบบ</h3><p>เวอร์ชัน boombignose-v0.1.1 มี macOS arm64, Windows x64 และ Linux amd64</p></article>
-          <article class="card"><h3>2. ยอมรับคำเตือนของระบบ</h3><p>ไฟล์ไม่ได้ลงชื่อร้านค้า ใช้ Open Anyway หรือ More info แล้ว Run anyway</p></article>
-          <article class="card"><h3>3. ตรวจว่าอยู่บนเครื่อง</h3><p>คำสั่ง boombignose check ปฏิเสธคีย์คลาวด์ หน้าต่างที่คอมไพล์แล้วตั้งใจเปิด http://127.0.0.1:3100 ไฟล์ชุดนี้ยังไม่รวมฐานข้อมูลไว้ในตัว</p></article>
+          <article class="card"><h3>1. เลือกไฟล์ของระบบ</h3><p>เวอร์ชัน boombignose-v0.2.0 มีตัวติดตั้งหน้าต่างสำหรับ macOS arm64, Windows x64 และ Linux amd64</p></article>
+          <article class="card"><h3>2. ยอมรับคำเตือนของระบบ</h3><p>ไม่มีใบรับรองที่ซื้อจากร้านค้า macOS ใช้ Open Anyway Windows ใช้ More info แล้ว Run anyway Smart App Control อาจยังบล็อก</p></article>
+          <article class="card"><h3>3. เปิดหน้าต่าง</h3><p>โปรแกรมที่ติดตั้งชื่อ BoomBigNose และเปิดเป็นหน้าต่าง ถ้าพอร์ต 127.0.0.1:3100 ว่างและมีซอร์สบนเครื่อง มันจะพยายามสตาร์ท ERP ในเครื่อง ไฟล์นี้ไม่ได้รวม Node, Docker, Postgres หรือ Ollama</p></article>
         </div>
       </div>
     </section>
@@ -177,25 +177,27 @@
     <section id="download">
       <div class="wrap">
         <h2>ไฟล์แต่ละระบบ</h2>
-        <p class="sub">สร้างจาก CI ขนาดเป็นไบต์ตาม Release ค่าแฮชทั้งไฟล์อยู่ในการ์ด</p>
+        <p class="sub">สร้างจาก CI ของแท็ก boombignose-v0.2.0 ขนาดเป็นไบต์ตาม Release ค่าแฮชทั้งไฟล์อยู่ในการ์ด ไม่ได้ลงชื่อด้วยใบรับรองที่ซื้อมา</p>
         <div class="os-grid">
-          <a class="card os" id="card-mac" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.1.1/BoomBigNose-macos-arm64.dmg">
+          <a class="card os" id="card-mac" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.2.0/BoomBigNose-macos-arm64.dmg">
             <strong>macOS</strong>
-            <span>arm64 · boombignose-v0.1.1 · 1,734,646 ไบต์</span>
-            <span class="mono">06bf8f9a81ed165599735ae85ef2b896e69e8c4abb51967241d62e389f6e3806</span>
+            <span>arm64 · boombignose-v0.2.0 · 6,059,296 ไบต์</span>
+            <span class="mono">321bbf583533058d1f84b38ba1874fbf05230daf067c08db1f858a7cd06767c0</span>
             <span class="mono">BoomBigNose-macos-arm64.dmg</span>
           </a>
-          <a class="card os" id="card-win" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.1.1/BoomBigNose-windows-x64-setup.exe">
+          <a class="card os" id="card-win" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.2.0/BoomBigNose-windows-x64-setup.exe">
             <strong>Windows</strong>
-            <span>x64 · boombignose-v0.1.1 · 1,388,362 ไบต์</span>
-            <span class="mono">629379796eec82f196c0b3951de49bd79d1cae8d2c066ac6a9b11016ee019c87</span>
+            <span>x64 · boombignose-v0.2.0 · 7,197,164 ไบต์</span>
+            <span class="mono">9d8edbbab57555c705abd0b84d63e8b329e38f3fa0338c7f6146c775e8a6b56b</span>
             <span class="mono">BoomBigNose-windows-x64-setup.exe</span>
           </a>
-          <a class="card os" id="card-linux" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.1.1/BoomBigNose-linux-amd64.tar.gz">
+          <a class="card os" id="card-linux" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.2.0/BoomBigNose-linux-amd64.tar.gz">
             <strong>Linux</strong>
-            <span>amd64 · boombignose-v0.1.1 · 1,313,237 ไบต์</span>
-            <span class="mono">2d558de0b036c4fc604668b472e99f76fb668b0e1d9603215fc59d69dac302fd</span>
+            <span>amd64 · boombignose-v0.2.0 · 5,775,731 ไบต์</span>
+            <span class="mono">f2d61ac2be03da5f99698ce476a18ee0b286397df6d79c633cd9c9c7260305f6</span>
             <span class="mono">BoomBigNose-linux-amd64.tar.gz</span>
+            <span class="mono"><a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.2.0/BoomBigNose-linux-amd64.AppImage">AppImage 6,457,848 ไบต์</a></span>
+            <span class="mono">09099c6a660912f3a2b3ab4af86e55920ce8ce1d5d4a21852243778b22241f4b</span>
           </a>
         </div>
       </div>
@@ -226,9 +228,9 @@
           <article class="card">
             <h3>Linux</h3>
             <ol>
-              <li>แตกไฟล์ .tar.gz</li>
-              <li>ได้คำสั่งชื่อ boombignose</li>
-              <li>แพลตฟอร์มนี้เป็นลำดับรองของชุดเดียวกัน</li>
+              <li>แตกไฟล์ .tar.gz ได้ไบนารีชื่อ BoomBigNose หรือใช้ไฟล์ AppImage</li>
+              <li>ต้องมี WebKitGTK 4.1 บนเครื่อง</li>
+              <li>เปิดแล้วเป็นหน้าต่าง ไม่ใช่คำสั่ง harness</li>
             </ol>
           </article>
         </div>
@@ -248,9 +250,9 @@
       <div class="wrap">
         <h2>คำถามและความต้องการของเครื่อง</h2>
         <div class="os-grid">
-          <article class="card"><h3>ต้องมีอะไรบนเครื่อง</h3><p>Windows x64, macOS arm64 หรือ Linux amd64 ไฟล์ v0.1.1 ไม่ได้รวม Docker, Postgres หรือ Ollama ไว้ในตัว</p></article>
-          <article class="card"><h3>หน้านี้คือโปรแกรมหรือ</h3><p>ไม่ใช่ GitHub Pages แสดงหน้านี้ ERP เปิดจากโปรแกรมบนเครื่อง</p></article>
-          <article class="card"><h3>ค่าแฮชทั้งชุด</h3><p><a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.1.1/SHA256SUMS">SHA256SUMS</a> บนแท็ก boombignose-v0.1.1</p></article>
+          <article class="card"><h3>ต้องมีอะไรบนเครื่อง</h3><p>Windows x64, macOS arm64 หรือ Linux amd64 ไฟล์ v0.2.0 ไม่ได้รวม Node, Docker, Postgres หรือ Ollama ไว้ในตัว</p></article>
+          <article class="card"><h3>หน้านี้คือโปรแกรมหรือ</h3><p>ไม่ใช่ GitHub Pages แสดงหน้านี้ ERP เปิดจากหน้าต่างบนเครื่อง</p></article>
+          <article class="card"><h3>ค่าแฮชทั้งชุด</h3><p><a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.2.0/SHA256SUMS">SHA256SUMS</a> บนแท็ก boombignose-v0.2.0</p></article>
         </div>
       </div>
     </section>
@@ -269,19 +271,19 @@
     (function () {
       var builds = {
         mac: {
-          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.1.1/BoomBigNose-macos-arm64.dmg",
+          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.2.0/BoomBigNose-macos-arm64.dmg",
           label: "ดาวน์โหลด macOS arm64",
-          meta: "boombignose-v0.1.1 · 1,734,646 ไบต์"
+          meta: "boombignose-v0.2.0 · หน้าต่าง · 6,059,296 ไบต์"
         },
         win: {
-          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.1.1/BoomBigNose-windows-x64-setup.exe",
+          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.2.0/BoomBigNose-windows-x64-setup.exe",
           label: "ดาวน์โหลด Windows x64",
-          meta: "boombignose-v0.1.1 · 1,388,362 ไบต์"
+          meta: "boombignose-v0.2.0 · หน้าต่าง · 7,197,164 ไบต์"
         },
         linux: {
-          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.1.1/BoomBigNose-linux-amd64.tar.gz",
+          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.2.0/BoomBigNose-linux-amd64.tar.gz",
           label: "ดาวน์โหลด Linux amd64",
-          meta: "boombignose-v0.1.1 · 1,313,237 ไบต์"
+          meta: "boombignose-v0.2.0 · หน้าต่าง · 5,775,731 ไบต์"
         }
       };
       var ua = navigator.userAgent || "";

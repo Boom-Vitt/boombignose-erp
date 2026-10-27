@@ -5,11 +5,9 @@
 name: BoomBigNose release assets
 
 on:
+  push:
+    branches: [main]
   pull_request:
-    paths:
-      - "boombignose/**"
-      - "packaging/**"
-      - ".github/workflows/boombignose-release.yml"
   workflow_dispatch:
   release:
     types: [published]

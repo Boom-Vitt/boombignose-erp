@@ -4,7 +4,7 @@ package shell
 
 import "github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/policy"
 
-// DefaultERPURL is the loopback address already used by BigNose OS.
+// DefaultERPURL is the loopback address the BoomBigNose window opens.
 const DefaultERPURL = "http://127.0.0.1:3100"
 
 // ERPURL returns raw when it is an allowed local URL. An empty raw value

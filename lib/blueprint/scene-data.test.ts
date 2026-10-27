@@ -139,8 +139,8 @@ describe("buildBlueprintScene", () => {
     expect(payments.codeRuleEn).toContain("pending-only")
 
     const ai = scene.assemblies.find((a) => a.id === "07-ai-unit")!
-    expect(ai.codeRuleEn).toContain("Gemini 4 via OpenRouter")
-    expect(ai.codeRuleEn).toContain("BigNose OS")
+    expect(ai.codeRuleEn).toContain("Ollama on loopback")
+    expect(ai.codeRuleEn).toContain("BoomBigNose")
     expect(ai.codeRuleEn).toContain("read-only")
 
     const housing = scene.assemblies.find((a) => a.id === "08-tenant-housing")!

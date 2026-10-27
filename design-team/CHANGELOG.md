@@ -11,7 +11,7 @@ The download page in `site/index.html` was rebuilt for Midnight Local.
 - Removed the face photo (`site/face-logo.png`) and the isometric poster graphic from the page.
 - Added our mark: `site/assets/favicon.svg`, lockup `site/assets/logo.svg`, `site/assets/og.svg`, and a 1200×630 `site/assets/og.png`.
 - Section order follows the brief: nav, hero, trust, modules, three steps, OS cards with SHA-256, unsigned install steps, privacy, FAQ and requirements, footer.
-- The hero button points at the boombignose-v0.1.1 file for the visitor's OS. Sizes are the Release byte counts.
+- The hero button points at the boombignose-v0.2.0 window installer for the visitor's OS. Sizes are the Release byte counts.
 - ERP `app/globals.css` gained `--bbn-accent`, `--bbn-ink`, and `--bbn-paper` only. Existing component colors were left as they were.
 - README banners now use `site/assets/logo.svg` instead of `.github/brand/banner.svg`.
 

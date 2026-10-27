@@ -1,4 +1,4 @@
-# 0002 — BigNose OS: the ERP in one window with a BigNose panel
+# 0002 — BoomBigNose: the ERP in one window with a BigNose panel
 
 Status: accepted (2026-10-15). Builds on `0001-architecture.md`. Operator guide: `docs/bignose-os.md`.
 
@@ -27,8 +27,7 @@ window, so Save was unreachable).
 - **The launcher runs `node <erp>/scripts/local/stack.mjs doctor|up|serve` as managed children** in their own process
   group, with the login-shell `PATH` and the daemon's Node. The ERP folder is `erpDir` in `os.json`, else
   `BIGNOSE_OS_ERP_DIR`, else the compile-time repo root. Docker stopped, a missing folder and `EPERM` (macOS folder
-  privacy on `~/Desktop`) are their own screens. The OpenRouter key goes from `<BIGNOSE_HOME>/.env` into the child's
-  environment only.
+  privacy on `~/Desktop`) are their own screens. The launcher does not copy a cloud model key into the child.
 - **Lifecycle decisions are pure functions** (`lifecycle.rs`): close hides, an unrequested exit is refused, a Dock
   click shows the window, and quit stops only the children this run started (launcher group, then daemon). The
   Supabase stack is not ours to stop: it is shared, so it keeps running.

@@ -26,6 +26,8 @@
 
 หน้าดาวน์โหลดอยู่ที่ [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/) ที่อยู่เดิม [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) เลิกใช้แล้ว และจะไม่ได้รับไฟล์ใหม่ รายการ Release อยู่ที่ [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest)
 
+Release `boombignose-v0.2.0` คือหน้าต่าง Wails ที่ GitHub Actions สร้างด้วย Go แล้วแนบไฟล์ `BoomBigNose-windows-x64-setup.exe` (NSIS ไม่ได้ลงชื่อร้านค้า), `BoomBigNose-macos-arm64.dmg` (เซ็นแบบ ad-hoc ไม่มีใบรับรองที่ซื้อจาก Apple), `BoomBigNose-linux-amd64.tar.gz`, `BoomBigNose-linux-amd64.AppImage` และ `SHA256SUMS` ติดตั้งแล้วเปิดเป็นหน้าต่าง ไม่ใช่แค่คำสั่ง harness ไฟล์ไม่ได้รวม Node, Docker, Postgres หรือ Ollama และยังไม่ได้คลิกทดสอบบนเครื่องจริง แท็ก `boombignose-v0.1.1` เป็นคำสั่ง harness รุ่นเก่า Windows อาจขึ้น SmartScreen (More info แล้ว Run anyway) และ Smart App Control อาจบล็อกแอปที่ไม่ได้ลงชื่อ macOS อาจต้องกด Open Anyway Linux ต้องมี WebKitGTK 4.1
+
 ## BoomBigNose ERP
 
 BoomBigNose ERP รวมงานขาย จัดซื้อ คลังสินค้า โปรเจกต์ และการวางบิลของธุรกิจไว้บนฐานข้อมูลเดียว ออกแบบสำหรับธุรกิจไทยเป็นหลัก รองรับภาษีมูลค่าเพิ่มและภาษีหัก ณ ที่จ่ายบนเอกสาร สกุลเงินบาท และเขตเวลา Asia/Bangkok ตั้งแต่แรก ใช้ได้ตั้งแต่ร้านที่มีสองคนไปจนถึงบริษัทที่กำลังเติบโตและมีหลายทีม
@@ -46,7 +48,7 @@ BoomBigNose ERP รวมงานขาย จัดซื้อ คลัง�
 - **เบิกค่าใช้จ่าย**: พนักงานส่งใบเบิก ผู้จัดการอนุมัติหรือปฏิเสธ ไม่มีใครอนุมัติใบเบิกของตัวเองได้ และใบเบิกที่อนุมัติแล้วจะกลายเป็นต้นทุนในหน้าการเงิน
 - **โปรเจกต์และไทม์ชีต**: โปรเจกต์แบบรายการหรือบอร์ดคัมบัง พร้อมงานย่อย milestones และเวลาที่บันทึก เปลี่ยนเวลาที่เรียกเก็บได้เป็นใบแจ้งหนี้ฉบับร่างในขั้นตอนเดียว อัตราต้นทุนของสมาชิกและกำไรของโปรเจกต์เห็นได้เฉพาะ owner และ admin
 - **รายงานและปฏิทิน**: รายได้รายเดือนและรายลูกค้า ชั่วโมงงานต่อโปรเจกต์ และต้นทุนขาย ในรูปกราฟแท่ง กราฟเส้น หรือตาราง pivot มุมมองที่บันทึกไว้ (saved views) การส่งออก CSV และปฏิทินของงานติดตาม การประชุม วันครบกำหนด และเดดไลน์
-- **ระบบอัตโนมัติและ AI**: เทมเพลตงานอัตโนมัติที่นำกลับมาใช้ซ้ำได้ การเตือนงานติดตามตามรอบเวลา outbox ที่ส่งเหตุการณ์ไปยัง n8n และ webhook ขาเข้าจาก n8n ผู้ช่วย AI สรุปดีล ร่างข้อความติดตาม และสรุปโน้ตประชุมผ่าน OpenRouter เมื่อใส่ API key
+- **ระบบอัตโนมัติและ AI**: เทมเพลตงานอัตโนมัติที่นำกลับมาใช้ซ้ำได้ การเตือนงานติดตามตามรอบเวลา outbox ที่ส่งเหตุการณ์ไปยัง n8n และ webhook ขาเข้าจาก n8n ผู้ช่วย AI สรุปดีล ร่างข้อความติดตาม และสรุปโน้ตประชุมเรียก Ollama บนเครื่องนี้ (ค่าเริ่มต้น `127.0.0.1:11434`) ถ้า Ollama ไม่ได้เปิด หน้าจอจะบอกตรงๆ และไม่เรียกโมเดลบนคลาวด์
 - **ทั้งระบบ**: command palette ด้วย Ctrl/Cmd+K แถบค้นหาและตัวกรองในหน้ารายการ แถบสถานะด้านบนและประวัติโน้ต ไฟล์แนบ และกิจกรรมบนเอกสารธุรกิจ และ audit log สำหรับ owner และ admin
 - **ทีม**: บทบาท owner, admin และ member และการเชิญสมาชิกด้วยลิงก์
 
@@ -132,7 +134,7 @@ BoomBigNose ERP ไม่ใช่สมุดบัญชีแยกประ�
 | `CRON_SECRET` | ใช่ | ตรวจ header `X-Cron-Secret` ของงานตามรอบเวลา |
 | `N8N_WEBHOOK_SECRET` | ใช่ | ตรวจ header `X-Webhook-Secret` ของ webhook ขาเข้าจาก n8n |
 | `N8N_OUTBOUND_URL`, `N8N_OUTBOUND_SECRET` | ไม่ | เปิดการส่งเหตุการณ์จาก outbox ไปยัง n8n |
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | ไม่ | เปิดผู้ช่วย AI และเปลี่ยนโมเดล |
+| `OLLAMA_HOST`, `OLLAMA_MODEL` | ไม่ | ที่อยู่ Ollama บนเครื่อง (ค่าเริ่มต้น `127.0.0.1:11434`) และชื่อโมเดล ที่อยู่ที่ไม่ใช่ loopback ถูกปฏิเสธ |
 | `RESEND_API_KEY` | ไม่ | เปิดการส่งอีเมลผ่าน Resend |
 | `EMAIL_FROM` | ไม่ | อีเมลผู้ส่ง |
 | `LEAD_FORM_TRUST_PROXY` | ไม่ | ตั้งเป็น `true` เมื่ออยู่หลัง proxy ที่เขียนทับ `X-Forwarded-For` เพื่อให้จำกัดอัตราการส่งฟอร์มรับลีดแยกตามผู้เข้าชม |

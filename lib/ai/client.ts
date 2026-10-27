@@ -1,35 +1,57 @@
-// SERVER-ONLY. Importing this from a Client Component (or a vitest node test)
-// throws — that guard keeps the API key out of the browser bundle and off the
-// test path. The pure prompt/parse modules deliberately do NOT import this
-// file, so they stay unit-testable with no key and no network.
+// SERVER-ONLY. Importing this from a Client Component throws — that guard
+// keeps the call on the server. The pure prompt/parse modules do not import
+// this file, so they stay unit-testable with no network.
 import "server-only"
 
-const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+const DEFAULT_HOST = "127.0.0.1:11434"
 
-/** Default model (Gemini 4 via OpenRouter). Override with OPENROUTER_MODEL. */
-export const DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-4-argon"
+/** Default local model. Override with OLLAMA_MODEL. The model must already be pulled. */
+export const DEFAULT_MODEL = process.env.OLLAMA_MODEL?.trim() || "qwen3:4b"
 
 /**
- * Thrown when no OPENROUTER_API_KEY is configured. Callers catch this and return
- * a friendly `{ notConfigured: true }` result instead of surfacing an error —
- * the app must never crash or hit the network when the key is absent.
+ * Thrown when Ollama is not usable on this machine. Callers catch this and
+ * return `{ notConfigured: true }` instead of crashing.
  */
 export class AINotConfiguredError extends Error {
-  constructor() {
-    super("AI is not configured — OPENROUTER_API_KEY is not set.")
+  constructor(message = "AI is not configured. Start Ollama on this machine (ollama serve) and pull a model (ollama pull qwen3:4b).") {
+    super(message)
     this.name = "AINotConfiguredError"
   }
 }
 
-/** True only when an API key is present in the server environment. */
+function ollamaOrigin(): string {
+  const raw = process.env.OLLAMA_HOST?.trim() || DEFAULT_HOST
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`
+  let url: URL
+  try {
+    url = new URL(withScheme)
+  } catch {
+    throw new AINotConfiguredError()
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new AINotConfiguredError()
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase()
+  if (host !== "localhost" && host !== "127.0.0.1" && host !== "::1") {
+    throw new AINotConfiguredError()
+  }
+  return url.origin
+}
+
+/** True when the configured model endpoint is loopback. It does not probe the port. */
 export function isAIConfigured(): boolean {
-  return !!process.env.OPENROUTER_API_KEY
+  try {
+    ollamaOrigin()
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
- * Run a single-shot text generation. Throws AINotConfiguredError BEFORE any
- * request is made when the key is missing. Errors are short and never carry
- * the key or a raw response body.
+ * One-shot text generation against local Ollama. A remote host throws
+ * AINotConfiguredError before any request. A refused connection or a missing
+ * model throws the same error so the screen can degrade without a stack trace.
  */
 export async function generateText({
   system,
@@ -40,55 +62,61 @@ export async function generateText({
   prompt: string
   maxTokens?: number
 }): Promise<string> {
-  const key = process.env.OPENROUTER_API_KEY
-  if (!key) throw new AINotConfiguredError()
+  const origin = ollamaOrigin()
+  const model = process.env.OLLAMA_MODEL?.trim() || DEFAULT_MODEL
 
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "X-Title": "BigNose OS",
-    },
-    body: JSON.stringify({
-      model: DEFAULT_MODEL,
-      max_tokens: maxTokens,
-      // max_tokens also covers reasoning; keep it from eating the visible reply.
-      reasoning: { effort: "low" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: prompt },
-      ],
-    }),
-    signal: AbortSignal.timeout(60_000),
-  })
-
-  // Parse defensively: the body may be non-JSON (gateway error page).
-  const data = (await res.json().catch(() => null)) as {
-    choices?: {
-      finish_reason?: string
-      error?: { message?: unknown }
-      message?: { content?: unknown }
-    }[]
-    error?: { message?: unknown }
-  } | null
-
-  // Short error: status/label + upstream message cut to 200 chars, key redacted.
-  const fail = (head: string, msg: unknown) => {
-    const text = typeof msg === "string" ? msg : ""
-    const safe = text.split(key).join("[redacted]").slice(0, 200)
-    return new Error(safe ? `${head}: ${safe}` : head)
+  let res: Response
+  try {
+    res = await fetch(`${origin}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: prompt },
+        ],
+        options: { num_predict: maxTokens },
+      }),
+      signal: AbortSignal.timeout(60_000),
+    })
+  } catch {
+    throw new AINotConfiguredError(
+      `AI is not configured. Start Ollama on this machine (ollama serve). Address: ${origin}.`,
+    )
   }
 
-  if (!res.ok) throw fail(`OpenRouter HTTP ${res.status}`, data?.error?.message)
-  // OpenRouter can answer 200 with a top-level error, or finish_reason "error".
-  if (data?.error) throw fail("OpenRouter error", data.error.message)
-  const choice = data?.choices?.[0]
-  if (choice?.finish_reason === "error") throw fail("OpenRouter error", choice.error?.message)
+  const data = (await res.json().catch(() => null)) as {
+    error?: unknown
+    message?: { content?: unknown }
+  } | null
 
-  const content = choice?.message?.content
+  const detail = () => {
+    const raw = typeof data?.error === "string" ? data.error : ""
+    return raw.replace(/\s+/g, " ").slice(0, 200)
+  }
+
+  if (!res.ok) {
+    const extra = detail()
+    throw new AINotConfiguredError(
+      extra
+        ? `AI is not configured. Ollama at ${origin} returned HTTP ${res.status}: ${extra}`
+        : `AI is not configured. Ollama at ${origin} returned HTTP ${res.status}.`,
+    )
+  }
+  if (data?.error) {
+    const extra = detail()
+    throw new AINotConfiguredError(
+      extra
+        ? `AI is not configured. ${extra}`
+        : "AI is not configured. Ollama returned an error.",
+    )
+  }
+
+  const content = data?.message?.content
   if (typeof content !== "string" || !content.trim()) {
-    throw new Error("OpenRouter returned no text")
+    throw new Error("Ollama returned no text")
   }
   return content.trim()
 }
