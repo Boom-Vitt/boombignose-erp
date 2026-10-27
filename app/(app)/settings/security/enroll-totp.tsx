@@ -41,7 +41,6 @@ export function EnrollTotp() {
     setVerified(verifiedFactor)
     setNeedsStepUp(
       sessionNeedsStepUp({
-        enrollEnabled: true,
         hasVerifiedTotp: verifiedFactor,
         authenticatorAssuranceLevel: level.data?.currentLevel,
       })
@@ -104,8 +103,7 @@ export function EnrollTotp() {
       {verified ? <p>An authenticator is already saved for this account.</p> : null}
       {needsStepUp ? (
         <p role="status">
-          This session is still aal1. The next sign-in can ask for the authenticator
-          code. Other pages are not blocked.
+          This session is still aal1. App pages ask this account for the authenticator code.
         </p>
       ) : null}
       {enrolled ? (

@@ -22,6 +22,11 @@ function isPublic(pathname: string): boolean {
  * logic between `createServerClient` and `auth.getClaims()`.
  */
 export async function updateSession(request: NextRequest) {
+  // The bundle smoke check hits this path before Supabase is configured.
+  if (request.nextUrl.pathname === "/api/health") {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const cookies = {

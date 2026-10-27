@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { createClient } from "@/lib/supabase/client"
+import { stepUpPath } from "@/lib/auth/totp"
 import { safeReturnPath } from "@/lib/supabase/redirect"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,10 +39,23 @@ function LoginForm() {
     setLoading(true)
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithPassword({ email: em, password: pw })
-    setLoading(false)
     if (error) {
+      setLoading(false)
       toast.error("Sign in failed", { description: error.message })
       return
+    }
+    const level = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    setLoading(false)
+    if (!level.error && level.data) {
+      const next = stepUpPath({
+        hasVerifiedTotp: level.data.nextLevel === "aal2",
+        authenticatorAssuranceLevel: level.data.currentLevel,
+      })
+      if (next) {
+        router.push(next)
+        router.refresh()
+        return
+      }
     }
     router.push(redirectTo)
     router.refresh()

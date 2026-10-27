@@ -65,6 +65,9 @@ func run() error {
 				runtime.WindowExecJS(ctx, script)
 			}()
 		},
+		OnShutdown: func(context.Context) {
+			bundle.StopRunning()
+		},
 	})
 }
 
@@ -86,8 +89,11 @@ func startLocal(ctx context.Context, target string) error {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "boombignose: ollama: %s\n", err.Error())
 		}
-		parent := os.Environ()
-		return bundle.EnsureERP(ctx, layout, target, parent, nil)
+		data, err := bundle.DataDir()
+		if err != nil {
+			return err
+		}
+		return bundle.StartStack(ctx, layout, data, target, os.Environ(), nil)
 	}
 	return launch.Ensure(ctx, launch.FindCheckout(os.Getenv("BOOMBIGNOSE_ERP_DIR"), checkoutStarts()), os.Getenv("BOOMBIGNOSE_NODE"), target, nil)
 }
