@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/launch"
@@ -40,6 +41,42 @@ func pgAddr() string {
 		port = defaultPGPort
 	}
 	return net.JoinHostPort("127.0.0.1", port)
+}
+
+// ourCluster reports whether postmaster.pid in dataDir is a live process
+// for this directory and port. A v0.3 cluster in the same directory matches.
+// On Windows, signal 0 is unavailable, so a matching pid file is enough.
+func ourCluster(dataDir, port string) bool {
+	body, err := os.ReadFile(filepath.Join(dataDir, "postmaster.pid"))
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n")
+	if len(lines) < 4 {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(lines[0]))
+	if err != nil || !processAlive(pid) {
+		return false
+	}
+	if filepath.Clean(strings.TrimSpace(lines[1])) != filepath.Clean(dataDir) {
+		return false
+	}
+	return strings.TrimSpace(lines[3]) == port
+}
+
+func processAlive(pid int) bool {
+	if pid <= 1 {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 func pgPort() string {
@@ -155,22 +192,26 @@ func ensurePostgres(ctx context.Context, layout Layout, dataDir string, up func(
 	if strings.Contains(dataDir, " ") {
 		return errors.New("postgres data dir cannot contain spaces")
 	}
+	listening := up()
+	if listening && !ourCluster(dataDir, pgPort()) {
+		return fmt.Errorf("%s is already in use by another program. Stop that program, or set BOOMBIGNOSE_PG_PORT. The data directory stays at %s and the Postgres log is %s", pgAddr(), dataDir, filepath.Join(dataDir, "server.log"))
+	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
 	}
 	binDir := filepath.Dir(layout.Postgres)
 	env := postgresEnv(layout)
-	if _, err := os.Stat(filepath.Join(dataDir, "PG_VERSION")); err != nil {
-		initdb := filepath.Join(binDir, exeName("initdb"))
-		if err := run(Command{
-			Name: initdb,
-			Args: initdbArgs(runtime.GOOS, dataDir),
-			Env:  env,
-		}); err != nil {
-			return fmt.Errorf("initdb: %w", err)
+	if !listening {
+		if _, err := os.Stat(filepath.Join(dataDir, "PG_VERSION")); err != nil {
+			initdb := filepath.Join(binDir, exeName("initdb"))
+			if err := run(Command{
+				Name: initdb,
+				Args: initdbArgs(runtime.GOOS, dataDir),
+				Env:  env,
+			}); err != nil {
+				return fmt.Errorf("initdb: %w", err)
+			}
 		}
-	}
-	if !up() {
 		pgCtl := filepath.Join(binDir, exeName("pg_ctl"))
 		if err := run(Command{
 			Name: pgCtl,

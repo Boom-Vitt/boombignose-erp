@@ -83,15 +83,26 @@ while [ "$attempt" -le 3 ]; do
   sleep $((attempt * 5))
   attempt=$((attempt + 1))
 done
-set +e
-attach=$(hdiutil attach -nobrowse -readonly "$dmg" 2>&1)
-attach_status=$?
-set -e
-printf '%s\n' "$attach"
-if [ "$attach_status" -ne 0 ]; then
-  echo "hdiutil attach failed" >&2
-  exit 1
-fi
+attempt=1
+attach_status=1
+attach=""
+while [ "$attempt" -le 3 ]; do
+  set +e
+  attach=$(hdiutil attach -nobrowse -readonly "$dmg" 2>&1)
+  attach_status=$?
+  set -e
+  printf '%s\n' "$attach"
+  if [ "$attach_status" -eq 0 ]; then
+    break
+  fi
+  echo "hdiutil attach failed on attempt $attempt" >&2
+  hdiutil detach "/Volumes/BoomBigNose" >/dev/null 2>&1 || true
+  if [ "$attempt" -eq 3 ]; then
+    exit 1
+  fi
+  sleep $((attempt * 5))
+  attempt=$((attempt + 1))
+done
 mount=$(printf '%s\n' "$attach" | sed -n 's/^.*\(\/Volumes\/.*\)$/\1/p' | head -1 | sed 's/[[:space:]]*$//')
 if [ -z "$mount" ] || [ ! -d "$mount" ]; then
   echo "dmg did not mount" >&2
