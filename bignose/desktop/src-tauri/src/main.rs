@@ -122,7 +122,8 @@ fn main() {
                     api.prevent_exit();
                 }
             }
-            // a Dock click brings the hidden window back
+            // a Dock click brings the hidden window back (macOS-only event)
+            #[cfg(target_os = "macos")]
             RunEvent::Reopen { .. } => {
                 if let Some(w) = app.get_window(shell::WINDOW) {
                     if lifecycle::on_reopen(w.is_visible().unwrap_or(false)) {
