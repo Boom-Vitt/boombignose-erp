@@ -35,5 +35,14 @@ it("keeps a sign-out redirect on the loopback host the browser used", () => {
 
 it("does not follow a non-loopback Host header", () => {
   const request = new Request("http://localhost:3101/auth/signout", { headers: { host: "evil.example" } })
-  expect(loopbackRedirect("/login", request, "http://127.0.0.1:3100").href).toBe("http://127.0.0.1:3100/login")
+  expect(loopbackRedirect("/login", request, "http://127.0.0.1:3100").href).toBe("http://localhost:3101/login")
+})
+
+it("keeps a public confirmation URL when the configured app origin is loopback", () => {
+  const request = new Request("https://app.example.test/auth/confirm?token_hash=used&type=signup", {
+    headers: { host: "app.example.test" },
+  })
+  expect(loopbackRedirect("/dashboard", request, "http://127.0.0.1:3100").href).toBe(
+    "https://app.example.test/dashboard",
+  )
 })

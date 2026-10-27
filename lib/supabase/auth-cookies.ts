@@ -14,13 +14,23 @@ const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/
 
 /**
  * Next's `request.url` can say `localhost` while the browser is on
- * `127.0.0.1`. Those are different cookie hosts. Stay on the Host the
- * browser sent when it is loopback, and ignore any other Host.
+ * `127.0.0.1`. Those are different cookie hosts. When both are loopback,
+ * stay on the Host the browser sent. Otherwise stay on the request URL and
+ * ignore a foreign Host header.
  */
 export function loopbackRedirect(path: string, request: Request, fallbackOrigin: string): URL {
+  let requestUrl: URL | null = null
+  try {
+    requestUrl = new URL(request.url)
+  } catch {
+    requestUrl = null
+  }
   const host = request.headers.get("host") ?? ""
-  const origin = LOOPBACK_HOST.test(host) ? `http://${host}` : fallbackOrigin
-  return new URL(path, origin)
+  if (requestUrl && LOOPBACK_HOST.test(requestUrl.host) && LOOPBACK_HOST.test(host)) {
+    return new URL(path, `http://${host}`)
+  }
+  if (requestUrl && requestUrl.origin !== "null") return new URL(path, requestUrl.origin)
+  return new URL(path, fallbackOrigin)
 }
 
 export function authCookieNames(cookieHeader: string, storageKey: string): string[] {
