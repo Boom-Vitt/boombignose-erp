@@ -76,10 +76,43 @@ try {
     throw "windows postgres share/ layout is missing"
   }
   Copy-Item -LiteralPath (Join-Path $root "packaging\postgres\prelude.sql") -Destination (Join-Path $pgRoot "prelude.sql")
+  Copy-Item -LiteralPath (Join-Path $root "packaging\postgres\prelude-after-auth.sql") -Destination (Join-Path $pgRoot "prelude-after-auth.sql")
   Copy-Item -LiteralPath (Join-Path $root "packaging\postgres\POSTGRESQL_LICENSE.txt") -Destination (Join-Path $pgRoot "POSTGRESQL_LICENSE.txt")
   $migrations = Join-Path $pgRoot "migrations"
   New-Item -ItemType Directory -Force -Path $migrations | Out-Null
   Copy-Item -Path (Join-Path $root "supabase\migrations\*.sql") -Destination $migrations
+
+  $authSrc = $null
+  foreach ($candidate in @(
+    (Join-Path $root "dist\auth-windows"),
+    (Join-Path $root "dist\auth-windows\auth-windows")
+  )) {
+    if (Test-Path -LiteralPath (Join-Path $candidate "auth.exe")) { $authSrc = $candidate; break }
+  }
+  if (-not $authSrc) { throw "windows auth.exe missing; it is built from Auth commit 4eee58f296d9698a1c2c0ae14d7a0b379c7622d3" }
+  $authDest = Join-Path $dist "auth"
+  if (Test-Path -LiteralPath $authDest) { Remove-Item -LiteralPath $authDest -Recurse -Force }
+  New-Item -ItemType Directory -Force -Path $authDest | Out-Null
+  Copy-Item -LiteralPath (Join-Path $authSrc "auth.exe") -Destination (Join-Path $authDest "auth.exe")
+  Copy-Item -LiteralPath (Join-Path $authSrc "migrations") -Destination (Join-Path $authDest "migrations") -Recurse
+  Copy-Item -LiteralPath (Join-Path $root "packaging\auth\AUTH_LICENSE.txt") -Destination (Join-Path $authDest "AUTH_LICENSE.txt")
+  if (-not (Test-Path -LiteralPath (Join-Path $authDest "migrations\00_init_auth_schema.up.sql"))) {
+    throw "auth migrations were not copied"
+  }
+
+  $pgrestSha = "17f595b0d8dd37473d0231417dea07c5ac9f791282ff5b017fae51ff29e5de2f"
+  $pgrestUrl = "https://github.com/PostgREST/postgrest/releases/download/v16.5/postgrest-v16.5-windows-x86-64.zip"
+  $pgrestZip = Join-Path $tmp "postgrest.zip"
+  curl.exe -fsSL -o $pgrestZip $pgrestUrl
+  Assert-Sha256 $pgrestZip $pgrestSha
+  $pgrestExtract = Join-Path $tmp "postgrest"
+  Expand-Archive -LiteralPath $pgrestZip -DestinationPath $pgrestExtract
+  $pgrestExe = Join-Path $pgrestExtract "postgrest.exe"
+  if (-not (Test-Path -LiteralPath $pgrestExe)) { throw "postgrest.exe missing in the archive" }
+  $pgrestDest = Join-Path $dist "postgrest"
+  New-Item -ItemType Directory -Force -Path $pgrestDest | Out-Null
+  Copy-Item -LiteralPath $pgrestExe -Destination (Join-Path $pgrestDest "postgrest.exe")
+  Copy-Item -LiteralPath (Join-Path $root "packaging\postgrest\POSTGREST_LICENSE.txt") -Destination (Join-Path $pgrestDest "POSTGREST_LICENSE.txt")
 
   @(
     "platform=windows-amd64"
@@ -93,6 +126,14 @@ try {
     "postgres_archive=$pgInner"
     "postgres_license=PostgreSQL License (postgres/POSTGRESQL_LICENSE.txt)"
     "erp=linux-built Next.js standalone server.js"
+    "auth=v2.197.0"
+    "auth_commit=4eee58f296d9698a1c2c0ae14d7a0b379c7622d3"
+    "auth_note=built for windows/amd64 because upstream publishes no Windows archive"
+    "auth_license=MIT (auth/AUTH_LICENSE.txt)"
+    "postgrest=v16.5"
+    "postgrest_url=$pgrestUrl"
+    "postgrest_sha256=$pgrestSha"
+    "postgrest_license=MIT (postgrest/POSTGREST_LICENSE.txt)"
   ) | Set-Content -LiteralPath (Join-Path $dist "PROVENANCE") -Encoding ascii
 } finally {
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

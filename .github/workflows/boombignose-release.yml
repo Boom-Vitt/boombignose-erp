@@ -63,6 +63,10 @@ jobs:
           $global:LASTEXITCODE = 0
           if (-not (Test-Path -LiteralPath "dist\bundle\erp\server.js")) { throw "server.js was not copied" }
           if (-not (Test-Path -LiteralPath "dist\bundle\erp\.next\static")) { throw ".next/static was not copied" }
+      - uses: actions/download-artifact@v4
+        with:
+          name: auth-windows
+          path: dist/auth-windows
       - name: Assemble Windows node and postgres
         shell: pwsh
         run: ./packaging/windows/assemble-bundle.ps1
@@ -148,7 +152,9 @@ jobs:
             "bundle\node.exe",
             "bundle\erp\server.js",
             "bundle\postgres\bin\postgres.exe",
-            "bundle\erp\.next\static"
+            "bundle\erp\.next\static",
+            "bundle\auth\auth.exe",
+            "bundle\postgrest\postgrest.exe"
           )) {
             if (-not (Test-Path -LiteralPath (Join-Path $dest $rel))) { throw "installer missing $rel" }
           }
@@ -276,6 +282,16 @@ jobs:
           path: dist/bundle/erp
           if-no-files-found: error
           include-hidden-files: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+      - name: Build Windows Auth from the pinned commit
+        run: sh packaging/auth/build-windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auth-windows
+          path: dist/auth-windows
+          if-no-files-found: error
 
   linux:
     needs: [test, linux-bundle]
