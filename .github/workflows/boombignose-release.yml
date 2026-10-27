@@ -444,8 +444,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name != 'pull_request'
-    needs: [windows, macos, linux]
+    needs: [gate, windows, macos, linux]
+    if: ${{ github.event_name != 'pull_request' && needs.gate.outputs.build == 'true' && needs.windows.result == 'success' && needs.macos.result == 'success' && needs.linux.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
