@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/bundle"
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/launch"
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/policy"
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/shell"
@@ -57,7 +58,7 @@ func run() error {
 			go func() {
 				wait, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 				defer cancel()
-				err := launch.Ensure(wait, launch.FindCheckout(os.Getenv("BOOMBIGNOSE_ERP_DIR"), checkoutStarts()), os.Getenv("BOOMBIGNOSE_NODE"), target, nil)
+				err := startLocal(wait, target)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "boombignose: %s\n", err.Error())
 				}
@@ -65,6 +66,30 @@ func run() error {
 			}()
 		},
 	})
+}
+
+func startLocal(ctx context.Context, target string) error {
+	root := os.Getenv("BOOMBIGNOSE_BUNDLE")
+	if root == "" {
+		if exe, err := os.Executable(); err == nil {
+			root = filepath.Join(filepath.Dir(exe), "bundle")
+		}
+	}
+	if bundle.Valid(root) {
+		layout, err := bundle.Discover(root)
+		if err != nil {
+			return err
+		}
+		ollamaWait, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err = bundle.EnsureOllama(ollamaWait, layout, os.Getenv("OLLAMA_HOST"), nil, nil)
+		cancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "boombignose: ollama: %s\n", err.Error())
+		}
+		parent := os.Environ()
+		return bundle.EnsureERP(ctx, layout, target, parent, nil)
+	}
+	return launch.Ensure(ctx, launch.FindCheckout(os.Getenv("BOOMBIGNOSE_ERP_DIR"), checkoutStarts()), os.Getenv("BOOMBIGNOSE_NODE"), target, nil)
 }
 
 func checkoutStarts() []string {

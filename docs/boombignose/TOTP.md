@@ -1,23 +1,17 @@
 # TOTP and AAL2
 
-Checked 2026-10-27. This note is a proposal. It does not change `supabase/config.toml` and it does not add a migration.
+Checked 2026-10-27.
 
-## What the tree does now
+## What is on
 
-`supabase/config.toml` has `[auth.mfa.totp]` with `enroll_enabled = false` and `verify_enabled = false`. Phone MFA is off the same way. A search of `supabase/migrations` found no policy that reads `aal` or requires a second factor before a row is read or written. Sign-in stays email and password for `127.0.0.1`.
+`supabase/config.toml` has `[auth.mfa.totp]` with `enroll_enabled = true` and `verify_enabled = true`. Phone MFA stays off. A search of `supabase/migrations` found no policy that reads `aal` or requires a second factor before a row is read or written.
 
-## Why the flags stay off
+The enrollment screen is `app/(app)/settings/security`. It renders the setup form only when `LOCAL_TOTP_ENROLL=1`. `lib/local/stack.mjs` copies that variable into `next start` only when the value is exactly `1`. Any other value leaves the screen closed. With the flag off, the page does not call GoTrue.
 
-Turning `enroll_enabled` and `verify_enabled` on only opens the local GoTrue TOTP API. It does not require AAL2 for an existing password session. The ERP has no enrollment screen, so those flags would not make sign-in stronger.
+`lib/auth/totp.ts` exports `sessionNeedsStepUp`. It is true only when the flag is on, the account has a verified TOTP factor, and the session is not `aal2`. The proxy and the database do not call it, so an `aal1` session still opens the rest of the ERP. The screen tells the signed-in user that the next sign-in can ask for a code and that other pages stay open.
 
-A database rule that rejects every `aal1` session would lock the local demo before anyone can enroll. That rule is not safe to apply in this change.
+A stack that was already running does not see the config change until it is restarted. This note does not restart one.
 
-## Proposal, not applied
+## What is still off
 
-1. Keep password sign-in working for an account that has no factor.
-2. Add an enrollment screen that calls the local GoTrue TOTP enroll and verify endpoints on loopback.
-3. After that user enrolls, require `aal2` for that user on the next sign-in. An account with no factor stays at `aal1`.
-4. Do not add an RLS policy that rejects `aal1` on every table.
-5. Do not put the service-role key in the desktop binary to skip the check.
-
-Until that screen exists, the config flags stay false and `supabase/migrations` stays unchanged.
+There is no RLS policy that rejects `aal1`. The service-role key stays out of the desktop binary. The screen was not exercised against a live GoTrue in this run.

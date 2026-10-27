@@ -1,0 +1,234 @@
+package bundle
+
+import (
+	"context"
+	"net"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+func writeBundle(t *testing.T, root string, withPostgres bool) Layout {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, "erp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	server := filepath.Join(root, "erp", "server.js")
+	if err := os.WriteFile(server, []byte("// fixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	node := filepath.Join(root, exeName("node"))
+	if err := os.WriteFile(node, []byte("not a real runtime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if withPostgres {
+		dir := filepath.Join(root, "postgres", "bin")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, exeName("postgres")), []byte("postgres"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	layout, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return layout
+}
+
+func TestDiscoverRequiresNodeAndServer(t *testing.T) {
+	if _, err := Discover(t.TempDir()); err != ErrIncomplete {
+		t.Fatalf("empty tree: %v", err)
+	}
+	root := t.TempDir()
+	layout := writeBundle(t, root, false)
+	if layout.Node == "" || layout.Server == "" {
+		t.Fatalf("layout: %+v", layout)
+	}
+	if layout.Postgres != "" {
+		t.Fatal("postgres file was not part of this fixture")
+	}
+	if !Valid(root) {
+		t.Fatal("expected a valid bundle")
+	}
+}
+
+func TestDiscoverRecordsPostgresWithoutStartingIt(t *testing.T) {
+	root := t.TempDir()
+	layout := writeBundle(t, root, true)
+	if layout.Postgres == "" {
+		t.Fatal("expected the portable postgres path")
+	}
+	parent := []string{"OPENROUTER_API_KEY=secret-value", "PATH=/usr/bin"}
+	cmd, err := ERPCommand(layout, "http://127.0.0.1:3100", parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Name != layout.Node {
+		t.Fatalf("command must be the bundled node, got %s", cmd.Name)
+	}
+	if strings.Contains(cmd.Name, "postgres") {
+		t.Fatal("erp command must not be postgres")
+	}
+	joined := strings.Join(cmd.Args, " ")
+	if strings.Contains(joined, "pull") || strings.Contains(cmd.Name, "ollama") {
+		t.Fatalf("erp command must not pull a model: %+v", cmd)
+	}
+	for _, item := range cmd.Env {
+		if strings.Contains(item, "OPENROUTER") || strings.Contains(item, "secret-value") {
+			t.Fatalf("cloud key leaked into child env: %s", item)
+		}
+	}
+}
+
+func TestChildEnvDropsCloudURLWithoutEchoingIt(t *testing.T) {
+	_, err := ChildEnv([]string{"NEXT_PUBLIC_SUPABASE_URL=https://hidden.supabase.co"}, "3100")
+	if err == nil {
+		t.Fatal("hosted supabase must be refused")
+	}
+	if strings.Contains(err.Error(), "hidden.supabase.co") || strings.Contains(err.Error(), "https://") {
+		t.Fatalf("error leaked the url: %v", err)
+	}
+}
+
+func TestChildEnvKeepsLocalSupabaseAndPort(t *testing.T) {
+	env, err := ChildEnv([]string{
+		"NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54421",
+		"SUPABASE_SERVICE_ROLE_KEY=local-test-role",
+		"OPENAI_API_KEY=sk-test",
+		"PATH=/usr/bin",
+	}, "3100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(env, "\n")
+	if !strings.Contains(text, "PORT=3100") || !strings.Contains(text, "HOST=127.0.0.1") {
+		t.Fatalf("bind env: %s", text)
+	}
+	if !strings.Contains(text, "http://127.0.0.1:54421") || !strings.Contains(text, "local-test-role") {
+		t.Fatalf("local supabase values missing: %s", text)
+	}
+	if strings.Contains(text, "OPENAI") || strings.Contains(text, "sk-test") {
+		t.Fatalf("cloud key leaked: %s", text)
+	}
+}
+
+func TestChildEnvKeepsLoopbackOllama(t *testing.T) {
+	env, err := ChildEnv([]string{"OLLAMA_HOST=127.0.0.1:11434", "OLLAMA_MODEL=qwen3:4b"}, "3100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(env, "\n")
+	if !strings.Contains(text, "OLLAMA_HOST=127.0.0.1:11434") || !strings.Contains(text, "OLLAMA_MODEL=qwen3:4b") {
+		t.Fatalf("ollama env: %s", text)
+	}
+	_, err = ChildEnv([]string{"OLLAMA_HOST=https://models.example:11434"}, "3100")
+	if err == nil || strings.Contains(err.Error(), "models.example") {
+		t.Fatalf("remote ollama: %v", err)
+	}
+}
+
+func TestOllamaServeRefusesRemoteHost(t *testing.T) {
+	_, err := OllamaServe("/tmp/ollama", "https://ollama.example")
+	if err == nil {
+		t.Fatal("remote ollama must be refused")
+	}
+	if strings.Contains(err.Error(), "ollama.example") {
+		t.Fatalf("error leaked the host: %v", err)
+	}
+	cmd, err := OllamaServe("/opt/ollama", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cmd.Args) != 1 || cmd.Args[0] != "serve" {
+		t.Fatalf("args: %#v", cmd.Args)
+	}
+	if strings.Join(PullArgs(), " ") != "pull qwen3:4b" {
+		t.Fatalf("pull args: %#v", PullArgs())
+	}
+	for _, arg := range cmd.Args {
+		if arg == "pull" || strings.Contains(arg, LocalModel) {
+			t.Fatal("serve must not pull the model")
+		}
+	}
+}
+
+func TestEnsureOllamaSkipsMissingBinary(t *testing.T) {
+	called := false
+	err := EnsureOllama(context.Background(), Layout{}, "", func(string) (string, error) {
+		return "", os.ErrNotExist
+	}, func(Command) (func() error, func(), error) {
+		called = true
+		return func() error { return nil }, func() {}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("missing ollama must not start a process")
+	}
+}
+
+func TestEnsureERPUsesBundledNode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture runtime is a shell script")
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "erp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "erp", "server.js"), []byte("// fixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nodePath := filepath.Join(root, exeName("node"))
+	script := "#!/bin/sh\nexec python3 -c 'import os,socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind((\"127.0.0.1\", int(os.environ[\"PORT\"]))); s.listen(1); time.sleep(30)'\n"
+	if err := os.WriteFile(nodePath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	layout, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw := "http://127.0.0.1:" + strconv.Itoa(port)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	var kill func()
+	err = EnsureERP(ctx, layout, raw, []string{"OPENROUTER_API_KEY=do-not-pass", "PATH=" + os.Getenv("PATH")}, func(cmd Command) (func() error, func(), error) {
+		if cmd.Name != nodePath {
+			t.Errorf("name = %s", cmd.Name)
+		}
+		if strings.Join(cmd.Args, " ") != filepath.Join(root, "erp", "server.js") {
+			t.Errorf("args = %#v", cmd.Args)
+		}
+		for _, item := range cmd.Env {
+			if strings.Contains(item, "OPENROUTER") || strings.Contains(item, "do-not-pass") {
+				t.Errorf("leaked %s", item)
+			}
+			if strings.Contains(item, "pull") {
+				t.Errorf("pull leaked into env: %s", item)
+			}
+		}
+		wait, stop, startErr := defaultRunner(cmd)
+		kill = stop
+		return wait, stop, startErr
+	})
+	if kill != nil {
+		kill()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}

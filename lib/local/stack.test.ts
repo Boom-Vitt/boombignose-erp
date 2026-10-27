@@ -175,6 +175,19 @@ describe("local stack manager", () => {
     expect(env.RESEND_API_KEY).toBeUndefined()
     expect(env.EMAIL_FROM).toBeUndefined()
     expect(env.N8N_WEBHOOK_SECRET).toBeUndefined()
+    expect(env.LOCAL_TOTP_ENROLL).toBeUndefined()
+  })
+
+  it("copies the TOTP enrollment flag only when it is exactly 1", () => {
+    const stdout = [
+      'API_URL="http://127.0.0.1:54421"',
+      'ANON_KEY="anon-short"',
+      'SERVICE_ROLE_KEY="srv-short"',
+    ].join("\n")
+    const enabled = mapStatusEnvToServerEnv(stdout, 3100, { LOCAL_TOTP_ENROLL: "1" })
+    expect(enabled.LOCAL_TOTP_ENROLL).toBe("1")
+    const closed = mapStatusEnvToServerEnv(stdout, 3100, { LOCAL_TOTP_ENROLL: "true" })
+    expect(closed.LOCAL_TOTP_ENROLL).toBeUndefined()
   })
 
   it("exits 3 with a clear message when Docker is not running", async () => {
