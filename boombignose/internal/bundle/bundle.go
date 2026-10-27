@@ -228,7 +228,37 @@ func OllamaServe(binary, host string) (Command, error) {
 // Runner starts a command. The wait function blocks until the process exits.
 type Runner func(Command) (wait func() error, kill func(), err error)
 
+// allowedBundleCommand limits the process to the bundled node server or
+// `ollama serve`. Anything else never reaches exec.
+func allowedBundleCommand(cmd Command) error {
+	if !filepath.IsAbs(cmd.Name) || strings.ContainsAny(cmd.Name, "\x00\r\n") {
+		return errors.New("refusing bundle command")
+	}
+	base := strings.ToLower(filepath.Base(cmd.Name))
+	switch base {
+	case "node", "node.exe":
+		if len(cmd.Args) != 1 || filepath.Base(cmd.Args[0]) != "server.js" || strings.Contains(cmd.Args[0], "..") || strings.ContainsAny(cmd.Args[0], "\x00\r\n") {
+			return errors.New("refusing bundle command")
+		}
+	case "ollama", "ollama.exe":
+		if len(cmd.Args) != 1 || cmd.Args[0] != "serve" {
+			return errors.New("refusing bundle command")
+		}
+	default:
+		return errors.New("refusing bundle command")
+	}
+	info, err := os.Stat(cmd.Name)
+	if err != nil || info.IsDir() {
+		return errors.New("refusing bundle command")
+	}
+	return nil
+}
+
 func defaultRunner(cmd Command) (func() error, func(), error) {
+	if err := allowedBundleCommand(cmd); err != nil {
+		return nil, nil, err
+	}
+	// #nosec G204 -- allowedBundleCommand allows only the absolute node or ollama binary and its fixed arguments
 	proc := exec.Command(cmd.Name, cmd.Args...)
 	if cmd.Dir != "" {
 		proc.Dir = cmd.Dir

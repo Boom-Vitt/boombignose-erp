@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.27.3"
       - name: Test harness
         working-directory: boombignose
         run: go test ./...
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.27.3"
       - name: Build Windows window
         working-directory: boombignose
         env:
@@ -71,7 +71,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.27.3"
       - name: Build arm64 window
         working-directory: boombignose
         env:
@@ -95,7 +95,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.27.3"
       - name: Install WebKit
         timeout-minutes: 40
         run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev

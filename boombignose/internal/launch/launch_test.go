@@ -73,6 +73,40 @@ func TestFindCheckout(t *testing.T) {
 	}
 }
 
+func TestCheckedServeRejectsAnythingButTheStack(t *testing.T) {
+	root := t.TempDir()
+	writeCheckout(t, root)
+	script := filepath.Join(root, "scripts", "local", "stack.mjs")
+	good := []string{script, "serve", "--port", "3100"}
+	if gotScript, port, err := checkedServe("node", good, root); err != nil || gotScript != script || port != "3100" {
+		t.Fatalf("node: %s %s %v", gotScript, port, err)
+	}
+	nodePath := filepath.Join(root, "node")
+	if err := os.WriteFile(nodePath, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := checkedServe(nodePath, good, root); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"bash", "node-extra", filepath.Join(root, "not-node")} {
+		if _, _, err := checkedServe(name, good, root); err == nil {
+			t.Fatalf("accepted %s", name)
+		}
+	}
+	bad := [][]string{
+		{script, "serve", "--port", "3100;id"},
+		{script, "bash", "--port", "3100"},
+		{"/tmp/other.mjs", "serve", "--port", "3100"},
+		{script, "serve", "--port", "0"},
+		{script, "serve", "--port", "65536"},
+	}
+	for _, args := range bad {
+		if _, _, err := checkedServe("node", args, root); err == nil {
+			t.Fatalf("accepted %v", args)
+		}
+	}
+}
+
 func TestServeCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCheckout(t, root)
