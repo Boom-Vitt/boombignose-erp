@@ -13,6 +13,7 @@ A release that is missing a required installer or a hash fails the command.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import urllib.request
@@ -44,8 +45,16 @@ JSON_PATH = ROOT / "release.json"
 SCRIPT_OPEN = '<script id="bbn-release" type="application/json">'
 
 
+def request_headers() -> dict[str, str]:
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def fetch(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"})
+    request = urllib.request.Request(url, headers=request_headers())
     with urllib.request.urlopen(request, timeout=60) as response:
         return response.read()
 
@@ -275,6 +284,20 @@ def self_test() -> None:
         ]
     )
     assert chosen["tag_name"] == "boombignose-v1.2.3"
+    saved_github = os.environ.pop("GITHUB_TOKEN", None)
+    saved_gh = os.environ.pop("GH_TOKEN", None)
+    try:
+        assert "Authorization" not in request_headers()
+        os.environ["GITHUB_TOKEN"] = "self-test-token"
+        authed = request_headers()
+        assert authed["Authorization"] == "Bearer self-test-token"
+        assert "self-test-token" not in json.dumps({k: v for k, v in authed.items() if k != "Authorization"})
+    finally:
+        os.environ.pop("GITHUB_TOKEN", None)
+        if saved_github is not None:
+            os.environ["GITHUB_TOKEN"] = saved_github
+        if saved_gh is not None:
+            os.environ["GH_TOKEN"] = saved_gh
     print("self-test ok")
 
 

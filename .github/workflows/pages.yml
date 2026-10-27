@@ -33,6 +33,8 @@ jobs:
       - name: Check the release-page filler
         run: python3 site/fill-release.py --self-test
       - name: Fill version and SHA-256 from the published release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 site/fill-release.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
