@@ -150,6 +150,7 @@ jobs:
           if ($installed.ExitCode -ne 0) { throw "installer exit $($installed.ExitCode)" }
           foreach ($rel in @(
             "BoomBigNose.exe",
+            "icon.ico",
             "bundle\node.exe",
             "bundle\erp\server.js",
             "bundle\postgres\bin\postgres.exe",
@@ -382,6 +383,8 @@ jobs:
           test -s "$extract/squashfs-root/usr/bin/bundle/postgrest/postgrest"
           test -s "$extract/squashfs-root/usr/bin/bundle/ollama/bin/ollama"
           test -s "$extract/squashfs-root/usr/bin/bundle/ollama/OLLAMA_LICENSE.txt"
+          test -s "$extract/squashfs-root/boombignose.png"
+          test -s "$extract/squashfs-root/boombignose.desktop"
           b="$extract/squashfs-root/usr/bin/bundle"
           chmod 755 "$b/node" "$b/postgres/bin/initdb" "$b/postgres/bin/pg_ctl" "$b/postgres/bin/postgres" "$b/auth/auth" "$b/postgrest/postgrest" "$b/ollama/bin/ollama"
           BOOMBIGNOSE_SMOKE_BUNDLE="$b" sh ../packaging/linux/smoke-bundle.sh
