@@ -37,41 +37,12 @@ if [ -d "$bundle/ollama/lib/ollama/cuda_v12" ] || [ -d "$bundle/ollama/lib/ollam
 fi
 # This smoke does not run `ollama pull` or `boombignose pull-model`.
 
-python3 - << 'PY'
-import socket, sys
-s = socket.socket()
-s.settimeout(0.3)
-try:
-    s.connect(("127.0.0.1", 3100))
-except OSError:
-    sys.exit(0)
-sys.stderr.write("127.0.0.1:3100 is already in use\n")
-sys.exit(1)
-PY
-
-# Connect, do not bind. A port in TIME_WAIT after the previous smoke still
-# refuses bind, and this job smokes the tarball and then the AppImage.
-port_busy() {
-  python3 - "$1" << 'PY'
-import socket, sys
-port = int(sys.argv[1])
-s = socket.socket()
-s.settimeout(0.3)
-try:
-    s.connect(("127.0.0.1", port))
-except OSError:
-    sys.exit(0)
-finally:
-    s.close()
-sys.stderr.write("127.0.0.1:%s is already in use\n" % port)
-sys.exit(1)
-PY
-}
+# shellcheck disable=SC1091
+. "$root/packaging/linux/port-free.sh"
 pg_port=54329
-for extra in 54321 54323 54324; do
-  port_busy "$extra"
-done
-port_busy "$pg_port"
+# The tarball smoke and the AppImage smoke share this runner. TIME_WAIT
+# still refuses PostgREST's bind after connect() already fails.
+wait_ports_free 3100 "$pg_port" 54321 54323 54324
 
 data=$(mktemp -d)
 pgdata=$data/pg
@@ -171,29 +142,10 @@ kill -TERM "$pid"
 wait "$pid" || true
 pid=""
 
-closed=0
-i=0
-while [ "$i" -lt 30 ]; do
-  i=$((i + 1))
-  if python3 - "$pg_port" << 'PY'
-import socket, sys
-s = socket.socket()
-s.settimeout(0.2)
-try:
-    s.connect(("127.0.0.1", int(sys.argv[1])))
-except OSError:
-    sys.exit(0)
-sys.exit(1)
-PY
-  then
-    closed=1
-    break
-  fi
-  sleep 1
-done
-if [ "$closed" != 1 ]; then
+if ! wait_ports_free 3100 "$pg_port" 54321 54323 54324; then
   echo "postgres stayed up on 127.0.0.1:$pg_port" >&2
   cat "$data/serve.log" >&2 || true
   exit 1
 fi
 echo "postgres stopped"
+echo "ports free"
