@@ -34,9 +34,9 @@ shell environment; Node 24 or newer is required, `BIGNOSE_NODE` overrides). Thei
 The third is a build-time path: an app built in a git worktree keeps pointing at that worktree, so set `erpDir` when
 the worktree goes away. `serve` builds the **committed** `HEAD` of that folder, so uncommitted ERP changes are not shown.
 
-**The OpenRouter key** for the ERP assistant is read from `OPENROUTER_API_KEY` in `<BIGNOSE_HOME>/.env` and given to
-the ERP server through its environment only. It is never logged or shown, and no step needs it except an actual
-answer from the model.
+**Cloud model keys** are not given to the ERP server. `serve` builds the `next start` environment from a local
+allowlist, and that allowlist omits `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`. The desktop product does not call
+a cloud model at runtime.
 
 When everything answers, the ERP opens at `http://127.0.0.1:3100` (the port is fixed: it is the ERP's `site_url`).
 The ERP is a normal first-party page, so Supabase login cookies work. Links to other sites open in the default browser

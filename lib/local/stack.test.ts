@@ -149,13 +149,13 @@ describe("local stack manager", () => {
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
         "NEXT_PUBLIC_SUPABASE_URL",
         "NODE_ENV",
-        "OPENROUTER_API_KEY",
-        "OPENROUTER_MODEL",
         "PATH",
         "SUPABASE_SERVICE_ROLE_KEY",
         "TMPDIR",
       ].sort()
     )
+    expect(env.OPENROUTER_API_KEY).toBeUndefined()
+    expect(env.OPENROUTER_MODEL).toBeUndefined()
     expect(env.CRON_SECRET).toBeUndefined()
     expect(env.RESEND_API_KEY).toBeUndefined()
     expect(env.EMAIL_FROM).toBeUndefined()

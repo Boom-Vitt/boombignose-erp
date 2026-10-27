@@ -25,7 +25,7 @@ Sign-in stays the ERP's Supabase email and password session, stored in cookies f
 - `lib/ai/client.ts` posts to `https://openrouter.ai` when `OPENROUTER_API_KEY` is set. The harness refuses that variable.
 - `lib/email/send.ts` posts to Resend when `RESEND_API_KEY` is set. The harness refuses that variable.
 - `app/api/cron/outbox/route.ts` posts to `N8N_OUTBOUND_URL`. The harness allows that URL only when it is loopback or empty.
-- `lib/local/stack.mjs` still copies `OPENROUTER_API_KEY` into the ERP process when BigNose starts it. Milestone 1 does not change that file. A later change has to stop forwarding the key. Until then, start the ERP without those variables set.
+- `lib/local/stack.mjs` does not copy `OPENROUTER_API_KEY` or `OPENROUTER_MODEL` into `next start`. The ERP process started by `serve` has those variables unset even when the parent environment has them.
 
 ## Pages
 
