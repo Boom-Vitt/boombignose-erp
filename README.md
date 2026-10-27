@@ -34,7 +34,9 @@ Release `boombignose-v0.2.0` is the Wails window. GitHub Actions builds it with 
 - `BoomBigNose-linux-amd64.AppImage` — the same binary. It also needs WebKitGTK 4.1.
 - `SHA256SUMS` for those four files.
 
-These installers do not bundle Node, Docker, Postgres, or Ollama. They have not been click-tested on a physical machine. Tag `boombignose-v0.1.1` is the older harness command, not this window. No code-signing certificate was purchased.
+Those v0.2.0 installers do not bundle Node, Docker, Postgres, or Ollama. They have not been click-tested on a physical machine. Tag `boombignose-v0.1.1` is the older harness command, not this window. No code-signing certificate was purchased.
+
+The desktop app name is BoomBigNose. From tag `boombignose-v0.3.0` the BoomBigNose installers include a private Node runtime, `server.js`, Postgres, Auth, PostgREST, and Ollama inside the app. Node is not the product name.
 
 ## BoomBigNose ERP
 

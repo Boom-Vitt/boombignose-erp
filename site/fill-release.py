@@ -107,14 +107,23 @@ def build_release(release: dict, sums_text: str) -> dict:
     }
 
 
+def asset_names(release: dict) -> set[str]:
+    return {item.get("name") for item in release.get("assets") or []}
+
+
+def is_candidate(release: dict) -> bool:
+    tag = release.get("tag_name") or ""
+    if release.get("draft") or release.get("prerelease") or not TAG_RE.match(tag):
+        return False
+    names = asset_names(release)
+    return "SHA256SUMS" in names and set(REQUIRED.values()) <= names
+
+
 def select_release(releases: list) -> dict:
     for release in releases:
-        tag = release.get("tag_name") or ""
-        if release.get("draft") or release.get("prerelease"):
-            continue
-        if TAG_RE.match(tag):
+        if is_candidate(release):
             return release
-    raise SystemExit("no published boombignose-vX.Y.Z release")
+    raise SystemExit("no published boombignose-vX.Y.Z release with installers and SHA256SUMS")
 
 
 def byte_text(size: int) -> str:
@@ -256,11 +265,13 @@ def self_test() -> None:
         pass
     else:
         raise SystemExit("prerelease should not be selected when it is the only row")
+    files = [{"name": name} for name in (*REQUIRED.values(), "SHA256SUMS")]
     chosen = select_release(
         [
-            {"tag_name": "boombignose-v1.2.3-rc.1", "draft": False, "prerelease": True},
-            {"tag_name": "nightly", "draft": False, "prerelease": False},
-            {"tag_name": "boombignose-v1.2.3", "draft": False, "prerelease": False},
+            {"tag_name": "boombignose-v9.9.9", "draft": False, "prerelease": False, "assets": []},
+            {"tag_name": "boombignose-v1.2.3-rc.1", "draft": False, "prerelease": True, "assets": files},
+            {"tag_name": "nightly", "draft": False, "prerelease": False, "assets": files},
+            {"tag_name": "boombignose-v1.2.3", "draft": False, "prerelease": False, "assets": files},
         ]
     )
     assert chosen["tag_name"] == "boombignose-v1.2.3"
