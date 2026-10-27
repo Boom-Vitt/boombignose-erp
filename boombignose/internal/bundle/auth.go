@@ -126,11 +126,13 @@ func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string)
 		Env: []string{
 			"GOTRUE_DB_DRIVER=postgres",
 			"GOTRUE_DB_DATABASE_URL=" + localDBURL(),
+			"DATABASE_URL=" + localDBURL(),
 			"GOTRUE_DB_MIGRATIONS_PATH=" + migrations,
 			"GOTRUE_JWT_SECRET=" + secret,
 			"GOTRUE_JWT_EXP=3600",
 			"GOTRUE_API_HOST=127.0.0.1",
 			"GOTRUE_API_PORT=" + localAuthPort,
+			"API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
 			"GOTRUE_API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
 			"GOTRUE_SITE_URL=http://127.0.0.1:3100",
 			"GOTRUE_DISABLE_SIGNUP=false",
