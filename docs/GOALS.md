@@ -24,7 +24,7 @@ Status: installers are published. Click-through on a physical machine is not don
 
 Status: in progress.
 
-- Phases 1–10 are recorded in `docs/boombignose/PHASES.md`. Cutover still only prints a plan. It does not move database rows.
+- Phases 1–10 are recorded in `docs/boombignose/PHASES.md`. `boombignose cutover` with no subcommand prints a plan and does not connect. `cutover dry-run` lists base-table names on two loopback databases and writes nothing. `cutover apply` writes a custom-format backup of the target, then restores the source into the target. `cutover rollback` restores that backup. The harness test starts two throwaway clusters and checks one row. It does not read a hosted database. Domain rules are still Postgres functions. The ERP Vitest, SQL, and Playwright suites were not re-run for this command.
 - The GitHub repository is https://github.com/Boom-Vitt/boombignose-erp-harness-ai . The Go module path is `github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose`. The local Supabase `project_id` stays `boombignose-erp`.
 - Deal summaries, follow-up drafts, and meeting intake call Ollama on loopback. The default address is `127.0.0.1:11434`. A remote host is refused before any request. If Ollama is not running, the screen says AI is not configured.
 - The shipped bignose provider list is Ollama only. Cloud model hosts are refused before a request.

@@ -42,6 +42,13 @@ func TestRunCutoverDoesNotApply(t *testing.T) {
 	if err := run([]string{"apply"}); err == nil {
 		t.Fatal("unknown command must fail")
 	}
+	err := run([]string{"cutover", "dry-run", "--source", "postgresql://boombignose:secret-value@db.example.com:5432/boombignose", "--target", "postgresql://boombignose@127.0.0.1:54329/boombignose"})
+	if err == nil {
+		t.Fatal("remote cutover must fail")
+	}
+	if strings.Contains(err.Error(), "secret-value") || strings.Contains(err.Error(), "example.com") {
+		t.Fatalf("error includes the URL: %s", err)
+	}
 }
 
 func TestRunServeRequiresBundle(t *testing.T) {

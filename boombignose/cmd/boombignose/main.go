@@ -1,5 +1,6 @@
 // Command boombignose is the local harness for BoomBigNose.
-// It prints no secrets. check and cutover do not open a socket.
+// It prints no secrets. check and `cutover` with no subcommand do not open a socket.
+// cutover dry-run, apply, and rollback talk only to loopback Postgres.
 // serve binds the bundled ERP on loopback and does not call a cloud service.
 package main
 
@@ -18,7 +19,7 @@ import (
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/shell"
 )
 
-const usage = "usage: boombignose check | boombignose cutover | boombignose serve | boombignose stop"
+const usage = "usage: boombignose check | boombignose cutover [plan|dry-run|apply|rollback] | boombignose serve | boombignose stop"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -28,6 +29,12 @@ func main() {
 }
 
 func run(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("%s", usage)
+	}
+	if args[0] == "cutover" {
+		return runCutover(args[1:])
+	}
 	if len(args) != 1 {
 		return fmt.Errorf("%s", usage)
 	}
@@ -42,12 +49,6 @@ func run(args []string) error {
 		}
 		fmt.Printf("boombignose local-ok erp=%s\n", url)
 		return nil
-	case "cutover":
-		if err := policy.CheckEnv(os.Getenv); err != nil {
-			return err
-		}
-		fmt.Print(cutover.Plan())
-		return nil
 	case "serve":
 		return serveBundle()
 	case "stop":
@@ -55,6 +56,13 @@ func run(args []string) error {
 	default:
 		return fmt.Errorf("%s", usage)
 	}
+}
+
+func runCutover(args []string) error {
+	if err := policy.CheckEnv(os.Getenv); err != nil {
+		return err
+	}
+	return cutover.Execute(context.Background(), args, os.Stdout)
 }
 
 func serveBundle() error {
