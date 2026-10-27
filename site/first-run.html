@@ -106,7 +106,7 @@
     <section>
       <div class="wrap card">
         <h2>อัปเกรดจาก v0.3</h2>
-        <p>ตัวติดตั้ง <code>boombignose-v0.3.0</code>, <code>boombignose-v0.3.1</code> และ <code>boombignose-v1.0.0</code> ใช้โฟลเดอร์เดียวกัน ถ้ามี <code>PG_VERSION</code> อยู่แล้ว โปรแกรมจะไม่รัน <code>initdb</code> ซ้ำ บัญชีและข้อมูลที่สร้างไว้จึงยังอยู่ในโฟลเดอร์นั้น</p>
+        <p>ตัวติดตั้ง <code>boombignose-v0.3.0</code>, <code>boombignose-v0.3.1</code>, <code>boombignose-v1.0.0</code> และ <code>boombignose-v1.1.0</code> ใช้โฟลเดอร์เดียวกัน ถ้ามี <code>PG_VERSION</code> อยู่แล้ว โปรแกรมจะไม่รัน <code>initdb</code> ซ้ำ บัญชีและข้อมูลที่สร้างไว้จึงยังอยู่ในโฟลเดอร์นั้น</p>
         <p>ถอนการติดตั้งแล้วติดตั้งรุ่นถัดไปในโฟลเดอร์โปรแกรมใหม่ ก็ยังอ่านโฟลเดอร์ข้อมูลเดิม อย่าลบโฟลเดอร์นั้นถ้าต้องการเก็บข้อมูล</p>
       </div>
     </section>
@@ -115,7 +115,8 @@
       <div class="wrap card">
         <h2>บันทึกของ Postgres</h2>
         <p>เมื่อโปรแกรมเป็นฝ่ายสตาร์ท Postgres บันทึกถูกเขียนที่ <code>server.log</code> ในโฟลเดอร์ข้อมูล เช่น <code>~/.local/share/boombignose/pg/server.log</code></p>
-        <p>ถ้า <code>127.0.0.1:54329</code> มีโปรแกรมฟังอยู่แล้ว ตัวติดตั้งรุ่น <code>boombignose-v1.0.0</code> จะไม่สตาร์ท Postgres ซ้ำ และจะใช้ตัวที่ฟังอยู่ บันทึกของตัวนั้นอาจไม่ใช่ <code>server.log</code> ของโฟลเดอร์นี้</p>
+        <p>ตัวติดตั้ง <code>boombignose-v1.0.0</code> ถ้า <code>127.0.0.1:54329</code> มีโปรแกรมฟังอยู่แล้ว จะไม่สตาร์ท Postgres ซ้ำ และจะใช้ตัวที่ฟังอยู่ บันทึกของตัวนั้นอาจไม่ใช่ <code>server.log</code> ของโฟลเดอร์นี้</p>
+        <p>ตั้งแต่ <code>boombignose-v1.1.0</code> โปรแกรมไม่ใช้ตัวที่ฟังอยู่ถ้า <code>postmaster.pid</code> ไม่ใช่ของโฟลเดอร์ข้อมูลนี้ หน้าต่างค้างที่ข้อความที่ขึ้นต้นด้วย เปิด ERP ไม่สำเร็จ และบอก <code>server.log</code> กับ <code>BOOMBIGNOSE_PG_PORT</code> ถ้า <code>postmaster.pid</code> ตรงกับโฟลเดอร์นี้ โปรแกรมใช้คลัสเตอร์เดิม รวมข้อมูลที่ v0.3 สร้างไว้ ถ้า <code>127.0.0.1:3100</code> รับการเชื่อมต่อแล้ว แต่ <code>GET /api/health</code> ไม่ได้คืน <code>{"ok":true}</code> โปรแกรมจะไม่เปิดทับพอร์ตนั้น</p>
       </div>
     </section>
 
@@ -143,12 +144,29 @@
 
     <section>
       <div class="wrap">
-        <p class="sub">ขั้นตอนดาวน์โหลด ตรวจ SHA-256 และเปิดแอปที่ไม่ได้ลงชื่อด้วยใบรับรองร้านค้า อยู่ที่ <a href="install.html">หน้าติดตั้ง</a></p>
+        <h2>รุ่นที่หน้านี้ตาม</h2>
+        <p>GitHub Pages เติมแท็กและค่าแฮชจาก Release ที่เผยแพร่แล้ว ตอนนี้คือ <span data-release="tag">boombignose-v0.3.0</span></p>
+        <ul>
+          <li>Windows <code data-release="sha-windows">645250da05694ed762a590d2e7c1f6d2b39ad0a4475ab3786ad239874b60f9ca</code></li>
+          <li>macOS <code data-release="sha-macos">59ab51d7490cbe357360de9ed1b43236fbfb57324f98bf449e1f8f3a1e85cad3</code></li>
+          <li>Linux tar.gz <code data-release="sha-linux">70c829dc802a067e2344515bcfa4cd880b947473dc70634153cd34c534e1df89</code></li>
+          <li>AppImage <code data-release="sha-appimage">cd04095ca8cc6478fea1a16f86cf5cf41592179945b15d5e9040726b2e646a62</code></li>
+        </ul>
+        <p>
+          <a data-release-href="sums" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/SHA256SUMS">SHA256SUMS</a>
+          · <a data-release-href="notes" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.3.0">บันทึกของรุ่น</a>
+          · <a data-release-href="windows" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-windows-x64-setup.exe">Windows</a>
+          · <a data-release-href="macos" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-macos-arm64.dmg">macOS</a>
+          · <a data-release-href="linux" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.tar.gz">Linux tar.gz</a>
+          · <a data-release-href="appimage" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.AppImage">AppImage</a>
+        </p>
+        <p class="sub">ขั้นตอนดาวน์โหลด ตรวจ SHA-256 และเปิดแอปที่ไม่ได้ลงชื่อด้วยใบรับรองร้านค้า อยู่ที่ <a href="install.html">หน้าติดตั้ง</a> หน้านี้ยังไม่ได้คลิกทดสอบบนเครื่องจริง</p>
       </div>
     </section>
   </main>
   <footer>
     <div class="wrap">BoomBigNose ERP Harness AI</div>
   </footer>
+  <script id="bbn-release" type="application/json">{}</script>
 </body>
 </html>
