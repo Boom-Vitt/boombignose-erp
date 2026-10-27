@@ -1,8 +1,10 @@
 # Builds unsigned installers for the BoomBigNose window.
 # Create a boombignose-v* release as a draft. This workflow builds it,
-# smokes the installers, uploads the files, and only then publishes the
-# release. A published release that already has the four installers and
-# SHA256SUMS does not build again. Pull requests build and do not publish.
+# smokes the installers, uploads the files, and checks sha256sum -c.
+# It leaves the release a draft. Publishing and the download page are
+# separate steps after that check. A published release that already has
+# the four installers and SHA256SUMS does not build again. Pull requests
+# build and do not upload.
 name: BoomBigNose release assets
 
 on:
@@ -478,11 +480,12 @@ jobs:
             BoomBigNose-linux-amd64.AppImage \
             > SHA256SUMS
           cat SHA256SUMS
-      - name: Publish GitHub Release
+      - name: Upload release assets and check SHA256SUMS
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           tag="${{ github.event.release.tag_name }}"
           if [ -z "$tag" ]; then
             echo "no release tag; leaving releases unchanged"
@@ -505,11 +508,34 @@ jobs:
             dist/BoomBigNose-linux-amd64.tar.gz \
             dist/BoomBigNose-linux-amd64.AppImage \
             dist/SHA256SUMS --clobber
-          gh release edit "$tag" --draft=false --latest
-          echo "published $tag"
-      - name: Refresh the download page
-        if: startsWith(github.event.release.tag_name, 'boombignose-v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: gh workflow run pages.yml --ref main
+          check=$(mktemp -d)
+          gh release download "$tag" --dir "$check" --clobber
+          ( cd "$check" && sha256sum -c SHA256SUMS )
+          draft=$(gh release view "$tag" --json isDraft --jq .isDraft)
+          if [ "$draft" != "true" ]; then
+            echo "upload left the release published" >&2
+            exit 1
+          fi
+          gh release view "$tag" --json assets --jq '.assets[] | [.name, .url] | @tsv' > "$check/assets.tsv"
+          seen=0
+          while IFS="$(printf '\t')" read -r name url; do
+            case "$name" in
+              SHA256SUMS|BoomBigNose-windows-x64-setup.exe|BoomBigNose-macos-arm64.dmg|BoomBigNose-linux-amd64.tar.gz|BoomBigNose-linux-amd64.AppImage) ;;
+              *) continue ;;
+            esac
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -L --range 0-0 \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/octet-stream" \
+              -H "User-Agent: boombignose-release-check" \
+              "$url")
+            case "$code" in
+              200|206) echo "$name asset URL $code" ;;
+              *) echo "$name asset URL $code" >&2; exit 1 ;;
+            esac
+            seen=$((seen + 1))
+          done < "$check/assets.tsv"
+          if [ "$seen" -ne 5 ]; then
+            echo "checked $seen asset URLs" >&2
+            exit 1
+          fi
+          echo "uploaded $tag and checked SHA256SUMS; leaving it a draft"
