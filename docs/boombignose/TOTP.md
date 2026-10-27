@@ -10,6 +10,17 @@ The enrollment screen is `app/(app)/settings/security`. It renders the setup for
 
 `lib/auth/totp.ts` exports `sessionNeedsStepUp`. The enrollment flag is not an input. The function is true only when the account has a verified TOTP factor and the current level is not `aal2`. An account with no verified factor stays on one step.
 
+`aal2Rollout` names the four states an operator can be in:
+
+| State | When | What the account sees |
+| --- | --- | --- |
+| `one-step` | No verified factor, and `LOCAL_TOTP_ENROLL` is not exactly `1` | Password sign-in only. The security screen says enrollment is off. |
+| `enroll` | No verified factor, and `LOCAL_TOTP_ENROLL=1` | The security screen shows the setup form. The account stays on one step until a factor is verified. |
+| `challenge` | A verified factor exists and the session is not `aal2` | `/login/mfa`, including when the enrollment flag is off. |
+| `aal2` | A verified factor exists and the session is `aal2` | The app. Turning the flag off does not remove the factor and does not ask accounts that never enrolled. |
+
+A lookup failure in `requireOrgContext` and on the security screen does not invent a factor. Those sessions stay on `one-step` or `enroll` from the flag alone.
+
 That decision is applied in two places:
 
 - After a successful password sign-in, the login page sends an enrolled account to `/login/mfa`.
