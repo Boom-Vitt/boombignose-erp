@@ -36,10 +36,12 @@ finally:
 PY
 
 data=$(mktemp -d)
+pgdata=$data/pg
+mkdir -p "$pgdata"
 trap 'rm -rf "$data"' EXIT
 unset OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY RESEND_API_KEY OPENROUTER_MODEL || true
 export BOOMBIGNOSE_BUNDLE="$root/dist/bundle"
-export BOOMBIGNOSE_DATA="$data"
+export BOOMBIGNOSE_DATA="$pgdata"
 export BOOMBIGNOSE_PG_PORT="$pg_port"
 export BOOMBIGNOSE_ERP_URL="http://127.0.0.1:3100"
 export NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-http://127.0.0.1:54321}"
@@ -79,7 +81,7 @@ if [ "$ok" != 1 ]; then
   cat "$data/serve.log" >&2 || true
   exit 1
 fi
-test -s "$data/PG_VERSION"
+test -s "$pgdata/PG_VERSION"
 echo "health ok"
 kill -TERM "$pid"
 wait "$pid" || true
