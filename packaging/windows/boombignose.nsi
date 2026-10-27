@@ -5,7 +5,6 @@
 
 Unicode true
 Name "BoomBigNose"
-SetShellVarContext current
 OutFile "BoomBigNose-windows-x64-setup.exe"
 InstallDir "$LOCALAPPDATA\BoomBigNose"
 RequestExecutionLevel user
@@ -13,6 +12,7 @@ Page directory
 Page instfiles
 
 Section "BoomBigNose"
+  SetShellVarContext current
   SetOutPath $INSTDIR
   File /oname=BoomBigNose.exe "boombignose-desktop.exe"
   CreateShortcut "$SMPROGRAMS\BoomBigNose.lnk" "$INSTDIR\BoomBigNose.exe"
@@ -20,6 +20,7 @@ Section "BoomBigNose"
 SectionEnd
 
 Section "Uninstall"
+  SetShellVarContext current
   Delete "$INSTDIR\BoomBigNose.exe"
   Delete "$INSTDIR\uninstall.exe"
   Delete "$SMPROGRAMS\BoomBigNose.lnk"
