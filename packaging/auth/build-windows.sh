@@ -14,6 +14,10 @@ if [ "$got" != "$expected" ]; then
   echo "auth commit is $got, expected $expected" >&2
   exit 1
 fi
+# The pinned server sets SO_REUSEPORT. That constant does not exist for
+# GOOS=windows. Drop it after the commit check. One loopback listener does
+# not need the option. Linux and macOS keep the upstream archive.
+patch -p1 --directory "$tmp/auth" --input "$root/packaging/auth/windows-no-reuseport.patch"
 out=$root/dist/auth-windows
 rm -rf "$out"
 mkdir -p "$out"
