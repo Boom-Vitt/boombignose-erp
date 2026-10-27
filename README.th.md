@@ -17,12 +17,14 @@
 </div>
 
 <div align="center">
-	<a href="https://boom-vitt.github.io/boombignose-erp/">เว็บไซต์</a>
+	<a href="https://boom-vitt.github.io/boombignose-erp-harness-ai/">เว็บไซต์</a>
 	-
 	<a href="./docs">เอกสาร</a>
 	-
-	<a href="https://github.com/Boom-Vitt/boombignose-erp/issues">Issues</a>
+	<a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues">Issues</a>
 </div>
+
+หน้าดาวน์โหลดอยู่ที่ [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/) ที่อยู่เดิม [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) เลิกใช้แล้ว และจะไม่ได้รับไฟล์ใหม่ รายการ Release อยู่ที่ [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest)
 
 ## BoomBigNose ERP
 
@@ -85,8 +87,8 @@ BoomBigNose ERP ไม่ใช่สมุดบัญชีแยกประ�
 
 1. โคลนโปรเจกต์และติดตั้ง dependencies
    ```sh
-   git clone https://github.com/Boom-Vitt/boombignose-erp.git
-   cd boombignose-erp
+   git clone https://github.com/Boom-Vitt/boombignose-erp-harness-ai.git
+   cd boombignose-erp-harness-ai
    pnpm install
    ```
 
@@ -167,18 +169,18 @@ Pro ที่มีสัญญาอนุญาตต้องติดตั�
 ## เรียนรู้และชุมชน
 
 1. [เอกสาร](./docs): เส้นแบ่ง open-core การเชื่อม n8n เกณฑ์การทดสอบ และบันทึกด้านความปลอดภัยและ PDPA
-2. [เว็บไซต์](https://boom-vitt.github.io/boombignose-erp/): ภาพรวมของผลิตภัณฑ์
-3. [Issues](https://github.com/Boom-Vitt/boombignose-erp/issues): แจ้งบั๊กและขอฟีเจอร์
+2. [เว็บไซต์](https://boom-vitt.github.io/boombignose-erp-harness-ai/): ภาพรวมของผลิตภัณฑ์
+3. [Issues](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues): แจ้งบั๊กและขอฟีเจอร์
 
 ## การมีส่วนร่วม
 
 1. [คู่มือการมีส่วนร่วม](./CONTRIBUTING.md): รัน `pnpm lint`, `pnpm typecheck`, `pnpm test` และ `pnpm build` ก่อนเปิด pull request
 2. [Contributor License Agreement](./CLA.md): ต้องยอมรับในทุก pull request
-3. [แม่แบบ issue](https://github.com/Boom-Vitt/boombignose-erp/issues/new/choose): สำหรับแจ้งบั๊กและขอฟีเจอร์
+3. [แม่แบบ issue](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues/new/choose): สำหรับแจ้งบั๊กและขอฟีเจอร์
 
 ## ความปลอดภัย
 
-แจ้งช่องโหว่แบบส่วนตัวผ่าน [GitHub Security Advisories](https://github.com/Boom-Vitt/boombignose-erp/security/advisories/new) โปรดอย่าเปิดเป็น issue สาธารณะ ดูสิ่งที่ควรแนบและช่องทางสำรองได้ที่ [SECURITY.md](./SECURITY.md) ไม่ควรใส่ข้อมูลลูกค้าจริงในระบบเดโม และอ่าน[บันทึก PDPA](./docs/PDPA_SECURITY_NOTES.md) ก่อนเริ่มใช้งานจริง
+แจ้งช่องโหว่แบบส่วนตัวผ่าน [GitHub Security Advisories](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/security/advisories/new) โปรดอย่าเปิดเป็น issue สาธารณะ ดูสิ่งที่ควรแนบและช่องทางสำรองได้ที่ [SECURITY.md](./SECURITY.md) ไม่ควรใส่ข้อมูลลูกค้าจริงในระบบเดโม และอ่าน[บันทึก PDPA](./docs/PDPA_SECURITY_NOTES.md) ก่อนเริ่มใช้งานจริง
 
 ## สัญญาอนุญาต
 

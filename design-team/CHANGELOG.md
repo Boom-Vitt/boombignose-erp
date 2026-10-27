@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-27 — repository slug
+
+Download and source links use `Boom-Vitt/boombignose-erp-harness-ai`. The Pages canonical URL is https://boom-vitt.github.io/boombignose-erp-harness-ai/ . The previous Pages address is retired.
+
 ## 2026-10-27 — first pass
 
 The download page in `site/index.html` was rebuilt for Midnight Local.

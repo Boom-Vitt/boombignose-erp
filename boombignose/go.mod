@@ -1,4 +1,4 @@
-module github.com/Boom-Vitt/boombignose-erp/boombignose
+module github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose
 
 go 1.22.0
 

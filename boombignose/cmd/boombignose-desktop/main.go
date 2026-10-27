@@ -10,10 +10,13 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
-	"github.com/Boom-Vitt/boombignose-erp/boombignose/internal/policy"
-	"github.com/Boom-Vitt/boombignose-erp/boombignose/internal/shell"
-	"github.com/Boom-Vitt/boombignose-erp/boombignose/nav"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/launch"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/policy"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/shell"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/nav"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -51,7 +54,26 @@ func run() error {
 			Assets: assets,
 		},
 		OnDomReady: func(ctx context.Context) {
-			runtime.WindowExecJS(ctx, script)
+			go func() {
+				wait, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+				defer cancel()
+				err := launch.Ensure(wait, launch.FindCheckout(os.Getenv("BOOMBIGNOSE_ERP_DIR"), checkoutStarts()), os.Getenv("BOOMBIGNOSE_NODE"), target, nil)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "boombignose: %s\n", err.Error())
+				}
+				runtime.WindowExecJS(ctx, script)
+			}()
 		},
 	})
+}
+
+func checkoutStarts() []string {
+	var dirs []string
+	if wd, err := os.Getwd(); err == nil {
+		dirs = append(dirs, wd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		dirs = append(dirs, filepath.Dir(exe))
+	}
+	return dirs
 }

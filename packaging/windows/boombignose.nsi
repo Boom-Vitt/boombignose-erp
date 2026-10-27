@@ -1,6 +1,7 @@
-; Unsigned installer for the BoomBigNose harness command.
+; Unsigned installer for the BoomBigNose window.
 ; The landing page explains SmartScreen (More info, then Run anyway)
 ; and Smart App Control. This script does not claim those prompts are absent.
+; The file it installs is the Wails window, not the harness command.
 
 Unicode true
 Name "BoomBigNose"
@@ -11,13 +12,17 @@ Page directory
 Page instfiles
 
 Section "BoomBigNose"
+  SetShellVarContext current
   SetOutPath $INSTDIR
-  File "boombignose.exe"
+  File /oname=BoomBigNose.exe "boombignose-desktop.exe"
+  CreateShortcut "$SMPROGRAMS\BoomBigNose.lnk" "$INSTDIR\BoomBigNose.exe"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 SectionEnd
 
 Section "Uninstall"
-  Delete "$INSTDIR\boombignose.exe"
+  SetShellVarContext current
+  Delete "$INSTDIR\BoomBigNose.exe"
   Delete "$INSTDIR\uninstall.exe"
+  Delete "$SMPROGRAMS\BoomBigNose.lnk"
   RMDir "$INSTDIR"
 SectionEnd

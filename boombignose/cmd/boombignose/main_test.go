@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/Boom-Vitt/boombignose-erp/boombignose/internal/policy"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/policy"
 )
 
 func TestRunCheckRequiresLocalEnv(t *testing.T) {

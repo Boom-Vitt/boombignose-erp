@@ -6,27 +6,30 @@ Updated 2026-10-27. No secrets.
 
 Status: done.
 
-https://boom-vitt.github.io/boombignose-erp/ returned HTTP 200 on 2026-10-27 after Pages run 40492971353. The HTML contains BoomBigNose ERP Harness AI, the boombignose-v0.1.1 SHA-256 values, and no Bumik. `face-logo.png` returns 404. The mark, `og.png`, and the page return 200.
+Canonical page: https://boom-vitt.github.io/boombignose-erp-harness-ai/
+
+The previous address https://boom-vitt.github.io/boombignose-erp/ is retired and does not receive new deploys. On 2026-10-27, before this rename deploy, both addresses still returned the same HTML (HTTP 200, title BoomBigNose ERP Harness AI). Recheck both addresses after the next Pages run.
+
+The page links the `boombignose-v0.1.1` harness-command installers until a green CI release of the window exists. It does not claim those files were click-tested.
 
 ## GOAL 2 — Desktop app
 
 Status: in progress.
 
-`boombignose/cmd/boombignose-desktop` is a Wails window. It refuses cloud keys, then navigates to http://127.0.0.1:3100. The window title string is BoomBigNose ERP Harness AI. CI has compiled Linux, Windows (GUI subsystem), and macOS arm64 binaries. Those raw binaries are on the prerelease tag `boombignose-desktop-v0.1.2`. Release run 40490194972 had uploaded harness installers onto that tag and replaced `SHA256SUMS`. Those three installer copies were removed, and `SHA256SUMS` again matches only the three desktop binaries. They are not yet the NSIS, DMG, and tar.gz installers of that window, and there is no AppImage. The landing-page files on `boombignose-v0.1.1` are the harness command. Milestone 2 (bundled Postgres, auth, API, Next.js, and Ollama) is not started. A human still has to click Open Anyway and Run anyway on a real machine.
+`boombignose/cmd/boombignose-desktop` is a Wails window titled BoomBigNose ERP Harness AI. It refuses cloud keys, including a remote `OLLAMA_HOST`. If `127.0.0.1:3100` is closed and a checkout is found (`BOOMBIGNOSE_ERP_DIR`, the working directory, or the executable directory), it runs `node scripts/local/stack.mjs serve --port 3100`, then opens that URL. `.github/workflows/boombignose-release.yml` packages that window as an unsigned Windows NSIS installer, an ad-hoc-signed macOS arm64 DMG, a Linux tar.gz, and a Linux AppImage, plus SHA256SUMS. Those assets are published only for a `boombignose-v*` release. Tag `boombignose-v0.1.1` is still the harness command. The window installers do not bundle Node, Docker, Postgres, or Ollama. A human still has to click Open Anyway and Run anyway on a real machine. This environment has not click-tested them.
 
 ## GOAL 3 — Remaining phases and rename
 
 Status: in progress.
 
 - Phases 1–10 are recorded in `docs/boombignose/PHASES.md`. Cutover still only prints a plan.
-- Full title BoomBigNose ERP Harness AI is on the download page and the harness docs.
-- Repository rename to `boombignose-erp-harness-ai` returned HTTP 403. An admin must run: `gh api -X PATCH repos/Boom-Vitt/boombignose-erp -f name=boombignose-erp-harness-ai`
-- Release `boombignose-v0.1.1` has the BoomBigNose installer names from CI. Tag `bumik-v0.1.0` was deleted.
+- The GitHub repository is https://github.com/Boom-Vitt/boombignose-erp-harness-ai . The local Supabase `project_id` stays `boombignose-erp`.
+- Release `boombignose-v0.1.1` has the older harness-command installers. Tag `bumik-v0.1.0` was deleted.
 - `lib/local/stack.mjs` no longer copies `OPENROUTER_API_KEY` or `OPENROUTER_MODEL` into `next start`.
-- TOTP: `supabase/config.toml` has `[auth.mfa.totp]` with `enroll_enabled` and `verify_enabled` false. No migration requiring AAL2 was found.
+- TOTP stays off. `docs/boombignose/TOTP.md` is the proposal. No AAL2 migration was added, because a blanket `aal1` refusal would lock local sign-in before an enrollment screen exists.
+- Milestone 2 (a download that bundles Postgres, auth, the API, Next.js, and Ollama) is not shipped. The window can start a checkout that is already on the machine.
 
 ## Blockers
 
-- Repo administration for the rename (HTTP 403).
 - Aikido MCP is not signed in, so the security scan of new code has not run.
 - No display session here to click through the unsigned-app dialogs or to open the Wails window against a running ERP.

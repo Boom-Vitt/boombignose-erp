@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Boom-Vitt/boombignose-erp/boombignose/internal/policy"
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/policy"
 )
 
 // Script returns a window.location.replace call for a loopback ERP URL.

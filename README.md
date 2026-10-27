@@ -17,12 +17,14 @@
 </div>
 
 <div align="center">
-	<a href="https://boom-vitt.github.io/boombignose-erp/">Website</a>
+	<a href="https://boom-vitt.github.io/boombignose-erp-harness-ai/">Website</a>
 	-
 	<a href="./docs">Documentation</a>
 	-
-	<a href="https://github.com/Boom-Vitt/boombignose-erp/issues">Issues</a>
+	<a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues">Issues</a>
 </div>
+
+The download page is [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/). The previous address [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) is retired and does not receive new deploys. Releases are at [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest).
 
 ## BoomBigNose ERP
 
@@ -85,8 +87,8 @@ The default build is Community. Pro code lives in [`ee/`](./ee/) and is built wi
 
 1. Clone the repository and install dependencies
    ```sh
-   git clone https://github.com/Boom-Vitt/boombignose-erp.git
-   cd boombignose-erp
+   git clone https://github.com/Boom-Vitt/boombignose-erp-harness-ai.git
+   cd boombignose-erp-harness-ai
    pnpm install
    ```
 
@@ -167,18 +169,18 @@ For the hosted Pro edition, contact [boombignose.org](https://boombignose.org).
 ## Learning and Community
 
 1. [Documentation](./docs): open-core boundary, n8n integration, testing gates, and security and PDPA notes.
-2. [Website](https://boom-vitt.github.io/boombignose-erp/): product overview.
-3. [Issues](https://github.com/Boom-Vitt/boombignose-erp/issues): bug reports and feature requests.
+2. [Website](https://boom-vitt.github.io/boombignose-erp-harness-ai/): product overview.
+3. [Issues](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues): bug reports and feature requests.
 
 ## Contributing
 
 1. [Contributing guide](./CONTRIBUTING.md): run `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build` before you open a pull request.
 2. [Contributor License Agreement](./CLA.md): required for every pull request.
-3. [Issue templates](https://github.com/Boom-Vitt/boombignose-erp/issues/new/choose): for bug reports and feature requests.
+3. [Issue templates](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues/new/choose): for bug reports and feature requests.
 
 ## Security
 
-Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/Boom-Vitt/boombignose-erp/security/advisories/new), never in a public issue. See [SECURITY.md](./SECURITY.md) for what to include and for the fallback contact. Do not put real customer data into a demo install, and read the [PDPA notes](./docs/PDPA_SECURITY_NOTES.md) before you go live.
+Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/security/advisories/new), never in a public issue. See [SECURITY.md](./SECURITY.md) for what to include and for the fallback contact. Do not put real customer data into a demo install, and read the [PDPA notes](./docs/PDPA_SECURITY_NOTES.md) before you go live.
 
 ## License
 
