@@ -6,11 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,11 +59,31 @@ func ValidCheckout(dir string) bool {
 	if _, err := os.Stat(script); err != nil {
 		return false
 	}
-	config, err := os.ReadFile(filepath.Join(dir, "supabase", "config.toml"))
+	config, err := readCheckoutConfig(dir)
 	if err != nil {
 		return false
 	}
 	return strings.Contains(string(config), `project_id = "`+ProjectID+`"`)
+}
+
+// readCheckoutConfig reads supabase/config.toml inside dir. os.Root rejects a
+// path that escapes the checkout, so a joined ".." cannot read another file.
+func readCheckoutConfig(dir string) ([]byte, error) {
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	fsRoot, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer fsRoot.Close()
+	f, err := fsRoot.Open(filepath.Join("supabase", "config.toml"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, 1<<20))
 }
 
 // FindCheckout returns explicit when it is a checkout. Otherwise it walks
@@ -147,8 +169,45 @@ func WaitUntil(ctx context.Context, every time.Duration, ready func() bool, exit
 // Runner starts a process and returns a wait function and a kill function.
 type Runner func(name string, args []string, dir string) (wait func() error, kill func(), err error)
 
+// checkedServe accepts only `node <checkout>/scripts/local/stack.mjs serve --port <n>`.
+// name is "node" or an absolute path whose file name is node.
+func checkedServe(name string, args []string, dir string) (script, port string, err error) {
+	if strings.ContainsAny(name, "\x00\r\n") || strings.TrimSpace(dir) == "" {
+		return "", "", errors.New("refusing to start this command")
+	}
+	base := strings.ToLower(filepath.Base(name))
+	switch {
+	case name == "node":
+	case filepath.IsAbs(name) && (base == "node" || base == "node.exe"):
+		info, statErr := os.Stat(name)
+		if statErr != nil || info.IsDir() {
+			return "", "", errors.New("refusing to start this command")
+		}
+	default:
+		return "", "", errors.New("refusing to start this command")
+	}
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return "", "", errors.New("refusing to start this command")
+	}
+	want := filepath.Join(root, "scripts", "local", "stack.mjs")
+	if len(args) != 4 || args[0] != want || args[1] != "serve" || args[2] != "--port" {
+		return "", "", errors.New("refusing to start this command")
+	}
+	n, err := strconv.Atoi(args[3])
+	if err != nil || n < 1 || n > 65535 || strconv.Itoa(n) != args[3] {
+		return "", "", errors.New("refusing to start this command")
+	}
+	return want, args[3], nil
+}
+
 func defaultRunner(name string, args []string, dir string) (func() error, func(), error) {
-	cmd := exec.Command(name, args...)
+	script, port, err := checkedServe(name, args, dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	// #nosec G204 -- checkedServe allows only node plus the checkout stack script, serve, and a numeric port
+	cmd := exec.Command(name, script, "serve", "--port", port)
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
