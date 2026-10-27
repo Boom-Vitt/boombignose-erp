@@ -75,6 +75,12 @@ postgrest=v16.5
 postgrest_url=${PGRST_URL}
 postgrest_sha256=${PGRST_SHA}
 postgrest_license=MIT (postgrest/POSTGREST_LICENSE.txt)
+ollama=v0.40.11
+ollama_url=https://github.com/ollama/ollama/releases/download/v0.40.11/ollama-darwin.tgz
+ollama_sha256=aea7d3f2e32371b7644a6e2ec8d4f26820a0e3965918cce8a46cef3e947f6291
+ollama_license=MIT (ollama/OLLAMA_LICENSE.txt)
+ollama_omitted=none
+ollama_note=The universal darwin archive is packed in full, including Metal runners. The model is not packed.
 EOF
 
 curl -fsSL -o "$tmp/auth.tgz" "$AUTH_URL"
@@ -91,6 +97,22 @@ tar -xJf "$tmp/postgrest.txz" -C "$dist/postgrest"
 chmod 755 "$dist/postgrest/postgrest"
 cp packaging/postgrest/POSTGREST_LICENSE.txt "$dist/postgrest/POSTGREST_LICENSE.txt"
 
+OLLAMA_VERSION=0.40.11
+OLLAMA_SHA=aea7d3f2e32371b7644a6e2ec8d4f26820a0e3965918cce8a46cef3e947f6291
+OLLAMA_URL="https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-darwin.tgz"
+OLLAMA_LICENSE_SHA=5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226
+echo "$OLLAMA_LICENSE_SHA  packaging/ollama/OLLAMA_LICENSE.txt" | shasum -a 256 -c -
+curl -fsSL -o "$tmp/ollama.tgz" "$OLLAMA_URL"
+echo "$OLLAMA_SHA  $tmp/ollama.tgz" | shasum -a 256 -c -
+mkdir -p "$tmp/ollama-src"
+tar -xzf "$tmp/ollama.tgz" -C "$tmp/ollama-src"
+rm -rf "$dist/ollama"
+stage_out=$(python3 packaging/ollama/stage.py "$tmp/ollama-src" "$dist/ollama")
+printf '%s\n' "$stage_out"
+printf '%s\n' "$stage_out" | grep -Fx 'omitted=none'
+cp packaging/ollama/OLLAMA_LICENSE.txt "$dist/ollama/OLLAMA_LICENSE.txt"
+test -s "$dist/ollama/ollama"
+
 # curl marks the download with quarantine. Clear it and ad-hoc sign the
 # binaries the smoke executes. This is not a Developer ID signature.
 xattr -cr "$dist" || true
@@ -100,7 +122,15 @@ codesign --force --sign - \
   "$dist/postgres/bin/pg_ctl" \
   "$dist/postgres/bin/postgres" \
   "$dist/auth/auth" \
-  "$dist/postgrest/postgrest"
+  "$dist/postgrest/postgrest" \
+  "$dist/ollama/ollama"
+find "$dist/ollama" -type f \( -name '*.dylib' -o -name '*.so' \) -print | while IFS= read -r lib; do
+  if file "$lib" | grep -q 'Mach-O'; then
+    codesign --force --sign - "$lib"
+  fi
+done
+# --version may warn that no daemon is listening. It must not pull a model.
+"$dist/ollama/ollama" --version | grep -F "0.40.11"
 test -x "$dist/node"
 test -x "$dist/postgres/bin/postgres"
 test -s "$dist/postgres/prelude.sql"

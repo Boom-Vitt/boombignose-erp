@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/bundle"
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/cutover"
@@ -19,7 +20,7 @@ import (
 	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/shell"
 )
 
-const usage = "usage: boombignose check | boombignose cutover [plan|dry-run|apply|rollback] | boombignose serve | boombignose stop"
+const usage = "usage: boombignose check | boombignose cutover [plan|dry-run|apply|rollback] | boombignose serve | boombignose stop | boombignose pull-model"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -53,6 +54,8 @@ func run(args []string) error {
 		return serveBundle()
 	case "stop":
 		return stopBundle()
+	case "pull-model":
+		return pullModel()
 	default:
 		return fmt.Errorf("%s", usage)
 	}
@@ -63,6 +66,26 @@ func runCutover(args []string) error {
 		return err
 	}
 	return cutover.Execute(context.Background(), args, os.Stdout)
+}
+
+func pullModel() error {
+	if err := policy.CheckEnv(os.Getenv); err != nil {
+		return err
+	}
+	root := strings.TrimSpace(os.Getenv("BOOMBIGNOSE_BUNDLE"))
+	layout := bundle.Layout{}
+	if root != "" {
+		found, err := bundle.Discover(root)
+		if err != nil && !errors.Is(err, bundle.ErrIncomplete) {
+			return err
+		}
+		if err == nil {
+			layout = found
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	defer cancel()
+	return bundle.PullModel(ctx, layout, os.Getenv("OLLAMA_HOST"), os.Environ())
 }
 
 func serveBundle() error {

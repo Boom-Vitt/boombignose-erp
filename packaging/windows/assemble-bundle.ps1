@@ -114,6 +114,38 @@ try {
   Copy-Item -LiteralPath $pgrestExe -Destination (Join-Path $pgrestDest "postgrest.exe")
   Copy-Item -LiteralPath (Join-Path $root "packaging\postgrest\POSTGREST_LICENSE.txt") -Destination (Join-Path $pgrestDest "POSTGREST_LICENSE.txt")
 
+  $ollamaVersion = "0.40.11"
+  $ollamaSha = "bda4a493ba8a7c24d57263cd843cd68cee84f44aed4299eeed532acad7eda12a"
+  $ollamaUrl = "https://github.com/ollama/ollama/releases/download/v$ollamaVersion/ollama-windows-amd64.zip"
+  $ollamaLicenseSha = "5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226"
+  $license = Join-Path $root "packaging\ollama\OLLAMA_LICENSE.txt"
+  # Git may check the text out with CRLF. The pinned hash is the LF file.
+  $licenseBytes = [System.IO.File]::ReadAllBytes($license)
+  $licenseText = [System.Text.Encoding]::UTF8.GetString($licenseBytes) -replace "`r`n", "`n" -replace "`r", "`n"
+  $licenseNorm = [System.Text.Encoding]::UTF8.GetBytes($licenseText)
+  $licenseActual = ([System.Security.Cryptography.SHA256]::Create().ComputeHash($licenseNorm) | ForEach-Object { $_.ToString("x2") }) -join ""
+  if ($licenseActual -ne $ollamaLicenseSha) { throw "sha256 mismatch for ${license}: $licenseActual" }
+  $ollamaZip = Join-Path $tmp "ollama.zip"
+  curl.exe -fsSL -o $ollamaZip $ollamaUrl
+  Assert-Sha256 $ollamaZip $ollamaSha
+  $ollamaSrc = Join-Path $tmp "ollama-src"
+  New-Item -ItemType Directory -Force -Path $ollamaSrc | Out-Null
+  tar.exe -xf $ollamaZip -C $ollamaSrc
+  $ollamaDest = Join-Path $dist "ollama"
+  if (Test-Path -LiteralPath $ollamaDest) { Remove-Item -LiteralPath $ollamaDest -Recurse -Force }
+  $stageOut = @(python packaging/ollama/stage.py $ollamaSrc $ollamaDest)
+  $stageText = $stageOut -join "`n"
+  Write-Host $stageText
+  if ($stageText -notlike "*omitted=cuda_v12,cuda_v13*") { throw "windows ollama staging did not omit the CUDA runners" }
+  foreach ($cuda in @("cuda_v12", "cuda_v13")) {
+    if (Test-Path -LiteralPath (Join-Path $ollamaDest "lib\ollama\$cuda")) { throw "cuda runner was packed" }
+  }
+  Copy-Item -LiteralPath $license -Destination (Join-Path $ollamaDest "OLLAMA_LICENSE.txt")
+  $ollamaExe = Join-Path $ollamaDest "ollama.exe"
+  if (-not (Test-Path -LiteralPath $ollamaExe)) { throw "ollama.exe missing after staging" }
+  $version = & $ollamaExe --version 2>&1 | Out-String
+  if ($version -notmatch [regex]::Escape($ollamaVersion)) { throw "ollama --version did not report $ollamaVersion" }
+
   @(
     "platform=windows-amd64"
     "node=v$nodeVersion"
@@ -134,6 +166,12 @@ try {
     "postgrest_url=$pgrestUrl"
     "postgrest_sha256=$pgrestSha"
     "postgrest_license=MIT (postgrest/POSTGREST_LICENSE.txt)"
+    "ollama=v$ollamaVersion"
+    "ollama_url=$ollamaUrl"
+    "ollama_sha256=$ollamaSha"
+    "ollama_license=MIT (ollama/OLLAMA_LICENSE.txt)"
+    "ollama_omitted=cuda_v12,cuda_v13"
+    "ollama_note=CUDA runners are omitted so the installer stays under the 2 GiB GitHub asset limit. CPU and Vulkan runners stay. The model is not packed."
   ) | Set-Content -LiteralPath (Join-Path $dist "PROVENANCE") -Encoding ascii
 } finally {
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

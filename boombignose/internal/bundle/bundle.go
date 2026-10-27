@@ -1,7 +1,7 @@
 // Package bundle starts a portable local stack from files beside the desktop
-// binary. It does not download Node, Postgres, Ollama, or a model, and it does
-// not call Docker. A missing optional file is skipped. A cloud credential is
-// not passed to the child.
+// binary. It does not download Node, Postgres, or Ollama, and it does not call
+// Docker. PullModel downloads qwen3:4b only when a caller asks. A missing
+// optional file is skipped. A cloud credential is not passed to the child.
 package bundle
 
 import (
@@ -80,8 +80,7 @@ func Discover(root string) (Layout, error) {
 	if _, err := os.Stat(postgres); err == nil {
 		layout.Postgres = postgres
 	}
-	ollama := filepath.Join(root, "ollama", exeName("ollama"))
-	if _, err := os.Stat(ollama); err == nil {
+	if ollama := findOllama(root); ollama != "" {
 		layout.Ollama = ollama
 	}
 	auth := filepath.Join(root, "auth", exeName("auth"))
@@ -100,6 +99,23 @@ func exeName(base string) string {
 		return base + ".exe"
 	}
 	return base
+}
+
+// findOllama accepts the flat tree (bundle/ollama/ollama) and the upstream
+// Linux tree (bundle/ollama/bin/ollama). The second form keeps lib/ollama
+// beside bin/, which is where the Linux binary looks.
+func findOllama(root string) string {
+	candidates := []string{
+		filepath.Join(root, "ollama", exeName("ollama")),
+		filepath.Join(root, "ollama", "bin", exeName("ollama")),
+	}
+	for _, path := range candidates {
+		info, err := os.Stat(path)
+		if err == nil && !info.IsDir() {
+			return path
+		}
+	}
+	return ""
 }
 
 // ERPCommand runs the bundled Node on server.js. The name is the bundled
@@ -238,6 +254,143 @@ func OllamaServe(binary, host string) (Command, error) {
 		Args: []string{"serve"},
 		Env:  []string{"OLLAMA_HOST=" + listen},
 	}, nil
+}
+
+// PullCommand is `ollama pull qwen3:4b` on loopback. It is not a startup
+// command: allowedBundleCommand refuses it. The child env keeps path and
+// home values and drops cloud keys.
+func PullCommand(binary, host string, parent []string) (Command, error) {
+	if strings.TrimSpace(binary) == "" {
+		return Command{}, ErrNoOllama
+	}
+	if !filepath.IsAbs(binary) {
+		return Command{}, errors.New("refusing model pull")
+	}
+	listen, err := ollamaListen(host)
+	if err != nil {
+		return Command{}, err
+	}
+	return Command{
+		Name: binary,
+		Args: PullArgs(),
+		Env:  pullEnv(parent, listen),
+	}, nil
+}
+
+func ollamaListen(host string) (string, error) {
+	if err := policy.AllowService(host); err != nil {
+		return "", err
+	}
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return DefaultOllamaListen, nil
+	}
+	host = strings.TrimPrefix(host, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	return host, nil
+}
+
+func pullEnv(parent []string, listen string) []string {
+	keep := map[string]bool{
+		"PATH": true, "HOME": true, "TMPDIR": true, "LANG": true,
+		"TEMP": true, "TMP": true, "SystemRoot": true,
+		"USERPROFILE": true, "APPDATA": true, "LOCALAPPDATA": true,
+	}
+	vals := map[string]string{}
+	for _, item := range parent {
+		key, value, ok := strings.Cut(item, "=")
+		if !ok || value == "" || !keep[key] {
+			continue
+		}
+		vals[key] = value
+	}
+	vals["OLLAMA_HOST"] = listen
+	keys := make([]string, 0, len(vals))
+	for key := range vals {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	env := make([]string, 0, len(keys))
+	for _, key := range keys {
+		env = append(env, key+"="+vals[key])
+	}
+	return env
+}
+
+// allowPullCommand is the only gate for the model download. It is separate
+// from allowedBundleCommand so startup still cannot pull.
+func allowPullCommand(cmd Command) error {
+	if !filepath.IsAbs(cmd.Name) || strings.ContainsAny(cmd.Name, "\x00\r\n") {
+		return errors.New("refusing model pull")
+	}
+	base := strings.ToLower(filepath.Base(cmd.Name))
+	if base != "ollama" && base != "ollama.exe" {
+		return errors.New("refusing model pull")
+	}
+	if len(cmd.Args) != 2 || cmd.Args[0] != "pull" || cmd.Args[1] != LocalModel {
+		return errors.New("refusing model pull")
+	}
+	host := ""
+	for _, item := range cmd.Env {
+		key, value, ok := strings.Cut(item, "=")
+		if !ok {
+			return errors.New("refusing model pull")
+		}
+		upper := strings.ToUpper(key)
+		if strings.Contains(upper, "OPENAI") || strings.Contains(upper, "ANTHROPIC") || strings.Contains(upper, "OPENROUTER") || strings.Contains(upper, "RESEND") {
+			return errors.New("refusing model pull")
+		}
+		if key == "OLLAMA_HOST" {
+			if host != "" {
+				return errors.New("refusing model pull")
+			}
+			host = value
+		}
+	}
+	if strings.TrimSpace(host) == "" {
+		return errors.New("refusing model pull")
+	}
+	if err := policy.AllowService(host); err != nil {
+		return errors.New("refusing model pull")
+	}
+	info, err := os.Stat(cmd.Name)
+	if err != nil || info.IsDir() {
+		return errors.New("refusing model pull")
+	}
+	return nil
+}
+
+func runPull(ctx context.Context, cmd Command) error {
+	if err := allowPullCommand(cmd); err != nil {
+		return err
+	}
+	// #nosec G204 -- allowPullCommand allows only the absolute ollama binary and pull qwen3:4b
+	proc := exec.CommandContext(ctx, cmd.Name, cmd.Args...)
+	proc.Env = cmd.Env
+	proc.Stdout = os.Stdout
+	proc.Stderr = os.Stderr
+	return proc.Run()
+}
+
+// PullModel downloads qwen3:4b through the local ollama binary. Call it from
+// an explicit command or button. Do not call it from startup.
+func PullModel(ctx context.Context, layout Layout, host string, parent []string) error {
+	binary, err := OllamaBinary(layout, exec.LookPath)
+	if err != nil {
+		return err
+	}
+	if !filepath.IsAbs(binary) {
+		abs, absErr := filepath.Abs(binary)
+		if absErr != nil || !filepath.IsAbs(abs) {
+			return ErrNoOllama
+		}
+		binary = abs
+	}
+	cmd, err := PullCommand(binary, host, parent)
+	if err != nil {
+		return err
+	}
+	return runPull(ctx, cmd)
 }
 
 // Runner starts a command. The wait function blocks until the process exits.

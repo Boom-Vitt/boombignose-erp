@@ -71,6 +71,12 @@ postgrest=v16.5
 postgrest_url=${PGRST_URL}
 postgrest_sha256=${PGRST_SHA}
 postgrest_license=MIT (postgrest/POSTGREST_LICENSE.txt)
+ollama=v0.40.11
+ollama_url=https://github.com/ollama/ollama/releases/download/v0.40.11/ollama-linux-amd64.tar.zst
+ollama_sha256=7bedab90dd122661be78798e9f0edf37fccf0cccf2699d2c58ea1a3afdc04b6d
+ollama_license=MIT (ollama/OLLAMA_LICENSE.txt)
+ollama_omitted=cuda_v12,cuda_v13
+ollama_note=CUDA runners are omitted so the installer stays under the 2 GiB GitHub asset limit. CPU and Vulkan runners stay. The model is not packed.
 EOF
 
 curl -fsSL -o "$tmp/auth.txz" "$AUTH_URL"
@@ -86,6 +92,28 @@ mkdir -p "$dist/postgrest"
 tar -xJf "$tmp/postgrest.txz" -C "$dist/postgrest"
 chmod 755 "$dist/postgrest/postgrest"
 cp packaging/postgrest/POSTGREST_LICENSE.txt "$dist/postgrest/POSTGREST_LICENSE.txt"
+
+OLLAMA_VERSION=0.40.11
+OLLAMA_SHA=7bedab90dd122661be78798e9f0edf37fccf0cccf2699d2c58ea1a3afdc04b6d
+OLLAMA_URL="https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst"
+OLLAMA_LICENSE_SHA=5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226
+command -v zstd >/dev/null
+echo "$OLLAMA_LICENSE_SHA  packaging/ollama/OLLAMA_LICENSE.txt" | sha256sum -c -
+curl -fsSL -o "$tmp/ollama.tar.zst" "$OLLAMA_URL"
+echo "$OLLAMA_SHA  $tmp/ollama.tar.zst" | sha256sum -c -
+mkdir -p "$tmp/ollama-src"
+tar --zstd -xf "$tmp/ollama.tar.zst" -C "$tmp/ollama-src"
+rm -rf "$dist/ollama"
+stage_out=$(python3 packaging/ollama/stage.py "$tmp/ollama-src" "$dist/ollama")
+printf '%s\n' "$stage_out"
+printf '%s\n' "$stage_out" | grep -Fx 'omitted=cuda_v12,cuda_v13'
+test ! -d "$dist/ollama/lib/ollama/cuda_v12"
+test ! -d "$dist/ollama/lib/ollama/cuda_v13"
+cp packaging/ollama/OLLAMA_LICENSE.txt "$dist/ollama/OLLAMA_LICENSE.txt"
+ollama_bin=$(printf '%s\n' "$stage_out" | sed -n 's/^binary=//p')
+test -x "$ollama_bin"
+# --version may warn that no daemon is listening. It must not pull a model.
+"$ollama_bin" --version | grep -F "$OLLAMA_VERSION"
 
 export PATH="$node_dir/bin:$PATH"
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}"
