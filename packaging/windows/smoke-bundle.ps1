@@ -11,7 +11,11 @@ foreach ($rel in @(
   "node.exe",
   "erp\server.js",
   "postgres\bin\postgres.exe",
-  "postgres\prelude.sql"
+  "postgres\prelude.sql",
+  "postgres\prelude-after-auth.sql",
+  "auth\auth.exe",
+  "auth\migrations\00_init_auth_schema.up.sql",
+  "postgrest\postgrest.exe"
 )) {
   $path = Join-Path $bundle $rel
   if (-not (Test-Path -LiteralPath $path)) {
@@ -48,6 +52,7 @@ function Test-PortClosed([int]$Port) {
 Assert-PortFree 3100
 $pgPort = 54329
 Assert-PortFree $pgPort
+foreach ($extra in @(54321, 54323, 54324)) { Assert-PortFree $extra }
 
 $data = Join-Path "C:\" ("bbn-smoke-" + [guid]::NewGuid().ToString("n"))
 if ($data -match " ") { throw "data path contains a space: $data" }
@@ -119,6 +124,22 @@ try {
     throw "PG_VERSION missing"
   }
   Write-Host "health ok"
+  $anon = (Get-Content -LiteralPath (Join-Path $pgdata "anon.key") -Raw).Trim()
+  $email = "smoke-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())@example.com"
+  $body = @{ email = $email; password = "SmokeTest1a" } | ConvertTo-Json
+  $headers = @{ apikey = $anon; Authorization = "Bearer $anon" }
+  $signup = Invoke-WebRequest -Uri "http://127.0.0.1:54321/auth/v1/signup" -Method POST -Headers $headers -ContentType "application/json" -Body $body -UseBasicParsing -TimeoutSec 20
+  if ($signup.Content -notmatch '"access_token"') {
+    Show-Logs
+    throw "signup failed"
+  }
+  Write-Host "signup ok"
+  $signin = Invoke-WebRequest -Uri "http://127.0.0.1:54321/auth/v1/token?grant_type=password" -Method POST -Headers $headers -ContentType "application/json" -Body $body -UseBasicParsing -TimeoutSec 20
+  if ($signin.Content -notmatch '"access_token"') {
+    Show-Logs
+    throw "signin failed"
+  }
+  Write-Host "signin ok"
 
   $PSNativeCommandUseErrorActionPreference = $false
   & $exe stop

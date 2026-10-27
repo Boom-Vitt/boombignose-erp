@@ -44,11 +44,13 @@ type Command struct {
 
 // Layout is the portable tree. Postgres and Ollama may be empty.
 type Layout struct {
-	Root     string
-	Node     string
-	Server   string
-	Postgres string
-	Ollama   string
+	Root      string
+	Node      string
+	Server    string
+	Postgres  string
+	Ollama    string
+	Auth      string
+	PostgREST string
 }
 
 // Valid reports whether root contains the portable Node binary and ERP server.
@@ -81,6 +83,14 @@ func Discover(root string) (Layout, error) {
 	ollama := filepath.Join(root, "ollama", exeName("ollama"))
 	if _, err := os.Stat(ollama); err == nil {
 		layout.Ollama = ollama
+	}
+	auth := filepath.Join(root, "auth", exeName("auth"))
+	if _, err := os.Stat(auth); err == nil {
+		layout.Auth = auth
+	}
+	postgrest := filepath.Join(root, "postgrest", exeName("postgrest"))
+	if _, err := os.Stat(postgrest); err == nil {
+		layout.PostgREST = postgrest
 	}
 	return layout, nil
 }

@@ -114,7 +114,7 @@ func ensurePostgres(ctx context.Context, layout Layout, dataDir string, up func(
 	var last error
 	for i := 0; i < 25; i++ {
 		last = ensureDatabase(ctx, pgAddr(), query)
-		if last == nil {
+		if last == nil && layout.Auth == "" {
 			last = applyMigrations(ctx, layout, pgAddr(), query)
 		}
 		if last == nil {
@@ -190,6 +190,10 @@ func ensureDatabase(ctx context.Context, addr string, query sqlQuery) error {
 }
 
 func applyMigrations(ctx context.Context, layout Layout, addr string, query sqlQuery) error {
+	return applyMigrationsFrom(ctx, layout, addr, query, "prelude.sql")
+}
+
+func applyMigrationsFrom(ctx context.Context, layout Layout, addr string, query sqlQuery, preludeName string) error {
 	if query == nil {
 		query = queryPostgres
 	}
@@ -199,7 +203,7 @@ func applyMigrations(ctx context.Context, layout Layout, addr string, query sqlQ
 		if !strings.Contains(strings.ToLower(err.Error()), "schema_migrations") {
 			return err
 		}
-		prelude := filepath.Join(filepath.Dir(filepath.Dir(layout.Postgres)), "prelude.sql")
+		prelude := filepath.Join(filepath.Dir(filepath.Dir(layout.Postgres)), preludeName)
 		body, readErr := os.ReadFile(prelude)
 		if readErr != nil {
 			return readErr
@@ -325,14 +329,19 @@ func StartStack(ctx context.Context, layout Layout, dataDir, rawURL string, pare
 	if err := EnsurePostgres(ctx, layout, dataDir); err != nil {
 		return err
 	}
-	return EnsureERP(ctx, layout, rawURL, parent, run)
+	if err := EnsureAuth(ctx, layout, dataDir); err != nil {
+		return err
+	}
+	return EnsureERP(ctx, layout, rawURL, withLocalKeys(parent, dataDir), run)
 }
 
 // StopAt stops the recorded ERP pid and the portable cluster in dataDir.
 func StopAt(layout Layout, dataDir string) error {
 	if dataDir != "" {
 		stopPID(dataDir)
+		stopExtraPIDs(dataDir)
 	}
+	stopLocalAPI()
 	return StopPostgres(layout, dataDir)
 }
 

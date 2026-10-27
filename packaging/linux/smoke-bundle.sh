@@ -9,6 +9,10 @@ test -x dist/bundle/node
 test -s dist/bundle/erp/server.js
 test -x dist/bundle/postgres/bin/postgres
 test -s dist/bundle/postgres/prelude.sql
+test -s dist/bundle/postgres/prelude-after-auth.sql
+test -x dist/bundle/auth/auth
+test -d dist/bundle/auth/migrations
+test -x dist/bundle/postgrest/postgrest
 
 python3 - << 'PY'
 import socket, sys
@@ -23,6 +27,20 @@ sys.exit(1)
 PY
 
 pg_port=54329
+for extra in 54321 54323 54324; do
+  python3 - "$extra" << 'PY'
+import socket, sys
+port = int(sys.argv[1])
+s = socket.socket()
+try:
+    s.bind(("127.0.0.1", port))
+except OSError:
+    sys.stderr.write("127.0.0.1:%s is already in use\n" % port)
+    sys.exit(1)
+finally:
+    s.close()
+PY
+done
 python3 - "$pg_port" << 'PY'
 import socket, sys
 port = int(sys.argv[1])
@@ -84,6 +102,48 @@ if [ "$ok" != 1 ]; then
 fi
 test -s "$pgdata/PG_VERSION"
 echo "health ok"
+anon=$(tr -d '\n\r' < "$pgdata/anon.key")
+email="smoke-$(date +%s)@example.com"
+dump_auth() {
+  secret=""
+  if [ -s "$pgdata/jwt.secret" ]; then
+    secret=$(tr -d '\n\r' < "$pgdata/jwt.secret")
+  fi
+  if [ -s "$pgdata/auth.log" ]; then
+    if [ -n "$secret" ]; then
+      sed "s|$secret|[redacted]|g" "$pgdata/auth.log" >&2 || true
+    else
+      cat "$pgdata/auth.log" >&2 || true
+    fi
+  fi
+}
+signup=$(curl -fsS -X POST http://127.0.0.1:54321/auth/v1/signup \
+  -H "apikey: $anon" \
+  -H "Authorization: Bearer $anon" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$email\",\"password\":\"SmokeTest1a\"}" || true)
+case "$signup" in
+  *'"access_token"'*) echo signup ok ;;
+  *)
+    echo "signup failed" >&2
+    dump_auth
+    exit 1
+    ;;
+esac
+signin=$(curl -fsS -X POST "http://127.0.0.1:54321/auth/v1/token?grant_type=password" \
+  -H "apikey: $anon" \
+  -H "Authorization: Bearer $anon" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$email\",\"password\":\"SmokeTest1a\"}" || true)
+case "$signin" in
+  *'"access_token"'*) echo signin ok ;;
+  *)
+    echo "signin failed" >&2
+    dump_auth
+    exit 1
+    ;;
+esac
+unset signup signin anon
 kill -TERM "$pid"
 wait "$pid" || true
 pid=""

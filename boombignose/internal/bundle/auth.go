@@ -1,0 +1,388 @@
+package bundle
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose/internal/launch"
+)
+
+const (
+	localAPIPort  = "54321"
+	localAuthPort = "54323"
+	localRESTPort = "54324"
+)
+
+// EnsureAuth starts the bundled Auth server and PostgREST when those binaries
+// exist, then applies ERP migrations. A bundle without them keeps the prelude
+// path and does not listen on the local API port.
+func EnsureAuth(ctx context.Context, layout Layout, dataDir string) error {
+	if layout.Auth == "" || layout.PostgREST == "" {
+		return nil
+	}
+	keys, err := ensureLocalKeys(dataDir)
+	if err != nil {
+		return err
+	}
+	if err := startAuthServer(ctx, layout, dataDir, keys.secret); err != nil {
+		return err
+	}
+	if err := applyMigrationsFrom(ctx, layout, pgAddr(), nil, "prelude-after-auth.sql"); err != nil {
+		return err
+	}
+	if err := startPostgREST(ctx, layout, dataDir, keys.secret); err != nil {
+		return err
+	}
+	return startLocalAPI(ctx)
+}
+
+type localKeys struct {
+	secret  string
+	anon    string
+	service string
+}
+
+func ensureLocalKeys(dataDir string) (localKeys, error) {
+	secretPath := filepath.Join(dataDir, "jwt.secret")
+	anonPath := filepath.Join(dataDir, "anon.key")
+	servicePath := filepath.Join(dataDir, "service.key")
+	secret, secretErr := os.ReadFile(secretPath)
+	anon, anonErr := os.ReadFile(anonPath)
+	service, serviceErr := os.ReadFile(servicePath)
+	if secretErr == nil && anonErr == nil && serviceErr == nil {
+		return localKeys{
+			secret:  strings.TrimSpace(string(secret)),
+			anon:    strings.TrimSpace(string(anon)),
+			service: strings.TrimSpace(string(service)),
+		}, nil
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return localKeys{}, err
+	}
+	keys := localKeys{secret: hex.EncodeToString(buf)}
+	var err error
+	keys.anon, err = mintRoleJWT(keys.secret, "anon")
+	if err != nil {
+		return localKeys{}, err
+	}
+	keys.service, err = mintRoleJWT(keys.secret, "service_role")
+	if err != nil {
+		return localKeys{}, err
+	}
+	if err := os.WriteFile(secretPath, []byte(keys.secret+"\n"), 0o600); err != nil {
+		return localKeys{}, err
+	}
+	if err := os.WriteFile(anonPath, []byte(keys.anon+"\n"), 0o600); err != nil {
+		return localKeys{}, err
+	}
+	if err := os.WriteFile(servicePath, []byte(keys.service+"\n"), 0o600); err != nil {
+		return localKeys{}, err
+	}
+	return keys, nil
+}
+
+func mintRoleJWT(secret, role string) (string, error) {
+	if strings.TrimSpace(secret) == "" || strings.TrimSpace(role) == "" {
+		return "", errors.New("jwt secret and role are required")
+	}
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+	now := time.Now().Unix()
+	payload := fmt.Sprintf(`{"role":%q,"iss":"supabase","iat":%d,"exp":%d}`, role, now, now+10*365*24*3600)
+	body := base64.RawURLEncoding.EncodeToString([]byte(payload))
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(header + "." + body))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return header + "." + body + "." + sig, nil
+}
+
+func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string) error {
+	migrations := filepath.Join(filepath.Dir(layout.Auth), "migrations")
+	if _, err := os.Stat(migrations); err != nil {
+		return fmt.Errorf("auth migrations: %w", err)
+	}
+	logPath := filepath.Join(dataDir, "auth.log")
+	cmd := Command{
+		Name: layout.Auth,
+		Dir:  filepath.Dir(layout.Auth),
+		Env: []string{
+			"GOTRUE_DB_DRIVER=postgres",
+			"GOTRUE_DB_DATABASE_URL=" + localDBURL(),
+			"GOTRUE_DB_MIGRATIONS_PATH=" + migrations,
+			"GOTRUE_JWT_SECRET=" + secret,
+			"GOTRUE_JWT_EXP=3600",
+			"GOTRUE_API_HOST=127.0.0.1",
+			"GOTRUE_API_PORT=" + localAuthPort,
+			"GOTRUE_API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
+			"GOTRUE_SITE_URL=http://127.0.0.1:3100",
+			"GOTRUE_DISABLE_SIGNUP=false",
+			"GOTRUE_MAILER_AUTOCONFIRM=true",
+			"GOTRUE_EXTERNAL_EMAIL_ENABLED=true",
+		},
+	}
+	cmd.Env = append(cmd.Env, copiedProcessEnv()...)
+	if err := startLogged(cmd, logPath, filepath.Join(dataDir, "auth.pid")); err != nil {
+		return err
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	err := launch.WaitUntil(waitCtx, 500*time.Millisecond, func() bool {
+		return authReady(waitCtx)
+	}, nil)
+	if err != nil {
+		return fmt.Errorf("auth did not become ready: %s", tailRedacted(logPath, secret))
+	}
+	return nil
+}
+
+func authReady(ctx context.Context) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+localAuthPort+"/health", nil)
+	if err != nil {
+		return false
+	}
+	client := http.Client{Timeout: 500 * time.Millisecond}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	rows, err := queryPostgres(ctx, pgAddr(), "boombignose", "boombignose", "select count(*)::text from auth.schema_migrations")
+	if err != nil || len(rows) == 0 || rows[0][0] == "" || rows[0][0] == "0" {
+		return false
+	}
+	return true
+}
+
+func startPostgREST(ctx context.Context, layout Layout, dataDir, secret string) error {
+	logPath := filepath.Join(dataDir, "postgrest.log")
+	cmd := Command{
+		Name: layout.PostgREST,
+		Dir:  filepath.Dir(layout.PostgREST),
+		Env: []string{
+			"PGRST_DB_URI=" + localDBURL(),
+			"PGRST_DB_SCHEMAS=public,storage",
+			"PGRST_DB_ANON_ROLE=anon",
+			"PGRST_JWT_SECRET=" + secret,
+			"PGRST_SERVER_HOST=127.0.0.1",
+			"PGRST_SERVER_PORT=" + localRESTPort,
+		},
+	}
+	cmd.Env = append(cmd.Env, copiedProcessEnv()...)
+	if err := startLogged(cmd, logPath, filepath.Join(dataDir, "postgrest.pid")); err != nil {
+		return err
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	err := launch.WaitUntil(waitCtx, 200*time.Millisecond, func() bool {
+		ok, _ := launch.Listening("http://127.0.0.1:" + localRESTPort)
+		return ok
+	}, nil)
+	if err != nil {
+		return fmt.Errorf("postgrest did not become ready: %s", tailRedacted(logPath, secret))
+	}
+	return nil
+}
+
+func localDBURL() string {
+	return "postgres://boombignose@" + pgAddr() + "/boombignose?sslmode=disable"
+}
+
+func copiedProcessEnv() []string {
+	var env []string
+	for _, key := range []string{"HOME", "LANG", "TMPDIR", "SystemRoot", "USERPROFILE", "PATH"} {
+		if value := os.Getenv(key); value != "" {
+			env = append(env, key+"="+value)
+		}
+	}
+	return env
+}
+
+func startLogged(cmd Command, logPath, pidPath string) error {
+	proc := exec.Command(cmd.Name, cmd.Args...)
+	proc.Dir = cmd.Dir
+	proc.Env = cmd.Env
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	proc.Stdout = logFile
+	proc.Stderr = logFile
+	if err := proc.Start(); err != nil {
+		_ = logFile.Close()
+		return err
+	}
+	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", proc.Process.Pid)), 0o600); err != nil {
+		_ = proc.Process.Kill()
+		_ = logFile.Close()
+		return err
+	}
+	go func() {
+		_ = proc.Wait()
+		_ = logFile.Close()
+	}()
+	return nil
+}
+
+func tailRedacted(path, secret string) string {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return "log unavailable"
+	}
+	text := string(body)
+	if secret != "" {
+		text = strings.ReplaceAll(text, secret, "[redacted]")
+	}
+	lines := strings.Split(text, "\n")
+	if len(lines) > 20 {
+		lines = lines[len(lines)-20:]
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func startLocalAPI(ctx context.Context) error {
+	addr := net.JoinHostPort("127.0.0.1", localAPIPort)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("local api: %w", err)
+	}
+	authURL, err := url.Parse("http://127.0.0.1:" + localAuthPort)
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
+	restURL, err := url.Parse("http://127.0.0.1:" + localRESTPort)
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/auth/v1/", newPrefixProxy("/auth/v1", authURL))
+	mux.Handle("/rest/v1/", newPrefixProxy("/rest/v1", restURL))
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	apiMu.Lock()
+	apiSrv = srv
+	apiMu.Unlock()
+	go func() { _ = srv.Serve(ln) }()
+	err = launch.WaitUntil(ctx, 50*time.Millisecond, func() bool {
+		ok, _ := launch.Listening("http://" + addr + "/auth/v1/health")
+		return ok
+	}, nil)
+	if err != nil {
+		stopLocalAPI()
+		return errors.New("local api did not become ready")
+	}
+	return nil
+}
+
+func newPrefixProxy(prefix string, upstream *url.URL) http.Handler {
+	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	proxy.Director = func(r *http.Request) {
+		r.URL.Scheme = upstream.Scheme
+		r.URL.Host = upstream.Host
+		r.Host = upstream.Host
+		path := strings.TrimPrefix(r.URL.Path, prefix)
+		if path == "" {
+			path = "/"
+		}
+		r.URL.Path = path
+	}
+	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, _ error) {
+		http.Error(w, "local api unavailable", http.StatusBadGateway)
+	}
+	return proxy
+}
+
+var (
+	apiMu  sync.Mutex
+	apiSrv *http.Server
+)
+
+func stopLocalAPI() {
+	apiMu.Lock()
+	srv := apiSrv
+	apiSrv = nil
+	apiMu.Unlock()
+	if srv == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(ctx)
+}
+
+func stopExtraPIDs(dataDir string) {
+	if dataDir == "" {
+		return
+	}
+	for _, name := range []string{"auth.pid", "postgrest.pid"} {
+		stopOnePID(dataDir, name)
+	}
+}
+
+func stopOnePID(dataDir, name string) {
+	body, err := os.ReadFile(filepath.Join(dataDir, name))
+	if err != nil {
+		return
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(body)))
+	if err != nil || pid <= 0 {
+		return
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return
+	}
+	_ = proc.Kill()
+	_ = os.Remove(filepath.Join(dataDir, name))
+}
+
+func withLocalKeys(parent []string, dataDir string) []string {
+	anon, err := os.ReadFile(filepath.Join(dataDir, "anon.key"))
+	if err != nil {
+		return parent
+	}
+	service, err := os.ReadFile(filepath.Join(dataDir, "service.key"))
+	if err != nil {
+		return parent
+	}
+	drop := map[string]bool{
+		"NEXT_PUBLIC_SUPABASE_URL":      true,
+		"NEXT_PUBLIC_SUPABASE_ANON_KEY": true,
+		"SUPABASE_SERVICE_ROLE_KEY":     true,
+	}
+	out := make([]string, 0, len(parent)+3)
+	for _, item := range parent {
+		key, _, ok := strings.Cut(item, "=")
+		if ok && drop[key] {
+			continue
+		}
+		out = append(out, item)
+	}
+	return append(out,
+		"NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:"+localAPIPort,
+		"NEXT_PUBLIC_SUPABASE_ANON_KEY="+strings.TrimSpace(string(anon)),
+		"SUPABASE_SERVICE_ROLE_KEY="+strings.TrimSpace(string(service)),
+	)
+}
