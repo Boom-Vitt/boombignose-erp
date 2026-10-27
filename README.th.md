@@ -24,7 +24,7 @@
 	<a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/issues">Issues</a>
 </div>
 
-หน้าดาวน์โหลดอยู่ที่ [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/) ที่อยู่เดิม [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) เลิกใช้แล้ว และจะไม่ได้รับไฟล์ใหม่ รายการ Release อยู่ที่ [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest)
+หน้าดาวน์โหลดอยู่ที่ [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/) ที่อยู่เดิม [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) เลิกใช้แล้ว และตอบ HTTP 404 หลังดีพลอยชื่อใหม่ รายการ Release อยู่ที่ [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest) แท็ก `boombignose-v0.2.0` คือหน้าต่างเดสก์ท็อป แท็ก `boombignose-v0.1.1` คือคำสั่งฮาร์เนสชุดก่อน
 
 ## BoomBigNose ERP
 
