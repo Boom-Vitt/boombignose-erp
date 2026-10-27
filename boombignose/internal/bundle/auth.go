@@ -42,6 +42,9 @@ func EnsureAuth(ctx context.Context, layout Layout, dataDir string) error {
 	if err != nil {
 		return err
 	}
+	if _, err := queryPostgres(ctx, pgAddr(), "boombignose", "boombignose", "create extension if not exists pgcrypto; create schema if not exists auth"); err != nil {
+		return fmt.Errorf("auth schema: %w", err)
+	}
 	if err := startAuthServer(ctx, layout, dataDir, keys.secret); err != nil {
 		return err
 	}
@@ -134,6 +137,7 @@ func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string)
 			"GOTRUE_API_PORT=" + localAuthPort,
 			"API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
 			"GOTRUE_API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
+			"GOTRUE_API_API_EXTERNAL_URL=http://127.0.0.1:" + localAPIPort + "/auth/v1",
 			"GOTRUE_SITE_URL=http://127.0.0.1:3100",
 			"GOTRUE_DISABLE_SIGNUP=false",
 			"GOTRUE_MAILER_AUTOCONFIRM=true",
