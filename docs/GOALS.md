@@ -4,9 +4,9 @@ Updated 2026-10-27. No secrets.
 
 ## GOAL 1 — Download page
 
-Status: in progress.
+Status: done.
 
-The page was redesigned with our own mark, Midnight Local colors, and honest links to the boombignose-v0.1.1 installers. Live HTTP 200 on https://boom-vitt.github.io/boombignose-erp/ is checked after this change is on `main`.
+https://boom-vitt.github.io/boombignose-erp/ returned HTTP 200 on 2026-10-27 after Pages run 40492971353. The HTML contains BoomBigNose ERP Harness AI, the boombignose-v0.1.1 SHA-256 values, and no Bumik. `face-logo.png` returns 404. The mark, `og.png`, and the page return 200.
 
 ## GOAL 2 — Desktop app
 
