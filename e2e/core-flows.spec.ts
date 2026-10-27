@@ -69,10 +69,6 @@ test("sign up, sign in, and record a customer, stock count, and VAT invoice", as
   const productId = new URL(page.url()).pathname.split("/").pop()!
 
   await gotoApp(page, "/inventory/warehouses")
-  await page.getByLabel("Code", { exact: true }).fill("MAIN")
-  await page.getByLabel("Name", { exact: true }).fill("Main warehouse")
-  await page.getByRole("checkbox", { name: "Default warehouse", exact: true }).check()
-  await page.getByRole("button", { name: "Create warehouse", exact: true }).click()
   const warehouse = page.getByRole("region", { name: "Main warehouse", exact: true })
   await expect(warehouse).toContainText("MAIN")
   await expect(warehouse.getByText("Default", { exact: true })).toBeVisible()
