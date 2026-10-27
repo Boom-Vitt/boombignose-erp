@@ -210,11 +210,11 @@ export default async function DashboardPage() {
                 {d.overdueInvoiceCount}
               </Badge>
             </div>
-            <Link href="/finance?tab=costs" className="flex items-center justify-between rounded-md border p-3 text-sm">
+            <Link href="/finance?tab=costs" prefetch={false} className="flex items-center justify-between rounded-md border p-3 text-sm">
               <span>Overdue vendor bills</span>
               <Badge variant={overdueBills > 0 ? "destructive" : "secondary"}>{overdueBills}</Badge>
             </Link>
-            {expenseApprovals !== null && <Link href="/expenses?tab=approve" className="flex items-center justify-between rounded-md border p-3 text-sm">
+            {expenseApprovals !== null && <Link href="/expenses?tab=approve" prefetch={false} className="flex items-center justify-between rounded-md border p-3 text-sm">
               <span>Expense claims to approve</span>
               <Badge variant={expenseApprovals > 0 ? "default" : "secondary"}>{expenseApprovals}</Badge>
             </Link>}

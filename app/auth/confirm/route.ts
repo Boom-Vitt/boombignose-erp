@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { loopbackRedirect } from "@/lib/supabase/auth-cookies"
 
 /**
  * Email-confirmation callback for signups (and other email OTP links).
@@ -29,9 +30,7 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      return NextResponse.redirect(new URL("/dashboard", request.url), {
-        status: 303,
-      })
+      return NextResponse.redirect(appUrl(request, "/dashboard"), { status: 303 })
     }
     return failureOrExistingSession(request, error.message)
   }
@@ -43,9 +42,7 @@ export async function GET(request: NextRequest) {
       token_hash: tokenHash,
     })
     if (!error) {
-      return NextResponse.redirect(new URL("/dashboard", request.url), {
-        status: 303,
-      })
+      return NextResponse.redirect(appUrl(request, "/dashboard"), { status: 303 })
     }
     return failureOrExistingSession(request, error.message)
   }
@@ -57,13 +54,17 @@ export async function GET(request: NextRequest) {
 async function failureOrExistingSession(request: NextRequest, message: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (user) return NextResponse.redirect(new URL("/dashboard", request.url), { status: 303 })
+  if (user) return NextResponse.redirect(appUrl(request, "/dashboard"), { status: 303 })
   return failure(request, message)
+}
+
+function appUrl(request: NextRequest, path: string): URL {
+  return loopbackRedirect(path, request, process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3100")
 }
 
 /** Redirect to /login with a human-readable error message in the query. */
 function failure(request: NextRequest, message: string) {
-  const url = new URL("/login", request.url)
+  const url = appUrl(request, "/login")
   url.searchParams.set("error", message)
   return NextResponse.redirect(url, { status: 303 })
 }

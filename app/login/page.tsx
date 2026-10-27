@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -27,7 +27,6 @@ const DEMO_EMAIL = process.env.NEXT_PUBLIC_DEMO_LOGIN_EMAIL
 const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_LOGIN_PASSWORD
 
 function LoginForm() {
-  const router = useRouter()
   const params = useSearchParams()
   const redirectTo = safeReturnPath(params.get("redirect"))
 
@@ -45,20 +44,18 @@ function LoginForm() {
       return
     }
     const level = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-    setLoading(false)
     if (!level.error && level.data) {
       const next = stepUpPath({
         hasVerifiedTotp: level.data.nextLevel === "aal2",
         authenticatorAssuranceLevel: level.data.currentLevel,
       })
       if (next) {
-        router.push(next)
-        router.refresh()
+        // Full load, so the cookie write is finished before the app renders.
+        window.location.assign(next)
         return
       }
     }
-    router.push(redirectTo)
-    router.refresh()
+    window.location.assign(redirectTo)
   }
 
   return (

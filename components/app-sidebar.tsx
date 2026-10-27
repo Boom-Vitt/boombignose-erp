@@ -53,7 +53,7 @@ export function AppSidebar({
                     <SidebarMenuButton
                       isActive={active}
                       tooltip={item.title}
-                      render={<Link href={item.href} />}
+                      render={<Link href={item.href} prefetch={false} />}
                     >
                       <Icon />
                       <span>{item.title}</span>
