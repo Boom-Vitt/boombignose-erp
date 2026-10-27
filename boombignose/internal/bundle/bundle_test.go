@@ -41,6 +41,34 @@ func writeBundle(t *testing.T, root string, withPostgres bool) Layout {
 	return layout
 }
 
+func TestAllowedBundleCommandRejectsOtherPrograms(t *testing.T) {
+	root := t.TempDir()
+	layout := writeBundle(t, root, false)
+	cmd, err := ERPCommand(layout, "http://127.0.0.1:3100", []string{"PATH=/usr/bin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := allowedBundleCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	ollama := filepath.Join(root, exeName("ollama"))
+	if err := os.WriteFile(ollama, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := allowedBundleCommand(Command{Name: ollama, Args: []string{"serve"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := allowedBundleCommand(Command{Name: ollama, Args: []string{"pull", "qwen3:4b"}}); err == nil {
+		t.Fatal("pull must be refused")
+	}
+	if err := allowedBundleCommand(Command{Name: "node", Args: []string{layout.Server}}); err == nil {
+		t.Fatal("a PATH lookup must be refused")
+	}
+	if err := allowedBundleCommand(Command{Name: layout.Node, Args: []string{"-e", "process.exit(0)"}}); err == nil {
+		t.Fatal("node eval must be refused")
+	}
+}
+
 func TestDiscoverRequiresNodeAndServer(t *testing.T) {
 	if _, err := Discover(t.TempDir()); err != ErrIncomplete {
 		t.Fatalf("empty tree: %v", err)

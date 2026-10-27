@@ -185,6 +185,56 @@ func TestEnsurePostgresSkipsWhenBinaryIsAbsent(t *testing.T) {
 	}
 }
 
+func TestAllowedPostgresCommandMatchesTheLauncher(t *testing.T) {
+	bin := t.TempDir()
+	initdb := filepath.Join(bin, "initdb")
+	pgCtl := filepath.Join(bin, "pg_ctl")
+	for _, name := range []string{initdb, pgCtl} {
+		if err := os.WriteFile(name, []byte("x"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data := t.TempDir()
+	if err := allowedPostgresCommand(initdb, initdbArgs("linux", data)); err != nil {
+		t.Fatal(err)
+	}
+	if err := allowedPostgresCommand(initdb, initdbArgs("windows", data)); err != nil {
+		t.Fatal(err)
+	}
+	for _, goos := range []string{"linux", "windows"} {
+		args := []string{"-D", data, "-l", filepath.Join(data, "server.log"), "-w", "-o", pgStartOptions(goos, data), "start"}
+		if err := allowedPostgresCommand(pgCtl, args); err != nil {
+			t.Fatalf("%s: %v", goos, err)
+		}
+	}
+}
+
+func TestAllowedPostgresCommandRejectsAPublicListen(t *testing.T) {
+	bin := t.TempDir()
+	initdb := filepath.Join(bin, "initdb")
+	if err := os.WriteFile(initdb, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := t.TempDir()
+	good := []string{"-D", data, "-U", "boombignose", "--auth-local=trust", "--auth-host=trust", "--encoding=UTF8", "--locale=C"}
+	if err := allowedPostgresCommand(initdb, good); err != nil {
+		t.Fatal(err)
+	}
+	windows := append([]string{}, good...)
+	windows[7] = "--no-locale"
+	if err := allowedPostgresCommand(initdb, windows); err != nil {
+		t.Fatal(err)
+	}
+	pgCtl := filepath.Join(bin, "pg_ctl")
+	if err := os.WriteFile(pgCtl, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	public := []string{"-D", data, "-l", filepath.Join(data, "server.log"), "-w", "-o", "-c listen_addresses=0.0.0.0 -c port=54329 -c unix_socket_directories=" + data, "start"}
+	if err := allowedPostgresCommand(pgCtl, public); err == nil {
+		t.Fatal("a public listen address must be refused")
+	}
+}
+
 func TestStopPostgresMissingCluster(t *testing.T) {
 	err := StopPostgres(Layout{Postgres: filepath.Join(t.TempDir(), "postgres")}, t.TempDir())
 	if err != nil {
@@ -231,8 +281,12 @@ func TestDefaultRunnerRecordsERPPid(t *testing.T) {
 		t.Skip("fixture is a shell script")
 	}
 	dir := t.TempDir()
-	script := filepath.Join(dir, "sleep.sh")
+	script := filepath.Join(dir, "node")
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	server := filepath.Join(dir, "server.js")
+	if err := os.WriteFile(server, []byte("// fixture\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	erpPIDDir = dir
@@ -241,7 +295,7 @@ func TestDefaultRunnerRecordsERPPid(t *testing.T) {
 		recordERP = false
 		erpPIDDir = ""
 	})
-	wait, kill, err := defaultRunner(Command{Name: script})
+	wait, kill, err := defaultRunner(Command{Name: script, Args: []string{server}})
 	if err != nil {
 		t.Fatal(err)
 	}

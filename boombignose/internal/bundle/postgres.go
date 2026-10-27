@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -52,7 +53,81 @@ func pgPort() string {
 type sqlQuery func(ctx context.Context, addr, user, database, sql string) ([][]string, error)
 type cmdRun func(Command) error
 
+func safeDataDir(dir string) bool {
+	return filepath.IsAbs(dir) && !strings.Contains(dir, "..") && !strings.ContainsAny(dir, " \x00\r\n")
+}
+
+func allowedPgCtl(args []string) bool {
+	if len(args) == 5 && args[0] == "-D" && safeDataDir(args[1]) && args[2] == "-m" && args[3] == "fast" && args[4] == "stop" {
+		return true
+	}
+	if len(args) != 8 || args[0] != "-D" || !safeDataDir(args[1]) || args[2] != "-l" || args[4] != "-w" || args[5] != "-o" || args[7] != "start" {
+		return false
+	}
+	if args[3] != filepath.Join(args[1], "server.log") {
+		return false
+	}
+	return loopbackStartOptions(args[6], args[1])
+}
+
+func initdbAllowed(args []string) bool {
+	if len(args) != 8 || args[0] != "-D" || !safeDataDir(args[1]) || args[2] != "-U" || args[3] != "boombignose" {
+		return false
+	}
+	if args[4] != "--auth-local=trust" || args[5] != "--auth-host=trust" || args[6] != "--encoding=UTF8" {
+		return false
+	}
+	return args[7] == "--locale=C" || args[7] == "--no-locale"
+}
+
+func loopbackStartOptions(opts, dataDir string) bool {
+	const prefix = "-c listen_addresses=127.0.0.1 -c port="
+	rest, ok := strings.CutPrefix(opts, prefix)
+	if !ok {
+		return false
+	}
+	port := rest
+	if i := strings.IndexByte(rest, ' '); i >= 0 {
+		port = rest[:i]
+		if rest[i+1:] != "-c unix_socket_directories="+dataDir {
+			return false
+		}
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535 && strconv.Itoa(n) == port
+}
+
+// allowedPostgresCommand accepts initdb for a new cluster and pg_ctl start/stop.
+// The listen address inside pg_ctl -o must be 127.0.0.1.
+func allowedPostgresCommand(name string, args []string) error {
+	if !filepath.IsAbs(name) || strings.ContainsAny(name, "\x00\r\n") {
+		return errors.New("refusing postgres command")
+	}
+	base := strings.ToLower(filepath.Base(name))
+	switch base {
+	case "initdb", "initdb.exe":
+		if !initdbAllowed(args) {
+			return errors.New("refusing postgres command")
+		}
+	case "pg_ctl", "pg_ctl.exe":
+		if !allowedPgCtl(args) {
+			return errors.New("refusing postgres command")
+		}
+	default:
+		return errors.New("refusing postgres command")
+	}
+	info, err := os.Stat(name)
+	if err != nil || info.IsDir() {
+		return errors.New("refusing postgres command")
+	}
+	return nil
+}
+
 func defaultCmd(cmd Command) error {
+	if err := allowedPostgresCommand(cmd.Name, cmd.Args); err != nil {
+		return err
+	}
+	// #nosec G204 -- allowedPostgresCommand accepts only initdb or pg_ctl with the fixed local arguments
 	proc := exec.Command(cmd.Name, cmd.Args...)
 	proc.Dir = cmd.Dir
 	proc.Env = cmd.Env
@@ -214,8 +289,8 @@ func applyMigrationsFrom(ctx context.Context, layout Layout, addr string, query 
 		if !strings.Contains(strings.ToLower(err.Error()), "schema_migrations") {
 			return err
 		}
-		prelude := filepath.Join(filepath.Dir(filepath.Dir(layout.Postgres)), preludeName)
-		body, readErr := os.ReadFile(prelude)
+		root := filepath.Dir(filepath.Dir(layout.Postgres))
+		body, readErr := readBundleFile(root, preludeName)
 		if readErr != nil {
 			return readErr
 		}
@@ -246,7 +321,10 @@ func applyMigrationsFrom(ctx context.Context, layout Layout, addr string, query 
 		if applied[name] {
 			continue
 		}
-		body, err := os.ReadFile(filepath.Join(dir, name))
+		if strings.Contains(name, "/") || strings.Contains(name, "\\") || name == ".." {
+			return errors.New("refusing migration name")
+		}
+		body, err := readBundleFile(dir, name)
 		if err != nil {
 			return err
 		}
@@ -281,7 +359,12 @@ func StopPostgres(layout Layout, dataDir string) error {
 		return nil
 	}
 	pgCtl := filepath.Join(filepath.Dir(layout.Postgres), exeName("pg_ctl"))
-	cmd := exec.Command(pgCtl, "-D", dataDir, "-m", "fast", "stop")
+	stopArgs := []string{"-D", dataDir, "-m", "fast", "stop"}
+	if err := allowedPostgresCommand(pgCtl, stopArgs); err != nil {
+		return err
+	}
+	// #nosec G204 -- allowedPostgresCommand accepts only this pg_ctl stop shape
+	cmd := exec.Command(pgCtl, stopArgs...)
 	cmd.Env = postgresEnv(layout)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -293,8 +376,22 @@ func writePID(dataDir string, pid int) error {
 	return os.WriteFile(filepath.Join(dataDir, "erp.pid"), []byte(strconv.Itoa(pid)+"\n"), 0o600)
 }
 
+func readBundleFile(root, name string) ([]byte, error) {
+	fsRoot, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer fsRoot.Close()
+	f, err := fsRoot.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, 8<<20))
+}
+
 func stopPID(dataDir string) {
-	body, err := os.ReadFile(filepath.Join(dataDir, "erp.pid"))
+	body, err := readBundleFile(dataDir, "erp.pid")
 	if err != nil {
 		return
 	}

@@ -1,8 +1,8 @@
 module github.com/Boom-Vitt/boombignose-erp-harness-ai/boombignose
 
-go 1.22.0
+go 1.27.0
 
-toolchain go1.22.2
+toolchain go1.27.3
 
 require github.com/wailsapp/wails/v2 v2.10.2
 

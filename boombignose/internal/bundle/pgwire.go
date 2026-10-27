@@ -35,15 +35,26 @@ func queryPostgres(ctx context.Context, addr, user, database, sql string) ([][]s
 	return readQuery(conn)
 }
 
+func wireSize(n int) (uint32, error) {
+	if n < 4 || n > 16<<20 {
+		return 0, errors.New("postgres frame too large")
+	}
+	return uint32(n), nil
+}
+
 func writeStartup(conn net.Conn, user, database string) error {
 	var body []byte
 	body = binary.BigEndian.AppendUint32(body, 196608)
 	body = appendCString(body, "user", user)
 	body = appendCString(body, "database", database)
 	body = append(body, 0)
-	frame := binary.BigEndian.AppendUint32(nil, uint32(len(body)+4))
+	n, err := wireSize(len(body) + 4)
+	if err != nil {
+		return err
+	}
+	frame := binary.BigEndian.AppendUint32(nil, n)
 	frame = append(frame, body...)
-	_, err := conn.Write(frame)
+	_, err = conn.Write(frame)
 	return err
 }
 
@@ -57,10 +68,14 @@ func appendCString(buf []byte, key, value string) []byte {
 
 func writeQuery(conn net.Conn, sql string) error {
 	payload := append([]byte(sql), 0)
+	n, err := wireSize(len(payload) + 4)
+	if err != nil {
+		return err
+	}
 	frame := []byte{'Q'}
-	frame = binary.BigEndian.AppendUint32(frame, uint32(len(payload)+4))
+	frame = binary.BigEndian.AppendUint32(frame, n)
 	frame = append(frame, payload...)
-	_, err := conn.Write(frame)
+	_, err = conn.Write(frame)
 	return err
 }
 
@@ -132,12 +147,16 @@ func parseDataRow(body []byte) ([]string, error) {
 		if len(rest) < 4 {
 			return nil, errors.New("short data row")
 		}
-		size := int(int32(binary.BigEndian.Uint32(rest[:4])))
+		raw := binary.BigEndian.Uint32(rest[:4])
 		rest = rest[4:]
-		if size < 0 {
+		if raw == 0xFFFFFFFF {
 			row = append(row, "")
 			continue
 		}
+		if raw > 16<<20 {
+			return nil, errors.New("postgres field too large")
+		}
+		size := int(raw)
 		if len(rest) < size {
 			return nil, errors.New("short data row")
 		}
