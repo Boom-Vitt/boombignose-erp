@@ -10,6 +10,19 @@ export function supabaseStorageKey(supabaseUrl: string): string {
  * active workspace. A sign-out that expires only the base name leaves `.0`
  * chunks in place, and the next sign-in is read back as the old session.
  */
+const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/
+
+/**
+ * Next's `request.url` can say `localhost` while the browser is on
+ * `127.0.0.1`. Those are different cookie hosts. Stay on the Host the
+ * browser sent when it is loopback, and ignore any other Host.
+ */
+export function loopbackRedirect(path: string, request: Request, fallbackOrigin: string): URL {
+  const host = request.headers.get("host") ?? ""
+  const origin = LOOPBACK_HOST.test(host) ? `http://${host}` : fallbackOrigin
+  return new URL(path, origin)
+}
+
 export function authCookieNames(cookieHeader: string, storageKey: string): string[] {
   const names: string[] = []
   for (const part of cookieHeader.split(";")) {

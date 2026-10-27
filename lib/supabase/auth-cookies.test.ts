@@ -1,6 +1,6 @@
 import { expect, it } from "vitest"
 
-import { authCookieNames, supabaseStorageKey } from "./auth-cookies"
+import { authCookieNames, loopbackRedirect, supabaseStorageKey } from "./auth-cookies"
 
 const key = supabaseStorageKey("http://127.0.0.1:55101")
 
@@ -26,4 +26,14 @@ it("collects session chunks, the verifier, and the workspace cookie", () => {
 
 it("ignores an empty cookie header", () => {
   expect(authCookieNames("", key)).toEqual([])
+})
+
+it("keeps a sign-out redirect on the loopback host the browser used", () => {
+  const request = new Request("http://localhost:3101/auth/signout", { headers: { host: "127.0.0.1:3101" } })
+  expect(loopbackRedirect("/login", request, "http://127.0.0.1:3100").href).toBe("http://127.0.0.1:3101/login")
+})
+
+it("does not follow a non-loopback Host header", () => {
+  const request = new Request("http://localhost:3101/auth/signout", { headers: { host: "evil.example" } })
+  expect(loopbackRedirect("/login", request, "http://127.0.0.1:3100").href).toBe("http://127.0.0.1:3100/login")
 })

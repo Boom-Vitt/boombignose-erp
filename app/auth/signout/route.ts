@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse } from "next/server"
 
 import { ACTIVE_ORG_COOKIE } from "@/lib/auth"
-import { authCookieNames, supabaseStorageKey } from "@/lib/supabase/auth-cookies"
+import { authCookieNames, loopbackRedirect, supabaseStorageKey } from "@/lib/supabase/auth-cookies"
 import type { Database } from "@/lib/types/database"
 
 const expired = { path: "/", maxAge: 0, sameSite: "lax" as const }
@@ -19,7 +19,10 @@ function cookiePairs(header: string) {
 }
 
 export async function POST(request: Request) {
-  const response = NextResponse.redirect(new URL("/login", request.url), { status: 303 })
+  const response = NextResponse.redirect(
+    loopbackRedirect("/login", request, process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3100"),
+    { status: 303 },
+  )
   const header = request.headers.get("cookie") ?? ""
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
