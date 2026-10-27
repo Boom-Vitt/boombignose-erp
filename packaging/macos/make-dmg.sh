@@ -2,7 +2,9 @@
 # Build an ad-hoc-signed disk image of the BoomBigNose window and dist/bundle.
 # Run on a macOS arm64 runner after `go build` produces ./dist/boombignose-desktop.
 # codesign --sign - is not a paid Developer ID signature. Opening can require Open Anyway.
-# The mounted check looks for the files, then the smoke boots that mounted bundle.
+# The mounted check looks for the files. The smoke copies them off the image
+# first: a read-only UDZO mount can drop the executable bit, and the smoke
+# boots that copy. It does not pull a model.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 bin=$root/dist/boombignose-desktop
@@ -22,6 +24,14 @@ cp "$bin" "$stage/BoomBigNose"
 chmod 755 "$stage/BoomBigNose"
 codesign --force --sign - "$stage/BoomBigNose"
 cp -a "$bundle" "$stage/bundle"
+chmod 755 \
+  "$stage/bundle/node" \
+  "$stage/bundle/postgres/bin/initdb" \
+  "$stage/bundle/postgres/bin/pg_ctl" \
+  "$stage/bundle/postgres/bin/postgres" \
+  "$stage/bundle/auth/auth" \
+  "$stage/bundle/postgrest/postgrest" \
+  "$stage/bundle/ollama/ollama"
 dmg=$root/dist/BoomBigNose-macos-arm64.dmg
 hdiutil create \
   -volname "BoomBigNose" \
@@ -29,32 +39,61 @@ hdiutil create \
   -ov \
   -format UDZO \
   "$dmg"
-attach=$(hdiutil attach -nobrowse -readonly "$dmg")
-echo "$attach"
-mount=$(printf '%s\n' "$attach" | sed -n 's/.*\(\/Volumes\/[^ ]*\).*/\1/p' | head -1)
-if [ -z "$mount" ]; then
+set +e
+attach=$(hdiutil attach -nobrowse -readonly "$dmg" 2>&1)
+attach_status=$?
+set -e
+printf '%s\n' "$attach"
+if [ "$attach_status" -ne 0 ]; then
+  echo "hdiutil attach failed" >&2
+  exit 1
+fi
+mount=$(printf '%s\n' "$attach" | sed -n 's/^.*\(\/Volumes\/.*\)$/\1/p' | head -1 | sed 's/[[:space:]]*$//')
+if [ -z "$mount" ] || [ ! -d "$mount" ]; then
   echo "dmg did not mount" >&2
   exit 1
 fi
 echo "mounted $mount"
 ls -la "$mount" "$mount/bundle/node" "$mount/bundle/ollama/ollama"
+copy=$(mktemp -d)
 cleanup_mount() {
   hdiutil detach "$mount" >/dev/null 2>&1 || hdiutil detach -force "$mount" >/dev/null 2>&1 || true
-  rm -rf "$stage"
+  rm -rf "$stage" "$copy"
 }
 trap cleanup_mount EXIT
-test -s "$mount/BoomBigNose"
-test -s "$mount/bundle/node"
-test -s "$mount/bundle/erp/server.js"
-test -s "$mount/bundle/postgres/bin/postgres"
-test -d "$mount/bundle/erp/.next/static"
-test -s "$mount/bundle/auth/auth"
-test -s "$mount/bundle/postgrest/postgrest"
-test -s "$mount/bundle/ollama/ollama" || { echo "mounted bundle has no ollama"; find "$mount" -name ollama -o -name 'OLLAMA_LICENSE.txt' | head; exit 1; }
-test -s "$mount/bundle/ollama/OLLAMA_LICENSE.txt" || { echo "mounted bundle has no Ollama license"; exit 1; }
+for rel in \
+  BoomBigNose \
+  bundle/node \
+  bundle/erp/server.js \
+  bundle/postgres/bin/postgres \
+  bundle/auth/auth \
+  bundle/postgrest/postgrest \
+  bundle/ollama/ollama \
+  bundle/ollama/OLLAMA_LICENSE.txt
+do
+  if [ ! -s "$mount/$rel" ]; then
+    echo "mounted image missing $rel" >&2
+    find "$mount" -name ollama -o -name 'OLLAMA_LICENSE.txt' -o -name node | head >&2 || true
+    exit 1
+  fi
+done
+if [ ! -d "$mount/bundle/erp/.next/static" ]; then
+  echo "mounted image missing bundle/erp/.next/static" >&2
+  exit 1
+fi
 if [ -d "$mount/bundle/ollama/lib/ollama/cuda_v12" ] || [ -d "$mount/bundle/ollama/lib/ollama/cuda_v13" ]; then
   echo "cuda runner was packed" >&2
   exit 1
 fi
-BOOMBIGNOSE_SMOKE_BUNDLE="$mount/bundle" sh "$root/packaging/linux/smoke-bundle.sh"
+cp -a "$mount/." "$copy/"
+chmod 755 \
+  "$copy/BoomBigNose" \
+  "$copy/bundle/node" \
+  "$copy/bundle/postgres/bin/initdb" \
+  "$copy/bundle/postgres/bin/pg_ctl" \
+  "$copy/bundle/postgres/bin/postgres" \
+  "$copy/bundle/auth/auth" \
+  "$copy/bundle/postgrest/postgrest" \
+  "$copy/bundle/ollama/ollama"
+BOOMBIGNOSE_SMOKE_BUNDLE="$copy/bundle" sh "$root/packaging/linux/smoke-bundle.sh"
 echo "wrote $dmg"

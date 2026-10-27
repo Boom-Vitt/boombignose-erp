@@ -248,7 +248,7 @@ jobs:
           rm -rf dist/bundle
           mkdir -p dist
           cp -a "$src" dist/bundle
-          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl
+          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl dist/bundle/auth/auth dist/bundle/postgrest/postgrest dist/bundle/ollama/ollama
           test -s dist/bundle/erp/server.js
           test -d dist/bundle/erp/.next/static
       - name: Build arm64 window
@@ -334,7 +334,7 @@ jobs:
           fi
           rm -rf dist/bundle
           cp -a "$src" dist/bundle
-          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl
+          chmod 755 dist/bundle/node dist/bundle/postgres/bin/postgres dist/bundle/postgres/bin/initdb dist/bundle/postgres/bin/pg_ctl dist/bundle/auth/auth dist/bundle/postgrest/postgrest dist/bundle/ollama/bin/ollama
           test -s dist/bundle/erp/server.js
           test -d dist/bundle/erp/.next/static
           test -x dist/bundle/postgres/bin/postgres
@@ -382,7 +382,9 @@ jobs:
           test -s "$extract/squashfs-root/usr/bin/bundle/postgrest/postgrest"
           test -s "$extract/squashfs-root/usr/bin/bundle/ollama/bin/ollama"
           test -s "$extract/squashfs-root/usr/bin/bundle/ollama/OLLAMA_LICENSE.txt"
-          BOOMBIGNOSE_SMOKE_BUNDLE="$extract/squashfs-root/usr/bin/bundle" sh ../packaging/linux/smoke-bundle.sh
+          b="$extract/squashfs-root/usr/bin/bundle"
+          chmod 755 "$b/node" "$b/postgres/bin/initdb" "$b/postgres/bin/pg_ctl" "$b/postgres/bin/postgres" "$b/auth/auth" "$b/postgrest/postgrest" "$b/ollama/bin/ollama"
+          BOOMBIGNOSE_SMOKE_BUNDLE="$b" sh ../packaging/linux/smoke-bundle.sh
           rm -rf "$extract"
       - uses: actions/upload-artifact@v4
         with:

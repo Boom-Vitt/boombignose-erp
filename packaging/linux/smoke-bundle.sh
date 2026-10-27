@@ -6,20 +6,28 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$root"
 bundle=${BOOMBIGNOSE_SMOKE_BUNDLE:-$root/dist/bundle}
-test -x "$bundle/node"
+need_exec() {
+  if [ ! -x "$1" ]; then
+    echo "not executable: $1" >&2
+    ls -l "$1" >&2 || true
+    exit 1
+  fi
+}
+need_exec "$bundle/node"
 test -s "$bundle/erp/server.js"
-test -x "$bundle/postgres/bin/postgres"
+need_exec "$bundle/postgres/bin/postgres"
 test -s "$bundle/postgres/prelude.sql"
 test -s "$bundle/postgres/prelude-after-auth.sql"
-test -x "$bundle/auth/auth"
+need_exec "$bundle/auth/auth"
 test -d "$bundle/auth/migrations"
-test -x "$bundle/postgrest/postgrest"
+need_exec "$bundle/postgrest/postgrest"
 if [ -x "$bundle/ollama/ollama" ]; then
   ollama_bin=$bundle/ollama/ollama
 elif [ -x "$bundle/ollama/bin/ollama" ]; then
   ollama_bin=$bundle/ollama/bin/ollama
 else
   echo "ollama binary missing in $bundle" >&2
+  ls -l "$bundle/ollama" "$bundle/ollama/bin" >&2 || true
   exit 1
 fi
 test -s "$bundle/ollama/OLLAMA_LICENSE.txt"
