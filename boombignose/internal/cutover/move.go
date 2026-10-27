@@ -206,10 +206,18 @@ func resolveTools(mode string, given *toolPaths, binDir string) (toolPaths, erro
 
 func findTool(binDir, name string) (string, error) {
 	if binDir != "" {
-		for _, candidate := range []string{filepath.Join(binDir, name), filepath.Join(binDir, name+".exe")} {
-			info, err := os.Stat(candidate)
+		if !filepath.IsAbs(binDir) || filepath.Clean(binDir) != binDir || strings.ContainsAny(binDir, "\x00\r\n") {
+			return "", errors.New("postgres tool directory is not absolute")
+		}
+		root, err := os.OpenRoot(binDir)
+		if err != nil {
+			return "", fmt.Errorf("%s not found", name)
+		}
+		defer root.Close()
+		for _, candidate := range []string{name, name + ".exe"} {
+			info, err := root.Stat(candidate)
 			if err == nil && !info.IsDir() {
-				return candidate, nil
+				return filepath.Join(binDir, candidate), nil
 			}
 		}
 		return "", fmt.Errorf("%s not found", name)
