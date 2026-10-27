@@ -62,10 +62,19 @@ func TestEnsurePostgresInitsAndAppliesOnce(t *testing.T) {
 	if runtime.GOOS != "windows" && !strings.Contains(cmds[0], "--locale=C") {
 		t.Fatalf("unix initdb: %s", cmds[0])
 	}
+	ownCluster(t, data)
 	if err := ensurePostgres(ctx, layout, data, func() bool { return true }, func(Command) error {
 		t.Fatal("second launch must not init or start")
 		return nil
 	}, query); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func ownCluster(t *testing.T, data string) {
+	t.Helper()
+	body := strconv.Itoa(os.Getpid()) + "\n" + data + "\n0\n" + pgPort() + "\n" + data + "\n127.0.0.1\n"
+	if err := os.WriteFile(filepath.Join(data, "postmaster.pid"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -75,6 +84,7 @@ func TestEnsurePostgresRetriesConnectionRefused(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(data, "PG_VERSION"), []byte("16\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	ownCluster(t, data)
 	n := 0
 	err := ensurePostgres(context.Background(), layout, data, func() bool { return true }, func(Command) error {
 		t.Fatal("cluster was already up")
@@ -105,6 +115,7 @@ func TestEnsurePostgresReportsMissingOrganizations(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(data, "PG_VERSION"), []byte("16\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	ownCluster(t, data)
 	err := ensurePostgres(context.Background(), layout, data, func() bool { return true }, func(Command) error {
 		return nil
 	}, func(_ context.Context, _, _, _, sql string) ([][]string, error) {
@@ -169,6 +180,27 @@ func TestEnsurePostgresRefusesASpaceInTheDataDir(t *testing.T) {
 	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "spaces") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestEnsurePostgresRefusesAForeignListener(t *testing.T) {
+	layout, data := postgresFixture(t)
+	if err := os.WriteFile(filepath.Join(data, "PG_VERSION"), []byte("16\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	queried := false
+	err := ensurePostgres(context.Background(), layout, data, func() bool { return true }, func(Command) error {
+		t.Fatal("must not start postgres when the port is taken")
+		return nil
+	}, func(context.Context, string, string, string, string) ([][]string, error) {
+		queried = true
+		return nil, nil
+	})
+	if err == nil || queried {
+		t.Fatalf("err=%v queried=%v", err, queried)
+	}
+	if !strings.Contains(err.Error(), "127.0.0.1:"+pgPort()) || !strings.Contains(err.Error(), "already in use") || !strings.Contains(err.Error(), "server.log") {
+		t.Fatal(err)
 	}
 }
 
@@ -352,12 +384,13 @@ func TestStartStackLeavesAnOpenERPAlone(t *testing.T) {
 	defer ln.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	err = StartStack(ctx, Layout{Node: "node", Server: "server.js"}, t.TempDir(), "http://"+ln.Addr().String(), nil, func(Command) (func() error, func(), error) {
+	raw := "http://" + ln.Addr().String()
+	err = StartStack(ctx, Layout{Node: "node", Server: "server.js"}, t.TempDir(), raw, nil, func(Command) (func() error, func(), error) {
 		t.Fatal("erp was already listening")
 		return nil, nil, nil
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), "already in use") || !strings.Contains(err.Error(), ln.Addr().String()) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

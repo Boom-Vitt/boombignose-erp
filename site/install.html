@@ -317,7 +317,7 @@
         <div class="grid">
           <article class="card"><h3>SmartScreen หรือ Gatekeeper</h3><p>Windows ใช้ More info แล้ว Run anyway macOS ใช้ Open Anyway ใน System Settings &gt; Privacy &amp; Security Smart App Control อาจบล็อกต่อไป ไม่มีใบรับรองที่ซื้อมาให้ข้ามขั้นตอนนี้</p></article>
           <article class="card"><h3>สิทธิ์รันบน macOS หรือ Linux</h3><p>หลังคัดลอกจากแผ่นหรือหลังดาวน์โหลด ให้ <code>chmod +x</code> โปรแกรมหรือ AppImage ก่อนเปิด</p></article>
-          <article class="card"><h3>พอร์ตถูกใช้แล้ว</h3><p>โปรแกรมใช้ 3100, 54321, 54323, 54324, 54329 และ 11434 บน 127.0.0.1 ถ้าพอร์ตใดถูกจับอยู่ การสตาร์ทจะไม่ผ่าน</p></article>
+          <article class="card"><h3>พอร์ตถูกใช้แล้ว</h3><p>ERP ใช้ <code>127.0.0.1:3100</code> และ Postgres ใช้ <code>127.0.0.1:54329</code> ถ้าโปรแกรมอื่นจับพอร์ตอยู่ หน้าต่างจะค้างที่ข้อความเปิดไม่สำเร็จ และจะไม่เข้าไปใช้พอร์ตนั้น ปิดโปรแกรมนั้นก่อน หรือตั้ง <code>BOOMBIGNOSE_PG_PORT</code> ข้อมูลจาก v0.3 อยู่ในโฟลเดอร์เดิม บันทึกของ Postgres คือ <code>server.log</code> ในโฟลเดอร์นั้น การถอนการติดตั้งไม่ลบโฟลเดอร์ข้อมูล</p></article>
           <article class="card"><h3>แชทไม่มีคำตอบ</h3><p>Ollama ต้องทำงานอยู่และต้องมีการดึง qwen3:4b แล้ว การเปิดโปรแกรมไม่ได้ดึงให้ โฮสต์อื่นที่ไม่ใช่ loopback ถูกปฏิเสธ</p></article>
         </div>
       </div>

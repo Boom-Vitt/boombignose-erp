@@ -72,6 +72,10 @@ func run() error {
 				err := startLocal(wait, target)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "boombignose: %s\n", err.Error())
+					if failure, scriptErr := nav.BootFailure(err.Error()); scriptErr == nil {
+						runtime.WindowExecJS(ctx, failure)
+					}
+					return
 				}
 				runtime.WindowExecJS(ctx, script)
 			}()

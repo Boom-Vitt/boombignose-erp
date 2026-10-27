@@ -4,10 +4,12 @@ package launch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -32,6 +34,52 @@ func Addr(raw string) (string, error) {
 		return "", errors.New("erp url needs a host and port")
 	}
 	return net.JoinHostPort(u.Hostname(), u.Port()), nil
+}
+
+// Ready reports whether rawURL's /api/health returns {"ok":true}.
+// A closed port or a non-JSON response is false, not an error.
+func Ready(ctx context.Context, raw string) (bool, error) {
+	if err := policy.AllowEndpoint(raw); err != nil {
+		return false, err
+	}
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return false, errors.New("erp url needs a host and port")
+	}
+	u.Path = "/api/health"
+	u.RawQuery = ""
+	u.Fragment = ""
+	reqCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := (&http.Client{Timeout: 500 * time.Millisecond}).Do(req)
+	if err != nil {
+		return false, nil
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return false, nil
+	}
+	var payload struct {
+		OK bool `json:"ok"`
+	}
+	if json.Unmarshal(body, &payload) != nil {
+		return false, nil
+	}
+	return payload.OK, nil
+}
+
+// Busy is the error shown when the ERP port is open and is not this app.
+func Busy(raw string) error {
+	addr, err := Addr(raw)
+	if err != nil {
+		return errors.New("address is already in use by another program")
+	}
+	return fmt.Errorf("%s is already in use by another program. Stop that program before opening BoomBigNose", addr)
 }
 
 // Listening reports whether something accepts TCP on the ERP address.
@@ -230,7 +278,14 @@ func Ensure(ctx context.Context, dir, node, rawURL string, run Runner) error {
 		return err
 	}
 	if up {
-		return nil
+		ok, err := Ready(ctx, rawURL)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+		return Busy(rawURL)
 	}
 	if dir == "" {
 		return ErrNotCheckout
