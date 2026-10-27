@@ -156,6 +156,13 @@ jobs:
           if [ -z "$tag" ]; then
             tag="boombignose-v0.1.1"
           fi
+          case "$tag" in
+            boombignose-v*) ;;
+            *)
+              echo "tag $tag is not a harness installer release; leaving its assets unchanged"
+              exit 0
+              ;;
+          esac
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" \
               dist/BoomBigNose-windows-x64-setup.exe \
