@@ -3,317 +3,251 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BoomBigNose ERP</title>
-  <meta name="description" content="ระบบ ERP โอเพนซอร์สสำหรับธุรกิจทุกขนาด: CRM · การขาย · จัดซื้อ · คลังสินค้า · โปรเจกต์ · การเงิน" />
-  <meta property="og:title" content="BoomBigNose ERP" />
-  <meta property="og:description" content="Open-source ERP for businesses of every size: sales, purchasing, inventory, projects and billing on one database." />
+  <title>Bumik Node ERP harness AI</title>
+  <meta name="description" content="Bumik Node ERP harness AI เป็นเดสก์ท็อปของ BoomBigNose ERP ที่รันบนเครื่องคุณ ไฟล์ติดตั้ง Windows และ macOS ยังเร็วๆ นี้ Linux ตามภายหลัง" />
   <link rel="icon" href="favicon.ico" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #fbf8f3;
-      --surface: #ffffff;
-      --surface-2: #f3eee6;
-      --text: #1d1b18;
-      --muted: #6b655c;
-      --border: #e6dfd3;
-      --accent: #e0562b;
-      --accent-soft: #fbe3d9;
-      --good: #1f8a5b;
-      --warn: #b7791f;
-      --bad: #c2412d;
-      --shadow: 0 1px 2px rgb(0 0 0 / .04), 0 8px 24px rgb(0 0 0 / .06);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #14130f;
-        --surface: #1d1b17;
-        --surface-2: #26231e;
-        --text: #f2eee7;
-        --muted: #a39c90;
-        --border: #34302a;
-        --accent: #ff7a4d;
-        --accent-soft: #3a2219;
-        --good: #4cc38a;
-        --warn: #e2b04a;
-        --bad: #ff8a73;
-        --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px rgb(0 0 0 / .35);
-      }
+      --navy: #0b1e3a;
+      --navy-2: #122844;
+      --teal: #1f5a7a;
+      --orange: #f07a1a;
+      --text: #f4f7fb;
+      --muted: #d5dee8;
+      --line: rgb(255 255 255 / .16);
+      --focus: #ffd7b0;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body {
       margin: 0;
-      background: var(--bg);
+      background: var(--navy);
       color: var(--text);
-      font-family: "IBM Plex Sans Thai", system-ui, sans-serif;
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
+      font-family: "Leelawadee UI", "Thonburi", "Sukhumvit Set", "Noto Sans Thai", system-ui, sans-serif;
+      line-height: 1.65;
     }
     a { color: inherit; }
-    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
-
-    /* nav */
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    .skip {
+      position: absolute; left: 12px; top: -40px; background: var(--orange); color: var(--navy);
+      padding: 8px 12px; border-radius: 8px; font-weight: 700; z-index: 20;
+    }
+    .skip:focus { top: 12px; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
     header.nav {
       position: sticky; top: 0; z-index: 10;
-      background: color-mix(in srgb, var(--bg) 85%, transparent);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--border);
+      background: rgb(11 30 58 / .92);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(8px);
     }
-    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 16px; }
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; }
-    .brand .logo {
-      width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
-      background: var(--accent); color: #fff; font-size: 18px;
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 72px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; text-decoration: none; }
+    .brand img { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; }
+    .brand span { max-width: 16rem; line-height: 1.25; }
+    nav.links { display: flex; gap: 18px; flex-wrap: wrap; }
+    nav.links a { color: var(--muted); text-decoration: none; font-weight: 650; }
+    nav.links a:hover { color: var(--text); }
+    .hero { padding: 48px 0 12px; }
+    .kicker {
+      display: inline-block; background: var(--teal); color: var(--text);
+      border-radius: 999px; padding: 4px 12px; font-size: 14px; font-weight: 700;
     }
-    .nav nav { display: flex; gap: 22px; font-size: 15px; }
-    .nav nav a { text-decoration: none; color: var(--muted); }
-    .nav nav a:hover { color: var(--text); }
-    @media (max-width: 720px) { .nav nav { display: none; } }
-
-    .btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px;
-      text-decoration: none; border: 1px solid transparent; transition: transform .15s ease;
+    h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.15; margin: 14px 0 10px; letter-spacing: -.02em; }
+    h1 em { font-style: normal; color: var(--orange); }
+    .lead { font-size: 18px; color: var(--muted); max-width: 42rem; margin: 0; }
+    .en { display: block; margin-top: 8px; font-size: 15px; }
+    h2 { font-size: clamp(26px, 3vw, 34px); line-height: 1.25; margin: 0 0 8px; }
+    .sub { color: var(--muted); margin: 0 0 16px; }
+    section { padding: 36px 0; }
+    .os-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .card, .os {
+      background: var(--navy-2); border: 1px solid var(--line); border-radius: 16px; padding: 18px;
     }
-    .btn:hover { transform: translateY(-1px); }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-ghost { border-color: var(--border); background: var(--surface); }
-
-    /* hero */
-    .hero { padding: 72px 0 40px; text-align: center; }
-    .pill {
-      display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
-      background: var(--accent-soft); color: var(--accent);
+    .os { display: flex; flex-direction: column; gap: 8px; text-decoration: none; min-height: 100%; }
+    .os:hover { border-color: var(--orange); }
+    .os .top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .os strong { font-size: 22px; }
+    .soon {
+      background: var(--orange); color: var(--navy); font-size: 12px; font-weight: 800;
+      border-radius: 999px; padding: 3px 8px;
     }
-    .hero h1 {
-      font-size: clamp(34px, 6vw, 60px); line-height: 1.15; margin: 18px auto 14px; max-width: 820px;
-      letter-spacing: -.01em;
+    .file { font-family: ui-monospace, monospace; font-size: 13px; color: var(--muted); word-break: break-all; }
+    .linux {
+      margin-top: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      align-items: center; text-decoration: none; border-style: dashed;
     }
-    .hero h1 em { font-style: normal; color: var(--accent); }
-    .hero p.lead { font-size: clamp(16px, 2.2vw, 19px); color: var(--muted); max-width: 680px; margin: 0 auto 28px; }
-    .hero .en { display: block; font-size: 15px; margin-top: 6px; }
-    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-
-    /* mockup */
-    .mock {
-      margin: 48px auto 0; max-width: 1000px; text-align: left;
-      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-      box-shadow: var(--shadow); overflow: hidden;
+    .note { border-left: 4px solid var(--orange); padding: 12px 14px; color: var(--muted); }
+    .note strong, .card strong { color: var(--text); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .steps ol, .card ol { margin: 8px 0 0; padding-left: 1.2rem; }
+    .steps li, .card li { margin: 6px 0; }
+    .stage {
+      margin-top: 8px; display: grid; grid-template-columns: 220px 1fr; gap: 0;
+      background: var(--navy); border-radius: 18px; overflow: hidden; border: 1px solid var(--line);
+      min-height: 280px;
     }
-    .mock-bar { display: flex; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
-    .mock-bar span { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
-    .mock-body { display: grid; grid-template-columns: 180px 1fr; min-height: 340px; }
-    .mock-side { border-right: 1px solid var(--border); padding: 16px 12px; font-size: 14px; color: var(--muted); }
-    .mock-side div { padding: 7px 10px; border-radius: 8px; }
-    .mock-side .on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-    .mock-main { padding: 20px; }
-    .mock-main h3 { margin: 0 0 14px; font-size: 18px; }
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-    .stat { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
-    .stat .k { font-size: 12.5px; color: var(--muted); }
-    .stat .v { font-family: "IBM Plex Mono", monospace; font-size: 20px; margin-top: 2px; }
-    .stat .d { font-size: 12px; }
-    .up { color: var(--good); } .down { color: var(--bad); }
-    .rows { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; margin-top: 12px; }
-    .panel { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
-    .panel .t { font-weight: 600; margin-bottom: 8px; }
-    .bars { display: flex; align-items: flex-end; gap: 8px; height: 110px; }
-    .bars div { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; opacity: .85; }
-    .bars div:nth-child(odd) { opacity: .55; }
-    .li { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px dashed var(--border); }
-    .li:first-of-type { border-top: 0; }
-    .tag { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
-    .tag.warn { color: var(--warn); } .tag.bad { color: var(--bad); }
-    @media (max-width: 820px) {
-      .mock-body { grid-template-columns: 1fr; }
-      .mock-side { display: none; }
-      .stats { grid-template-columns: repeat(2, 1fr); }
-      .rows { grid-template-columns: 1fr; }
+    .side { background: var(--teal); padding: 16px; }
+    .side div { padding: 8px 10px; border-radius: 8px; }
+    .side .on { background: var(--orange); color: var(--navy); font-weight: 800; }
+    .main { padding: 16px; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { background: var(--teal); border-radius: 12px; padding: 10px; }
+    .stat b { display: block; font-size: 20px; }
+    .iso { margin-top: 14px; height: 120px; display: flex; align-items: flex-end; gap: 10px; }
+    .iso i {
+      display: block; flex: 1; background: linear-gradient(160deg, var(--orange), var(--teal));
+      border-radius: 8px 8px 0 0; transform: skewX(-8deg); transform-origin: bottom;
     }
-
-    /* sections */
-    section { padding: 72px 0; }
-    .sec-head { max-width: 640px; margin-bottom: 36px; }
-    .sec-head .eyebrow { color: var(--accent); font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; }
-    .sec-head h2 { font-size: clamp(26px, 4vw, 36px); line-height: 1.25; margin: 6px 0 10px; }
-    .sec-head p { color: var(--muted); margin: 0; }
-    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
-    .card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+    .ph { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+    footer { padding: 28px 0 40px; color: var(--muted); border-top: 1px solid var(--line); }
+    footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    footer a { color: var(--focus); }
+    @media (max-width: 800px) {
+      .os-grid, .grid, .steps, .stage, .stats { grid-template-columns: 1fr; }
+      nav.links { display: none; }
+      .side { display: none; }
     }
-    .card h3 { margin: 0 0 6px; font-size: 18px; }
-    .card p { margin: 0; color: var(--muted); font-size: 15px; }
-
-    .alt { background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-
-    /* roadmap */
-    .road { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    @media (max-width: 820px) { .road { grid-template-columns: 1fr; } }
-    .road .card h3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .road ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 15px; }
-    .road li { margin: 3px 0; }
-    .done { color: var(--good); } .next { color: var(--accent); }
-
-    /* stack */
-    .stack { display: flex; flex-wrap: wrap; gap: 10px; }
-    .stack span {
-      padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
-      font-size: 15px;
-    }
-    .principles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 28px; }
-    @media (max-width: 720px) { .principles { grid-template-columns: 1fr; } }
-
-    .note {
-      border-left: 4px solid var(--accent); background: var(--surface); border-radius: 10px;
-      padding: 16px 18px; color: var(--muted);
-    }
-    .note strong { color: var(--text); }
-
-    footer { padding: 36px 0 48px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); }
-    footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
   </style>
 </head>
 <body>
+  <a class="skip" href="#content">ข้ามไปเนื้อหา</a>
   <header class="nav">
     <div class="wrap">
-      <a class="brand" href="#top"><span class="logo" aria-hidden="true">B</span> BoomBigNose ERP</a>
-      <nav aria-label="หัวข้อในหน้านี้">
-        <a href="#features">ฟีเจอร์</a>
-        <a href="#editions">รุ่นของระบบ</a>
-        <a href="#tech">เทคโนโลยี</a>
+      <a class="brand" href="#content">
+        <img src="face-logo.png" width="44" height="44" alt="โลโก้ใบหน้า BoomBigNose" />
+        <span>Bumik Node ERP harness AI</span>
+      </a>
+      <nav class="links" aria-label="ในหน้านี้">
+        <a href="#download">ดาวน์โหลด</a>
+        <a href="#install">การติดตั้ง</a>
+        <a href="#highlights">จุดเด่น</a>
+        <a href="#how">วิธีใช้</a>
+        <a href="#faq">คำถาม</a>
       </nav>
-      <a class="btn btn-ghost" href="https://github.com/Boom-Vitt/boombignose-erp">GitHub</a>
     </div>
   </header>
 
-  <main id="top">
+  <main id="content">
     <div class="wrap hero">
-      <span class="pill">Open source · AGPL-3.0 · Made in Bangkok</span>
-      <h1>ระบบ ERP โอเพนซอร์ส<br />สำหรับ<em>ธุรกิจทุกขนาด</em></h1>
+      <span class="kicker">เดสก์ท็อปบนเครื่องคุณ · ไม่เรียก AI บนคลาวด์</span>
+      <h1>Bumik Node ERP harness AI<br /><em>สำหรับธุรกิจไทย</em></h1>
       <p class="lead">
-        CRM · การขาย · จัดซื้อ · คลังสินค้า · โปรเจกต์ · การเงิน<br />งานหลักของธุรกิจอยู่บนฐานข้อมูลเดียว
-        <span class="en">Open-source ERP for businesses of every size: sales, purchasing, inventory, projects and billing on one database.</span>
+        หน้าต่างเดสก์ท็อปสำหรับ BoomBigNose ERP ข้อมูลและกติกาอยู่ที่ 127.0.0.1 บนเครื่องที่คุณเปิดโปรแกรม
+        <span class="en">Local desktop harness. No cloud model calls at runtime. macOS and Windows builds come first. Linux is later.</span>
       </p>
-      <div class="cta">
-        <a class="btn btn-primary" href="#features">ดูฟีเจอร์ทั้งหมด →</a>
-        <a class="btn btn-ghost" href="#editions">Community และ Pro</a>
-      </div>
+    </div>
 
-      <div class="mock" role="img" aria-label="ตัวอย่างหน้าแดชบอร์ดผู้บริหาร (ข้อมูลจำลอง)">
-        <div class="mock-bar"><span></span><span></span><span></span></div>
-        <div class="mock-body">
-          <div class="mock-side">
+    <section id="download">
+      <div class="wrap">
+        <h2>ดาวน์โหลด</h2>
+        <p class="sub">macOS และ Windows มาก่อน ปุ่มทั้งคู่ยังไม่มีไฟล์ติดตั้ง จึงขึ้นว่าเร็วๆ นี้ และพาไปที่หน้ารายการ Release</p>
+        <div class="os-grid">
+          <a class="os" href="https://github.com/Boom-Vitt/boombignose-erp/releases">
+            <span class="top"><strong>macOS</strong><span class="soon">เร็วๆ นี้</span></span>
+            <span>ปุ่มนี้ยังไม่เริ่มดาวน์โหลดไฟล์</span>
+            <span class="file">ชื่อที่วางแผน: BumikNodeERP-macos-arm64.dmg</span>
+          </a>
+          <a class="os" href="https://github.com/Boom-Vitt/boombignose-erp/releases">
+            <span class="top"><strong>Windows</strong><span class="soon">เร็วๆ นี้</span></span>
+            <span>ปุ่มนี้ยังไม่เริ่มดาวน์โหลดไฟล์</span>
+            <span class="file">ชื่อที่วางแผน: BumikNodeERP-windows-x64-setup.exe</span>
+          </a>
+        </div>
+        <a class="os linux" href="https://github.com/Boom-Vitt/boombignose-erp/releases">
+          <span><strong>Linux</strong> <span class="soon">เร็วๆ นี้</span><br />แพลตฟอร์มรอง ไม่อยู่ในชุดแรก</span>
+          <span class="file">ยังไม่กำหนดไฟล์</span>
+        </a>
+        <p class="note">
+          <strong>ยังไม่มีไฟล์บน GitHub Releases</strong>
+          ลิงก์ไปที่ <a href="https://github.com/Boom-Vitt/boombignose-erp/releases">github.com/Boom-Vitt/boombignose-erp/releases</a>
+          หน้านี้เป็นเว็บนิ่ง ไม่ได้เปิด ERP และไม่ได้เรียกโมเดล
+        </p>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <h2>เมื่อมีไฟล์แล้ว ระบบปฏิบัติการจะเตือน</h2>
+        <p class="sub">ไฟล์ชุดแรกไม่ได้ใช้ใบรับรองจากร้านค้าแอป การเตือนเป็นของระบบ ไม่ใช่ความผิดพลาดของตัวติดตั้ง</p>
+        <div class="steps">
+          <article class="card">
+            <h3>macOS</h3>
+            <ol>
+              <li>เปิดไฟล์ .dmg แล้วลากแอปไปที่โฟลเดอร์ Applications</li>
+              <li>ถ้า macOS บอกว่าเปิดไม่ได้ ให้คลิกขวาที่แอป แล้วเลือก Open</li>
+              <li>หรือไปที่ System Settings แล้วเข้า Privacy &amp; Security แล้วกด Open Anyway</li>
+              <li>อ่านข้อความบนจอก่อนกดเปิด เครื่องจะไม่ข้ามคำเตือนให้เอง</li>
+            </ol>
+          </article>
+          <article class="card">
+            <h3>Windows</h3>
+            <ol>
+              <li>เปิดตัวติดตั้ง .exe</li>
+              <li>ถ้า SmartScreen ขึ้น ให้กด More info แล้วกด Run anyway</li>
+              <li>Smart App Control อาจบล็อกแอปที่ไม่ได้ลงชื่อ การตั้งค่าอยู่ที่ Windows Security แล้วเลือก App &amp; browser control</li>
+              <li>ถ้า Smart App Control บล็อกไว้ การกด Run anyway อาจไม่พอ ต้องตรวจการตั้งค่าบนเครื่องนั้น</li>
+            </ol>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="highlights">
+      <div class="wrap">
+        <h2>จุดเด่น</h2>
+        <p class="sub">ตัวเดสก์ท็อปห่อ ERP ที่มีอยู่แล้ว งานขาย โปรเจกต์ การเงินบนเอกสาร แดชบอร์ด และงานอัตโนมัติในเครื่อง</p>
+        <div class="grid">
+          <article class="card"><h3>ลูกค้าและดีล</h3><p>รายชื่อลูกค้าและขั้นของดีลอยู่ในโปรแกรมบนเครื่องคุณ</p></article>
+          <article class="card"><h3>โปรเจกต์</h3><p>งานและเวลาที่บันทึกไว้ใช้ฐานข้อมูลเดียวกับลูกค้า</p></article>
+          <article class="card"><h3>การเงินบนเอกสาร</h3><p>ใบเสนอราคา ใบแจ้งหนี้ และยอดเป็นสตางค์จำนวนเต็ม หน้านี้ไม่ได้บอกว่าเป็นสมุดบัญชีตามกฎหมาย</p></article>
+          <article class="card"><h3>แดชบอร์ด</h3><p>ตัวเลขสรุปจากข้อมูลในเครื่อง ไม่ได้ส่งตารางไปให้บริการแชทบนอินเทอร์เน็ต</p></article>
+          <article class="card"><h3>งานอัตโนมัติในเครื่อง</h3><p>ตัวตรวจของฮาร์เนสปฏิเสธคีย์ของบริการโมเดลและที่อยู่ที่ไม่ใช่ 127.0.0.1</p></article>
+          <article class="card"><h3>ซอร์สเปิดให้อ่าน</h3><p>โค้ดอยู่ที่ GitHub ข้อความสัญญาอนุญาตอยู่ในรีโป ไม่ได้สรุปซ้ำบนหน้านี้</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <h2>วิธีใช้</h2>
+        <div class="grid">
+          <article class="card"><h3>1. รอไฟล์ของระบบคุณ</h3><p>macOS arm64 และ Windows x64 มาก่อน ชื่อไฟล์อยู่บนปุ่มดาวน์โหลด</p></article>
+          <article class="card"><h3>2. ติดตั้งแล้วยอมรับคำเตือนของระบบ</h3><p>ใช้ขั้นตอน Open Anyway หรือ More info แล้ว Run anyway ตามระบบที่คุณเปิด</p></article>
+          <article class="card"><h3>3. โปรแกรมเปิด ERP ที่เครื่องนี้</h3><p>เป้าหมายคือหน้าต่างที่โหลด http://127.0.0.1:3100 พอร์ตนี้ใช้ได้ทีละโปรแกรม</p></article>
+        </div>
+        <div class="stage" role="img" aria-label="ภาพจำลองหน้าแดชบอร์ด ไม่ใช่ภาพจับจากโปรแกรมจริง">
+          <div class="side">
             <div class="on">แดชบอร์ด</div>
             <div>ลูกค้า</div>
             <div>ดีล</div>
-            <div>ใบเสนอราคา</div>
-            <div>การเงิน</div>
-            <div>จัดซื้อ</div>
-            <div>คลังสินค้า</div>
             <div>โปรเจกต์</div>
-            <div>รายงาน</div>
+            <div>การเงิน</div>
           </div>
-          <div class="mock-main">
-            <h3>ภาพรวมวันนี้</h3>
+          <div class="main">
+            <h3>ภาพจำลอง</h3>
             <div class="stats">
-              <div class="stat"><div class="k">เงินสด</div><div class="v">฿1.24M</div><div class="d up">▲ 8% เดือนนี้</div></div>
-              <div class="stat"><div class="k">Burn / เดือน</div><div class="v">฿185K</div><div class="d down">▲ 3%</div></div>
-              <div class="stat"><div class="k">Runway</div><div class="v">6.7 ด.</div><div class="d up">ปลอดภัย</div></div>
-              <div class="stat"><div class="k">Pipeline</div><div class="v">฿2.9M</div><div class="d up">12 ดีล</div></div>
+              <div class="stat"><span>เงินสด</span><b>฿—</b></div>
+              <div class="stat"><span>ดีลที่เปิด</span><b>—</b></div>
+              <div class="stat"><span>งานวันนี้</span><b>—</b></div>
             </div>
-            <div class="rows">
-              <div class="panel">
-                <div class="t">รายได้ 6 เดือนล่าสุด</div>
-                <div class="bars">
-                  <div style="height:42%"></div><div style="height:55%"></div><div style="height:48%"></div>
-                  <div style="height:70%"></div><div style="height:64%"></div><div style="height:88%"></div>
-                </div>
-              </div>
-              <div class="panel">
-                <div class="t">งานติดตามวันนี้</div>
-                <div class="li"><span>โทรติดตามใบเสนอราคา QUO-0087</span><span class="tag warn">วันนี้</span></div>
-                <div class="li"><span>รับสินค้าตาม PO-0031</span><span class="tag">พรุ่งนี้</span></div>
-                <div class="li"><span>ใบแจ้งหนี้ INV-0142</span><span class="tag bad">เกินกำหนด</span></div>
-              </div>
-            </div>
+            <div class="iso" aria-hidden="true"><i style="height:42%"></i><i style="height:68%"></i><i style="height:50%"></i><i style="height:86%"></i></div>
           </div>
         </div>
+        <p class="ph">แถบเอียงด้านบนเป็นที่ว่างของกราฟสามมิติ ยังไม่มีภาพจับจากโปรแกรมจริง ตัวเลขจึงเป็นขีด</p>
       </div>
-      <p style="color:var(--muted);font-size:13px;margin-top:10px">* ภาพจำลองพร้อมข้อมูลตัวอย่าง</p>
-    </div>
+    </section>
 
-    <section id="features">
+    <section id="faq">
       <div class="wrap">
-        <div class="sec-head">
-          <div class="eyebrow">Features</div>
-          <h2>ครบทุกงานหลักของธุรกิจ</h2>
-          <p>ทุกโมดูลใช้ข้อมูลชุดเดียวกัน ใบเสนอราคากลายเป็นใบแจ้งหนี้ ใบแจ้งหนี้กลายเป็นการส่งของ และแดชบอร์ดเห็นกระแสเงินสดทันที</p>
-        </div>
+        <h2>คำถามที่พบบ่อย</h2>
         <div class="grid">
-          <div class="card"><h3>แดชบอร์ดผู้บริหาร</h3><p>เงินสด, burn, runway, รายได้, ใบแจ้งหนี้ค้าง, MRR, pipeline และรายการที่ต้องจัดการ</p></div>
-          <div class="card"><h3>CRM &amp; ดีล</h3><p>ลูกค้า ผู้ติดต่อ บอร์ดคัมบังของดีล กิจกรรมติดตาม และฟอร์มรับลีดจากเว็บไซต์</p></div>
-          <div class="card"><h3>ใบเสนอราคา &amp; การขาย</h3><p>ใบเสนอราคาพร้อม VAT แปลงเป็นใบแจ้งหนี้ทั้งใบ บางส่วน หรือมัดจำ และ subscription ที่ออกบิลซ้ำอัตโนมัติ</p></div>
-          <div class="card"><h3>ใบแจ้งหนี้ &amp; รับชำระ</h3><p>ใบแจ้งหนี้ที่ออกแล้วถูกล็อกเลขที่และยอด ภาษีหัก ณ ที่จ่าย บันทึกรับชำระ และวันปิดงวด</p></div>
-          <div class="card"><h3>จัดซื้อ</h3><p>ใบขอเสนอราคา ใบสั่งซื้อ รับของบางส่วน บิลผู้ขาย และคืนสินค้าพร้อมเครดิตจากผู้ขาย</p></div>
-          <div class="card"><h3>คลังสินค้า</h3><p>หลายคลัง สต็อกคงเหลือและมูลค่า ประวัติการเคลื่อนไหว ตรวจนับ และเติมสต็อกตามผู้ขาย</p></div>
-          <div class="card"><h3>สินค้า</h3><p>แคตตาล็อกพร้อม SKU หน่วย ราคา ต้นทุน และอัตราภาษี เลือกใส่ในเอกสารได้ทันที</p></div>
-          <div class="card"><h3>เบิกค่าใช้จ่าย</h3><p>ส่ง อนุมัติ หรือปฏิเสธใบเบิก อนุมัติของตัวเองไม่ได้ และบันทึกเป็นต้นทุนให้อัตโนมัติ</p></div>
-          <div class="card"><h3>โปรเจกต์ &amp; ไทม์ชีต</h3><p>บอร์ดงาน milestones บันทึกเวลา และเปลี่ยนเวลาที่เรียกเก็บได้เป็นใบแจ้งหนี้ฉบับร่าง</p></div>
-          <div class="card"><h3>รายงาน</h3><p>รายได้ ชั่วโมงงาน และต้นทุนขาย แบบกราฟหรือ pivot พร้อม saved views และส่งออก CSV</p></div>
-          <div class="card"><h3>ระบบอัตโนมัติ &amp; AI</h3><p>เทมเพลตงาน การเตือนตามรอบเวลา เชื่อม n8n และผู้ช่วย AI สรุปดีลและโน้ตประชุม</p></div>
-          <div class="card"><h3>Audit log &amp; ประวัติเอกสาร</h3><p>บันทึกการเปลี่ยนแปลงสำคัญ และประวัติโน้ต ไฟล์แนบ และกิจกรรมบนเอกสารธุรกิจ</p></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="editions" class="alt">
-      <div class="wrap">
-        <div class="sec-head">
-          <div class="eyebrow">Editions</div>
-          <h2>เริ่มด้วย Community แล้วขยายด้วย Pro</h2>
-          <p>ทุกตารางมี <code>org_id</code> และ Row Level Security ตั้งแต่วันแรก จึงขยายจาก workspace เดียวเป็นหลาย workspace ได้โดยไม่ต้องเขียนใหม่</p>
-        </div>
-        <div class="road">
-          <div class="card">
-            <h3>Community <span class="done">AGPL-3.0</span></h3>
-            <ul><li>ทุกโมดูลด้านบน</li><li>สมัครใช้งาน สร้าง workspace และเชิญทีม</li><li>บทบาท owner / admin / member</li><li>ผู้ช่วย AI และระบบอัตโนมัติ</li></ul>
-          </div>
-          <div class="card">
-            <h3>Pro <span class="next">Commercial</span></h3>
-            <ul><li>พอร์ทัลลูกค้า: ดูเอกสาร ตอบรับใบเสนอราคา แจ้งชำระเงิน</li><li>ตั้งค่าเชื่อมต่อ FlowAccount / PEAK / Xero (preview ยังไม่ส่งข้อมูลจริง)</li><li>หลาย workspace พร้อมตัวสลับ</li><li>workspace แบบโฮสต์</li></ul>
-          </div>
-          <div class="card">
-            <h3>บนโรดแมป <span class="next">Next</span></h3>
-            <ul><li>ใบลดหนี้สำหรับลูกค้า</li><li>ติดตั้งแบบ self-host ด้วยคำสั่งเดียว</li></ul>
-          </div>
-        </div>
-        <div class="note" style="margin-top:24px">
-          <strong>ขอบเขต:</strong> BoomBigNose ERP ไม่ใช่สมุดบัญชีแยกประเภท บัญชีตามกฎหมาย การยื่นภาษี เงินเดือน และการผลิต อยู่นอกขอบเขต ใช้คู่กับ FlowAccount / PEAK / Xero ได้
-        </div>
-      </div>
-    </section>
-
-    <section id="tech">
-      <div class="wrap">
-        <div class="sec-head">
-          <div class="eyebrow">Built with</div>
-          <h2>สแตกสมัยใหม่ ปลอดภัยตั้งแต่ชั้นฐานข้อมูล</h2>
-        </div>
-        <div class="stack">
-          <span>Next.js 16</span><span>React 19</span><span>TypeScript</span><span>Supabase Postgres</span>
-          <span>Row Level Security</span><span>Tailwind CSS v4</span><span>shadcn/ui</span><span>Zod v4</span>
-          <span>OpenRouter</span><span>Vitest</span><span>Playwright</span><span>n8n</span>
-        </div>
-        <div class="principles">
-          <div class="card"><h3>แยกข้อมูลด้วย RLS</h3><p>ทุกตารางมี <code>org_id</code> และ policy แบบ force และ service-role key ไม่เคยถูกส่งไปยังเบราว์เซอร์</p></div>
-          <div class="card"><h3>ตัวเลขการเงินแม่นยำ</h3><p>เก็บเงินเป็นสตางค์จำนวนเต็ม (bigint) และแปลงเป็นบาทเฉพาะตอนแสดงผล</p></div>
-          <div class="card"><h3>Business logic แบบ pure</h3><p>ตรรกะหลักอยู่ใน <code>lib/</code> พร้อม unit test ที่รันได้โดยไม่ต้องมีฐานข้อมูล</p></div>
-          <div class="card"><h3>ออกแบบสำหรับไทย</h3><p>สกุลเงิน THB, เขตเวลา Asia/Bangkok, VAT และภาษีหัก ณ ที่จ่ายบนเอกสาร และคำนึงถึง PDPA ตั้งแต่ต้น</p></div>
+          <article class="card"><h3>กดดาวน์โหลดแล้วไม่มีไฟล์?</h3><p>ถูกต้อง ตอนนี้ปุ่มพาไปหน้ารายการ Release ซึ่งยังไม่มีตัวติดตั้ง</p></article>
+          <article class="card"><h3>ทำไมระบบถึงเตือนตอนเปิดไฟล์?</h3><p>เพราะชุดแรกไม่ได้ลงชื่อด้วยใบรับรองของร้านค้าแอป ขั้นตอนด้านบนคือทางที่ระบบให้กดต่อ</p></article>
+          <article class="card"><h3>Linux ใช้ได้เมื่อไร?</h3><p>อยู่ลำดับถัดจาก macOS และ Windows ปุ่มจึงขึ้นว่าเร็วๆ นี้</p></article>
+          <article class="card"><h3>ข้อมูลลูกค้าไปไหน?</h3><p>เป้าหมายของผลิตภัณฑ์คือฐานข้อมูลบนเครื่องที่เปิดโปรแกรม ไม่ใช้โมเดลบนอินเทอร์เน็ตตอนทำงาน</p></article>
+          <article class="card"><h3>หน้าเว็บนี้คือตัวโปรแกรมหรือ?</h3><p>ไม่ใช่ GitHub Pages โชว์หน้านี้เท่านั้น ERP เปิดจากโปรแกรมบนเครื่อง</p></article>
+          <article class="card"><h3>ซอร์สอยู่ที่ไหน?</h3><p><a href="https://github.com/Boom-Vitt/boombignose-erp">github.com/Boom-Vitt/boombignose-erp</a></p></article>
         </div>
       </div>
     </section>
@@ -321,8 +255,8 @@
 
   <footer>
     <div class="wrap">
-      <span>© 2026 BoomBigNose AI Co., Ltd. · Bangkok</span>
-      <span>โอเพนซอร์ส AGPL-3.0 · <a href="https://github.com/Boom-Vitt/boombignose-erp">GitHub</a></span>
+      <span>Bumik Node ERP harness AI</span>
+      <span><a href="https://github.com/Boom-Vitt/boombignose-erp">ซอร์สโค้ด</a> · <a href="https://github.com/Boom-Vitt/boombignose-erp/releases">Releases</a></span>
     </div>
   </footer>
 </body>
