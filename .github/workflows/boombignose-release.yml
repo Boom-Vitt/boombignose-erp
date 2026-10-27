@@ -351,18 +351,22 @@ jobs:
           test -s ../dist/boombignose-desktop
           cp ../dist/boombignose-desktop ../dist/stage/BoomBigNose
           cp -a ../dist/bundle ../dist/stage/bundle
+          test -x ../dist/bundle/ollama/bin/ollama || { echo "dist/bundle has no ollama binary"; ls -la ../dist/bundle/ollama || true; exit 1; }
           tar -C ../dist/stage -czf ../dist/BoomBigNose-linux-amd64.tar.gz BoomBigNose bundle
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/node'
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/erp/server.js'
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/postgres/bin/postgres'
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/auth/auth'
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/postgrest/postgrest'
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/ollama/bin/ollama'
-          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -qx 'bundle/ollama/OLLAMA_LICENSE.txt'
-          if tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz | grep -q 'bundle/ollama/lib/ollama/cuda_'; then
+          list=$(mktemp)
+          tar -tzf ../dist/BoomBigNose-linux-amd64.tar.gz > "$list"
+          for rel in bundle/node bundle/erp/server.js bundle/postgres/bin/postgres bundle/auth/auth bundle/postgrest/postgrest bundle/ollama/bin/ollama bundle/ollama/OLLAMA_LICENSE.txt; do
+            if ! grep -qx "$rel" "$list"; then
+              echo "tar missing $rel" >&2
+              grep ollama "$list" | head >&2 || true
+              exit 1
+            fi
+          done
+          if grep -q 'bundle/ollama/lib/ollama/cuda_' "$list"; then
             echo "cuda runner was packed" >&2
             exit 1
           fi
+          rm -f "$list"
           tar_root=$(mktemp -d)
           tar -xzf ../dist/BoomBigNose-linux-amd64.tar.gz -C "$tar_root"
           BOOMBIGNOSE_SMOKE_BUNDLE="$tar_root/bundle" sh ../packaging/linux/smoke-bundle.sh

@@ -119,7 +119,12 @@ try {
   $ollamaUrl = "https://github.com/ollama/ollama/releases/download/v$ollamaVersion/ollama-windows-amd64.zip"
   $ollamaLicenseSha = "5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226"
   $license = Join-Path $root "packaging\ollama\OLLAMA_LICENSE.txt"
-  Assert-Sha256 $license $ollamaLicenseSha
+  # Git may check the text out with CRLF. The pinned hash is the LF file.
+  $licenseBytes = [System.IO.File]::ReadAllBytes($license)
+  $licenseText = [System.Text.Encoding]::UTF8.GetString($licenseBytes) -replace "`r`n", "`n" -replace "`r", "`n"
+  $licenseNorm = [System.Text.Encoding]::UTF8.GetBytes($licenseText)
+  $licenseActual = ([System.Security.Cryptography.SHA256]::Create().ComputeHash($licenseNorm) | ForEach-Object { $_.ToString("x2") }) -join ""
+  if ($licenseActual -ne $ollamaLicenseSha) { throw "sha256 mismatch for ${license}: $licenseActual" }
   $ollamaZip = Join-Path $tmp "ollama.zip"
   curl.exe -fsSL -o $ollamaZip $ollamaUrl
   Assert-Sha256 $ollamaZip $ollamaSha

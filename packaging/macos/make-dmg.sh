@@ -29,11 +29,15 @@ hdiutil create \
   -ov \
   -format UDZO \
   "$dmg"
-mount=$(hdiutil attach -nobrowse -readonly "$dmg" | sed -n 's/.*\(\/Volumes\/[^ ]*\).*/\1/p' | head -1)
+attach=$(hdiutil attach -nobrowse -readonly "$dmg")
+echo "$attach"
+mount=$(printf '%s\n' "$attach" | sed -n 's/.*\(\/Volumes\/[^ ]*\).*/\1/p' | head -1)
 if [ -z "$mount" ]; then
   echo "dmg did not mount" >&2
   exit 1
 fi
+echo "mounted $mount"
+ls -la "$mount" "$mount/bundle/node" "$mount/bundle/ollama/ollama"
 cleanup_mount() {
   hdiutil detach "$mount" >/dev/null 2>&1 || hdiutil detach -force "$mount" >/dev/null 2>&1 || true
   rm -rf "$stage"
@@ -46,8 +50,8 @@ test -s "$mount/bundle/postgres/bin/postgres"
 test -d "$mount/bundle/erp/.next/static"
 test -s "$mount/bundle/auth/auth"
 test -s "$mount/bundle/postgrest/postgrest"
-test -s "$mount/bundle/ollama/ollama"
-test -s "$mount/bundle/ollama/OLLAMA_LICENSE.txt"
+test -s "$mount/bundle/ollama/ollama" || { echo "mounted bundle has no ollama"; find "$mount" -name ollama -o -name 'OLLAMA_LICENSE.txt' | head; exit 1; }
+test -s "$mount/bundle/ollama/OLLAMA_LICENSE.txt" || { echo "mounted bundle has no Ollama license"; exit 1; }
 if [ -d "$mount/bundle/ollama/lib/ollama/cuda_v12" ] || [ -d "$mount/bundle/ollama/lib/ollama/cuda_v13" ]; then
   echo "cuda runner was packed" >&2
   exit 1
