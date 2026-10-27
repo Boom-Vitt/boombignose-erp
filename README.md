@@ -26,6 +26,16 @@
 
 The download page is [https://boom-vitt.github.io/boombignose-erp-harness-ai/](https://boom-vitt.github.io/boombignose-erp-harness-ai/). The previous address [https://boom-vitt.github.io/boombignose-erp/](https://boom-vitt.github.io/boombignose-erp/) is retired and returned HTTP 404 after the rename deploy. Releases are at [https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest](https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/latest). Tag `boombignose-v0.2.0` is the desktop window. Tag `boombignose-v0.1.1` is the older harness command.
 
+Release `boombignose-v0.2.0` is the Wails window. GitHub Actions builds it with Go and attaches:
+
+- `BoomBigNose-windows-x64-setup.exe` — unsigned NSIS installer. The installed program is `BoomBigNose.exe` and opens a window. SmartScreen can show More info, then Run anyway. Smart App Control may still block an unsigned app.
+- `BoomBigNose-macos-arm64.dmg` — ad-hoc signed (`codesign --sign -`). There is no paid Apple Developer certificate, so opening can require Open Anyway.
+- `BoomBigNose-linux-amd64.tar.gz` — the window binary named `BoomBigNose`. It needs WebKitGTK 4.1.
+- `BoomBigNose-linux-amd64.AppImage` — the same binary. It also needs WebKitGTK 4.1.
+- `SHA256SUMS` for those four files.
+
+These installers do not bundle Node, Docker, Postgres, or Ollama. They have not been click-tested on a physical machine. Tag `boombignose-v0.1.1` is the older harness command, not this window. No code-signing certificate was purchased.
+
 ## BoomBigNose ERP
 
 BoomBigNose ERP runs sales, purchasing, inventory, projects and billing for a business on one database. It is built for Thai businesses first, with VAT and withholding tax on documents, THB amounts and the Asia/Bangkok time zone built in, and it works for a two-person shop as well as a growing company with several teams.
@@ -46,7 +56,7 @@ Most businesses start with a CRM, a project tool, a spreadsheet of invoices and 
 - **Expenses**: Expense claims that staff submit and a manager approves or rejects. Nobody can approve their own claim, and approved claims become costs in Finance.
 - **Projects and Timesheets**: Projects as a list or kanban board, with tasks, milestones and logged time. Billable time turns into a draft invoice in one step. Member cost rates and project profit are visible to owners and admins only.
 - **Reports and Calendar**: Revenue by month and by client, hours by project and cost of goods sold, shown as bar, line or pivot views. Saved views, CSV export, and a calendar of follow-ups, meetings, due dates and deadlines.
-- **Automation and AI**: Reusable automation templates, scheduled follow-up reminders, an outbox that delivers events to n8n, and inbound n8n webhooks. AI deal summaries, follow-up drafts and meeting-note intake through OpenRouter when an API key is set.
+- **Automation and AI**: Reusable automation templates, scheduled follow-up reminders, an outbox that delivers events to n8n, and inbound n8n webhooks. AI deal summaries, follow-up drafts and meeting-note intake call Ollama on this machine (`127.0.0.1:11434` by default). If Ollama is not running, those screens say so and do not call a cloud model.
 - **Across the app**: A command palette on Ctrl/Cmd+K, a search and filter bar on list pages, a status header and a history of notes, attachments and activities on business records, and an audit log for owners and admins.
 - **Team**: Owner, admin and member roles, and invitations shared by link.
 
@@ -132,7 +142,7 @@ The **Use demo account** button on the login page appears only when `NEXT_PUBLIC
 | `CRON_SECRET` | Yes | Checks the `X-Cron-Secret` header on scheduled jobs |
 | `N8N_WEBHOOK_SECRET` | Yes | Checks the `X-Webhook-Secret` header on inbound n8n webhooks |
 | `N8N_OUTBOUND_URL`, `N8N_OUTBOUND_SECRET` | No | Turns on delivery of outbox events to n8n |
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | No | Turns on the AI assistant and overrides its model |
+| `OLLAMA_HOST`, `OLLAMA_MODEL` | No | Local Ollama address (default `127.0.0.1:11434`) and model. A remote host is refused |
 | `RESEND_API_KEY` | No | Turns on outbound email through Resend |
 | `EMAIL_FROM` | No | Sender address for outbound email |
 | `LEAD_FORM_TRUST_PROXY` | No | Set to `true` behind a proxy that overwrites `X-Forwarded-For`, so lead-form rate limits apply per visitor |

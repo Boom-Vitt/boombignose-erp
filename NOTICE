@@ -10,7 +10,7 @@ Exceptions:
   source-available software under ee/LICENSE. The Community license does not
   license these files. Thin imports in app/ and components/ do not relicense
   the code they import; production use of Pro requires a commercial agreement.
-- bignose/: BigNose OS is a separate proprietary/commercial product under
+- bignose/: BoomBigNose is a separate proprietary/commercial product under
   bignose/LICENSE. Its packages and workspace paths are excluded from the ERP
   AGPL and commercial-alternative offer.
 - BoomBigNose names and logos: reserved trademarks; see TRADEMARK.md.

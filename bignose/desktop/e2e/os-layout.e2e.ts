@@ -9,8 +9,8 @@ const osInfo = { node: process.execPath, erpDir: '/nonexistent/erp', mcpServer: 
 
 async function daemon(t: test.TestContext) {
   const home = testHome(t);
-  // the ERP assistant is created on openrouter, so the provider has to exist; nothing here ever calls it
-  configured(home, 'http://127.0.0.1:1/v1', c => { c.providers.push({ id: 'openrouter', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1/v1' }); });
+  // the ERP assistant is created on local Ollama; nothing here ever calls it
+  configured(home, 'http://127.0.0.1:1/v1', c => { c.providers.push({ id: 'ollama', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:11434/v1' }); });
   const app = await startDaemon({ home }); t.after(() => app.close());
   return app;
 }
@@ -45,7 +45,7 @@ test('the panel fits a 420px panel and scrolls inside it', { timeout: 180_000 },
   assert.ok(await ui.cdp.evaluate(`document.body.classList.contains('os-panel')`));
   // panel mode opens on the ERP assistant, set up through the local API
   await ui.wait(`document.querySelector('[aria-label="Chat agent"]')?.selectedOptions[0]?.textContent.includes('ERP assistant')`);
-  assert.equal(await ui.cdp.evaluate(`document.querySelector('.model-link').textContent`), 'google/gemini-4-argon');
+  assert.equal(await ui.cdp.evaluate(`document.querySelector('.model-link').textContent`), 'qwen3:4b');
   const fits = (label: string) => ui.cdp.evaluate(`(() => {
     const page = document.scrollingElement, nodes = ['.shell', '.main', '.chat', '.settings:not([hidden])'].map(s => document.querySelector(s)).filter(Boolean);
     return { label: ${JSON.stringify(label)}, overflowX: Math.max(page.scrollWidth - page.clientWidth, ...nodes.map(n => n.scrollWidth - n.clientWidth).map(d => d === -Infinity ? 0 : d)),

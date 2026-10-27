@@ -2,14 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("server-only", () => ({}))
 
-// 24 chars at runtime so the BBN secret scan never sees a quoted literal.
-const KEY = "k".repeat(24)
-
 const ok = (content: unknown) =>
-  new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })
+  new Response(JSON.stringify({ message: { role: "assistant", content } }), {
+    status: 200,
+  })
 
 async function load() {
-  vi.resetModules() // DEFAULT_MODEL is read from env at import time
+  vi.resetModules()
   return import("./client")
 }
 
@@ -19,70 +18,84 @@ describe("lib/ai/client", () => {
   beforeEach(() => {
     fake.mockReset()
     vi.stubGlobal("fetch", fake)
-    vi.stubEnv("OPENROUTER_API_KEY", KEY)
-    vi.stubEnv("OPENROUTER_MODEL", "")
+    vi.stubEnv("OLLAMA_HOST", "")
+    vi.stubEnv("OLLAMA_MODEL", "")
   })
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
 
-  it("posts to OpenRouter chat completions with the default Gemini model", async () => {
+  it("posts to local Ollama with the default model", async () => {
     fake.mockResolvedValue(ok("hi"))
     const { generateText } = await load()
     await generateText({ system: "sys", prompt: "usr", maxTokens: 50 })
 
     const [url, init] = fake.mock.calls[0]
-    expect(url).toBe("https://openrouter.ai/api/v1/chat/completions")
+    expect(url).toBe("http://127.0.0.1:11434/api/chat")
     expect(init.method).toBe("POST")
-    expect(init.headers.Authorization).toBe(`Bearer ${KEY}`)
+    expect(init.headers.Authorization).toBeUndefined()
     expect(JSON.parse(init.body)).toEqual({
-      model: "google/gemini-4-argon",
-      max_tokens: 50,
-      reasoning: { effort: "low" },
+      model: "qwen3:4b",
+      stream: false,
       messages: [
         { role: "system", content: "sys" },
         { role: "user", content: "usr" },
       ],
+      options: { num_predict: 50 },
     })
   })
 
-  it("OPENROUTER_MODEL overrides the default model", async () => {
-    vi.stubEnv("OPENROUTER_MODEL", "acme/other-model")
+  it("OLLAMA_MODEL and a loopback OLLAMA_HOST override the defaults", async () => {
+    vi.stubEnv("OLLAMA_MODEL", "llama3.2")
+    vi.stubEnv("OLLAMA_HOST", "http://localhost:11435")
     fake.mockResolvedValue(ok("hi"))
     const { generateText, DEFAULT_MODEL } = await load()
     await generateText({ system: "s", prompt: "p" })
 
-    expect(DEFAULT_MODEL).toBe("acme/other-model")
-    expect(JSON.parse(fake.mock.calls[0][1].body).model).toBe("acme/other-model")
+    expect(DEFAULT_MODEL).toBe("llama3.2")
+    expect(fake.mock.calls[0][0]).toBe("http://localhost:11435/api/chat")
+    expect(JSON.parse(fake.mock.calls[0][1].body).model).toBe("llama3.2")
   })
 
-  it("no key means no request", async () => {
-    vi.stubEnv("OPENROUTER_API_KEY", "")
+  it("a remote host makes no request", async () => {
+    vi.stubEnv("OLLAMA_HOST", "https://models.example:11434")
     const { generateText, isAIConfigured, AINotConfiguredError } = await load()
 
     expect(isAIConfigured()).toBe(false)
     const run = generateText({ system: "s", prompt: "p" })
     await expect(run).rejects.toBeInstanceOf(AINotConfiguredError)
-    await expect(run).rejects.toThrow("OPENROUTER_API_KEY")
+    await expect(run).rejects.toThrow(/not configured/i)
     expect(fake).not.toHaveBeenCalled()
   })
 
-  it("errors never contain the API key", async () => {
-    const body = { error: { message: `bad key ${KEY} ${"x".repeat(500)}` } }
-    fake.mockResolvedValue(new Response(JSON.stringify(body), { status: 401 }))
-    const { generateText } = await load()
+  it("a refused connection degrades as not configured", async () => {
+    fake.mockRejectedValue(new TypeError("fetch failed"))
+    const { generateText, isAIConfigured, AINotConfiguredError } = await load()
 
+    expect(isAIConfigured()).toBe(true)
+    await expect(generateText({ system: "s", prompt: "p" })).rejects.toBeInstanceOf(
+      AINotConfiguredError,
+    )
+    await expect(generateText({ system: "s", prompt: "p" })).rejects.toThrow(
+      /not configured/i,
+    )
+  })
+
+  it("an HTTP error stays short and does not echo a huge body", async () => {
+    fake.mockResolvedValue(
+      new Response(JSON.stringify({ error: "x".repeat(500) }), { status: 404 }),
+    )
+    const { generateText, AINotConfiguredError } = await load()
     const err = await generateText({ system: "s", prompt: "p" }).catch((e: Error) => e)
-    expect(err).toBeInstanceOf(Error)
-    const msg = (err as Error).message
-    expect(msg).toContain("OpenRouter HTTP 401")
-    expect(msg).not.toContain(KEY)
-    expect(msg.length).toBeLessThan(260)
+    expect(err).toBeInstanceOf(AINotConfiguredError)
+    expect((err as Error).message).toContain("HTTP 404")
+    expect((err as Error).message.length).toBeLessThan(280)
 
     fake.mockResolvedValue(new Response("<html>raw gateway page</html>", { status: 502 }))
     const raw = await generateText({ system: "s", prompt: "p" }).catch((e: Error) => e)
-    expect((raw as Error).message).toBe("OpenRouter HTTP 502")
+    expect((raw as Error).message).toContain("HTTP 502")
+    expect((raw as Error).message).not.toContain("<html>")
   })
 
   it("returns the trimmed reply text", async () => {
@@ -95,21 +108,17 @@ describe("lib/ai/client", () => {
     fake.mockResolvedValue(ok("  \n"))
     const { generateText } = await load()
     await expect(generateText({ system: "s", prompt: "p" })).rejects.toThrow(
-      "OpenRouter returned no text",
+      "Ollama returned no text",
     )
   })
 
-  it("rejects a 200 carrying an error or finish_reason error", async () => {
-    const { generateText } = await load()
-
+  it("a 200 carrying an error degrades as not configured", async () => {
     fake.mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: `boom ${KEY}` } }), { status: 200 }),
+      new Response(JSON.stringify({ error: "model not found" }), { status: 200 }),
     )
-    const top = await generateText({ system: "s", prompt: "p" }).catch((e: Error) => e)
-    expect((top as Error).message).toBe("OpenRouter error: boom [redacted]")
-
-    const partial = { choices: [{ finish_reason: "error", message: { content: "half" } }] }
-    fake.mockResolvedValue(new Response(JSON.stringify(partial), { status: 200 }))
-    await expect(generateText({ system: "s", prompt: "p" })).rejects.toThrow("OpenRouter error")
+    const { generateText, AINotConfiguredError } = await load()
+    const err = await generateText({ system: "s", prompt: "p" }).catch((e: Error) => e)
+    expect(err).toBeInstanceOf(AINotConfiguredError)
+    expect((err as Error).message).toContain("model not found")
   })
 })

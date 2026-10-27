@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// BigNose OS smoke (the one serialized Docker check): the pieces the app launches, run without the app.
+// BoomBigNose smoke (the one serialized Docker check): the pieces the app launches, run without the app.
 //   1. `stack.mjs up` against the local boombignose-erp stack (non-destructive: never a reset, never a stop)
 //   2. the ERP served from a temp cache dir on a free port answers /login
 //   3. a BigNose daemon (temp BIGNOSE_HOME, free ports, the erp connector) lists the 8 ERP tools over GET /api/mcp/erp/tools
@@ -27,7 +27,11 @@ const pass = (name) => console.log(`ok - ${name}`);
 const fail = (name, detail = '') => { failures += 1; console.log(`not ok - ${name}${detail ? `\n    ${String(detail).split('\n').join('\n    ')}` : ''}`); };
 
 // the children get the caller's environment minus any model key: the smoke never calls a model
-const childEnv = (extra = {}) => { const env = { ...process.env, ...extra }; delete env.OPENROUTER_API_KEY; return env; };
+const childEnv = (extra = {}) => {
+  const env = { ...process.env, ...extra };
+  for (const name of ["OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]) delete env[name];
+  return env;
+};
 
 const children = []; // { child, group }
 function track(child, group = false) { children.push({ child, group }); return child; }

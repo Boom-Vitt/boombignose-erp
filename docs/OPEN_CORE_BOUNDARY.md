@@ -7,7 +7,7 @@ Inventory verified on 2026-10-22 against `docs/OPEN_CORE_STRATEGY.md` and source
 | Client portal | `ee/portal/` | Pro table: tokenized client-facing access, quote acceptance, payment reports, and staff share-link management |
 | Accounting | `ee/accounting/` | Pro table: FlowAccount/PEAK/Xero adapters, invoice payload mapping, connection settings, invoice push and sync-map reads/UI |
 | Workspaces | `ee/workspaces/` | Pro table: real multi-org list/switcher and hosted or additional-org provisioning |
-| BigNose OS | `bignose/` | Separate proprietary product, including its agent runtime, desktop application and bundled skills; see `bignose/LICENSE` |
+| BoomBigNose | `bignose/` | Separate proprietary product, including its agent runtime, desktop application and bundled skills; see `bignose/LICENSE` |
 
 `app/portal/[token]/page.tsx` and `app/(app)/settings/accounting/page.tsx`
 are thin Next.js edition entry points. Their static `dynamic` settings remain

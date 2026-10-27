@@ -29,8 +29,8 @@ test('capabilities come only from the capabilities folder, and the ERP is an ext
   assert.equal(conf.app.security.capabilities, undefined);
   // the window is built in code (shell.rs), so no config window carries a webview of its own
   assert.deepEqual(conf.app.windows.map((w) => [w.label, w.create]), [['main', false]]);
-  assert.equal(conf.app.windows[0]!.title, 'BigNose OS');
-  assert.equal(conf.productName, 'BigNose OS');
+  assert.equal(conf.app.windows[0]!.title, 'BoomBigNose');
+  assert.equal(conf.productName, 'BoomBigNose');
   assert.equal(conf.identifier, 'com.boombignose.bignose');
   const shell = read('src/shell.rs');
   assert.match(shell, /WebviewUrl::External\(url\)/);

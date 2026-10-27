@@ -7,14 +7,14 @@ Look: dark, quiet, one orange accent, generous sections, no poster.
 Do:
 
 - Nav with the BoomBigNose mark and wordmark, then a download link.
-- Hero title exactly `BoomBigNose ERP Harness AI`, a Thai line that the desktop stays on the machine and does not call cloud AI, an English line under it, and one button that picks the OS file, with version `boombignose-v0.1.1` and the real byte size.
+- Hero title exactly `BoomBigNose ERP Harness AI`, a Thai line that the desktop stays on the machine and does not call cloud AI, an English line under it, and one button that picks the OS file, with version `boombignose-v0.2.0` and the real byte size.
 - Our own CSS window mock until a real screenshot exists. Say that it is a mock.
 - Trust row: local only, no cloud AI, the repo license, and a careful line about customer data. Do not say the page certifies PDPA.
 - Four module tiles that exist in the ERP. Do not advertise purchasing or stock.
 - Three steps, then one card per OS with the full SHA-256.
 - Unsigned-install steps for macOS and Windows.
 - A privacy note, including that this page loads Google Fonts.
-- FAQ plus system requirements: the v0.1.1 files do not bundle Docker, Postgres, or Ollama.
+- FAQ plus system requirements: the v0.2.0 files do not bundle Node, Docker, Postgres, or Ollama.
 - Footer with the mark and the full product name.
 
 Do not:

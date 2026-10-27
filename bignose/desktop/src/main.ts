@@ -19,7 +19,7 @@ interface DaemonInfo { port: number; token: string; spawned: boolean }
 declare global {
   interface Window {
     __TAURI__?: { core: { invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> } };
-    /** Set by the BigNose OS window: this page is the panel beside the ERP. */
+    /** Set by the BoomBigNose window: this page is the panel beside the ERP. */
     __BIGNOSE_OS__?: boolean;
   }
 }
@@ -63,7 +63,7 @@ async function boot(): Promise<void> {
   try {
     const invoke = window.__TAURI__?.core.invoke;
     if (!invoke) throw new Error('This page only works inside the BigNose app.');
-    // BigNose OS: the window shows the startup screen until the ERP answers, then this page becomes the side panel
+    // BoomBigNose: the window shows the startup screen until the ERP answers, then this page becomes the side panel
     if (OS) await waitForReady(invoke, (view) => app.replaceChildren(view));
     const info = await invoke<DaemonInfo>('daemon_info');
     api = createApi({ port: info.port, token: info.token });

@@ -543,7 +543,7 @@ dialog.confirm p { margin-top: var(--sp-2); color: var(--muted); }
 .tabs { overflow-x: auto; }
 .tab { flex: none; }
 
-/* ================= BigNose OS: this page is the panel beside the ERP (420 px open, 40 px rail) ================= */
+/* ================= BoomBigNose: this page is the panel beside the ERP (420 px open, 40 px rail) ================= */
 .panel-toggle { display: none; }
 .toggle-rail { display: none; }
 .os-panel .panel-toggle { display: grid; place-items: center; position: fixed; top: 8px; right: 8px; z-index: 20; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: var(--r-md);

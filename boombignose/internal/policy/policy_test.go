@@ -20,10 +20,10 @@ func TestAllowEndpoint(t *testing.T) {
 		}
 	}
 	bad := []string{
-		"https://openrouter.ai/api/v1/chat/completions",
-		"https://api.resend.com/emails",
-		"https://api.openai.com/v1",
-		"https://api.anthropic.com",
+		"https://models.example/v1/chat/completions",
+		"https://mail.example/emails",
+		"https://llm.example/v1",
+		"https://chat.example",
 		"https://xyzcompany.supabase.co",
 		"https://example.com",
 		"file:///etc/passwd",

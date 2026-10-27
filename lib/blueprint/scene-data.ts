@@ -322,7 +322,7 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
       id: "07-ai-unit",
       partNumber: "07",
       titleEn: "07 AI Unit & Read-Only Assistant",
-      lineTh: "ฟีเจอร์ช่วยสรุป 3 รายการใน ERP และผู้ช่วยอ่านข้อมูลในแผง BigNose OS",
+      lineTh: "ฟีเจอร์ช่วยสรุป 3 รายการใน ERP และผู้ช่วยอ่านข้อมูลในแผง BoomBigNose",
       assembledPosition: [2.6, 1.8, -1.5],
       explodedOffset: [3.2, 2.9, -1.9],
       size: [1.8, 0.9, 1.5],
@@ -332,9 +332,9 @@ export function buildBlueprintScene(raw: BlueprintOrgSummary): BlueprintSceneMod
         { label: "Write authority", value: "None (read/draft)" },
       ],
       codeRuleEn:
-        "Three ERP features (deal summary, follow-up drafts in friendly/formal/brief tones, meeting-notes intake to summary + action items) run on Gemini 4 via OpenRouter, cache in RLS-protected ai_outputs, and degrade cleanly without an API key. The BigNose OS desktop panel adds an ERP assistant with read-only ERP tools; nothing in the ERP writes on its own.",
+        "Three ERP features (deal summary, follow-up drafts in friendly/formal/brief tones, meeting-notes intake to summary + action items) call Ollama on loopback, cache in RLS-protected ai_outputs, and degrade cleanly when Ollama is not running. The BoomBigNose desktop panel adds an ERP assistant with read-only ERP tools; nothing in the ERP writes on its own.",
       codeRuleTh:
-        "ประกอบด้วยฟีเจอร์ใน ERP 3 รายการ (สรุปดีล ร่างข้อความติดตาม 3 โทน และสรุปบันทึกประชุม) บน Gemini 4 ผ่าน OpenRouter เก็บแคชใน ai_outputs โดยแอปทำงานได้แม้ไม่มีคีย์ พร้อมผู้ช่วยอ่านข้อมูลอย่างเดียวในแผง BigNose OS",
+        "ประกอบด้วยฟีเจอร์ใน ERP 3 รายการ (สรุปดีล ร่างข้อความติดตาม 3 โทน และสรุปบันทึกประชุม) เรียก Ollama บนเครื่อง เก็บแคชใน ai_outputs โดยแอปทำงานได้แม้ไม่มี Ollama พร้อมผู้ช่วยอ่านข้อมูลอย่างเดียวในแผง BoomBigNose",
       codeRefs: ["lib/ai/prompts.ts", "lib/ai/parse.ts", "lib/ai/client.ts"],
     },
     {

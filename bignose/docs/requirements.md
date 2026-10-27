@@ -7,8 +7,7 @@ full agent harness. It is a desktop app named **BigNose**, and you can also talk
 - **Written from scratch.** No agent SDK, no LLM vendor SDK, no MCP SDK. Hand-write the agent loop, the provider
   adapters, the MCP client, the gateway and the scheduler. Hermes (MIT, `~/.hermes/hermes-agent`) may be read for
   behaviour and protocol details, but no code is copied.
-- **Multi-provider.** Anthropic Messages API, plus any OpenAI-compatible Chat Completions endpoint (OpenAI,
-  OpenRouter, local Ollama or LM Studio) chosen by base URL. The user switches provider and model in settings.
+- **Local model.** The shipped provider is Ollama at `http://127.0.0.1:11434/v1`. Cloud model hosts are refused before a request. The user switches the local model in settings.
 - **Desktop: Tauri 2** (Rust shell plus web UI). Lite means small and fast, not missing harness features.
 - **Messaging: LINE only.**
 
@@ -83,7 +82,7 @@ image generation.
 - `bignose chat -q` runs a tool round trip end to end with a mock OpenAI-compatible server started by the test.
 - `bignose mcp test rea` connects to the real REA package and lists ≥ 100 tools. This is the only network-dependent
   check and may be skipped with `BIGNOSE_SKIP_NETWORK=1`.
-- `pnpm --filter desktop tauri build --bundles app` produces `BigNose OS.app`, whose Info.plist CFBundleName is `BigNose OS` (CFBundleIdentifier stays `com.boombignose.bignose`).
+- `pnpm --filter desktop tauri build --bundles app` produces `BoomBigNose.app`, whose Info.plist CFBundleName is `BoomBigNose` (CFBundleIdentifier stays `com.boombignose.bignose`).
 
 ## Environment notes
 - Rust toolchain: `export PATH="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$PATH"`. Homebrew rustup
@@ -182,7 +181,7 @@ This section overrides anything above that conflicts with it. The contract is `d
 - LINE: connection check, webhook set and test, and the health route against a mocked LINE API; a test for each LINE fix
   and each v1 follow-up; a slow mock model still gives the `Get answer` flow; the v1 webhook tests (signature 200/401,
   allowlist, reply to push fallback, slow button flow) still pass.
-- `pnpm --filter desktop tauri build --bundles app` produces `BigNose OS.app` with CFBundleName `BigNose OS` and the
+- `pnpm --filter desktop tauri build --bundles app` produces `BoomBigNose.app` with CFBundleName `BoomBigNose` and the
   regenerated BoomBigNose `icon.icns`.
 - Owner-run (manual, never in tests): a real chat with a local Ollama model, and a real LINE channel connected through a
   public HTTPS tunnel, including a slow answer fetched with `Get answer`.
