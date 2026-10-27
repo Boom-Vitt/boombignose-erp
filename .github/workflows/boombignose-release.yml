@@ -1,15 +1,15 @@
-# Builds real unsigned installers for the Bumik harness command.
-# A release is created only after both installers exist, and only on
+# Builds real unsigned installers for the BoomBigNose harness command.
+# A release is created only after the installers exist, and only on
 # workflow_dispatch. A published release receives the same files as assets.
 # Pull requests build the installers and do not publish anything.
-name: Bumik release assets
+name: BoomBigNose release assets
 
 on:
   pull_request:
     paths:
-      - "bumik/**"
+      - "boombignose/**"
       - "packaging/**"
-      - ".github/workflows/bumik-release.yml"
+      - ".github/workflows/boombignose-release.yml"
   workflow_dispatch:
   release:
     types: [published]
@@ -26,7 +26,7 @@ jobs:
         with:
           go-version: "1.22"
       - name: Test harness
-        working-directory: bumik
+        working-directory: boombignose
         run: go test ./...
 
   windows:
@@ -38,8 +38,8 @@ jobs:
         with:
           go-version: "1.22"
       - name: Build Windows binary
-        working-directory: bumik
-        run: go build -o ../packaging/windows/bumik.exe ./cmd/bumik
+        working-directory: boombignose
+        run: go build -o ../packaging/windows/boombignose.exe ./cmd/boombignose
       - name: Install NSIS
         run: choco install nsis --no-progress -y
       - name: Build installer
@@ -51,14 +51,14 @@ jobs:
           ) | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $makensis) { throw "makensis was not installed" }
           Set-Location packaging\windows
-          & $makensis .\bumik.nsi
-          if (-not (Test-Path .\BumikNodeERP-windows-x64-setup.exe)) {
+          & $makensis .\boombignose.nsi
+          if (-not (Test-Path .\BoomBigNose-windows-x64-setup.exe)) {
             throw "installer was not produced"
           }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-setup
-          path: packaging/windows/BumikNodeERP-windows-x64-setup.exe
+          path: packaging/windows/BoomBigNose-windows-x64-setup.exe
           if-no-files-found: error
 
   macos:
@@ -70,46 +70,45 @@ jobs:
         with:
           go-version: "1.22"
       - name: Build arm64 binary
-        working-directory: bumik
+        working-directory: boombignose
         env:
           CGO_ENABLED: "0"
           GOOS: darwin
           GOARCH: arm64
         run: |
           mkdir -p ../dist
-          go build -o ../dist/bumik ./cmd/bumik
+          go build -o ../dist/boombignose ./cmd/boombignose
       - name: Ad-hoc sign and make DMG
         run: sh packaging/macos/make-dmg.sh
       - uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: dist/BumikNodeERP-macos-arm64.dmg
+          path: dist/BoomBigNose-macos-arm64.dmg
           if-no-files-found: error
 
   linux:
     needs: test
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
       - name: Build Linux tarball
-        working-directory: bumik
+        working-directory: boombignose
         run: |
           mkdir -p ../dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../dist/bumik ./cmd/bumik
-          tar -C ../dist -czf ../dist/BumikNodeERP-linux-amd64.tar.gz bumik
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../dist/boombignose ./cmd/boombignose
+          tar -C ../dist -czf ../dist/BoomBigNose-linux-amd64.tar.gz boombignose
       - uses: actions/upload-artifact@v4
         with:
           name: linux-tarball
-          path: dist/BumikNodeERP-linux-amd64.tar.gz
+          path: dist/BoomBigNose-linux-amd64.tar.gz
           if-no-files-found: error
 
   publish:
     if: github.event_name != 'pull_request'
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -123,23 +122,30 @@ jobs:
           pattern: macos-dmg
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: linux-tarball
+          path: dist
+          merge-multiple: true
       - name: Checksums
         working-directory: dist
         run: |
-          test -s BumikNodeERP-windows-x64-setup.exe
-          test -s BumikNodeERP-macos-arm64.dmg
-          sha256sum BumikNodeERP-windows-x64-setup.exe BumikNodeERP-macos-arm64.dmg > SHA256SUMS
+          test -s BoomBigNose-windows-x64-setup.exe
+          test -s BoomBigNose-macos-arm64.dmg
+          test -s BoomBigNose-linux-amd64.tar.gz
+          sha256sum BoomBigNose-windows-x64-setup.exe BoomBigNose-macos-arm64.dmg BoomBigNose-linux-amd64.tar.gz > SHA256SUMS
           cat SHA256SUMS
       - name: Notes
         run: |
-          cat > /tmp/bumik-notes.md <<'EOF'
-          Unsigned builds of the Bumik harness command (`bumik check` and `bumik cutover`).
+          cat > /tmp/boombignose-notes.md <<'EOF'
+          Unsigned builds of the BoomBigNose harness command (`boombignose check` and `boombignose cutover`).
 
-          These files are not a windowed ERP. The landing-page download buttons stay marked coming soon until a windowed build is published.
+          These files are not a windowed ERP. They install the local check and the printed cutover plan.
 
           - Windows installer is unsigned. SmartScreen can show More info then Run anyway. Smart App Control may still block it.
           - macOS disk image is ad-hoc signed (`codesign --sign -`). Opening can require Open Anyway.
-          - SHA256SUMS covers the two files above.
+          - Linux tarball is the same command for amd64.
+          - SHA256SUMS covers the three files above.
           EOF
       - name: Publish GitHub Release
         env:
@@ -148,12 +154,20 @@ jobs:
         run: |
           tag="${{ github.event.release.tag_name }}"
           if [ -z "$tag" ]; then
-            tag="bumik-v0.1.0"
+            tag="boombignose-v0.1.1"
           fi
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/BumikNodeERP-windows-x64-setup.exe dist/BumikNodeERP-macos-arm64.dmg dist/SHA256SUMS --clobber
+            gh release upload "$tag" \
+              dist/BoomBigNose-windows-x64-setup.exe \
+              dist/BoomBigNose-macos-arm64.dmg \
+              dist/BoomBigNose-linux-amd64.tar.gz \
+              dist/SHA256SUMS --clobber
           else
-            gh release create "$tag" dist/BumikNodeERP-windows-x64-setup.exe dist/BumikNodeERP-macos-arm64.dmg dist/SHA256SUMS \
-              --title "Bumik Node ERP harness AI ${tag}" \
-              --notes-file /tmp/bumik-notes.md
+            gh release create "$tag" \
+              dist/BoomBigNose-windows-x64-setup.exe \
+              dist/BoomBigNose-macos-arm64.dmg \
+              dist/BoomBigNose-linux-amd64.tar.gz \
+              dist/SHA256SUMS \
+              --title "BoomBigNose ${tag}" \
+              --notes-file /tmp/boombignose-notes.md
           fi

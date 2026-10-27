@@ -1,18 +1,18 @@
-# Bumik Node ERP harness AI — local architecture
+# BoomBigNose — local architecture
 
-Product name: **Bumik Node ERP harness AI**. The desktop product stays fully local at runtime: data and rules on the machine, and no cloud model call.
+Product name: **BoomBigNose**. The desktop product stays fully local at runtime: data and rules on the machine, and no cloud model call.
 
 ## Milestones
 
-**Milestone 1.** A Go shell opens the existing ERP in a webview at `http://127.0.0.1:3100`. Before the window loads, `bumik check` refuses cloud credentials (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`) and refuses any Supabase, n8n, or ERP URL that is not loopback. The webview is the same shape as BigNose OS (Tauri): first-party cookies on loopback, no IPC into the ERP page. Wails is the GUI toolkit for that window. This repository contains the gate and the URL rule. It does not yet compile a Wails window, because that build needs the OS webview SDK.
+**Milestone 1.** A Go shell opens the existing ERP in a webview at `http://127.0.0.1:3100`. Before the window loads, `boombignose check` refuses cloud credentials (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`) and refuses any Supabase, n8n, or ERP URL that is not loopback. The webview is the same shape as BigNose OS (Tauri): first-party cookies on loopback, no IPC into the ERP page. Wails is the GUI toolkit for that window. This repository contains the gate and the URL rule. It does not yet compile a Wails window, because that build needs the OS webview SDK.
 
 **Milestone 2.** Ship a bundled local stack so the download does not ask the operator to install Node, pnpm, and Docker by hand. That bundle is not in this tree. Milestone 1 still uses the existing local Supabase stack on loopback. Hosted Supabase (`*.supabase.co`) is refused.
 
-BigNose OS stays beside this app. Both use port 3100, so only one may listen. See `docs/bumik/CUTOVER.md`.
+BigNose OS stays beside this app. Both use port 3100, so only one may listen. See `docs/boombignose/CUTOVER.md`.
 
 ## What stays where it is
 
-Business writes stay in the Postgres functions already shipped with the ERP. The Go module does not reimplement them. `bumik/internal/money` only formats an integer satang amount. The Next.js UI stays the screen inside the webview.
+Business writes stay in the Postgres functions already shipped with the ERP. The Go module does not reimplement them. `boombignose/internal/money` only formats an integer satang amount. The Next.js UI stays the screen inside the webview.
 
 ## Auth
 

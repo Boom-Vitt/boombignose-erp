@@ -2,7 +2,7 @@
 // Milestone 1 loads this URL in a webview. This package does not open a window.
 package shell
 
-import "github.com/Boom-Vitt/boombignose-erp/bumik/internal/policy"
+import "github.com/Boom-Vitt/boombignose-erp/boombignose/internal/policy"
 
 // DefaultERPURL is the loopback address already used by BigNose OS.
 const DefaultERPURL = "http://127.0.0.1:3100"
