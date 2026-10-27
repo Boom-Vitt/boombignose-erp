@@ -54,4 +54,4 @@ ollama pull qwen3:4b
 
 The Linux tar.gz lists `bundle/node`, `bundle/erp/server.js`, and `bundle/postgres/bin/postgres`. The AppImage copies the same tree to `usr/bin/bundle`. The NSIS script copies `bundle\` beside `BoomBigNose.exe` and a silent install checks those files. The DMG copies `bundle` beside `BoomBigNose` and the mount check looks for the same three paths. NSIS compression is off because the tree is large.
 
-Tag `boombignose-v0.2.0` remains the latest release and does not contain this tree. No newer tag was published. v0.3.0 waits until all three installers contain the bundle and the health and sign-in smokes are green. The launcher was checked with `go test`. The smokes are CI processes, not clicks on a physical machine.
+Tag `boombignose-v0.2.0` is the older window-only release. Tag `boombignose-v0.2.1` is the current download. Its workflow run 40537854881 packed this tree into the Windows, macOS, and Linux installers and required `/api/health` before upload. v0.3.0 is not cut, because sign-in is not proved. The launcher was checked with `go test`. The smokes are CI processes, not clicks on a physical machine.
