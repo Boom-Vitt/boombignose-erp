@@ -1,6 +1,6 @@
-# BigNose OS Local Supabase Stack & ERP Runtime
+# BoomBigNose Local Supabase Stack & ERP Runtime
 
-`scripts/local/stack.mjs` (backed by `lib/local/stack.mjs`) manages the local Supabase stack (`project_id = "boombignose-erp"`, API port `54421`, DB port `54422`) and serves the production ERP runtime for BigNose OS on `127.0.0.1`. Cloud Supabase is never touched.
+`scripts/local/stack.mjs` (backed by `lib/local/stack.mjs`) manages the local Supabase stack (`project_id = "boombignose-erp"`, API port `54421`, DB port `54422`) and serves the production ERP runtime for BoomBigNose on `127.0.0.1`. Cloud Supabase is never touched.
 
 ## Commands & Package Scripts
 
@@ -29,7 +29,7 @@
 - For each commit SHA (`git rev-parse HEAD`, then archived by that SHA), `serve` exports a clean tree from `git archive` (with no `.env*` files so nothing from `.env.local` is ever inlined), runs `pnpm install --frozen-lockfile --prefer-offline --ignore-scripts`, and runs `next build` with no `NEXT_PUBLIC_*` variables in the build environment.
 - Only the current build and the `last-good` build are retained on disk; older commit builds are pruned. Pruning only touches `<sha>`, `<sha>.tmp` and `<sha>.tar` entries, so other files in a mistyped `--cache-dir` are never deleted. A `.build.lock` file serializes concurrent builds.
 - The first launch after a new commit requires network access because `next/font/google` fetches Google Fonts at build time. When a rebuild fails (for example while offline), `serve` logs a notice and falls back to the `last-good` build.
-- BigNose OS desktop serves the ERP on port `3100`, matching `site_url = "http://127.0.0.1:3100"` in `supabase/config.toml`.
+- BoomBigNose desktop serves the ERP on port `3100`, matching `site_url = "http://127.0.0.1:3100"` in `supabase/config.toml`.
 - Port `3100` is also the BBN worktree `portBase`, so a worktree's `.env.worktree` can be assigned `PORT=3100`. If port `3100` (or any requested `--port`) is already in use, `serve` exits immediately with a clear busy-port message.
 - Before running the acceptance HTML checks on ports `3988` and `3989`, ensure both ports are free so a leftover server cannot answer in place of the fresh build.
 
@@ -41,8 +41,9 @@
 - `serve` starts `next start` with a strict allowlist environment:
   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` read at runtime from `supabase status -o env` (never persisted to disk or printed; non-local hosts outside `127.0.0.1`/`localhost`/`::1` are refused),
   - `NEXT_PUBLIC_APP_URL=http://127.0.0.1:<port>`,
-  - `PATH`, `HOME`, `TMPDIR`, `LANG`, and `NODE_ENV=production`.
-- The allowlist drops `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, and `N8N_*`, so a parent process that has a cloud model key does not hand it to `next start`:
+  - `PATH`, `HOME`, `TMPDIR`, `LANG`, and `NODE_ENV=production`,
+  - `OLLAMA_HOST` when it is loopback, and `OLLAMA_MODEL` when it is set.
+- The allowlist drops cloud model keys, `CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, and `N8N_*`, so a parent process that has a cloud model key does not hand it to `next start`. A remote `OLLAMA_HOST` is dropped:
   - Cron routes (subscription renewals, follow-ups, outbox processing) do not run.
   - Quote and invoice email delivery via Resend is disabled.
   - Client portal links use `NEXT_PUBLIC_APP_URL` and therefore point at `http://127.0.0.1:<port>`.

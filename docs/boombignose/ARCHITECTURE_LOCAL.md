@@ -8,7 +8,7 @@ Product name: **BoomBigNose ERP Harness AI**. The short name on the window title
 
 **Milestone 2.** Ship a bundled local stack so the download does not ask the operator to install Node, pnpm, and Docker by hand. `boombignose/internal/bundle` can start `bundle/node` and `bundle/erp/server.js` without Docker and without `node` on `PATH`. It can start a loopback `ollama serve` when a binary is already present, and it does not run `ollama pull`. The documented pull is `ollama pull qwen3:4b`. Postgres stays the database; SQLite cannot run the ERP functions. The portable `postgres` path is recognized and is not started. Those binaries are not in the v0.2.0 installers. See `docs/boombignose/BUNDLE.md`. Hosted Supabase (`*.supabase.co`) is refused. An empty `OLLAMA_HOST` is allowed. A remote `OLLAMA_HOST` is refused. TOTP enroll and verify are on in the local Supabase config. The enrollment screen stays closed unless `LOCAL_TOTP_ENROLL=1`. AAL2 is not enforced. See `docs/boombignose/TOTP.md`.
 
-BigNose OS stays beside this app. Both use port 3100, so only one may listen. See `docs/boombignose/CUTOVER.md`.
+The shell in `bignose/` also uses port 3100, so only one program may listen. See `docs/boombignose/CUTOVER.md`.
 
 ## What stays where it is
 
@@ -22,10 +22,10 @@ Sign-in stays the ERP's Supabase email and password session, stored in cookies f
 
 ## Cloud calls the gate refuses
 
-- `lib/ai/client.ts` posts to `https://openrouter.ai` when `OPENROUTER_API_KEY` is set. The harness refuses that variable.
+- `lib/ai/client.ts` posts to Ollama on loopback (`OLLAMA_HOST`, default `127.0.0.1:11434`). A remote host throws before any request. A refused connection becomes a not-configured notice.
 - `lib/email/send.ts` posts to Resend when `RESEND_API_KEY` is set. The harness refuses that variable.
 - `app/api/cron/outbox/route.ts` posts to `N8N_OUTBOUND_URL`. The harness allows that URL only when it is loopback or empty.
-- `lib/local/stack.mjs` does not copy `OPENROUTER_API_KEY` or `OPENROUTER_MODEL` into `next start`. The ERP process started by `serve` has those variables unset even when the parent environment has them.
+- `lib/local/stack.mjs` does not copy cloud model keys into `next start`. It forwards `OLLAMA_HOST` only when that value is loopback, it forwards `OLLAMA_MODEL`, and it forwards `LOCAL_TOTP_ENROLL` only when the value is `1`.
 
 ## Pages
 

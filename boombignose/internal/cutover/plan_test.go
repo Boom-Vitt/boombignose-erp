@@ -4,7 +4,7 @@ import "testing"
 
 func TestPlanDoesNotNameARemoteHost(t *testing.T) {
 	text := Plan()
-	for _, banned := range []string{"supabase.co", "openrouter.ai", "DROP TABLE", "delete from"} {
+	for _, banned := range []string{"supabase.co", "https://", "DROP TABLE", "delete from"} {
 		if stringsContains(text, banned) {
 			t.Fatalf("plan contains %q", banned)
 		}

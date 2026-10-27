@@ -4,10 +4,9 @@
 name: BoomBigNose desktop shell
 
 on:
+  push:
+    branches: [main]
   pull_request:
-    paths:
-      - "boombignose/**"
-      - ".github/workflows/boombignose-desktop.yml"
   workflow_dispatch:
 
 permissions:

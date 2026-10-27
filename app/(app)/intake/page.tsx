@@ -88,7 +88,7 @@ export default function IntakePage() {
 
             {state.status === "notConfigured" ? (
               <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
-                AI is not configured — add OPENROUTER_API_KEY to enable.
+                AI is not configured. Start Ollama on this machine (ollama serve), then pull a model (ollama pull qwen3:4b).
               </p>
             ) : null}
           </CardContent>

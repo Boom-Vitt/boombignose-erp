@@ -8,8 +8,8 @@ import type { Change } from './forms.ts';
 import { row, saveBar } from './parts.ts';
 
 const HINT: Record<string, string> = {
-  anthropic: 'API root, for example https://api.anthropic.com',
-  'openai-compatible': 'Chat Completions root, for example https://api.openai.com/v1 or http://127.0.0.1:1234/v1',
+  anthropic: 'Cloud providers are refused. Use Ollama at http://127.0.0.1:11434/v1',
+  'openai-compatible': 'Chat Completions root on this machine, for example http://127.0.0.1:11434/v1',
 };
 const COMPACT: [string, string][] = [['0.6', '60%'], ['0.8', '80%'], ['0.9', '90%']];
 const percent = (v: string) => COMPACT.find(([value]) => value === v)?.[1] ?? `${Math.round(Number(v) * 100)}%`;

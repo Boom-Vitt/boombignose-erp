@@ -27,7 +27,7 @@ The Community offer applies to company-owned repository materials except:
   [ee/LICENSE](ee/LICENSE). It may be inspected and developed locally under
   those terms, but production use requires a written commercial agreement
   expressly covering Pro. Community's AGPL option does not cover Pro.
-- **BigNose OS (`bignose/`)**: a separate proprietary/commercial product under
+- **BoomBigNose (`bignose/`)**: a separate proprietary/commercial product under
   [bignose/LICENSE](bignose/LICENSE). Its code and packages are excluded from
   both Community alternatives, even though this repository contains them.
 - **Third-party materials**: their own licenses/notices control; see

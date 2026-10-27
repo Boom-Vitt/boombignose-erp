@@ -1,10 +1,12 @@
 import type { ProviderConfig } from '../types.ts';
 import { safeError } from './common.ts';
+import { assertNoCloudModelHost } from './local-only.ts';
 import { isOllama } from './ollama.ts';
 
 export interface ModelInfo { id: string; label?: string }
 
 export async function listModels(cfg: ProviderConfig, apiKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<ModelInfo[]> {
+  assertNoCloudModelHost(cfg.baseUrl);
   const fail = (text: string): Error => {
     const error = safeError(text, apiKey);
     error.message = error.message.trimEnd().replace(/\.+$/, '');

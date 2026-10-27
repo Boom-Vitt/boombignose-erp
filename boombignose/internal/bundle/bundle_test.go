@@ -118,6 +118,21 @@ func TestChildEnvKeepsLocalSupabaseAndPort(t *testing.T) {
 	}
 }
 
+func TestChildEnvKeepsLoopbackOllama(t *testing.T) {
+	env, err := ChildEnv([]string{"OLLAMA_HOST=127.0.0.1:11434", "OLLAMA_MODEL=qwen3:4b"}, "3100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(env, "\n")
+	if !strings.Contains(text, "OLLAMA_HOST=127.0.0.1:11434") || !strings.Contains(text, "OLLAMA_MODEL=qwen3:4b") {
+		t.Fatalf("ollama env: %s", text)
+	}
+	_, err = ChildEnv([]string{"OLLAMA_HOST=https://models.example:11434"}, "3100")
+	if err == nil || strings.Contains(err.Error(), "models.example") {
+		t.Fatalf("remote ollama: %v", err)
+	}
+}
+
 func TestOllamaServeRefusesRemoteHost(t *testing.T) {
 	_, err := OllamaServe("/tmp/ollama", "https://ollama.example")
 	if err == nil {

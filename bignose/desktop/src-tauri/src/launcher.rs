@@ -1,4 +1,4 @@
-// Starts the ERP for BigNose OS: finds the ERP folder, then runs `node <erp>/scripts/local/stack.mjs doctor|up|serve`
+// Starts the ERP for BoomBigNose: finds the ERP folder, then runs `node <erp>/scripts/local/stack.mjs doctor|up|serve`
 // as managed children (stream local-supabase) and publishes progress for the startup screen.
 // The pure parts (folder choice, .env key, status, commands) are unit-tested; the child handling is tested against
 // a fake stack.mjs.
@@ -84,8 +84,8 @@ fn permission_failure(dir: &Path, home: &Path, detail: &str) -> Failure {
     Failure {
         title: "macOS is blocking access to the ERP folder".into(),
         message: format!(
-            "macOS did not let BigNose OS read {} ({detail}). Allow access to your Desktop folder: System Settings > \
-             Privacy & Security > Files & Folders (or Full Disk Access), turn on BigNose OS, then press Retry. \
+            "macOS did not let BoomBigNose read {} ({detail}). Allow access to your Desktop folder: System Settings > \
+             Privacy & Security > Files & Folders (or Full Disk Access), turn on BoomBigNose, then press Retry. \
              Or keep the ERP somewhere else and set \"erpDir\" in {}.",
             dir.display(),
             home.join("os.json").display()
@@ -97,7 +97,7 @@ fn missing_failure(dir: &Path, home: &Path) -> Failure {
     Failure {
         title: "ERP folder not found".into(),
         message: format!(
-            "BigNose OS could not find {STACK_SCRIPT} in {}. Point it at your boombignose-erp folder: set \"erpDir\" in {} \
+            "BoomBigNose could not find {STACK_SCRIPT} in {}. Point it at your ERP checkout: set \"erpDir\" in {} \
              or set BIGNOSE_OS_ERP_DIR, then press Retry.",
             dir.display(),
             home.join("os.json").display()
@@ -125,7 +125,7 @@ fn failure_from_output(title: &str, tail: &[String], dir: &Path, home: &Path) ->
     Failure { title: title.into(), message }
 }
 
-// ---- the OpenRouter key
+// ---- env lines
 
 /// Reads `NAME=value` lines the way the daemon's own .env reader does: last one wins, matching quotes are removed.
 pub fn read_env_key(text: &str, key: &str) -> Option<String> {
@@ -145,10 +145,6 @@ pub fn read_env_key(text: &str, key: &str) -> Option<String> {
     found
 }
 
-fn openrouter_key(home: &Path) -> Option<String> {
-    read_env_key(&std::fs::read_to_string(home.join(".env")).ok()?, "OPENROUTER_API_KEY")
-}
-
 // ---- commands
 
 /// `scripts/local/stack.mjs serve --port 3100 --cache-dir <home>/erp`, after the script path.
@@ -163,8 +159,6 @@ pub struct Plan {
     pub erp_dir: PathBuf,
     pub home: PathBuf,
     pub port: u16,
-    /// Passed to the ERP server through its environment only; never logged.
-    pub openrouter_key: Option<String>,
 }
 
 impl Plan {
@@ -173,8 +167,7 @@ impl Plan {
         let erp_dir = erp_dir(&home);
         check_erp_dir(&erp_dir, &home)?;
         let NodeRuntime { node, path } = node_runtime().map_err(|e| Failure { title: "Node is required".into(), message: e })?;
-        let openrouter_key = openrouter_key(&home);
-        Ok(Plan { node, path, erp_dir, home, port: ERP_PORT, openrouter_key })
+        Ok(Plan { node, path, erp_dir, home, port: ERP_PORT })
     }
 
     fn command(&self, args: &[String]) -> Command {
@@ -319,8 +312,9 @@ impl Launcher {
         self.set(gen, Status::Starting { step: "erp", detail: None });
         let ready = format!("ready {}", erp_url_for(plan.port));
         let mut cmd = plan.command(&serve_args(plan.port, &plan.home));
-        if let Some(key) = &plan.openrouter_key {
-            cmd.env("OPENROUTER_API_KEY", key);
+        // Do not hand a cloud model key to the ERP process, even if the parent shell has one.
+        for name in ["OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"] {
+            cmd.env_remove(name);
         }
         let mut announced = false;
         let out = match self.run_child(gen, cmd, &mut log, |l| {
@@ -445,16 +439,11 @@ mod tests {
     }
 
     #[test]
-    fn reads_openrouter_key_from_bignose_home_env() {
-        let env = "# secrets\nLINE_TOKEN=abc\nOPENROUTER_API_KEY=old-key-1\nOPENROUTER_API_KEY=\"new-key-2\"\nOTHER=x\n";
-        assert_eq!(read_env_key(env, "OPENROUTER_API_KEY").as_deref(), Some("new-key-2"));
-        assert_eq!(read_env_key("OPENROUTER_API_KEY=\n", "OPENROUTER_API_KEY"), None);
-        assert_eq!(read_env_key("XOPENROUTER_API_KEY=v\n# OPENROUTER_API_KEY=v\n", "OPENROUTER_API_KEY"), None);
-        // through the file, as the launcher reads it
-        let home = temp_dir("env");
-        std::fs::write(home.join(".env"), "OPENROUTER_API_KEY='fake-key-3'\r\n").unwrap();
-        assert_eq!(openrouter_key(&home).as_deref(), Some("fake-key-3"));
-        assert_eq!(openrouter_key(&temp_dir("noenv")), None);
+    fn reads_env_lines_last_value_wins() {
+        let env = "# secrets\nLINE_TOKEN=abc\nEXAMPLE_KEY=old-key-1\nEXAMPLE_KEY=\"new-key-2\"\nOTHER=x\n";
+        assert_eq!(read_env_key(env, "EXAMPLE_KEY").as_deref(), Some("new-key-2"));
+        assert_eq!(read_env_key("EXAMPLE_KEY=\n", "EXAMPLE_KEY"), None);
+        assert_eq!(read_env_key("XEXAMPLE_KEY=v\n# EXAMPLE_KEY=v\n", "EXAMPLE_KEY"), None);
     }
 
     #[test]
@@ -515,7 +504,7 @@ mod tests {
         std::fs::create_dir_all(erp.join("scripts/local")).unwrap();
         std::fs::write(erp.join(STACK_SCRIPT), script).unwrap();
         let NodeRuntime { node, path } = node_runtime().expect("tests need Node");
-        Plan { node, path, erp_dir: erp, home: temp_dir("fake-home"), port, openrouter_key: Some("fake-key-4".into()) }
+        Plan { node, path, erp_dir: erp, home: temp_dir("fake-home"), port }
     }
 
     fn wait_for(launcher: &Launcher, what: &str, ok: impl Fn(&Status) -> bool) -> Status {
@@ -537,6 +526,7 @@ else if (cmd === 'up') { console.log('migrations applied'); }
 else if (cmd === 'serve') {
   console.error('building');
   console.log('key:' + (process.env.OPENROUTER_API_KEY ? 'set' : 'unset') + ' port:' + process.argv[4]);
+  if (process.env.OPENROUTER_API_KEY) process.exit(2);
   console.log('ready http://127.0.0.1:' + process.argv[4]);
   process.on('SIGTERM', () => process.exit(0));
   setInterval(() => { if (process.ppid === 1) process.exit(0); }, 200); // like stack.mjs: leave when the parent is gone
@@ -555,10 +545,9 @@ else if (cmd === 'serve') {
         assert_eq!(s, Status::Ready { url: "http://127.0.0.1:3187".into() });
         assert_eq!(readied.load(Ordering::SeqCst), 1);
         assert!(launcher.running());
-        // the key reached the child's environment, and the log has output but never the key
+        // a cloud model key is not copied into the child
         let log = std::fs::read_to_string(&log_path).unwrap();
-        assert!(log.contains("key:set port:3187"));
-        assert!(!log.contains("fake-key-4"));
+        assert!(log.contains("key:unset port:3187"));
         // quit: the serve child (and its group) goes away
         launcher.stop();
         assert!(!launcher.running());
@@ -585,8 +574,7 @@ else if (cmd === 'serve') {
 
     #[test]
     fn docker_stopped_is_reported_not_failed() {
-        let mut plan = fake_plan(&FAKE.replace("process.env.FAKE_DOCKER ?? 'running'", "'stopped'"), 3188);
-        plan.openrouter_key = None;
+        let plan = fake_plan(&FAKE.replace("process.env.FAKE_DOCKER ?? 'running'", "'stopped'"), 3188);
         let launcher = Launcher::default();
         launcher.start_with(move || Ok(plan), Arc::new(|| {}));
         assert_eq!(wait_for(&launcher, "docker", |s| matches!(s, Status::DockerStopped { .. })), Status::DockerStopped { installed: true });

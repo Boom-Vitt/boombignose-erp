@@ -5,7 +5,7 @@ import { community } from "./edition"
 
 /**
  * V2 Batch 2 smoke: accounting sync scaffold (connect → sync → sync-map row) and
- * AI graceful degradation with no OPENROUTER_API_KEY. Needs the local Supabase
+ * AI graceful degradation when Ollama is not running. Needs the local Supabase
  * stack running/seeded with env loaded (`set -a && . ./.env.local`).
  */
 
@@ -67,7 +67,7 @@ test("accounting: connect a provider then sync an invoice records a synced map r
   })
 })
 
-test("AI features degrade gracefully when no OPENROUTER_API_KEY is set", async ({
+test("AI features degrade gracefully when Ollama is not running", async ({
   page,
 }) => {
   test.setTimeout(90_000) // dev server compiles routes/actions lazily on first hit

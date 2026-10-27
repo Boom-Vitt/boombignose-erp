@@ -117,9 +117,9 @@ func ERPCommand(layout Layout, rawURL string, parent []string) (Command, error) 
 	}, nil
 }
 
-// ChildEnv keeps the process paths and local Supabase values. Cloud model
-// keys are dropped. A non-loopback Supabase or n8n URL is an error that does
-// not include the value.
+// ChildEnv keeps the process paths, local Supabase values, and a loopback
+// Ollama host. Cloud model keys are dropped. A non-loopback Supabase, n8n,
+// or Ollama value is an error that does not include the value.
 func ChildEnv(parent []string, port string) ([]string, error) {
 	port = strings.TrimSpace(port)
 	if port == "" {
@@ -131,7 +131,6 @@ func ChildEnv(parent []string, port string) ([]string, error) {
 		"OPENAI_API_KEY":     true,
 		"ANTHROPIC_API_KEY":  true,
 		"RESEND_API_KEY":     true,
-		"OLLAMA_HOST":        true,
 	}
 	keep := map[string]bool{
 		"PATH": true, "HOME": true, "TMPDIR": true, "LANG": true,
@@ -152,6 +151,17 @@ func ChildEnv(parent []string, port string) ([]string, error) {
 			}
 			if strings.TrimSpace(value) != "" {
 				vals[key] = value
+			}
+		case "OLLAMA_HOST":
+			if err := policy.AllowService(value); err != nil {
+				return nil, fmt.Errorf("%s: %w", key, policy.ErrNotLocal)
+			}
+			if strings.TrimSpace(value) != "" {
+				vals[key] = strings.TrimSpace(value)
+			}
+		case "OLLAMA_MODEL":
+			if strings.TrimSpace(value) != "" {
+				vals[key] = strings.TrimSpace(value)
 			}
 		default:
 			if keep[key] && value != "" {

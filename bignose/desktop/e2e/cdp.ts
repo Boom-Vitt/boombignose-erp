@@ -50,7 +50,7 @@ export async function connect(url: string) {
 }
 
 export interface UiOptions {
-  /** Load the page as the BigNose OS panel (window.__BIGNOSE_OS__). */
+  /** Load the page as the BoomBigNose panel (window.__BIGNOSE_OS__). */
   os?: boolean;
   /** Fixed page size, e.g. a 420 px panel. */
   viewport?: { width: number; height: number };

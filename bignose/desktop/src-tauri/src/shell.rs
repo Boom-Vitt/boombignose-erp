@@ -157,7 +157,7 @@ pub struct MenuItemSpec {
 }
 
 pub const TOGGLE_PANEL: MenuItemSpec = MenuItemSpec { id: "toggle_panel", label: "Toggle BigNose Panel", accelerator: "CmdOrCtrl+J" };
-pub const QUIT: MenuItemSpec = MenuItemSpec { id: "quit", label: "Quit BigNose OS", accelerator: "CmdOrCtrl+Q" };
+pub const QUIT: MenuItemSpec = MenuItemSpec { id: "quit", label: "Quit BoomBigNose", accelerator: "CmdOrCtrl+Q" };
 
 pub fn view_menu_items() -> Vec<&'static MenuItemSpec> {
     vec![&TOGGLE_PANEL]
@@ -168,7 +168,7 @@ fn item(app: &AppHandle, spec: &MenuItemSpec) -> tauri::Result<tauri::menu::Menu
 }
 
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
-    let app_menu = SubmenuBuilder::new(app, "BigNose OS")
+    let app_menu = SubmenuBuilder::new(app, "BoomBigNose")
         .about(None)
         .separator()
         .hide()
@@ -244,7 +244,7 @@ pub fn create(app: &tauri::App) -> tauri::Result<()> {
     let config = handle.config().app.windows.iter().find(|w| w.label == WINDOW).cloned().expect("window config");
     let window = WindowBuilder::from_config(handle, &config)?.build()?;
     let (w, h) = logical_size(&window).unwrap_or((config.width, config.height));
-    // `__BIGNOSE_OS__` tells the UI it runs as the panel of BigNose OS
+    // `__BIGNOSE_OS__` tells the UI it runs as the panel of BoomBigNose
     let panel = WebviewBuilder::new(PANEL, WebviewUrl::App("index.html".into())).initialization_script("window.__BIGNOSE_OS__ = true;");
     window.add_child(panel, LogicalPosition::new(0.0, 0.0), LogicalSize::new(w, h))?;
     Ok(())

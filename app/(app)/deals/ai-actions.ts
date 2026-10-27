@@ -15,7 +15,7 @@ import { dealSummaryPrompt, followupDraftPrompt, type Tone } from "@/lib/ai/prom
 
 /**
  * Result of an AI assist. Discriminated union so callers branch cleanly:
- *  - `{ notConfigured: true }` → no API key; show a friendly notice, no crash.
+ *  - `{ notConfigured: true }` → Ollama is missing or not loopback; show a friendly notice, no crash.
  *  - `{ content }` → generated text (also cached to ai_outputs).
  *  - `{ error }` → a real failure worth toasting.
  */

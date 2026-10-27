@@ -11,7 +11,7 @@ Required files:
 - `bundle/node` (`bundle/node.exe` on Windows)
 - `bundle/erp/server.js`
 
-When both exist and `127.0.0.1:3100` is closed, the window runs that Node binary with `server.js`. It does not look up `node` on `PATH` and it does not call Docker. The child environment keeps `PATH`, `HOME`, `TMPDIR`, `LANG`, and a loopback Supabase URL when the parent already has one. `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, and `OLLAMA_HOST` are not passed to the ERP process. A hosted Supabase URL is refused and the error does not include the value.
+When both exist and `127.0.0.1:3100` is closed, the window runs that Node binary with `server.js`. It does not look up `node` on `PATH` and it does not call Docker. The child environment keeps `PATH`, `HOME`, `TMPDIR`, `LANG`, a loopback Supabase URL when the parent already has one, a loopback `OLLAMA_HOST`, and `OLLAMA_MODEL`. `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `RESEND_API_KEY` are not passed to the ERP process. A hosted Supabase URL or a remote Ollama host is refused and the error does not include the value.
 
 When those two files are absent, the window keeps the checkout path: `node scripts/local/stack.mjs serve --port 3100`.
 

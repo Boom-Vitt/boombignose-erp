@@ -19,7 +19,7 @@ const agent = (id: string, name: string): Agent => ({
 function fakeDaemon() {
   const config = {
     version: 1, active: { provider: 'ollama', model: 'qwen3:4b' },
-    providers: [{ id: 'ollama' }, { id: 'openrouter' }],
+    providers: [{ id: 'ollama' }],
     mcp: { servers: { rea: { transport: 'stdio', command: 'npx', args: ['-y', 'rea'], enabled: false } as McpServerConfig } },
   } as unknown as Config;
   const agents: Agent[] = [agent('a1', 'BigNose'), agent('a2', 'Writer')];
