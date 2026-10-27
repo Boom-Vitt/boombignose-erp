@@ -1,0 +1,43 @@
+{
+  "assets": {
+    "appimage": {
+      "arch": "amd64",
+      "name": "BoomBigNose-linux-amd64.AppImage",
+      "os": "linux",
+      "sha256": "cd04095ca8cc6478fea1a16f86cf5cf41592179945b15d5e9040726b2e646a62",
+      "size": 138394104,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.AppImage",
+      "verify": "sha256sum -c SHA256SUMS"
+    },
+    "linux": {
+      "arch": "amd64",
+      "name": "BoomBigNose-linux-amd64.tar.gz",
+      "os": "linux",
+      "sha256": "70c829dc802a067e2344515bcfa4cd880b947473dc70634153cd34c534e1df89",
+      "size": 202666839,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.tar.gz",
+      "verify": "sha256sum -c SHA256SUMS"
+    },
+    "macos": {
+      "arch": "arm64",
+      "name": "BoomBigNose-macos-arm64.dmg",
+      "os": "macos",
+      "sha256": "59ab51d7490cbe357360de9ed1b43236fbfb57324f98bf449e1f8f3a1e85cad3",
+      "size": 505963961,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-macos-arm64.dmg",
+      "verify": "shasum -a 256 -c SHA256SUMS"
+    },
+    "windows": {
+      "arch": "x64",
+      "name": "BoomBigNose-windows-x64-setup.exe",
+      "os": "windows",
+      "sha256": "645250da05694ed762a590d2e7c1f6d2b39ad0a4475ab3786ad239874b60f9ca",
+      "size": 507445373,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-windows-x64-setup.exe",
+      "verify": "Get-FileHash .\\BoomBigNose-windows-x64-setup.exe -Algorithm SHA256"
+    }
+  },
+  "notes_url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.3.0",
+  "sums_url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/SHA256SUMS",
+  "tag": "boombignose-v0.3.0"
+}

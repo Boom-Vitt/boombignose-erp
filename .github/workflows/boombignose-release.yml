@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   test:
@@ -459,3 +460,9 @@ jobs:
             dist/BoomBigNose-linux-amd64.tar.gz \
             dist/BoomBigNose-linux-amd64.AppImage \
             dist/SHA256SUMS --clobber
+      - name: Refresh the download page
+        if: startsWith(github.event.release.tag_name, 'boombignose-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run pages.yml --ref main

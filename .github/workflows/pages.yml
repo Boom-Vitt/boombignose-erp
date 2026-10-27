@@ -30,6 +30,10 @@ jobs:
       - uses: actions/checkout@v5
       - name: Copy favicon
         run: cp app/favicon.ico site/favicon.ico
+      - name: Check the release-page filler
+        run: python3 site/fill-release.py --self-test
+      - name: Fill version and SHA-256 from the published release
+        run: python3 site/fill-release.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

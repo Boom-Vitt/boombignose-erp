@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ติดตั้ง BoomBigNose บนเดสก์ท็อป</title>
+  <meta name="description" content="ดาวน์โหลดตัวติดตั้ง BoomBigNose โดยตรงสำหรับ Windows, macOS และ Linux ไม่มี App Store, Play Store หรือ Microsoft Store ค่าแฮชมาจาก Release ที่เผยแพร่" />
+  <link rel="icon" href="assets/brandmark.png" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <meta property="og:title" content="ติดตั้ง BoomBigNose บนเดสก์ท็อป" />
+  <meta property="og:description" content="ดาวน์โหลดตรง ตรวจ SHA-256 แล้วเปิดแอปที่ไม่ได้ลงชื่อด้วยใบรับรองร้านค้า" />
+  <meta property="og:image" content="https://boom-vitt.github.io/boombignose-erp-harness-ai/assets/brandmark.png" />
+  <meta property="og:type" content="website" />
+  <style>
+    :root {
+      --paper: #0b0d12;
+      --surface: #12151c;
+      --line: #232733;
+      --text: #e8eaf0;
+      --muted: #9aa1b2;
+      --accent: #ff7a45;
+      --on-accent: #0b0d12;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--text);
+      font-family: "IBM Plex Sans Thai", Inter, "Noto Sans Thai", Anuphan, Sarabun, system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    a { color: var(--accent); }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .skip {
+      position: absolute; left: 16px; top: -48px; background: var(--accent); color: var(--on-accent);
+      padding: 8px 12px; border-radius: 8px; font-weight: 700; z-index: 20;
+    }
+    .skip:focus { top: 12px; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+    header.nav {
+      position: sticky; top: 0; z-index: 10;
+      background: rgb(11 13 18 / .92);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 72px; gap: 16px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+    .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 700; }
+    .brand img { width: 36px; height: 36px; border-radius: 12px; }
+    .nav-links { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .nav-links a:not(.btn) { color: var(--text); text-decoration: none; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; text-align: center;
+      background: var(--accent); color: var(--on-accent); text-decoration: none;
+      font-weight: 700; border-radius: 999px; padding: 10px 18px; min-height: 44px;
+      border: 1px solid var(--accent); cursor: pointer;
+      font-family: inherit; font-size: 16px;
+      transition: filter .15s ease;
+    }
+    .btn:hover { filter: brightness(1.06); }
+    .btn.secondary { background: transparent; color: var(--text); border-color: var(--line); }
+    .hero { padding: 72px 0 16px; }
+    h1 {
+      font-size: clamp(36px, 6vw, 60px); line-height: 1.15; letter-spacing: -0.03em;
+      margin: 16px 0 12px; max-width: 16ch; font-weight: 700;
+    }
+    .lead { font-size: 20px; margin: 0 0 8px; }
+    .en { color: var(--muted); font-family: Inter, "IBM Plex Sans Thai", sans-serif; font-size: 16px; margin: 0 0 20px; }
+    .meta { color: var(--muted); font-size: 14px; margin: 12px 0 0; }
+    h2 { font-size: clamp(28px, 3vw, 36px); line-height: 1.2; margin: 0 0 8px; }
+    h3 { margin: 0 0 8px; font-size: 18px; }
+    .sub { color: var(--muted); margin: 0 0 20px; }
+    section { padding: 64px 0; }
+    .grid, .steps { display: grid; gap: 16px; }
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .steps { grid-template-columns: repeat(3, 1fr); }
+    .card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px;
+    }
+    .card p, .card li { margin: 0; color: var(--muted); }
+    .card ol, .card ul { margin: 8px 0 0; padding-left: 1.2rem; }
+    .card li { margin: 6px 0; }
+    .card.is-this { border-color: var(--accent); }
+    .chip {
+      display: inline-block; margin-left: 8px; border: 1px solid var(--accent); color: var(--accent);
+      border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 700; vertical-align: middle;
+    }
+    .chip[hidden] { display: none !important; }
+    .btn:not(.secondary) .chip { color: var(--on-accent); border-color: var(--on-accent); }
+    .actions { display: flex; flex-direction: column; align-items: stretch; gap: 12px; margin-top: 20px; max-width: 640px; }
+    .actions .btn { width: 100%; }
+    .mono, pre {
+      font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; color: var(--muted);
+      overflow-wrap: anywhere; word-break: break-word;
+    }
+    pre {
+      margin: 12px 0; padding: 12px 14px; background: var(--paper); border: 1px solid var(--line);
+      border-radius: 12px; white-space: pre-wrap;
+    }
+    .hashrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 8px; }
+    .hashrow .mono { flex: 1 1 220px; }
+    .fileline { color: var(--text); font-weight: 600; }
+    details.card { padding: 0; }
+    details.card summary {
+      min-height: 44px; padding: 16px 20px; cursor: pointer; font-weight: 700; list-style: none;
+    }
+    details.card summary::-webkit-details-marker { display: none; }
+    details.card .answer { padding: 0 20px 16px; }
+    footer { border-top: 1px solid var(--line); padding: 28px 0 48px; }
+    footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; }
+    .links { display: flex; gap: 16px; flex-wrap: wrap; }
+    #copy-status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+    @media (max-width: 800px) {
+      section { padding: 40px 0; }
+      .grid, .steps { grid-template-columns: 1fr; }
+      h1 { max-width: none; }
+      .hashrow .btn { flex-basis: 100%; width: 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .btn { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#content">ข้ามไปเนื้อหา</a>
+  <p id="copy-status" role="status" aria-live="polite"></p>
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="index.html">
+        <img src="assets/brandmark.png" width="36" height="36" alt="" />
+        <span>BoomBigNose</span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html">หน้าแรก</a>
+        <a class="btn" href="#download">ดาวน์โหลด</a>
+      </div>
+    </div>
+  </header>
+  <main id="content">
+    <div class="wrap hero">
+      <h1>ติดตั้งแอปเดสก์ท็อป</h1>
+      <p class="lead">ดาวน์โหลดไฟล์ตรงจาก Release ไม่มีร้านค้าแอป</p>
+      <p class="en">Direct download only. No Apple App Store, Google Play, or Microsoft Store. Nothing on this page is submitted to a store.</p>
+      <p class="meta" id="primary-meta">รุ่น <span data-release="tag">boombignose-v0.3.0</span> ปุ่มหลักจะตรงกับ Windows, macOS หรือ Linux เมื่อเบราว์เซอร์บอกระบบได้</p>
+      <div class="actions" id="download">
+        <a class="btn secondary" data-os="windows" data-release-href="windows" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-windows-x64-setup.exe">Windows x64 · <span data-release="size-windows">507,445,373 ไบต์</span> <span class="chip" data-chip hidden>เครื่องนี้</span></a>
+        <a class="btn secondary" data-os="macos" data-release-href="macos" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-macos-arm64.dmg">macOS arm64 · <span data-release="size-macos">505,963,961 ไบต์</span> <span class="chip" data-chip hidden>เครื่องนี้</span></a>
+        <a class="btn secondary" data-os="linux" data-release-href="linux" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.tar.gz">Linux amd64 · <span data-release="size-linux">202,666,839 ไบต์</span> <span class="chip" data-chip hidden>เครื่องนี้</span></a>
+        <a class="btn secondary" data-os="appimage" data-release-href="appimage" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.AppImage">AppImage · <span data-release="size-appimage">138,394,104 ไบต์</span></a>
+      </div>
+      <p class="meta">ไฟล์หลักของลินุกซ์คือ tar.gz AppImage เป็นทางเลือก ขนาดเป็นจำนวนไบต์จาก Release <span data-release="tag">boombignose-v0.3.0</span></p>
+    </div>
+
+    <section>
+      <div class="wrap">
+        <h2>ตรวจไฟล์ก่อนเปิด</h2>
+        <p class="sub">วางไฟล์ <a data-release-href="sums" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/SHA256SUMS">SHA256SUMS</a> ไว้โฟลเดอร์เดียวกับตัวติดตั้ง แล้วเทียบกับค่าด้านล่าง หน้านี้ไม่ได้รับรองว่าเครื่องของคุณเปิดคำสั่งเหล่านี้แล้ว</p>
+        <div class="steps">
+          <article class="card" data-os="windows">
+            <h3>Windows <span class="chip" data-chip hidden>เครื่องนี้</span></h3>
+            <p class="fileline" data-release="name-windows">BoomBigNose-windows-x64-setup.exe</p>
+            <p data-release="line-windows">x64 · boombignose-v0.3.0 · 507,445,373 ไบต์</p>
+            <div class="hashrow">
+              <code class="mono" id="sha-windows" data-release="sha-windows">645250da05694ed762a590d2e7c1f6d2b39ad0a4475ab3786ad239874b60f9ca</code>
+              <button type="button" class="btn secondary" data-copy="sha-windows">คัดลอก SHA-256</button>
+            </div>
+            <pre id="verify-windows" data-release="verify-windows">Get-FileHash .\BoomBigNose-windows-x64-setup.exe -Algorithm SHA256</pre>
+            <button type="button" class="btn secondary" data-copy="verify-windows">คัดลอกคำสั่งตรวจ</button>
+            <p>PowerShell พิมพ์แฮชออกมา ให้ตรงกับค่าด้านบนทุกตัว <code>sha256sum</code> ไม่ได้ติดมากับ Windows</p>
+          </article>
+          <article class="card" data-os="macos">
+            <h3>macOS <span class="chip" data-chip hidden>เครื่องนี้</span></h3>
+            <p class="fileline" data-release="name-macos">BoomBigNose-macos-arm64.dmg</p>
+            <p data-release="line-macos">arm64 · boombignose-v0.3.0 · 505,963,961 ไบต์</p>
+            <div class="hashrow">
+              <code class="mono" id="sha-macos" data-release="sha-macos">59ab51d7490cbe357360de9ed1b43236fbfb57324f98bf449e1f8f3a1e85cad3</code>
+              <button type="button" class="btn secondary" data-copy="sha-macos">คัดลอก SHA-256</button>
+            </div>
+            <pre id="verify-macos" data-release="verify-macos">shasum -a 256 -c SHA256SUMS</pre>
+            <button type="button" class="btn secondary" data-copy="verify-macos">คัดลอกคำสั่งตรวจ</button>
+            <p>ใช้ <code>shasum</code> ที่มีในเครื่อง <code>sha256sum</code> อาจไม่มี คำสั่งนี้ตรวจทุกไฟล์ที่อยู่ใน SHA256SUMS</p>
+          </article>
+          <article class="card" data-os="linux">
+            <h3>Linux <span class="chip" data-chip hidden>เครื่องนี้</span></h3>
+            <p class="fileline" data-release="name-linux">BoomBigNose-linux-amd64.tar.gz</p>
+            <p data-release="line-linux">amd64 · boombignose-v0.3.0 · 202,666,839 ไบต์</p>
+            <div class="hashrow">
+              <code class="mono" id="sha-linux" data-release="sha-linux">70c829dc802a067e2344515bcfa4cd880b947473dc70634153cd34c534e1df89</code>
+              <button type="button" class="btn secondary" data-copy="sha-linux">คัดลอก SHA-256</button>
+            </div>
+            <p class="fileline" data-release="name-appimage">BoomBigNose-linux-amd64.AppImage</p>
+            <p data-release="line-appimage">amd64 · boombignose-v0.3.0 · 138,394,104 ไบต์</p>
+            <div class="hashrow">
+              <code class="mono" id="sha-appimage" data-release="sha-appimage">cd04095ca8cc6478fea1a16f86cf5cf41592179945b15d5e9040726b2e646a62</code>
+              <button type="button" class="btn secondary" data-copy="sha-appimage">คัดลอก SHA-256 ของ AppImage</button>
+            </div>
+            <pre id="verify-linux" data-release="verify-linux">sha256sum -c SHA256SUMS</pre>
+            <button type="button" class="btn secondary" data-copy="verify-linux">คัดลอกคำสั่งตรวจ</button>
+            <p>คำสั่งเดียวตรวจทั้ง tar.gz และ AppImage เมื่อทั้งสองไฟล์กับ SHA256SUMS อยู่ในโฟลเดอร์เดียวกัน</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>วิธีติดตั้ง</h2>
+        <p class="sub">ตัวติดตั้งไม่ได้ลงชื่อด้วยใบรับรองที่ซื้อมา ระบบจึงถามก่อนเปิด ขั้นตอนนี้ยังไม่ถูกคลิกทดสอบบนเครื่องจริง</p>
+        <div class="steps">
+          <article class="card" data-os="windows">
+            <h3>Windows <span class="chip" data-chip hidden>เครื่องนี้</span></h3>
+            <ol>
+              <li>เปิด <span data-release="name-windows">BoomBigNose-windows-x64-setup.exe</span></li>
+              <li>ถ้า SmartScreen ขึ้น ให้กด More info แล้วกด Run anyway</li>
+              <li>Smart App Control อาจยังบล็อกแอปที่ไม่ได้ลงชื่อ การกด Run anyway ไม่ได้รับรองว่าจะผ่านนโยบายนั้น</li>
+              <li>ตัวติดตั้งเป็น NSIS ระดับผู้ใช้ โฟลเดอร์เริ่มต้นคือ <code>%LOCALAPPDATA%\BoomBigNose</code> ไม่ได้ขอสิทธิ์ผู้ดูแลระบบ</li>
+              <li>เปิด BoomBigNose จากเมนู Start หน้าต่างจะสตาร์ท ERP ที่ <code>127.0.0.1:3100</code></li>
+            </ol>
+          </article>
+          <article class="card" data-os="macos">
+            <h3>macOS <span class="chip" data-chip hidden>เครื่องนี้</span></h3>
+            <ol>
+              <li>เปิดไฟล์ .dmg มีเฉพาะ Apple silicon (arm64) ไม่มีไฟล์สำหรับ Intel</li>
+              <li>คัดลอก BoomBigNose และโฟลเดอร์ bundle ออกจากแผ่นไปยังโฟลเดอร์ที่เขียนได้ แผ่นแบบอ่านอย่างเดียวอาจทำให้สิทธิ์รันหายไป จากนั้นรัน <code>chmod +x BoomBigNose</code></li>
+              <li>ถ้าแผ่นมี BoomBigNose.app ให้เปิดแอปนั้นได้ แอปลงชื่อแบบ ad-hoc ไม่ใช่ใบรับรองนักพัฒนาที่ซื้อจาก Apple</li>
+              <li>ถ้า Gatekeeper ปฏิเสธ ให้คลิกขวาที่ไฟล์แล้วเลือก Open หรือไปที่ System Settings &gt; Privacy &amp; Security แล้วกด Open Anyway</li>
+              <li>เครื่องจะไม่ข้ามคำเตือนให้เอง</li>
+            </ol>
+          </article>
+          <article class="card" data-os="linux">
+            <h3>Linux <span class="chip" data-chip hidden>เครื่องนี้</span></h3>
+            <ol>
+              <li>แตก tar.gz แล้วได้โปรแกรมชื่อ BoomBigNose กับโฟลเดอร์ bundle จากนั้นรัน <code>chmod +x BoomBigNose</code></li>
+              <li>หรือใช้ AppImage: <code>chmod +x</code> ไฟล์ <span data-release="name-appimage">BoomBigNose-linux-amd64.AppImage</span> แล้วเปิด ถ้าเครื่องไม่มี FUSE ไฟล์นี้อาจเปิดไม่ได้</li>
+              <li>ต้องมี WebKitGTK 4.1 ในระบบ บน Debian หรือ Ubuntu แพ็กเกจที่พบบ่อยคือ <code>libwebkit2gtk-4.1-0</code></li>
+              <li>เปิดแล้วเป็นหน้าต่าง ไม่ใช่คำสั่ง harness</li>
+            </ol>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>เครื่องที่รองรับ</h2>
+        <div class="grid">
+          <article class="card">
+            <h3>ระบบปฏิบัติการ</h3>
+            <ul>
+              <li>Windows x64 ตัวติดตั้งไม่ได้ลงทะเบียนใน Apps &amp; features เพราะสคริปต์ไม่ได้เขียนรายการถอนการติดตั้งของระบบ</li>
+              <li>macOS arm64 เท่านั้น</li>
+              <li>Linux amd64 พร้อม WebKitGTK 4.1</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>พื้นที่และเครือข่าย</h3>
+            <p>ไฟล์ตัวติดตั้งใหญ่หลายร้อยเมกะไบต์ตามจำนวนไบต์ในการ์ดด้านบน ฐานข้อมูลและโมเดลอยู่คนละที่กับตัวติดตั้ง แชทไม่เรียกโมเดลบนคลาวด์ การกดดึงโมเดลจะติดต่อคลังของ Ollama</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>สิ่งที่อยู่ในไฟล์</h2>
+        <p class="sub">รุ่น <span data-release="tag">boombignose-v0.3.0</span> รวมของเหล่านี้ไว้ในตัวติดตั้ง ไม่มี Docker</p>
+        <div class="grid">
+          <article class="card"><h3>ERP</h3><p>Node 22 กับ <code>server.js</code> แบบสแตนด์อโลน เปิดที่ <code>127.0.0.1:3100</code></p></article>
+          <article class="card"><h3>Postgres</h3><p>Postgres 16.10.0 แบบพกพา ฟังที่ <code>127.0.0.1:54329</code> ผู้ใช้ <code>boombignose</code> แบบ trust โฟลเดอร์ข้อมูลที่มีช่องว่างจะถูกปฏิเสธ</p></article>
+          <article class="card"><h3>Auth</h3><p>Auth v2.197.0 และ PostgREST v16.5 พร็อกซีที่ <code>127.0.0.1:54321</code> ส่ง <code>/auth/v1</code> ไปพอร์ต 54323 และ <code>/rest/v1</code> ไปพอร์ต 54324</p></article>
+          <article class="card"><h3>Ollama</h3><p>Ollama v0.40.11 ไม่รวมน้ำหนักโมเดล Linux กับ Windows ไม่รวมตัวรัน <code>cuda_v12</code> และ <code>cuda_v13</code> ปุ่มบนหน้าสแปลชหรือคำสั่ง <code>boombignose pull-model</code> เท่านั้นที่จะดึง <code>qwen3:4b</code> การเปิดโปรแกรมไม่ได้ดึงโมเดล</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>ครั้งแรกที่เปิด</h2>
+        <div class="card">
+          <ol>
+            <li>เปิด BoomBigNose หลังติดตั้ง โปรแกรมสร้างคลัสเตอร์ถ้ายังไม่มี</li>
+            <li>ข้อมูลอยู่ที่ <code>BOOMBIGNOSE_DATA</code> หรือ <code>~/.local/share/boombignose/pg</code> บน Windows คือ <code>%USERPROFILE%\.local\share\boombignose\pg</code> เส้นทางที่มีช่องว่างใช้ไม่ได้</li>
+            <li>เบราว์เซอร์ในหน้าต่างเปิด ERP ที่ <code>http://127.0.0.1:3100</code> สมัครและเข้าสู่ระบบบนเครื่องนี้</li>
+            <li>ถ้าต้องการหน้า AI ให้กดปุ่ม “ดาวน์โหลดโมเดล qwen3:4b” บนสแปลช หรือรัน <code>boombignose pull-model</code> คำสั่งนี้ติดต่อคลังโมเดลของ Ollama แชทยังส่งไปที่ <code>127.0.0.1:11434</code></li>
+            <li>การสตาร์ทใน CI เป็นคำสั่ง health, สมัคร, และเข้าสู่ระบบ ไม่ใช่การคลิกบนเครื่องจริง และไม่ได้ดึงโมเดล</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>ถอนการติดตั้ง</h2>
+        <div class="steps">
+          <article class="card">
+            <h3>Windows</h3>
+            <p>รัน <code>%LOCALAPPDATA%\BoomBigNose\uninstall.exe</code> สคริปต์ลบโปรแกรม โฟลเดอร์ bundle และทางลัดในเมนู Start ไม่ได้ลบโฟลเดอร์ข้อมูล และไม่ได้ลงรายการใน Apps &amp; features</p>
+          </article>
+          <article class="card">
+            <h3>macOS</h3>
+            <p>ลบโฟลเดอร์ที่คัดลอกออกจากแผ่น หรือ BoomBigNose.app แล้วดีดแผ่นออก โฟลเดอร์ข้อมูลยังอยู่จนกว่าจะลบเอง</p>
+          </article>
+          <article class="card">
+            <h3>Linux</h3>
+            <p>ลบโฟลเดอร์ที่แตกจาก tar.gz หรือลบไฟล์ AppImage โฟลเดอร์ข้อมูลและน้ำหนักโมเดลที่ Ollama เก็บไว้ไม่ถูกลบตามไปด้วย</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>เมื่อเปิดไม่ได้</h2>
+        <div class="grid">
+          <article class="card"><h3>SmartScreen หรือ Gatekeeper</h3><p>Windows ใช้ More info แล้ว Run anyway macOS ใช้ Open Anyway ใน System Settings &gt; Privacy &amp; Security Smart App Control อาจบล็อกต่อไป ไม่มีใบรับรองที่ซื้อมาให้ข้ามขั้นตอนนี้</p></article>
+          <article class="card"><h3>สิทธิ์รันบน macOS หรือ Linux</h3><p>หลังคัดลอกจากแผ่นหรือหลังดาวน์โหลด ให้ <code>chmod +x</code> โปรแกรมหรือ AppImage ก่อนเปิด</p></article>
+          <article class="card"><h3>พอร์ตถูกใช้แล้ว</h3><p>โปรแกรมใช้ 3100, 54321, 54323, 54324, 54329 และ 11434 บน 127.0.0.1 ถ้าพอร์ตใดถูกจับอยู่ การสตาร์ทจะไม่ผ่าน</p></article>
+          <article class="card"><h3>แชทไม่มีคำตอบ</h3><p>Ollama ต้องทำงานอยู่และต้องมีการดึง qwen3:4b แล้ว การเปิดโปรแกรมไม่ได้ดึงให้ โฮสต์อื่นที่ไม่ใช่ loopback ถูกปฏิเสธ</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="wrap">
+        <h2>คำถาม</h2>
+        <div class="grid">
+          <details class="card">
+            <summary>มีใน App Store หรือไม่</summary>
+            <div class="answer"><p>ไม่มี หน้านี้ให้ดาวน์โหลดไฟล์ตรงเท่านั้น ไม่ได้ส่งแอปเข้า Apple App Store, Google Play หรือ Microsoft Store</p></div>
+          </details>
+          <details class="card">
+            <summary>ไฟล์ลงชื่อแล้วหรือ</summary>
+            <div class="answer"><p>ไม่มีใบรับรองที่ซื้อจาก Apple หรือ Authenticode macOS ที่เป็น .app ลงชื่อแบบ ad-hoc เท่านั้น ตัวติดตั้งรุ่นที่เผยแพร่จึงยังขึ้นคำเตือนของระบบ</p></div>
+          </details>
+          <details class="card">
+            <summary>ทดสอบคลิกบนเครื่องจริงแล้วหรือ</summary>
+            <div class="answer"><p>ยังไม่ทดสอบ การตรวจใน CI บูตชุดที่อยู่ในตัวติดตั้งแล้วเรียก health, สมัคร, และเข้าสู่ระบบ ไม่ได้คลิก SmartScreen หรือ Open Anyway</p></div>
+          </details>
+          <details class="card">
+            <summary>รุ่นนี้คือรุ่นไหน</summary>
+            <div class="answer"><p>หน้านี้แสดงรุ่น <span data-release="tag">boombignose-v0.3.0</span> ค่าแฮชถูกเขียนจาก SHA256SUMS ของ Release นั้นตอนสร้างหน้า ไม่ได้ฝังเลขรุ่นไว้ในสคริปต์ของเบราว์เซอร์</p></div>
+          </details>
+          <details class="card">
+            <summary>หน้าเว็บวัดผู้ชมหรือไม่</summary>
+            <div class="answer"><p>ไม่มีตัววัดและไม่มีตัวตาม ฟอนต์โหลดจาก Google Fonts เพื่อตัวอักษรไทยกับละติน การโหลดนั้นเป็นการขอไฟล์ฟอนต์เท่านั้น</p></div>
+          </details>
+          <details class="card">
+            <summary>ซอร์สกับบันทึกของรุ่นอยู่ที่ไหน</summary>
+            <div class="answer">
+              <p>
+                <a data-release-href="notes" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.3.0">บันทึกของรุ่นนี้</a>
+                และ
+                <a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai">ซอร์สโค้ด</a>
+              </p>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer>
+    <div class="wrap">
+      <a class="brand" href="index.html">
+        <img src="assets/brandmark.png" width="32" height="32" alt="" />
+        <span>BoomBigNose</span>
+      </a>
+      <span>BoomBigNose ERP Harness AI</span>
+      <div class="links">
+        <a data-release-href="notes" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.3.0">บันทึกรุ่น</a>
+        <a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai">ซอร์สโค้ด</a>
+      </div>
+    </div>
+  </footer>
+  <script id="bbn-release" type="application/json">{
+  "assets": {
+    "appimage": {
+      "arch": "amd64",
+      "name": "BoomBigNose-linux-amd64.AppImage",
+      "os": "linux",
+      "sha256": "cd04095ca8cc6478fea1a16f86cf5cf41592179945b15d5e9040726b2e646a62",
+      "size": 138394104,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.AppImage",
+      "verify": "sha256sum -c SHA256SUMS"
+    },
+    "linux": {
+      "arch": "amd64",
+      "name": "BoomBigNose-linux-amd64.tar.gz",
+      "os": "linux",
+      "sha256": "70c829dc802a067e2344515bcfa4cd880b947473dc70634153cd34c534e1df89",
+      "size": 202666839,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.tar.gz",
+      "verify": "sha256sum -c SHA256SUMS"
+    },
+    "macos": {
+      "arch": "arm64",
+      "name": "BoomBigNose-macos-arm64.dmg",
+      "os": "macos",
+      "sha256": "59ab51d7490cbe357360de9ed1b43236fbfb57324f98bf449e1f8f3a1e85cad3",
+      "size": 505963961,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-macos-arm64.dmg",
+      "verify": "shasum -a 256 -c SHA256SUMS"
+    },
+    "windows": {
+      "arch": "x64",
+      "name": "BoomBigNose-windows-x64-setup.exe",
+      "os": "windows",
+      "sha256": "645250da05694ed762a590d2e7c1f6d2b39ad0a4475ab3786ad239874b60f9ca",
+      "size": 507445373,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-windows-x64-setup.exe",
+      "verify": "Get-FileHash .\\BoomBigNose-windows-x64-setup.exe -Algorithm SHA256"
+    }
+  },
+  "notes_url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.3.0",
+  "sums_url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/SHA256SUMS",
+  "tag": "boombignose-v0.3.0"
+}</script>
+  <script src="assets/install.js"></script>
+</body>
+</html>
