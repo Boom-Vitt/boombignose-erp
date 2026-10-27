@@ -99,6 +99,7 @@ jobs:
         with:
           go-version: "1.22"
       - name: Install WebKit
+        timeout-minutes: 8
         run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
       - name: Build Linux window, tarball, and AppImage
         working-directory: boombignose
