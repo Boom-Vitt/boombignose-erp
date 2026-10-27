@@ -3,6 +3,27 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz"
 /** App timezone. The studio operates in Thailand; "today"/"this month" use this. */
 export const APP_TZ = "Asia/Bangkok"
 
+/**
+ * Day/month/Buddhist-era year for a Gregorian `YYYY-MM-DD` date, for example
+ * `2026-10-28` → `28/10/2569`. Invalid calendar dates return null.
+ */
+export function buddhistEraLabel(isoDate: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const utc = new Date(Date.UTC(year, month - 1, day))
+  if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) return null
+  return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year + 543}`
+}
+
+/** Keep the ISO date and append its Buddhist-era label when the date is real. */
+export function withBuddhistEra(isoDate: string): string {
+  const label = buddhistEraLabel(isoDate)
+  return label ? `${isoDate} (${label})` : isoDate
+}
+
 /** 'YYYY-MM-DD' for an instant in the app timezone. */
 export function todayISO(now: Date = new Date(), tz: string = APP_TZ): string {
   return formatInTimeZone(now, tz, "yyyy-MM-dd")
