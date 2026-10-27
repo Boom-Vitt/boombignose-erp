@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ครั้งแรกที่เปิด BoomBigNose</title>
+  <meta name="description" content="โฟลเดอร์ข้อมูลของ BoomBigNose, การเปิดต่อจาก v0.3, บันทึก Postgres และสิ่งที่ถอนการติดตั้งไม่ลบ" />
+  <link rel="icon" href="assets/brandmark.png" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <meta property="og:title" content="ครั้งแรกที่เปิด BoomBigNose" />
+  <meta property="og:description" content="ข้อมูลอยู่บนเครื่องคุณ ถอนการติดตั้งไม่ลบโฟลเดอร์นั้น" />
+  <meta property="og:image" content="https://boom-vitt.github.io/boombignose-erp-harness-ai/assets/brandmark.png" />
+  <meta property="og:type" content="website" />
+  <style>
+    :root {
+      --paper: #0b0d12;
+      --surface: #12151c;
+      --line: #232733;
+      --text: #e8eaf0;
+      --muted: #9aa1b2;
+      --accent: #ff7a45;
+      --on-accent: #0b0d12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--text);
+      font-family: "IBM Plex Sans Thai", Inter, "Noto Sans Thai", Anuphan, Sarabun, system-ui, sans-serif;
+      line-height: 1.65;
+    }
+    a { color: var(--accent); }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .skip {
+      position: absolute; left: 16px; top: -48px; background: var(--accent); color: var(--on-accent);
+      padding: 8px 12px; border-radius: 8px; font-weight: 700; z-index: 20;
+    }
+    .skip:focus { top: 12px; }
+    .wrap { max-width: 800px; margin: 0 auto; padding: 0 20px; }
+    header.nav {
+      position: sticky; top: 0; z-index: 10;
+      background: rgb(11 13 18 / .92);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 72px; gap: 16px; flex-wrap: wrap; }
+    .nav-links { display: flex; gap: 16px; flex-wrap: wrap; }
+    .nav-links a { color: var(--text); text-decoration: none; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+    .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 700; }
+    .brand img { width: 36px; height: 36px; }
+    h1 { font-size: clamp(32px, 5vw, 48px); line-height: 1.2; margin: 28px 0 12px; }
+    h2 { font-size: 24px; margin: 0 0 8px; }
+    .lead, .sub { color: var(--muted); }
+    section { padding: 28px 0; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    code {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.92em;
+      overflow-wrap: anywhere;
+    }
+    p, li { overflow-wrap: break-word; }
+    ol { margin: 0; padding-left: 1.2em; }
+    li + li { margin-top: 8px; }
+    footer { border-top: 1px solid var(--line); padding: 28px 0 48px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#content">ข้ามไปเนื้อหา</a>
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="index.html">
+        <img src="assets/brandmark.png" width="36" height="36" alt="" />
+        <span>BoomBigNose</span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html">หน้าแรก</a>
+        <a href="install.html">วิธีติดตั้ง</a>
+      </div>
+    </div>
+  </header>
+  <main id="content">
+    <div class="wrap">
+      <h1>ครั้งแรกที่เปิด</h1>
+      <p class="lead">BoomBigNose เก็บข้อมูลบนเครื่องคุณ ไม่ได้ส่งบัญชีหรือฐานข้อมูลขึ้นคลาวด์ หน้านี้เป็นคำอธิบายของตัวติดตั้งที่เผยแพร่แล้ว ยังไม่ได้คลิกทดสอบบนเครื่องจริง</p>
+    </div>
+
+    <section>
+      <div class="wrap card">
+        <h2>โฟลเดอร์ข้อมูล</h2>
+        <ol>
+          <li>ถ้าไม่ได้ตั้ง <code>BOOMBIGNOSE_DATA</code> ข้อมูลอยู่ที่ <code>~/.local/share/boombignose/pg</code></li>
+          <li>บน Windows โฟลเดอร์นั้นคือ <code>%USERPROFILE%\.local\share\boombignose\pg</code></li>
+          <li>เส้นทางที่มีช่องว่างใช้ไม่ได้ โปรแกรมจะไม่สร้างคลัสเตอร์ในโฟลเดอร์แบบนั้น</li>
+          <li>เปิดครั้งแรกจะสร้างคลัสเตอร์เมื่อยังไม่มีไฟล์ <code>PG_VERSION</code></li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>อัปเกรดจาก v0.3</h2>
+        <p>ตัวติดตั้ง <code>boombignose-v0.3.0</code>, <code>boombignose-v0.3.1</code> และ <code>boombignose-v1.0.0</code> ใช้โฟลเดอร์เดียวกัน ถ้ามี <code>PG_VERSION</code> อยู่แล้ว โปรแกรมจะไม่รัน <code>initdb</code> ซ้ำ บัญชีและข้อมูลที่สร้างไว้จึงยังอยู่ในโฟลเดอร์นั้น</p>
+        <p>ถอนการติดตั้งแล้วติดตั้งรุ่นถัดไปในโฟลเดอร์โปรแกรมใหม่ ก็ยังอ่านโฟลเดอร์ข้อมูลเดิม อย่าลบโฟลเดอร์นั้นถ้าต้องการเก็บข้อมูล</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>บันทึกของ Postgres</h2>
+        <p>เมื่อโปรแกรมเป็นฝ่ายสตาร์ท Postgres บันทึกถูกเขียนที่ <code>server.log</code> ในโฟลเดอร์ข้อมูล เช่น <code>~/.local/share/boombignose/pg/server.log</code></p>
+        <p>ถ้า <code>127.0.0.1:54329</code> มีโปรแกรมฟังอยู่แล้ว ตัวติดตั้งรุ่น <code>boombignose-v1.0.0</code> จะไม่สตาร์ท Postgres ซ้ำ และจะใช้ตัวที่ฟังอยู่ บันทึกของตัวนั้นอาจไม่ใช่ <code>server.log</code> ของโฟลเดอร์นี้</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>พอร์ตบนเครื่องนี้</h2>
+        <p>ERP อยู่ที่ <code>127.0.0.1:3100</code> Postgres อยู่ที่ <code>127.0.0.1:54329</code> พร็อกซี Auth อยู่ที่ <code>127.0.0.1:54321</code> Ollama ถ้าเปิดใช้ จะอยู่ที่ <code>127.0.0.1:11434</code> ไม่มีพอร์ตเหล่านี้เปิดออกอินเทอร์เน็ตจากตัวโปรแกรม</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>ถอนการติดตั้ง</h2>
+        <p>บน Windows รัน <code>%LOCALAPPDATA%\BoomBigNose\uninstall.exe</code> สคริปต์ลบโปรแกรมและโฟลเดอร์ bundle ไม่ได้ลบโฟลเดอร์ข้อมูล</p>
+        <p>บน macOS ให้ลบโฟลเดอร์ที่คัดลอกจากแผ่น หรือลบ BoomBigNose.app บน Linux ให้ลบโฟลเดอร์ที่แตกจาก tar.gz หรือลบไฟล์ AppImage โฟลเดอร์ข้อมูลและไฟล์โมเดลที่ Ollama เก็บไว้ยังอยู่</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap card">
+        <h2>หน้า AI</h2>
+        <p>การเปิดโปรแกรมไม่ได้ดึงโมเดล ถ้าต้องการให้หน้า AI ตอบ ให้กดปุ่มดาวน์โหลด <code>qwen3:4b</code> บนสแปลช หรือรัน <code>boombignose pull-model</code> คำขอแชทไปที่ <code>127.0.0.1:11434</code> เท่านั้น โฮสต์คลาวด์ถูกปฏิเสธก่อนส่งคำขอ</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <p class="sub">ขั้นตอนดาวน์โหลด ตรวจ SHA-256 และเปิดแอปที่ไม่ได้ลงชื่อด้วยใบรับรองร้านค้า อยู่ที่ <a href="install.html">หน้าติดตั้ง</a></p>
+      </div>
+    </section>
+  </main>
+  <footer>
+    <div class="wrap">BoomBigNose ERP Harness AI</div>
+  </footer>
+</body>
+</html>
