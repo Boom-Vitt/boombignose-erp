@@ -21,11 +21,19 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+// appIcon is the BoomBigNose brandmark from boombignose.org.
+// Windows uses rsrc_windows_amd64.syso. macOS uses packaging/macos/icon.icns
+// inside the app bundle. This PNG is the Linux window icon.
+//
+//go:embed icon.png
+var appIcon []byte
 
 func main() {
 	if err := run(); err != nil {
@@ -70,6 +78,11 @@ func run() error {
 		},
 		OnShutdown: func(context.Context) {
 			bundle.StopRunning()
+		},
+		Linux: &linux.Options{
+			Icon:             appIcon,
+			ProgramName:      "BoomBigNose",
+			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
 		},
 	})
 }
