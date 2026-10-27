@@ -1,5 +1,5 @@
 <!-- BBN:HEADER:START -->
-<img src="site/assets/logo.svg" width="280" alt="BoomBigNose" />
+<img src="site/assets/brandmark.png" width="180" alt="BoomBigNose" />
 <!-- BBN:HEADER:END -->
 
 <div align="center">

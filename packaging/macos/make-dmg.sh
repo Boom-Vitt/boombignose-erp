@@ -23,6 +23,37 @@ trap 'rm -rf "$stage"' EXIT
 cp "$bin" "$stage/BoomBigNose"
 chmod 755 "$stage/BoomBigNose"
 codesign --force --sign - "$stage/BoomBigNose"
+icon=$root/packaging/macos/icon.icns
+test -s "$icon"
+app="$stage/BoomBigNose.app/Contents"
+mkdir -p "$app/MacOS" "$app/Resources"
+cp "$stage/BoomBigNose" "$app/MacOS/BoomBigNose"
+cp "$icon" "$app/Resources/icon.icns"
+cp "$icon" "$stage/icon.icns"
+cp "$icon" "$stage/.VolumeIcon.icns"
+cat > "$app/Info.plist" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>BoomBigNose</string>
+  <key>CFBundleDisplayName</key><string>BoomBigNose</string>
+  <key>CFBundleExecutable</key><string>BoomBigNose</string>
+  <key>CFBundleIdentifier</key><string>ai.boombignose.harness</string>
+  <key>CFBundleIconFile</key><string>icon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.3.1</string>
+  <key>CFBundleVersion</key><string>0.3.1</string>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+EOF
+codesign --force --sign - "$app/MacOS/BoomBigNose"
+codesign --force --sign - "$stage/BoomBigNose.app"
+if command -v SetFile >/dev/null 2>&1; then
+  SetFile -a C "$stage" || true
+fi
 cp -a "$bundle" "$stage/bundle"
 chmod 755 \
   "$stage/bundle/node" \
@@ -63,6 +94,9 @@ cleanup_mount() {
 trap cleanup_mount EXIT
 for rel in \
   BoomBigNose \
+  icon.icns \
+  BoomBigNose.app/Contents/MacOS/BoomBigNose \
+  BoomBigNose.app/Contents/Resources/icon.icns \
   bundle/node \
   bundle/erp/server.js \
   bundle/postgres/bin/postgres \
@@ -88,6 +122,7 @@ fi
 cp -a "$mount/." "$copy/"
 chmod 755 \
   "$copy/BoomBigNose" \
+  "$copy/BoomBigNose.app/Contents/MacOS/BoomBigNose" \
   "$copy/bundle/node" \
   "$copy/bundle/postgres/bin/initdb" \
   "$copy/bundle/postgres/bin/pg_ctl" \
