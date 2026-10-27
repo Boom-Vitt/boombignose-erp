@@ -63,7 +63,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           New-Item -ItemType Directory -Force -Path ..\dist | Out-Null
-          go build -tags "desktop production" -o ..\dist\boombignose-desktop.exe ./cmd/boombignose-desktop
+          go build -tags "desktop production" -ldflags "-H windowsgui" -o ..\dist\boombignose-desktop.exe ./cmd/boombignose-desktop
           if (-not (Test-Path ..\dist\boombignose-desktop.exe)) { throw "window binary missing" }
       - uses: actions/upload-artifact@v4
         with:
