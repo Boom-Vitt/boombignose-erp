@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>BoomBigNose ERP Harness AI</title>
-  <meta name="description" content="BoomBigNose ERP Harness AI เป็นหน้าต่างบนเครื่องคุณ ไม่เรียก AI บนคลาวด์ ไฟล์ boombignose-v0.3.0 รวม Node, เซิร์ฟเวอร์, Postgres, Auth, PostgREST และ Ollama ไว้ในตัวติดตั้ง ไม่รวมน้ำหนักโมเดล และยังไม่ถูกคลิกทดสอบบนเครื่องจริง" />
+  <meta name="description" content="BoomBigNose ERP Harness AI เป็นหน้าต่างบนเครื่องคุณ ไม่เรียก AI บนคลาวด์ ไฟล์รุ่นที่เผยแพร่รวม Node, เซิร์ฟเวอร์, Postgres, Auth, PostgREST และ Ollama ไว้ในตัวติดตั้ง ไม่รวมน้ำหนักโมเดล และยังไม่ถูกคลิกทดสอบบนเครื่องจริง" />
   <link rel="icon" href="assets/brandmark.png" type="image/png" />
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -46,7 +46,15 @@
       background: rgb(11 13 18 / .92);
       border-bottom: 1px solid var(--line);
     }
-    .nav .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 72px; gap: 16px; }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 72px; gap: 16px; flex-wrap: wrap; }
+    .nav-links { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .nav-links a:not(.btn) { color: var(--text); text-decoration: none; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+    .chip {
+      display: inline-block; margin-left: 8px; border: 1px solid var(--accent); color: var(--accent);
+      border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 700; vertical-align: middle;
+    }
+    .chip[hidden] { display: none !important; }
+    .card.is-this { border-color: var(--accent); }
     .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 700; }
     .brand img, .lockup img { width: 36px; height: 36px; }
     .btn {
@@ -117,7 +125,10 @@
         <img src="assets/brandmark.png" width="36" height="36" alt="" />
         <span>BoomBigNose</span>
       </a>
-      <a class="btn" href="#download">ดาวน์โหลด</a>
+      <div class="nav-links">
+        <a href="install.html">วิธีติดตั้ง</a>
+        <a class="btn" href="#download">ดาวน์โหลด</a>
+      </div>
     </div>
   </header>
   <main id="content">
@@ -129,7 +140,7 @@
       <h1>BoomBigNose ERP Harness AI</h1>
       <p class="lead">เดสก์ท็อปบนเครื่องคุณ ไม่เรียก AI บนคลาวด์</p>
       <p class="en">Fully local. No cloud AI at runtime.</p>
-      <a class="btn" id="primary-download" href="#download">ดาวน์โหลด boombignose-v0.3.0</a>
+      <a class="btn" id="primary-download" href="#download">ดาวน์โหลด <span data-release="tag">boombignose-v0.3.0</span></a>
       <p class="meta" id="primary-meta">หน้าต่างแอป ไม่ใช่แค่คำสั่ง harness ถ้าเบราว์เซอร์ไม่บอกระบบ ให้เลือกการ์ดด้านล่าง ขนาดเป็นจำนวนไบต์จริงจาก Release</p>
       <div class="window" role="img" aria-label="ภาพจำลองกรอบหน้าต่าง ไม่ใช่ภาพจับจากโปรแกรม">
         <div class="chrome"><i></i><i></i><i></i><span>BoomBigNose ERP Harness AI</span></div>
@@ -170,7 +181,7 @@
       <div class="wrap">
         <h2>สามขั้น</h2>
         <div class="steps">
-          <article class="card"><h3>1. เลือกไฟล์ของระบบ</h3><p>เวอร์ชัน boombignose-v0.3.0 มีตัวติดตั้งสำหรับ macOS arm64, Windows x64 และ Linux amd64 พร้อม Node, server.js, Postgres, Auth, PostgREST และ Ollama ในไฟล์เดียวกัน ไม่รวมน้ำหนักโมเดล qwen3:4b</p></article>
+          <article class="card"><h3>1. เลือกไฟล์ของระบบ</h3><p>เวอร์ชัน <span data-release="tag">boombignose-v0.3.0</span> มีตัวติดตั้งสำหรับ macOS arm64, Windows x64 และ Linux amd64 พร้อม Node, server.js, Postgres, Auth, PostgREST และ Ollama ในไฟล์เดียวกัน ไม่รวมน้ำหนักโมเดล qwen3:4b ขั้นตอนเปิดไฟล์อยู่ที่ <a href="install.html">วิธีติดตั้ง</a></p></article>
           <article class="card"><h3>2. ยอมรับคำเตือนของระบบ</h3><p>ไม่มีใบรับรองที่ซื้อจากร้านค้า macOS ใช้ Open Anyway Windows ใช้ More info แล้ว Run anyway Smart App Control อาจยังบล็อก</p></article>
           <article class="card"><h3>3. เปิดหน้าต่าง</h3><p>โปรแกรมที่ติดตั้งชื่อ BoomBigNose และเปิดเป็นหน้าต่าง ชุดนี้สตาร์ท ERP ในเครื่องที่ 127.0.0.1:3100 ไม่รวม Docker และไม่ดาวน์โหลดโมเดลเอง การดึง qwen3:4b เกิดเมื่อผู้ใช้กดปุ่มหรือรัน boombignose pull-model เท่านั้น ยังไม่ถูกคลิกทดสอบบนเครื่องจริง</p></article>
         </div>
@@ -180,27 +191,28 @@
     <section id="download">
       <div class="wrap">
         <h2>ไฟล์แต่ละระบบ</h2>
-        <p class="sub">สร้างจาก CI ของแท็ก boombignose-v0.3.0 ด้วย Go 1.27.3 ขนาดเป็นไบต์ตาม Release ค่าแฮชทั้งไฟล์อยู่ในการ์ดและตรวจกับ sha256sum -c แล้ว ชุดนี้รวมหน้าต่างกับ Node, server.js, Postgres, Auth, PostgREST และ Ollama v0.40.11 ไม่รวมน้ำหนักโมเดล และไม่ได้ลงชื่อด้วยใบรับรองที่ซื้อมา Linux กับ Windows ไม่รวมตัวรัน CUDA</p>
+        <p class="sub">สร้างจาก CI ของแท็ก <span data-release="tag">boombignose-v0.3.0</span> ขนาดเป็นไบต์ตาม Release ค่าแฮชทั้งไฟล์มาจาก SHA256SUMS ของแท็กนั้น ชุดนี้รวมหน้าต่างกับ Node, server.js, Postgres, Auth, PostgREST และ Ollama v0.40.11 ไม่รวมน้ำหนักโมเดล และไม่ได้ลงชื่อด้วยใบรับรองที่ซื้อมา Linux กับ Windows ไม่รวมตัวรัน CUDA วิธีเปิดไฟล์อยู่ที่ <a href="install.html">หน้าติดตั้ง</a></p>
         <div class="os-grid">
-          <a class="card os" id="card-mac" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-macos-arm64.dmg">
-            <strong>macOS</strong>
-            <span>arm64 · boombignose-v0.3.0 · 505,963,961 ไบต์</span>
-            <span class="mono">59ab51d7490cbe357360de9ed1b43236fbfb57324f98bf449e1f8f3a1e85cad3</span>
-            <span class="mono">BoomBigNose-macos-arm64.dmg</span>
+          <a class="card os" id="card-mac" data-os="macos" data-release-href="macos" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-macos-arm64.dmg">
+            <strong>macOS <span class="chip" data-chip hidden>เครื่องนี้</span></strong>
+            <span data-release="line-macos">arm64 · boombignose-v0.3.0 · 505,963,961 ไบต์</span>
+            <span class="mono" data-release="sha-macos">59ab51d7490cbe357360de9ed1b43236fbfb57324f98bf449e1f8f3a1e85cad3</span>
+            <span class="mono" data-release="name-macos">BoomBigNose-macos-arm64.dmg</span>
           </a>
-          <a class="card os" id="card-win" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-windows-x64-setup.exe">
-            <strong>Windows</strong>
-            <span>x64 · boombignose-v0.3.0 · 507,445,373 ไบต์</span>
-            <span class="mono">645250da05694ed762a590d2e7c1f6d2b39ad0a4475ab3786ad239874b60f9ca</span>
-            <span class="mono">BoomBigNose-windows-x64-setup.exe</span>
+          <a class="card os" id="card-win" data-os="windows" data-release-href="windows" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-windows-x64-setup.exe">
+            <strong>Windows <span class="chip" data-chip hidden>เครื่องนี้</span></strong>
+            <span data-release="line-windows">x64 · boombignose-v0.3.0 · 507,445,373 ไบต์</span>
+            <span class="mono" data-release="sha-windows">645250da05694ed762a590d2e7c1f6d2b39ad0a4475ab3786ad239874b60f9ca</span>
+            <span class="mono" data-release="name-windows">BoomBigNose-windows-x64-setup.exe</span>
           </a>
-          <article class="card os" id="card-linux">
-            <a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.tar.gz"><strong>Linux</strong></a>
-            <span>amd64 · boombignose-v0.3.0 · 202,666,839 ไบต์</span>
-            <span class="mono">70c829dc802a067e2344515bcfa4cd880b947473dc70634153cd34c534e1df89</span>
-            <span class="mono">BoomBigNose-linux-amd64.tar.gz</span>
-            <a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.AppImage">AppImage · 138,394,104 ไบต์</a>
-            <span class="mono">cd04095ca8cc6478fea1a16f86cf5cf41592179945b15d5e9040726b2e646a62</span>
+          <article class="card os" id="card-linux" data-os="linux">
+            <a data-release-href="linux" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.tar.gz"><strong>Linux <span class="chip" data-chip hidden>เครื่องนี้</span></strong></a>
+            <span data-release="line-linux">amd64 · boombignose-v0.3.0 · 202,666,839 ไบต์</span>
+            <span class="mono" data-release="sha-linux">70c829dc802a067e2344515bcfa4cd880b947473dc70634153cd34c534e1df89</span>
+            <span class="mono" data-release="name-linux">BoomBigNose-linux-amd64.tar.gz</span>
+            <a data-release-href="appimage" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.AppImage">AppImage · <span data-release="size-appimage">138,394,104 ไบต์</span></a>
+            <span class="mono" data-release="sha-appimage">cd04095ca8cc6478fea1a16f86cf5cf41592179945b15d5e9040726b2e646a62</span>
+            <span class="mono" data-release="name-appimage">BoomBigNose-linux-amd64.AppImage</span>
           </article>
         </div>
       </div>
@@ -253,9 +265,9 @@
       <div class="wrap">
         <h2>คำถามและความต้องการของเครื่อง</h2>
         <div class="os-grid">
-          <article class="card"><h3>ต้องมีอะไรบนเครื่อง</h3><p>Windows x64, macOS arm64 หรือ Linux amd64 พร้อม WebKitGTK 4.1 บนลินุกซ์ ไฟล์ v0.3.0 รวม Node, server.js, Postgres, Auth, PostgREST และ Ollama ไว้ในตัว ไม่รวมน้ำหนักโมเดล qwen3:4b</p></article>
-          <article class="card"><h3>หน้านี้คือโปรแกรมหรือ</h3><p>ไม่ใช่ GitHub Pages แสดงหน้านี้ หน้าต่างเปิด ERP ที่ 127.0.0.1:3100 ชุดนี้คอมไพล์ใน CI และยังไม่ถูกคลิกทดสอบบนเครื่องจริง</p></article>
-          <article class="card"><h3>ค่าแฮชทั้งชุด</h3><p><a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/SHA256SUMS">SHA256SUMS</a> บนแท็ก boombignose-v0.3.0</p></article>
+          <article class="card"><h3>ต้องมีอะไรบนเครื่อง</h3><p>Windows x64, macOS arm64 หรือ Linux amd64 พร้อม WebKitGTK 4.1 บนลินุกซ์ ไฟล์ <span data-release="tag">boombignose-v0.3.0</span> รวม Node, server.js, Postgres, Auth, PostgREST และ Ollama ไว้ในตัว ไม่รวมน้ำหนักโมเดล qwen3:4b</p></article>
+          <article class="card"><h3>หน้านี้คือโปรแกรมหรือ</h3><p>ไม่ใช่ GitHub Pages แสดงหน้านี้ หน้าต่างเปิด ERP ที่ 127.0.0.1:3100 ชุดนี้คอมไพล์ใน CI และยังไม่ถูกคลิกทดสอบบนเครื่องจริง วิธีติดตั้งแบบละเอียดอยู่ที่ <a href="install.html">หน้าติดตั้ง</a></p></article>
+          <article class="card"><h3>ค่าแฮชทั้งชุด</h3><p><a data-release-href="sums" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/SHA256SUMS">SHA256SUMS</a> บนแท็ก <span data-release="tag">boombignose-v0.3.0</span> <a data-release-href="notes" href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.3.0">บันทึกของรุ่น</a></p></article>
         </div>
       </div>
     </section>
@@ -267,40 +279,53 @@
         <span>BoomBigNose</span>
       </a>
       <span>BoomBigNose ERP Harness AI</span>
+      <a href="install.html">วิธีติดตั้ง</a>
       <a href="https://github.com/Boom-Vitt/boombignose-erp-harness-ai">ซอร์สโค้ด</a>
     </div>
   </footer>
-  <script>
-    (function () {
-      var builds = {
-        mac: {
-          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-macos-arm64.dmg",
-          label: "ดาวน์โหลด macOS arm64",
-          meta: "boombignose-v0.3.0 · 505,963,961 ไบต์"
-        },
-        win: {
-          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-windows-x64-setup.exe",
-          label: "ดาวน์โหลด Windows x64",
-          meta: "boombignose-v0.3.0 · 507,445,373 ไบต์"
-        },
-        linux: {
-          href: "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.tar.gz",
-          label: "ดาวน์โหลด Linux amd64",
-          meta: "boombignose-v0.3.0 · 202,666,839 ไบต์"
-        }
-      };
-      var ua = navigator.userAgent || "";
-      var key = /Mac/i.test(ua) ? "mac" : /Win/i.test(ua) ? "win" : /Linux/i.test(ua) ? "linux" : "";
-      if (!key) return;
-      var build = builds[key];
-      var button = document.getElementById("primary-download");
-      var meta = document.getElementById("primary-meta");
-      if (button) {
-        button.href = build.href;
-        button.textContent = build.label;
-      }
-      if (meta) meta.textContent = build.meta;
-    })();
-  </script>
+  <script id="bbn-release" type="application/json">{
+  "assets": {
+    "appimage": {
+      "arch": "amd64",
+      "name": "BoomBigNose-linux-amd64.AppImage",
+      "os": "linux",
+      "sha256": "cd04095ca8cc6478fea1a16f86cf5cf41592179945b15d5e9040726b2e646a62",
+      "size": 138394104,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.AppImage",
+      "verify": "sha256sum -c SHA256SUMS"
+    },
+    "linux": {
+      "arch": "amd64",
+      "name": "BoomBigNose-linux-amd64.tar.gz",
+      "os": "linux",
+      "sha256": "70c829dc802a067e2344515bcfa4cd880b947473dc70634153cd34c534e1df89",
+      "size": 202666839,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-linux-amd64.tar.gz",
+      "verify": "sha256sum -c SHA256SUMS"
+    },
+    "macos": {
+      "arch": "arm64",
+      "name": "BoomBigNose-macos-arm64.dmg",
+      "os": "macos",
+      "sha256": "59ab51d7490cbe357360de9ed1b43236fbfb57324f98bf449e1f8f3a1e85cad3",
+      "size": 505963961,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-macos-arm64.dmg",
+      "verify": "shasum -a 256 -c SHA256SUMS"
+    },
+    "windows": {
+      "arch": "x64",
+      "name": "BoomBigNose-windows-x64-setup.exe",
+      "os": "windows",
+      "sha256": "645250da05694ed762a590d2e7c1f6d2b39ad0a4475ab3786ad239874b60f9ca",
+      "size": 507445373,
+      "url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/BoomBigNose-windows-x64-setup.exe",
+      "verify": "Get-FileHash .\\BoomBigNose-windows-x64-setup.exe -Algorithm SHA256"
+    }
+  },
+  "notes_url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/tag/boombignose-v0.3.0",
+  "sums_url": "https://github.com/Boom-Vitt/boombignose-erp-harness-ai/releases/download/boombignose-v0.3.0/SHA256SUMS",
+  "tag": "boombignose-v0.3.0"
+}</script>
+  <script src="assets/install.js"></script>
 </body>
 </html>
