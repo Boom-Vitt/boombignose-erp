@@ -21,7 +21,9 @@ end $$;
 grant usage on schema public to anon, authenticated, service_role;
 grant usage on schema auth to authenticated, service_role;
 
-create table if not exists public.schema_migrations (
+-- Auth's migration runner owns public.schema_migrations (a version column).
+-- ERP filenames are recorded here so the two books do not collide.
+create table if not exists public.erp_schema_migrations (
   filename text primary key,
   applied_at timestamptz not null default now()
 );

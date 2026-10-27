@@ -11,6 +11,26 @@ import (
 	"testing"
 )
 
+func TestAuthDBURLSetsTheAuthSearchPath(t *testing.T) {
+	t.Setenv("BOOMBIGNOSE_PG_PORT", "54329")
+	got := authDBURL()
+	if !strings.Contains(got, "options=-csearch_path%3Dauth%2Cpublic") {
+		t.Fatal(got)
+	}
+	if strings.Contains(localDBURL(), "search_path") {
+		t.Fatal(localDBURL())
+	}
+}
+
+func TestAuthMigrationsUseTheirOwnBook(t *testing.T) {
+	if migrationTable("prelude-after-auth.sql") != "public.erp_schema_migrations" {
+		t.Fatal(migrationTable("prelude-after-auth.sql"))
+	}
+	if migrationTable("prelude.sql") != "public.schema_migrations" {
+		t.Fatal(migrationTable("prelude.sql"))
+	}
+}
+
 func TestAuthBootstrapCreatesThePostgresRole(t *testing.T) {
 	sql := strings.Join(authBootstrapSQL(), "\n")
 	if !strings.Contains(sql, "create extension if not exists pgcrypto") {

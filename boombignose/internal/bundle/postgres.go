@@ -193,11 +193,22 @@ func applyMigrations(ctx context.Context, layout Layout, addr string, query sqlQ
 	return applyMigrationsFrom(ctx, layout, addr, query, "prelude.sql")
 }
 
+// migrationTable is the bookkeeping table for ERP files. Auth's runner already
+// owns public.schema_migrations, so the bundled Auth path records filenames
+// separately.
+func migrationTable(preludeName string) string {
+	if preludeName == "prelude-after-auth.sql" {
+		return "public.erp_schema_migrations"
+	}
+	return "public.schema_migrations"
+}
+
 func applyMigrationsFrom(ctx context.Context, layout Layout, addr string, query sqlQuery, preludeName string) error {
 	if query == nil {
 		query = queryPostgres
 	}
-	rows, err := query(ctx, addr, "boombignose", "boombignose", "select filename from public.schema_migrations")
+	table := migrationTable(preludeName)
+	rows, err := query(ctx, addr, "boombignose", "boombignose", "select filename from "+table)
 	applied := map[string]bool{}
 	if err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "schema_migrations") {
@@ -246,7 +257,7 @@ func applyMigrationsFrom(ctx context.Context, layout Layout, addr string, query 
 		if err != nil {
 			return err
 		}
-		insert := "insert into public.schema_migrations (filename) values (" + quoted + ")"
+		insert := "insert into " + table + " (filename) values (" + quoted + ")"
 		if _, err := query(ctx, addr, "boombignose", "boombignose", insert); err != nil {
 			return err
 		}

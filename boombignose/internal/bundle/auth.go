@@ -140,8 +140,8 @@ func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string)
 		Dir:  filepath.Dir(layout.Auth),
 		Env: []string{
 			"GOTRUE_DB_DRIVER=postgres",
-			"GOTRUE_DB_DATABASE_URL=" + localDBURL(),
-			"DATABASE_URL=" + localDBURL(),
+			"GOTRUE_DB_DATABASE_URL=" + authDBURL(),
+			"DATABASE_URL=" + authDBURL(),
 			"GOTRUE_DB_MIGRATIONS_PATH=" + migrations,
 			"GOTRUE_JWT_SECRET=" + secret,
 			"GOTRUE_JWT_EXP=3600",
@@ -162,35 +162,39 @@ func startAuthServer(ctx context.Context, layout Layout, dataDir, secret string)
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
+	var reason string
 	err := launch.WaitUntil(waitCtx, 500*time.Millisecond, func() bool {
-		return authReady(waitCtx)
+		ok, why := authReady(waitCtx)
+		reason = why
+		return ok
 	}, nil)
 	if err != nil {
-		return fmt.Errorf("auth did not become ready: %s", tailRedacted(logPath, secret))
+		return fmt.Errorf("auth did not become ready: %s\n%s", reason, tailRedacted(logPath, secret))
 	}
 	return nil
 }
 
-func authReady(ctx context.Context) bool {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+localAuthPort+"/health", nil)
+func authReady(ctx context.Context) (bool, string) {
+	probe, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probe, http.MethodGet, "http://127.0.0.1:"+localAuthPort+"/health", nil)
 	if err != nil {
-		return false
+		return false, err.Error()
 	}
-	client := http.Client{Timeout: 500 * time.Millisecond}
+	client := http.Client{
+		Timeout:   2 * time.Second,
+		Transport: &http.Transport{Proxy: nil},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false
+		return false, "health: " + err.Error()
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return false
+		return false, fmt.Sprintf("health status %d", resp.StatusCode)
 	}
-	rows, err := queryPostgres(ctx, pgAddr(), "boombignose", "boombignose", "select count(*)::text from auth.schema_migrations")
-	if err != nil || len(rows) == 0 || rows[0][0] == "" || rows[0][0] == "0" {
-		return false
-	}
-	return true
+	return true, ""
 }
 
 func startPostgREST(ctx context.Context, layout Layout, dataDir, secret string) error {
@@ -225,6 +229,13 @@ func startPostgREST(ctx context.Context, layout Layout, dataDir, secret string) 
 
 func localDBURL() string {
 	return "postgres://boombignose@" + pgAddr() + "/boombignose?sslmode=disable"
+}
+
+// authDBURL puts the auth schema first. GoTrue queries unqualified table
+// names such as identities. The cluster default stays public so ERP
+// migrations create their tables there.
+func authDBURL() string {
+	return localDBURL() + "&options=-csearch_path%3Dauth%2Cpublic"
 }
 
 func copiedProcessEnv() []string {
