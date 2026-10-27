@@ -41,9 +41,8 @@
 - `serve` starts `next start` with a strict allowlist environment:
   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` read at runtime from `supabase status -o env` (never persisted to disk or printed; non-local hosts outside `127.0.0.1`/`localhost`/`::1` are refused),
   - `NEXT_PUBLIC_APP_URL=http://127.0.0.1:<port>`,
-  - `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` when set in the parent environment,
   - `PATH`, `HOME`, `TMPDIR`, `LANG`, and `NODE_ENV=production`.
-- Because the allowlist drops `CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, and `N8N_*`:
+- The allowlist drops `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, and `N8N_*`, so a parent process that has a cloud model key does not hand it to `next start`:
   - Cron routes (subscription renewals, follow-ups, outbox processing) do not run.
   - Quote and invoice email delivery via Resend is disabled.
   - Client portal links use `NEXT_PUBLIC_APP_URL` and therefore point at `http://127.0.0.1:<port>`.
