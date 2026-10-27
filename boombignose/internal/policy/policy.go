@@ -1,4 +1,4 @@
-// Package policy is the local-only gate for Bumik Node ERP harness AI.
+// Package policy is the local-only gate for BoomBigNose.
 // A runtime endpoint is allowed only when it is unset or on the loopback
 // interface. Cloud model hosts and hosted Supabase are refused.
 package policy
@@ -58,7 +58,7 @@ func CheckEnv(getenv func(string) string) error {
 	for _, name := range []string{
 		"NEXT_PUBLIC_SUPABASE_URL",
 		"N8N_OUTBOUND_URL",
-		"BUMIK_ERP_URL",
+		"BOOMBIGNOSE_ERP_URL",
 	} {
 		if err := AllowEndpoint(getenv(name)); err != nil {
 			return fmt.Errorf("%s: %w", name, ErrNotLocal)
