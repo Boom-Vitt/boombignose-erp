@@ -36,4 +36,4 @@ Status: in progress.
 - Buy and install an Apple Developer certificate and a Windows Authenticode certificate if the unsigned-app prompts must go away. This work does not buy them.
 - Click the unsigned installers on a real Windows, macOS, and Linux machine. This environment has no display session for that.
 - Pull a local model (`boombignose pull-model`, which runs `ollama pull qwen3:4b`) on the machine that runs the ERP if the AI screens should answer. CI does not do that pull.
-- Aikido MCP is not signed in, so the security scan of this slice has not run.
+- Aikido MCP is not signed in, so the security scan of this slice has not run. On 2026-10-28, `pnpm audit` in the repository root reported no known vulnerabilities. `govulncheck` built with Go 1.27.3, using the vulnerability database updated 2026-10-21, reported no vulnerabilities in `boombignose/`. That check is not an Aikido scan.
