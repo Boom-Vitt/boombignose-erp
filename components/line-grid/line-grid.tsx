@@ -327,7 +327,7 @@ export function LineGrid({ document, documentId, rows: serverRows, editable, loc
 
   if (!editable) {
     return (
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         {table}
         {totalsBlock}
         {lockedMessage ? <p className="text-muted-foreground text-sm">{lockedMessage}</p> : null}

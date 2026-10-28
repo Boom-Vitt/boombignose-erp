@@ -46,7 +46,7 @@ export default async function AppLayout({
             <CommandPalette role={ctx.role} orgId={ctx.orgId} />
             <ThemeToggle />
           </header>
-          <div id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col gap-6 p-4 outline-none md:p-6">{children}</div>
+          <div id="content" tabIndex={-1} className="flex w-full min-w-0 flex-1 flex-col gap-6 p-4 outline-none md:p-6 [&>*]:min-w-0">{children}</div>
         </SidebarInset>
       </SidebarProvider>
     </>
