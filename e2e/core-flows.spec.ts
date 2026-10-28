@@ -210,7 +210,7 @@ test("sign up, then record stock, a VAT invoice, a purchase, a transfer, a recei
   await expect(page.getByTestId(`on-hand-${productId}`)).toHaveText("6 piece")
 
   await gotoApp(page, "/finance/receipts")
-  await page.getByLabel("Customer", { exact: true }).selectOption({ label: buyer })
+  await page.getByRole("combobox", { name: "Customer", exact: true }).selectOption({ label: buyer })
   await page.getByRole("button", { name: "View customer receipts", exact: true }).click()
   const report = page.locator("form").filter({ has: page.getByRole("button", { name: "Report customer receipt", exact: true }) })
   await report.getByLabel("Receipt amount (THB)", { exact: true }).fill("1040.00")
