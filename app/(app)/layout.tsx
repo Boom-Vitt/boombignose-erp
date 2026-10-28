@@ -23,24 +23,32 @@ export default async function AppLayout({
   const ctx = await requireOrgContext()
 
   return (
-    <SidebarProvider>
-      <AppSidebar
-        email={ctx.email}
-        role={ctx.role}
-        workspaceHeader={<WorkspaceHeader context={ctx} />}
-      />
-      {/* min-w-0: wide content (kanban boards) scrolls in its own container instead of widening the page. */}
-      <SidebarInset className="min-w-0">
-        <header className="bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex h-14 items-center gap-2 border-b px-4 backdrop-blur">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-1 h-5" />
-          <span className="text-sm font-medium">{ctx.orgName}</span>
-          <ActivityCounter />
-          <CommandPalette role={ctx.role} orgId={ctx.orgId} />
-          <ThemeToggle />
-        </header>
-        <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">{children}</div>
-      </SidebarInset>
-    </SidebarProvider>
+    <>
+      <a
+        href="#content"
+        className="bg-background text-foreground sr-only z-50 rounded-md border px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+      >
+        Skip to content
+      </a>
+      <SidebarProvider>
+        <AppSidebar
+          email={ctx.email}
+          role={ctx.role}
+          workspaceHeader={<WorkspaceHeader context={ctx} />}
+        />
+        {/* min-w-0: wide content (kanban boards) scrolls in its own container instead of widening the page. */}
+        <SidebarInset className="min-w-0">
+          <header className="bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex h-14 min-w-0 items-center gap-1 border-b px-2 backdrop-blur sm:gap-2 sm:px-4">
+            <SidebarTrigger className="-ml-1 shrink-0" />
+            <Separator orientation="vertical" className="mr-1 hidden h-5 sm:block" />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{ctx.orgName}</span>
+            <ActivityCounter />
+            <CommandPalette role={ctx.role} orgId={ctx.orgId} />
+            <ThemeToggle />
+          </header>
+          <div id="content" tabIndex={-1} className="flex w-full min-w-0 flex-1 flex-col gap-6 p-4 outline-none md:p-6 [&>*]:min-w-0">{children}</div>
+        </SidebarInset>
+      </SidebarProvider>
+    </>
   )
 }

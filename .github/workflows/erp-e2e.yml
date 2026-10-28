@@ -43,7 +43,7 @@ jobs:
         run: pnpm build
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
-      - name: Run core flows
+      - name: Run unseeded flows
         env:
           ERP_E2E_CORE: "1"
           OLLAMA_HOST: 127.0.0.1:1
