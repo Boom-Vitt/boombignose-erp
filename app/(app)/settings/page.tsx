@@ -20,6 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { SettingsForm } from "./_components/settings-form"
 import { InvitationsCard } from "./_components/invitations-card"
 import { AccountingIntegrationCard } from "@edition"
+import { StartLogViewer, UpdateCheckButton } from "./_components/local-install"
 import { updateOrgSettings } from "./actions"
 
 export const dynamic = "force-dynamic"
@@ -212,6 +213,23 @@ export default async function SettingsPage() {
       <InvitationsCard />
 
       <AccountingIntegrationCard />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Updates</CardTitle>
+            <CardDescription>Look up the public release when you ask. The check shows a link and does not download.</CardDescription>
+          </CardHeader>
+          <CardContent><UpdateCheckButton /></CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Start logs</CardTitle>
+            <CardDescription>Local Postgres, auth, and API logs from this computer.</CardDescription>
+          </CardHeader>
+          <CardContent><StartLogViewer /></CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
