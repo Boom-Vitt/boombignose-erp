@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
+import { TaxInvoiceTemplate } from "@/lib/tax/invoice-checklist"
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { requireOrgContext, requireCapability } from "@/lib/auth"
@@ -371,6 +372,24 @@ export async function updateBusinessProfile(input: z.input<typeof BusinessProfil
   const { error } = await supabase.rpc("update_tax_business_profile", {
     p_org_id: ctx.orgId, p_legal_name: d.legalName, p_business_address: d.address,
     p_tax_id: d.taxId, p_tax_status: d.taxStatus, p_vat_rate_bps: d.vatRateBps, p_prices_include_vat: d.pricesIncludeVat, p_branch_label: d.branchLabel,
+  })
+  if (error) return { error: error.message }
+  revalidatePath("/finance/business-profile")
+  return {}
+}
+
+const TaxTemplate = TaxInvoiceTemplate.extend({ expectedOrgId: z.guid() })
+export async function saveTaxInvoiceTemplate(input: z.input<typeof TaxTemplate>): Promise<{ error?: string }> {
+  const ctx = await requireOrgContext()
+  try { requireCapability(ctx, "settings:manage") }
+  catch { return { error: "Only owners and admins can update the business profile." } }
+  const parsed = TaxTemplate.safeParse(input)
+  if (!parsed.success) return { error: "Phone and the copy label can be 40 characters. Branch code is blank or 5 digits." }
+  if (parsed.data.expectedOrgId !== ctx.orgId) return { error: "Workspace changed. Reload this form before saving." }
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.rpc("save_tax_invoice_template", {
+    p_org_id: ctx.orgId,
+    p_template: { seller_phone: parsed.data.seller_phone, branch_code: parsed.data.branch_code, copy_label: parsed.data.copy_label },
   })
   if (error) return { error: error.message }
   revalidatePath("/finance/business-profile")
