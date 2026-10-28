@@ -6,25 +6,41 @@ import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { updateFinanceLockDate } from "@/app/(app)/finance/actions"
+import { closeAccountingPeriod } from "@/lib/finance/period-close"
 
-export function FinanceLockForm({ orgId, lockDate }: { orgId: string; lockDate: string }) {
+export function FinanceLockForm({ orgId, lockDate, today }: { orgId: string; lockDate: string; today: string }) {
   const [value, setValue] = useState(lockDate)
+  const [month, setMonth] = useState("")
   const [pending, startTransition] = useTransition()
   const router = useRouter()
-  return <form className="space-y-4" onSubmit={event => {
-    event.preventDefault()
+  function saveLock(lock: string, success: string) {
     startTransition(async () => {
       try {
-        const result = await updateFinanceLockDate({ expectedOrgId: orgId, lockDate: value })
+        const result = await updateFinanceLockDate({ expectedOrgId: orgId, lockDate: lock })
         if (result.error) { toast.error(result.error); return }
-        toast.success("Finance lock date saved")
+        toast.success(success)
         router.refresh()
       } catch { toast.error("Could not confirm the finance lock. Reload before retrying.") }
     })
+  }
+  return <form className="space-y-4" onSubmit={event => {
+    event.preventDefault()
+    saveLock(value, "Finance lock date saved")
   }}>
     <label htmlFor="finance-lock-date" className="block text-sm font-medium">Lock transactions through</label>
     <Input id="finance-lock-date" type="date" value={value} disabled={pending} aria-describedby="finance-lock-help" onChange={event => setValue(event.target.value)} />
     <p id="finance-lock-help" className="text-sm text-muted-foreground">Invoice issues, receipts and corrections dated on or before this date are blocked. Leave blank to keep all periods open.</p>
     <Button type="submit" disabled={pending}>Save finance lock</Button>
+    <div className="space-y-3 border-t pt-4">
+      <h2 className="text-sm font-medium">Close a completed month</h2>
+      <p className="text-sm text-muted-foreground">Sets the lock to the last day of that month. It blocks documents and receipts through that day. It is not a general-ledger close or a tax filing.</p>
+      <label htmlFor="finance-close-month" className="block text-sm font-medium">Month</label>
+      <Input id="finance-close-month" type="month" value={month} disabled={pending} onChange={event => setMonth(event.target.value)} />
+      <Button type="button" disabled={pending} onClick={() => {
+        const decision = closeAccountingPeriod(month, today, lockDate)
+        if (!decision.ok) { toast.error(decision.error); return }
+        saveLock(decision.lockDate, `Closed through ${decision.lockDate}. Documents and receipts through that day are locked.`)
+      }}>Close completed month</Button>
+    </div>
   </form>
 }
