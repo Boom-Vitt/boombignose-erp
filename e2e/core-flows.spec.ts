@@ -218,7 +218,7 @@ test("sign up, then record stock, a VAT invoice, a purchase, a transfer, a recei
   await report.getByLabel(new RegExp(`^Allocate ${number}`)).fill("1040.00")
   await report.getByRole("button", { name: "Report customer receipt", exact: true }).click()
   await expect(page.getByText("Receipt reported for verification", { exact: true })).toBeVisible()
-  await expect(page.getByText("CORE-RCPT-1", { exact: true })).toBeVisible()
+  await expect(page.getByText("฿1,040.00 · CORE-RCPT-1", { exact: true })).toBeVisible()
 
   await gotoApp(page, "/reports")
   await expect(page.getByRole("heading", { name: "Reports", exact: true })).toBeVisible()
