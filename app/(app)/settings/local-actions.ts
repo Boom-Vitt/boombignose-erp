@@ -1,0 +1,35 @@
+"use server"
+
+import { requireOrgContext } from "@/lib/auth"
+import { localDataDir, readStartLog } from "@/lib/install/logs"
+import { interpretRelease, type UpdateCheck } from "@/lib/release/update-check"
+
+const RELEASE_API = "https://api.github.com/repos/Boom-Vitt/boombignose-erp-harness-ai/releases/latest"
+
+/** User-clicked check. Reads the public release page and returns a link, never a download. */
+export async function checkForUpdate(): Promise<UpdateCheck> {
+  await requireOrgContext()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const response = await fetch(RELEASE_API, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "BoomBigNose" },
+      signal: controller.signal,
+      cache: "no-store",
+    })
+    if (!response.ok) return { state: "unavailable", message: "The release page did not respond." }
+    return interpretRelease(await response.json())
+  } catch {
+    return { state: "unavailable", message: "The release page could not be reached." }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** User-clicked read of one local start log. No network. */
+export async function readLocalLog(name: string): Promise<{ text: string } | { error: string }> {
+  await requireOrgContext()
+  const dir = localDataDir()
+  if (!dir) return { error: "No local data directory yet." }
+  return readStartLog(dir, name)
+}
