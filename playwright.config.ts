@@ -14,10 +14,11 @@ if (process.env.PLAYWRIGHT_BASE_URL && process.env.PLAYWRIGHT_BASE_URL !== baseU
  */
 export default defineConfig({
   testDir: "./e2e",
-  // The seeded suite stays the default. ERP_E2E_CORE=1 runs only the unseeded
-  // signup flow; that spec cannot share a database that already has a workspace.
-  testMatch: process.env.ERP_E2E_CORE === "1" ? "core-flows.spec.ts" : "**/*.spec.ts",
-  testIgnore: process.env.ERP_E2E_CORE === "1" ? undefined : "core-flows.spec.ts",
+  // The seeded suite stays the default. ERP_E2E_CORE=1 runs the unseeded
+  // signup flows. Those specs create their own workspace and stay out of the
+  // seeded demo-login suite.
+  testMatch: process.env.ERP_E2E_CORE === "1" ? ["core-flows.spec.ts", "operations-flows.spec.ts"] : "**/*.spec.ts",
+  testIgnore: process.env.ERP_E2E_CORE === "1" ? undefined : ["core-flows.spec.ts", "operations-flows.spec.ts"],
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,

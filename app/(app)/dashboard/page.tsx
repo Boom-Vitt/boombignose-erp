@@ -139,9 +139,9 @@ export default async function DashboardPage() {
           <figure
             aria-labelledby="revenue-history-title"
             tabIndex={0}
-            className="overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-ring"
+            className="min-w-0 overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-ring"
           >
-            <ol className="grid min-w-[36rem] grid-cols-6 gap-4">
+            <ol className="grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-4">
               {d.revenueHistory.map(({ month, revenueSatang }) => (
                 <li key={month} className="space-y-2 text-center">
                   <div className="text-xs font-medium tabular-nums sm:text-sm">
