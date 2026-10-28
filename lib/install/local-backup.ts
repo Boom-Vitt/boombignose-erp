@@ -4,8 +4,11 @@ import path from "node:path"
 
 const DUMP_NAME = /^boombignose-[0-9]{8}T[0-9]{6}Z\.dump$/
 
+/** Process env or a small test fixture. The index signature accepts Next's ProcessEnv. */
+export type BackupEnv = { [key: string]: string | undefined }
+
 /** Loopback URL for the install's own cluster. DATABASE_URL is ignored. */
-export function loopbackBackupURL(env: { BOOMBIGNOSE_PG_PORT?: string }): string {
+export function loopbackBackupURL(env: BackupEnv): string {
   const raw = (env.BOOMBIGNOSE_PG_PORT || "54329").trim()
   if (!/^[1-9][0-9]{1,4}$/.test(raw) || Number(raw) > 65535) {
     throw new Error("Local database port is not allowed.")
@@ -52,7 +55,7 @@ export function dumpLooksCustom(bytes: Buffer): boolean {
 
 /** Absolute pg_dump or pg_restore next to the bundle or BOOMBIGNOSE_PG_BIN. */
 export async function resolvePgTool(
-  env: { BOOMBIGNOSE_PG_BIN?: string; BOOMBIGNOSE_BUNDLE?: string },
+  env: BackupEnv,
   name: "pg_dump" | "pg_restore",
 ): Promise<string> {
   const roots = [

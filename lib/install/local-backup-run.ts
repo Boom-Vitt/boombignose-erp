@@ -37,10 +37,13 @@ function runTool(bin: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       shell: false,
-      env: { LC_ALL: "C", PATH: process.env.PATH ?? "" },
+      stdio: "ignore",
+      env: {
+        NODE_ENV: process.env.NODE_ENV,
+        LC_ALL: "C",
+        PATH: process.env.PATH ?? "",
+      },
     })
-    child.stdout?.resume()
-    child.stderr?.resume()
     child.on("error", () => reject(new Error("backup tool failed")))
     child.on("close", (code) => {
       if (code === 0) resolve()
