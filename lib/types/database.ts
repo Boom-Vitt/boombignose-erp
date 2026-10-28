@@ -75,6 +75,12 @@ export type Database = {
         Update: { name_th?: string; name_en?: string; kind?: "asset" | "liability" | "equity" | "income" | "expense" }
         Relationships: []
       }
+      bank_lines: {
+        Row: { id: string; org_id: string; booked_on: string; amount_satang: number; reference: string; matched_payment_id: string | null; created_at: string }
+        Insert: { id?: string; org_id: string; booked_on: string; amount_satang: number; reference: string; matched_payment_id?: string | null; created_at?: string }
+        Update: { matched_payment_id?: string | null }
+        Relationships: []
+      }
       product_vendor_lead_times: {
         Row: { org_id: string; product_id: string; vendor_id: string; lead_days: number }
         Insert: never
@@ -1503,6 +1509,8 @@ isOneToOne: false
             cancel_draft_invoice: { Args: { p_org_id: string; p_invoice_id: string }; Returns: undefined }
             update_finance_lock_date: { Args: { p_org_id: string; p_lock_date: string | null }; Returns: undefined }
             install_thai_sme_chart: { Args: { p_org_id: string }; Returns: undefined }
+            add_bank_line: { Args: { p_org_id: string; p_booked_on: string; p_amount_satang: number; p_reference: string }; Returns: string }
+            match_bank_line: { Args: { p_org_id: string; p_line_id: string; p_payment_id: string }; Returns: undefined }
             submit_customer_payment_claim: { Args: { p_org_id: string; p_client_id: string; p_amount_satang: number; p_allocations: Json; p_reference: string; p_key: string }; Returns: string }
             apply_customer_credit: { Args: { p_org_id: string; p_client_id: string; p_allocations: Json; p_key: string }; Returns: string }
             refund_customer_credit: { Args: { p_org_id: string; p_payment_id: string; p_amount_satang: number; p_reference: string; p_paid_on: string; p_method: Database["public"]["Enums"]["payment_method"]; p_key: string }; Returns: string }
