@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { START_LOGS } from "@/lib/install/logs"
+import { START_LOGS } from "@/lib/install/log-names"
 import { APP_VERSION } from "@/lib/release/version"
 import type { UpdateCheck } from "@/lib/release/update-check"
 import { Button } from "@/components/ui/button"

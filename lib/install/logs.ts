@@ -1,9 +1,9 @@
 import { open, realpath, stat } from "node:fs/promises"
 import path from "node:path"
+import { START_LOGS, type StartLogName } from "@/lib/install/log-names"
 
-/** Start logs the desktop bundle already writes. Nothing else in the data directory is readable here. */
-export const START_LOGS = ["server.log", "auth.log", "postgrest.log"] as const
-export type StartLogName = (typeof START_LOGS)[number]
+export { START_LOGS }
+export type { StartLogName }
 
 const CAP = 64 * 1024
 
