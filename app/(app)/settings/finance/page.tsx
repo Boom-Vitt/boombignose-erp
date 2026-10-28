@@ -22,5 +22,6 @@ export default async function FinanceSettingsPage() {
     <Card className="max-w-2xl"><CardContent><PaymentReviewForm orgId={ctx.orgId} required={data?.require_different_payment_reviewer ?? false} /></CardContent></Card>
     <Card className="max-w-2xl"><CardContent><BillToleranceForm toleranceBps={data?.bill_variance_tolerance_bps ?? 100} /></CardContent></Card>
     <Link href="/finance/business-profile" className="text-sm underline">Business profile and VAT settings</Link>
+    <Link href="/settings/chart" className="block text-sm underline">ผังบัญชี / Chart of accounts</Link>
   </div>
 }
