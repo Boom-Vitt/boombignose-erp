@@ -13,9 +13,14 @@ const InvoiceSnapshot = z.object({
   lines: z.array(z.object({ description: z.string(), quantity: z.number().positive().max(999999999.999), unit: z.string().nullable().optional(), unitPriceSatang: satang, amountSatang: satang, position: z.number().int().min(0), taxRateBps: z.number().int().min(0).max(10000).default(0) })),
 }).refine(snapshot => snapshot.kind === "legacy_operational_invoice" || snapshot.lines.length > 0, { path: ["lines"], message: "Issued snapshots require priced lines" })
 
+/** Validated issued snapshot. Live seller and buyer profiles are not substituted. */
+export function parseInvoiceSnapshot(value: unknown) {
+  return InvoiceSnapshot.parse(value)
+}
+
 /** Read immutable issued content; live seller and buyer profiles never substitute. */
 export function invoiceSnapshotDocument(value: unknown, status: string, verifiedPaidSatang: number, creditedSatang = 0): PrintableDocument {
-  const snapshot = InvoiceSnapshot.parse(value)
+  const snapshot = parseInvoiceSnapshot(value)
   const document = snapshot.document
   const legacy = snapshot.kind === "legacy_operational_invoice"
   const totals = legacy ? { ...document, amountDueSatang: document.amountDueSatang ?? document.totalSatang } : calculateTax(snapshot.lines.map(line => ({ amount_satang: line.amountSatang, tax_rate_bps: line.taxRateBps })), document.discountSatang, document.pricesIncludeVat, document.whtRateBps)
